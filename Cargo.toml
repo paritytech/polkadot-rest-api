@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/server",
+    "crates/config"
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2025"
+authors = ["Parity Technologies <admin@parity.io>"]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/paritytech/polkadot-rest-api"
