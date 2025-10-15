@@ -1,8 +1,5 @@
+use crate::{routes, state::AppState};
 use axum::Router;
-use crate::{
-    state::AppState,
-    routes
-};
 
 /// Add traceLayer and cors
 

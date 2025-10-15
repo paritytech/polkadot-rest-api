@@ -1,7 +1,7 @@
 mod app;
-mod state;
-mod routes;
 mod handlers;
+mod routes;
+mod state;
 
 use std::net::SocketAddr;
 use tracing_subscriber;
