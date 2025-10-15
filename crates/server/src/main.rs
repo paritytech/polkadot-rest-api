@@ -4,20 +4,32 @@ mod logging;
 mod routes;
 mod state;
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let state = state::AppState::new().await?;
     // Extract values we need before cloning state
     let log_level = state.config.log.level.clone();
+    let bind_host = state.config.express.bind_host.clone();
     let port = state.config.express.port;
     let substrate_url = state.config.substrate.url.clone();
     let multi_chain_urls = state.config.substrate.multi_chain_urls.clone();
     logging::init(&log_level)?;
 
+    // Parse bind_host to IpAddr
+    let ip: IpAddr = bind_host.parse()?;
+
+    // Security warning for binding to all interfaces
+    if bind_host == "0.0.0.0" || bind_host == "::" {
+        tracing::warn!(
+            "Server is binding to {} (all interfaces). Ensure this is intentional for security reasons.",
+            bind_host
+        );
+    }
+
     let app = app::create_app(state);
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::new(ip, port);
     tracing::info!("Starting server on {}", addr);
     tracing::info!("Log level: {}", log_level);
     tracing::info!("Primary substrate URL: {}", substrate_url);
