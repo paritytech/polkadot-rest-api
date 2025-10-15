@@ -1,14 +1,12 @@
 use crate::ConfigError;
-use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct LogConfig {
     /// Log Level
     ///
     /// Env: SAS_LOG_LEVEL
     /// Valid values: trace, debug, info, warn, error
     /// Default: info
-    #[serde(default = "default_level")]
     pub level: String,
 }
 
@@ -52,7 +50,7 @@ mod tests {
 
     #[test]
     fn test_validate_valid_levels() {
-        for level in ["tract", "debug", "info", "warn", "error"] {
+        for level in ["trace", "debug", "info", "warn", "error"] {
             let config = LogConfig {
                 level: level.to_string(),
             };

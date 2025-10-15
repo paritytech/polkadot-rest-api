@@ -1,7 +1,6 @@
 use crate::ConfigError;
-use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ExpressConfig {
     /// Port to bind the HTTP server to
     ///
