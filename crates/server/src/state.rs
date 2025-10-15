@@ -1,8 +1,13 @@
+use config::SidecarConfig;
+
 #[derive(Clone)]
-pub struct AppState {}
+pub struct AppState {
+    pub config: SidecarConfig,
+}
 
 impl AppState {
     pub async fn new() -> anyhow::Result<Self> {
-        Ok(Self {})
+        let config = SidecarConfig::from_env()?;
+        Ok(Self { config })
     }
 }

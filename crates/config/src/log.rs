@@ -1,10 +1,10 @@
-use serde::Deserialize;
 use crate::ConfigError;
+use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LogConfig {
     /// Log Level
-    /// 
+    ///
     /// Env: SAS_LOG_LEVEL
     /// Valid values: trace, debug, info, warn, error
     /// Default: info
@@ -21,13 +21,11 @@ impl LogConfig {
         let valid_levels = ["trace", "debug", "info", "warn", "error"];
 
         if !valid_levels.contains(&self.level.as_str()) {
-            return Err(ConfigError::ValidateError(
-                format!(
-                    "Invalid log level '{}'. Must be one of: {}",
-                    self.level,
-                    valid_levels.join(", ")
-                )
-            ));
+            return Err(ConfigError::ValidateError(format!(
+                "Invalid log level '{}'. Must be one of: {}",
+                self.level,
+                valid_levels.join(", ")
+            )));
         }
 
         Ok(())
@@ -37,7 +35,7 @@ impl LogConfig {
 impl Default for LogConfig {
     fn default() -> Self {
         Self {
-            level: default_level()
+            level: default_level(),
         }
     }
 }
@@ -55,14 +53,18 @@ mod tests {
     #[test]
     fn test_validate_valid_levels() {
         for level in ["tract", "debug", "info", "warn", "error"] {
-            let config = LogConfig { level: level.to_string() };
+            let config = LogConfig {
+                level: level.to_string(),
+            };
             assert!(config.validate().is_ok(), "Level {} should be valid", level);
         }
     }
 
     #[test]
     fn test_validate_invalid_levels() {
-        let config = LogConfig { level: "invalid".to_string() };
+        let config = LogConfig {
+            level: "invalid".to_string(),
+        };
         assert!(config.validate().is_err());
     }
 }

@@ -1,6 +1,6 @@
+mod error;
 mod express;
 mod log;
-mod error;
 
 pub use error::ConfigError;
 pub use express::ExpressConfig;
@@ -20,6 +20,7 @@ pub struct SidecarConfig {
 impl SidecarConfig {
     pub fn from_env() -> Result<Self, ConfigError> {
         let config = envy::prefixed("SAS_").from_env::<Self>()?;
+        // eprintln!("DEBUG: Config after loading: log.level={}", config.log.level);
         config.validate()?;
         Ok(config)
     }
@@ -35,7 +36,7 @@ impl Default for SidecarConfig {
     fn default() -> Self {
         Self {
             express: ExpressConfig::default(),
-            log: LogConfig::default()
+            log: LogConfig::default(),
         }
     }
 }

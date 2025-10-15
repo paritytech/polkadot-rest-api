@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use crate::ConfigError;
+use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExpressConfig {
@@ -7,7 +7,7 @@ pub struct ExpressConfig {
     ///
     /// Env: SAS_EXPRESS_PORT
     /// Default: 8080
-    pub port: u16
+    pub port: u16,
 }
 
 fn default_port() -> u16 {
@@ -18,7 +18,7 @@ impl ExpressConfig {
     pub(crate) fn validate(&self) -> Result<(), ConfigError> {
         if self.port == 0 {
             return Err(ConfigError::ValidateError(
-                "Express port cannot be 0".to_string()
+                "Express port cannot be 0".to_string(),
             ));
         }
 
@@ -29,11 +29,10 @@ impl ExpressConfig {
 impl Default for ExpressConfig {
     fn default() -> Self {
         Self {
-            port: default_port()
+            port: default_port(),
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

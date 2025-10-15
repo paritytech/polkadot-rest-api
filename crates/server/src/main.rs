@@ -1,23 +1,25 @@
 mod app;
 mod handlers;
+mod logging;
 mod routes;
 mod state;
 
 use std::net::SocketAddr;
-use tracing_subscriber;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
-
     let state = state::AppState::new().await?;
+    // Extract values we need before cloning state
+    let log_level = state.config.log.level.clone();
+    let port = state.config.express.port;
+    logging::init(&log_level)?;
 
     let app = app::create_app(state);
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     tracing::info!("Starting server on {}", addr);
+    tracing::info!("Log level: {}", log_level);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-
     axum::serve(listener, app).await?;
 
     Ok(())
