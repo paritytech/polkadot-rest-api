@@ -1,11 +1,6 @@
 use crate::{routes, state::AppState};
-use tower_http::{
-    trace::TraceLayer,
-    cors::CorsLayer
-};
 use axum::Router;
-
-/// Add traceLayer and cors
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 pub fn create_app(state: AppState) -> Router {
     Router::new()
