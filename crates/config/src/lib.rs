@@ -6,7 +6,7 @@ mod substrate;
 pub use error::ConfigError;
 pub use express::ExpressConfig;
 pub use log::LogConfig;
-pub use substrate::SubstrateConfig;
+pub use substrate::{ChainType, ChainUrl, SubstrateConfig};
 
 use serde::Deserialize;
 
@@ -22,6 +22,9 @@ struct EnvConfig {
 
     #[serde(default = "default_substrate_url")]
     substrate_url: String,
+
+    #[serde(default = "default_substrate_multi_chain_url")]
+    substrate_multi_chain_url: String,
 }
 
 fn default_express_port() -> u16 {
@@ -34,6 +37,10 @@ fn default_log_level() -> String {
 
 fn default_substrate_url() -> String {
     "ws://127.0.0.1:9944".to_string()
+}
+
+fn default_substrate_multi_chain_url() -> String {
+    String::new()
 }
 
 /// Main configuration struct
@@ -51,9 +58,22 @@ impl SidecarConfig {
     /// - SAS_EXPRESS_PORT
     /// - SAS_LOG_LEVEL
     /// - SAS_SUBSTRATE_URL
+    /// - SAS_SUBSTRATE_MULTI_CHAIN_URL
     pub fn from_env() -> Result<Self, ConfigError> {
         // Load flat env config
         let env_config = envy::prefixed("SAS_").from_env::<EnvConfig>()?;
+
+        // Parse multi-chain URLs from JSON
+        let multi_chain_urls = if env_config.substrate_multi_chain_url.is_empty() {
+            vec![]
+        } else {
+            serde_json::from_str(&env_config.substrate_multi_chain_url).map_err(|e| {
+                ConfigError::ValidateError(format!(
+                    "Invalid JSON format for SAS_SUBSTRATE_MULTI_CHAIN_URL: {}",
+                    e
+                ))
+            })?
+        };
 
         // Map to nested structure
         let config = Self {
@@ -65,6 +85,7 @@ impl SidecarConfig {
             },
             substrate: SubstrateConfig {
                 url: env_config.substrate_url,
+                multi_chain_urls,
             },
         };
 
@@ -101,5 +122,63 @@ mod tests {
         assert_eq!(config.express.port, 8080);
         assert_eq!(config.log.level, "info");
         assert_eq!(config.substrate.url, "ws://127.0.0.1:9944");
+        assert_eq!(config.substrate.multi_chain_urls.len(), 0);
+    }
+
+    #[test]
+    fn test_from_env_with_multi_chain() {
+        unsafe {
+            std::env::set_var("SAS_EXPRESS_PORT", "8080");
+            std::env::set_var("SAS_LOG_LEVEL", "info");
+            std::env::set_var("SAS_SUBSTRATE_URL", "ws://localhost:9944");
+            std::env::set_var(
+                "SAS_SUBSTRATE_MULTI_CHAIN_URL",
+                r#"[{"url":"ws://polkadot:9944","type":"relay"},{"url":"ws://asset-hub:9944","type":"assethub"}]"#,
+            );
+        }
+
+        let config = SidecarConfig::from_env().unwrap();
+        assert_eq!(config.substrate.multi_chain_urls.len(), 2);
+        assert_eq!(
+            config.substrate.multi_chain_urls[0].url,
+            "ws://polkadot:9944"
+        );
+        assert_eq!(
+            config.substrate.multi_chain_urls[0].chain_type,
+            ChainType::Relay
+        );
+        assert_eq!(
+            config.substrate.multi_chain_urls[1].url,
+            "ws://asset-hub:9944"
+        );
+        assert_eq!(
+            config.substrate.multi_chain_urls[1].chain_type,
+            ChainType::AssetHub
+        );
+
+        // Clean up
+        unsafe {
+            std::env::remove_var("SAS_EXPRESS_PORT");
+            std::env::remove_var("SAS_LOG_LEVEL");
+            std::env::remove_var("SAS_SUBSTRATE_URL");
+            std::env::remove_var("SAS_SUBSTRATE_MULTI_CHAIN_URL");
+        }
+    }
+
+    #[test]
+    fn test_from_env_invalid_multi_chain_json() {
+        unsafe {
+            std::env::set_var("SAS_SUBSTRATE_URL", "ws://localhost:9944");
+            std::env::set_var("SAS_SUBSTRATE_MULTI_CHAIN_URL", "not-valid-json");
+        }
+
+        let result = SidecarConfig::from_env();
+        assert!(result.is_err());
+
+        // Clean up
+        unsafe {
+            std::env::remove_var("SAS_SUBSTRATE_URL");
+            std::env::remove_var("SAS_SUBSTRATE_MULTI_CHAIN_URL");
+        }
     }
 }
