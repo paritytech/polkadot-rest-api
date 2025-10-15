@@ -58,7 +58,7 @@ fn default_substrate_multi_chain_url() -> String {
 }
 
 /// Main configuration struct
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SidecarConfig {
     pub express: ExpressConfig,
     pub log: LogConfig,
@@ -117,16 +117,6 @@ impl SidecarConfig {
         self.log.validate()?;
         self.substrate.validate()?;
         Ok(())
-    }
-}
-
-impl Default for SidecarConfig {
-    fn default() -> Self {
-        Self {
-            express: ExpressConfig::default(),
-            log: LogConfig::default(),
-            substrate: SubstrateConfig::default(),
-        }
     }
 }
 
