@@ -14,6 +14,9 @@ use serde::Deserialize;
 /// This works better with envy than nested structs
 #[derive(Debug, Deserialize)]
 struct EnvConfig {
+    #[serde(default = "default_express_bind_host")]
+    express_bind_host: String,
+
     #[serde(default = "default_express_port")]
     express_port: u16,
 
@@ -25,6 +28,10 @@ struct EnvConfig {
 
     #[serde(default = "default_substrate_multi_chain_url")]
     substrate_multi_chain_url: String,
+}
+
+fn default_express_bind_host() -> String {
+    "127.0.0.1".to_string()
 }
 
 fn default_express_port() -> u16 {
@@ -55,6 +62,7 @@ impl SidecarConfig {
     /// Load configuration from environment variables
     ///
     /// Looks for variables with `SAS_` prefix:
+    /// - SAS_EXPRESS_BIND_HOST
     /// - SAS_EXPRESS_PORT
     /// - SAS_LOG_LEVEL
     /// - SAS_SUBSTRATE_URL
@@ -78,6 +86,7 @@ impl SidecarConfig {
         // Map to nested structure
         let config = Self {
             express: ExpressConfig {
+                bind_host: env_config.express_bind_host,
                 port: env_config.express_port,
             },
             log: LogConfig {
@@ -119,6 +128,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = SidecarConfig::default();
+        assert_eq!(config.express.bind_host, "127.0.0.1");
         assert_eq!(config.express.port, 8080);
         assert_eq!(config.log.level, "info");
         assert_eq!(config.substrate.url, "ws://127.0.0.1:9944");
