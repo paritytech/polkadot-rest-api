@@ -1,10 +1,12 @@
 mod error;
 mod express;
 mod log;
+mod substrate;
 
 pub use error::ConfigError;
 pub use express::ExpressConfig;
 pub use log::LogConfig;
+pub use substrate::SubstrateConfig;
 
 use serde::Deserialize;
 
@@ -17,6 +19,9 @@ struct EnvConfig {
 
     #[serde(default = "default_log_level")]
     log_level: String,
+
+    #[serde(default = "default_substrate_url")]
+    substrate_url: String,
 }
 
 fn default_express_port() -> u16 {
@@ -27,11 +32,16 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
+fn default_substrate_url() -> String {
+    "ws://127.0.0.1:9944".to_string()
+}
+
 /// Main configuration struct
 #[derive(Debug, Clone)]
 pub struct SidecarConfig {
     pub express: ExpressConfig,
     pub log: LogConfig,
+    pub substrate: SubstrateConfig,
 }
 
 impl SidecarConfig {
@@ -40,6 +50,7 @@ impl SidecarConfig {
     /// Looks for variables with `SAS_` prefix:
     /// - SAS_EXPRESS_PORT
     /// - SAS_LOG_LEVEL
+    /// - SAS_SUBSTRATE_URL
     pub fn from_env() -> Result<Self, ConfigError> {
         // Load flat env config
         let env_config = envy::prefixed("SAS_").from_env::<EnvConfig>()?;
@@ -52,6 +63,9 @@ impl SidecarConfig {
             log: LogConfig {
                 level: env_config.log_level,
             },
+            substrate: SubstrateConfig {
+                url: env_config.substrate_url,
+            },
         };
 
         // Validate
@@ -62,6 +76,7 @@ impl SidecarConfig {
     fn validate(&self) -> Result<(), ConfigError> {
         self.express.validate()?;
         self.log.validate()?;
+        self.substrate.validate()?;
         Ok(())
     }
 }
@@ -71,6 +86,7 @@ impl Default for SidecarConfig {
         Self {
             express: ExpressConfig::default(),
             log: LogConfig::default(),
+            substrate: SubstrateConfig::default(),
         }
     }
 }
@@ -84,5 +100,6 @@ mod tests {
         let config = SidecarConfig::default();
         assert_eq!(config.express.port, 8080);
         assert_eq!(config.log.level, "info");
+        assert_eq!(config.substrate.url, "ws://127.0.0.1:9944");
     }
 }
