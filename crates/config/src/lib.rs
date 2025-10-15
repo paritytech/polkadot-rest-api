@@ -23,6 +23,9 @@ struct EnvConfig {
     #[serde(default = "default_log_level")]
     log_level: String,
 
+    #[serde(default = "default_log_json")]
+    log_json: bool,
+
     #[serde(default = "default_substrate_url")]
     substrate_url: String,
 
@@ -40,6 +43,10 @@ fn default_express_port() -> u16 {
 
 fn default_log_level() -> String {
     "info".to_string()
+}
+
+fn default_log_json() -> bool {
+    false
 }
 
 fn default_substrate_url() -> String {
@@ -65,6 +72,7 @@ impl SidecarConfig {
     /// - SAS_EXPRESS_BIND_HOST
     /// - SAS_EXPRESS_PORT
     /// - SAS_LOG_LEVEL
+    /// - SAS_LOG_JSON
     /// - SAS_SUBSTRATE_URL
     /// - SAS_SUBSTRATE_MULTI_CHAIN_URL
     pub fn from_env() -> Result<Self, ConfigError> {
@@ -91,6 +99,7 @@ impl SidecarConfig {
             },
             log: LogConfig {
                 level: env_config.log_level,
+                json: env_config.log_json,
             },
             substrate: SubstrateConfig {
                 url: env_config.substrate_url,
@@ -131,6 +140,7 @@ mod tests {
         assert_eq!(config.express.bind_host, "127.0.0.1");
         assert_eq!(config.express.port, 8080);
         assert_eq!(config.log.level, "info");
+        assert_eq!(config.log.json, false);
         assert_eq!(config.substrate.url, "ws://127.0.0.1:9944");
         assert_eq!(config.substrate.multi_chain_urls.len(), 0);
     }

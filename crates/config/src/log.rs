@@ -8,10 +8,20 @@ pub struct LogConfig {
     /// Valid values: trace, debug, info, warn, error
     /// Default: info
     pub level: String,
+
+    /// Output logs in JSON format
+    ///
+    /// Env: SAS_LOG_JSON
+    /// Default: false
+    pub json: bool,
 }
 
 fn default_level() -> String {
     "info".to_string()
+}
+
+fn default_json() -> bool {
+    false
 }
 
 impl LogConfig {
@@ -34,6 +44,7 @@ impl Default for LogConfig {
     fn default() -> Self {
         Self {
             level: default_level(),
+            json: default_json(),
         }
     }
 }
@@ -46,6 +57,7 @@ mod tests {
     fn test_default_log_config() {
         let config = LogConfig::default();
         assert_eq!(config.level, "info");
+        assert_eq!(config.json, false);
     }
 
     #[test]
@@ -53,6 +65,7 @@ mod tests {
         for level in ["trace", "debug", "info", "warn", "error"] {
             let config = LogConfig {
                 level: level.to_string(),
+                json: false,
             };
             assert!(config.validate().is_ok(), "Level {} should be valid", level);
         }
@@ -62,6 +75,7 @@ mod tests {
     fn test_validate_invalid_levels() {
         let config = LogConfig {
             level: "invalid".to_string(),
+            json: false,
         };
         assert!(config.validate().is_err());
     }
