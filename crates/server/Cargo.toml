@@ -17,3 +17,4 @@ tracing-subscriber = {version = "0.3", features = ["env-filter", "fmt", "json"]}
 anyhow = "1.0.100"
 tower-http = { version = "0.6.6", features = ["trace", "cors"] }
 config = { path = "../config" }
+subxt-historic = { version = "0.0.4" }
