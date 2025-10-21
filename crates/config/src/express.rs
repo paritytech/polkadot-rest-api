@@ -1,5 +1,7 @@
 use crate::ConfigError;
 
+// "Express" naming is an artifact of substrate-api-sidecar that is
+// being carried over to maintain backwards compatibility.
 #[derive(Debug, Clone)]
 pub struct ExpressConfig {
     /// Host address to bind the HTTP server to
@@ -13,6 +15,12 @@ pub struct ExpressConfig {
     /// Env: SAS_EXPRESS_PORT
     /// Default: 8080
     pub port: u16,
+
+    /// Maximum request body size in bytes
+    ///
+    /// Env: SAS_EXPRESS_REQUEST_LIMIT
+    /// Default: 512000 (500kb)
+    pub request_limit: usize,
 }
 
 fn default_bind_host() -> String {
@@ -21,6 +29,10 @@ fn default_bind_host() -> String {
 
 fn default_port() -> u16 {
     8080
+}
+
+fn default_request_limit() -> usize {
+    512_000 // 500kb
 }
 
 impl ExpressConfig {
@@ -40,6 +52,12 @@ impl ExpressConfig {
             ))
         })?;
 
+        if self.request_limit == 0 {
+            return Err(ConfigError::ValidateError(
+                "Request limit cannot be 0".to_string(),
+            ));
+        }
+
         Ok(())
     }
 }
@@ -49,6 +67,7 @@ impl Default for ExpressConfig {
         Self {
             bind_host: default_bind_host(),
             port: default_port(),
+            request_limit: default_request_limit(),
         }
     }
 }
@@ -69,6 +88,7 @@ mod tests {
         let config = ExpressConfig {
             bind_host: "127.0.0.1".to_string(),
             port: 0,
+            request_limit: default_request_limit(),
         };
         assert!(config.validate().is_err());
     }
@@ -78,6 +98,7 @@ mod tests {
         let config = ExpressConfig {
             bind_host: "127.0.0.1".to_string(),
             port: 3000,
+            request_limit: default_request_limit(),
         };
         assert!(config.validate().is_ok())
     }
@@ -87,6 +108,7 @@ mod tests {
         let config = ExpressConfig {
             bind_host: "192.168.1.100".to_string(),
             port: 8080,
+            request_limit: default_request_limit(),
         };
         assert!(config.validate().is_ok());
     }
@@ -96,6 +118,7 @@ mod tests {
         let config = ExpressConfig {
             bind_host: "0.0.0.0".to_string(),
             port: 8080,
+            request_limit: default_request_limit(),
         };
         assert!(config.validate().is_ok());
     }
@@ -105,6 +128,7 @@ mod tests {
         let config = ExpressConfig {
             bind_host: "::1".to_string(),
             port: 8080,
+            request_limit: default_request_limit(),
         };
         assert!(config.validate().is_ok());
     }
@@ -114,6 +138,7 @@ mod tests {
         let config = ExpressConfig {
             bind_host: "not-an-ip".to_string(),
             port: 8080,
+            request_limit: default_request_limit(),
         };
         assert!(config.validate().is_err());
     }
@@ -123,7 +148,28 @@ mod tests {
         let config = ExpressConfig {
             bind_host: "localhost".to_string(),
             port: 8080,
+            request_limit: default_request_limit(),
         };
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_request_limit_zero() {
+        let config = ExpressConfig {
+            bind_host: "127.0.0.1".to_string(),
+            port: 8080,
+            request_limit: 0,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_request_limit_valid() {
+        let config = ExpressConfig {
+            bind_host: "127.0.0.1".to_string(),
+            port: 8080,
+            request_limit: 1024,
+        };
+        assert!(config.validate().is_ok());
     }
 }
