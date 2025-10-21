@@ -13,12 +13,13 @@ async fn main() -> anyhow::Result<()> {
     // Extract values we need before cloning state
     let log_level = state.config.log.level.clone();
     let log_json = state.config.log.json;
+    let log_strip_ansi = state.config.log.strip_ansi;
     let bind_host = state.config.express.bind_host.clone();
     let port = state.config.express.port;
     let keep_alive_timeout = state.config.express.keep_alive_timeout;
     let substrate_url = state.config.substrate.url.clone();
     let multi_chain_urls = state.config.substrate.multi_chain_urls.clone();
-    logging::init(&log_level, log_json)?;
+    logging::init(&log_level, log_json, log_strip_ansi)?;
 
     // Parse bind_host to IpAddr
     let ip: IpAddr = bind_host.parse()?;

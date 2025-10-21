@@ -14,6 +14,12 @@ pub struct LogConfig {
     /// Env: SAS_LOG_JSON
     /// Default: false
     pub json: bool,
+
+    /// Strip ANSI color codes from logs
+    ///
+    /// Env: SAS_LOG_STRIP_ANSI
+    /// Default: false
+    pub strip_ansi: bool,
 }
 
 fn default_level() -> String {
@@ -21,6 +27,10 @@ fn default_level() -> String {
 }
 
 fn default_json() -> bool {
+    false
+}
+
+fn default_strip_ansi() -> bool {
     false
 }
 
@@ -45,6 +55,7 @@ impl Default for LogConfig {
         Self {
             level: default_level(),
             json: default_json(),
+            strip_ansi: default_strip_ansi(),
         }
     }
 }
@@ -58,6 +69,7 @@ mod tests {
         let config = LogConfig::default();
         assert_eq!(config.level, "info");
         assert_eq!(config.json, false);
+        assert_eq!(config.strip_ansi, false);
     }
 
     #[test]
@@ -65,7 +77,7 @@ mod tests {
         for level in ["trace", "debug", "info", "warn", "error"] {
             let config = LogConfig {
                 level: level.to_string(),
-                json: false,
+                ..Default::default()
             };
             assert!(config.validate().is_ok(), "Level {} should be valid", level);
         }
@@ -75,8 +87,28 @@ mod tests {
     fn test_validate_invalid_levels() {
         let config = LogConfig {
             level: "invalid".to_string(),
-            json: false,
+            ..Default::default()
         };
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_strip_ansi_enabled() {
+        let config = LogConfig {
+            strip_ansi: true,
+            ..Default::default()
+        };
+        assert_eq!(config.strip_ansi, true);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_strip_ansi_disabled() {
+        let config = LogConfig {
+            strip_ansi: false,
+            ..Default::default()
+        };
+        assert_eq!(config.strip_ansi, false);
+        assert!(config.validate().is_ok());
     }
 }

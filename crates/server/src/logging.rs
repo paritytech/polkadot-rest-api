@@ -6,13 +6,15 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 /// # Arguments
 /// * `level` - Log level (trace, debug, info, warn, error)
 /// * `json_format` - If true, output logs in JSON format
+/// * `strip_ansi` - If true, disable ANSI color codes in logs
 ///
 /// # Examples
 /// ```
-/// init("debug", false)?; // Human-readable
-/// init("info", true)?;   // JSON format
+/// init("debug", false, false)?; // Human-readable with colors
+/// init("info", true, false)?;   // JSON format
+/// init("info", false, true)?;   // Human-readable without colors
 /// ```
-pub fn init(level: &str, json_format: bool) -> Result<()> {
+pub fn init(level: &str, json_format: bool, strip_ansi: bool) -> Result<()> {
     // Create filter from level
     let filter = EnvFilter::try_new(level).unwrap_or_else(|e| {
         eprintln!(
@@ -23,7 +25,7 @@ pub fn init(level: &str, json_format: bool) -> Result<()> {
     });
 
     if json_format {
-        // JSON format
+        // JSON format (ANSI codes don't apply to JSON)
         let fmt_layer = fmt::layer().json();
 
         tracing_subscriber::registry()
@@ -36,7 +38,8 @@ pub fn init(level: &str, json_format: bool) -> Result<()> {
             .with_target(true)
             .with_thread_ids(false)
             .with_file(true)
-            .with_line_number(true);
+            .with_line_number(true)
+            .with_ansi(!strip_ansi);
 
         tracing_subscriber::registry()
             .with(filter)
