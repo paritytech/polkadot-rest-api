@@ -20,6 +20,13 @@ pub struct LogConfig {
     /// Env: SAS_LOG_STRIP_ANSI
     /// Default: false
     pub strip_ansi: bool,
+
+    /// Whether to write logs to a log file (logs.log)
+    ///
+    /// Env: SAS_LOG_WRITE
+    /// Default: false
+    /// Note: Only logs what is available based on SAS_LOG_LEVEL
+    pub write: bool,
 }
 
 fn default_level() -> String {
@@ -31,6 +38,10 @@ fn default_json() -> bool {
 }
 
 fn default_strip_ansi() -> bool {
+    false
+}
+
+fn default_write() -> bool {
     false
 }
 
@@ -56,6 +67,7 @@ impl Default for LogConfig {
             level: default_level(),
             json: default_json(),
             strip_ansi: default_strip_ansi(),
+            write: default_write(),
         }
     }
 }
@@ -70,6 +82,7 @@ mod tests {
         assert_eq!(config.level, "info");
         assert_eq!(config.json, false);
         assert_eq!(config.strip_ansi, false);
+        assert_eq!(config.write, false);
     }
 
     #[test]
@@ -109,6 +122,26 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(config.strip_ansi, false);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_write_enabled() {
+        let config = LogConfig {
+            write: true,
+            ..Default::default()
+        };
+        assert_eq!(config.write, true);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_write_disabled() {
+        let config = LogConfig {
+            write: false,
+            ..Default::default()
+        };
+        assert_eq!(config.write, false);
         assert!(config.validate().is_ok());
     }
 }

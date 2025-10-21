@@ -35,6 +35,9 @@ struct EnvConfig {
     #[serde(default = "default_log_strip_ansi")]
     log_strip_ansi: bool,
 
+    #[serde(default = "default_log_write")]
+    log_write: bool,
+
     #[serde(default = "default_substrate_url")]
     substrate_url: String,
 
@@ -67,6 +70,10 @@ fn default_log_json() -> bool {
 }
 
 fn default_log_strip_ansi() -> bool {
+    false
+}
+
+fn default_log_write() -> bool {
     false
 }
 
@@ -126,6 +133,7 @@ impl SidecarConfig {
                 level: env_config.log_level,
                 json: env_config.log_json,
                 strip_ansi: env_config.log_strip_ansi,
+                write: env_config.log_write,
             },
             substrate: SubstrateConfig {
                 url: env_config.substrate_url,
