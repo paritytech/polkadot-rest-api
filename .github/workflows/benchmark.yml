@@ -65,6 +65,9 @@ jobs:
           
           # Run benchmarks
           echo "Running benchmarks..."
+          HARDWARE_PROFILE="ci_runner"
+          SCENARIO="medium_load"
+          
           for init_script in benchmarks/*/init.sh; do
             if [ -f "$init_script" ]; then
               ENDPOINT_DIR=$(dirname "$init_script")
@@ -72,7 +75,7 @@ jobs:
               
               echo "Running benchmark: $ENDPOINT_NAME"
               cd "$ENDPOINT_DIR"
-              bash init.sh "medium_load" > "../../artifacts/benchmark_${ENDPOINT_NAME}.txt" 2>&1
+              bash init.sh "$SCENARIO" "$HARDWARE_PROFILE" > "../../artifacts/benchmark_${ENDPOINT_NAME}.txt" 2>&1
               cd - > /dev/null
             fi
           done
