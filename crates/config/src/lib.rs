@@ -38,6 +38,9 @@ struct EnvConfig {
     #[serde(default = "default_log_write")]
     log_write: bool,
 
+    #[serde(default = "default_log_write_path")]
+    log_write_path: String,
+
     #[serde(default = "default_substrate_url")]
     substrate_url: String,
 
@@ -77,6 +80,10 @@ fn default_log_write() -> bool {
     false
 }
 
+fn default_log_write_path() -> String {
+    "./logs".to_string()
+}
+
 fn default_substrate_url() -> String {
     "ws://127.0.0.1:9944".to_string()
 }
@@ -103,6 +110,9 @@ impl SidecarConfig {
     /// - SAS_EXPRESS_KEEP_ALIVE_TIMEOUT
     /// - SAS_LOG_LEVEL
     /// - SAS_LOG_JSON
+    /// - SAS_LOG_STRIP_ANSI
+    /// - SAS_LOG_WRITE
+    /// - SAS_LOG_WRITE_PATH
     /// - SAS_SUBSTRATE_URL
     /// - SAS_SUBSTRATE_MULTI_CHAIN_URL
     pub fn from_env() -> Result<Self, ConfigError> {
@@ -134,6 +144,7 @@ impl SidecarConfig {
                 json: env_config.log_json,
                 strip_ansi: env_config.log_strip_ansi,
                 write: env_config.log_write,
+                write_path: env_config.log_write_path,
             },
             substrate: SubstrateConfig {
                 url: env_config.substrate_url,

@@ -27,6 +27,12 @@ pub struct LogConfig {
     /// Default: false
     /// Note: Only logs what is available based on SAS_LOG_LEVEL
     pub write: bool,
+
+    /// Path to write the log files
+    ///
+    /// Env: SAS_LOG_WRITE_PATH
+    /// Default: ./logs
+    pub write_path: String,
 }
 
 fn default_level() -> String {
@@ -43,6 +49,10 @@ fn default_strip_ansi() -> bool {
 
 fn default_write() -> bool {
     false
+}
+
+fn default_write_path() -> String {
+    "./logs".to_string()
 }
 
 impl LogConfig {
@@ -68,6 +78,7 @@ impl Default for LogConfig {
             json: default_json(),
             strip_ansi: default_strip_ansi(),
             write: default_write(),
+            write_path: default_write_path(),
         }
     }
 }
@@ -83,6 +94,7 @@ mod tests {
         assert_eq!(config.json, false);
         assert_eq!(config.strip_ansi, false);
         assert_eq!(config.write, false);
+        assert_eq!(config.write_path, "./logs");
     }
 
     #[test]
@@ -142,6 +154,22 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(config.write, false);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_write_path_default() {
+        let config = LogConfig::default();
+        assert_eq!(config.write_path, "./logs");
+    }
+
+    #[test]
+    fn test_write_path_custom() {
+        let config = LogConfig {
+            write_path: "/var/log".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(config.write_path, "/var/log");
         assert!(config.validate().is_ok());
     }
 }
