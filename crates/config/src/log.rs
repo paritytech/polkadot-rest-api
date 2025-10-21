@@ -39,6 +39,12 @@ pub struct LogConfig {
     /// Env: SAS_LOG_WRITE_MAX_FILE_SIZE
     /// Default: 5242880 (5MB)
     pub write_max_file_size: u64,
+
+    /// The max number of log files to keep
+    ///
+    /// Env: SAS_LOG_WRITE_MAX_FILES
+    /// Default: 5
+    pub write_max_files: usize,
 }
 
 fn default_level() -> String {
@@ -65,6 +71,10 @@ fn default_write_max_file_size() -> u64 {
     5_242_880 // 5MB
 }
 
+fn default_write_max_files() -> usize {
+    5
+}
+
 impl LogConfig {
     pub(crate) fn validate(&self) -> Result<(), ConfigError> {
         let valid_levels = ["trace", "debug", "info", "warn", "error"];
@@ -89,6 +99,12 @@ impl LogConfig {
             ));
         }
 
+        if self.write_max_files == 0 {
+            return Err(ConfigError::ValidateError(
+                "Log write max files must be at least 1".to_string(),
+            ));
+        }
+
         Ok(())
     }
 }
@@ -102,6 +118,7 @@ impl Default for LogConfig {
             write: default_write(),
             write_path: default_write_path(),
             write_max_file_size: default_write_max_file_size(),
+            write_max_files: default_write_max_files(),
         }
     }
 }
@@ -119,6 +136,7 @@ mod tests {
         assert_eq!(config.write, false);
         assert_eq!(config.write_path, "./logs");
         assert_eq!(config.write_max_file_size, 5_242_880);
+        assert_eq!(config.write_max_files, 5);
     }
 
     #[test]
@@ -237,6 +255,41 @@ mod tests {
             write_max_file_size: 1024, // Exactly 1KB
             ..Default::default()
         };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_write_max_files_default() {
+        let config = LogConfig::default();
+        assert_eq!(config.write_max_files, 5);
+    }
+
+    #[test]
+    fn test_write_max_files_custom() {
+        let config = LogConfig {
+            write_max_files: 10,
+            ..Default::default()
+        };
+        assert_eq!(config.write_max_files, 10);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_write_max_files_zero() {
+        let config = LogConfig {
+            write_max_files: 0,
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_write_max_files_minimum() {
+        let config = LogConfig {
+            write_max_files: 1,
+            ..Default::default()
+        };
+        assert_eq!(config.write_max_files, 1);
         assert!(config.validate().is_ok());
     }
 }

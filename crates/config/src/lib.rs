@@ -44,6 +44,9 @@ struct EnvConfig {
     #[serde(default = "default_log_write_max_file_size")]
     log_write_max_file_size: u64,
 
+    #[serde(default = "default_log_write_max_files")]
+    log_write_max_files: usize,
+
     #[serde(default = "default_substrate_url")]
     substrate_url: String,
 
@@ -91,6 +94,10 @@ fn default_log_write_max_file_size() -> u64 {
     5_242_880 // 5MB
 }
 
+fn default_log_write_max_files() -> usize {
+    5
+}
+
 fn default_substrate_url() -> String {
     "ws://127.0.0.1:9944".to_string()
 }
@@ -121,6 +128,7 @@ impl SidecarConfig {
     /// - SAS_LOG_WRITE
     /// - SAS_LOG_WRITE_PATH
     /// - SAS_LOG_WRITE_MAX_FILE_SIZE
+    /// - SAS_LOG_WRITE_MAX_FILES
     /// - SAS_SUBSTRATE_URL
     /// - SAS_SUBSTRATE_MULTI_CHAIN_URL
     pub fn from_env() -> Result<Self, ConfigError> {
@@ -154,6 +162,7 @@ impl SidecarConfig {
                 write: env_config.log_write,
                 write_path: env_config.log_write_path,
                 write_max_file_size: env_config.log_write_max_file_size,
+                write_max_files: env_config.log_write_max_files,
             },
             substrate: SubstrateConfig {
                 url: env_config.substrate_url,

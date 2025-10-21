@@ -17,6 +17,7 @@ async fn main() -> anyhow::Result<()> {
     let log_write = state.config.log.write;
     let log_write_path = state.config.log.write_path.clone();
     let log_write_max_file_size = state.config.log.write_max_file_size;
+    let log_write_max_files = state.config.log.write_max_files;
     let bind_host = state.config.express.bind_host.clone();
     let port = state.config.express.port;
     let keep_alive_timeout = state.config.express.keep_alive_timeout;
@@ -29,6 +30,7 @@ async fn main() -> anyhow::Result<()> {
         log_write,
         &log_write_path,
         log_write_max_file_size,
+        log_write_max_files,
     )?;
 
     // Parse bind_host to IpAddr

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rolling_file::*;
 use std::path::PathBuf;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Initialize tracing/logging with the specified level and format
 ///
@@ -12,17 +12,19 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 /// * `write_to_file` - If true, write logs to a file with size-based rotation
 /// * `write_path` - Directory path to write log files
 /// * `write_max_file_size` - Maximum file size in bytes before rotation
+/// * `write_max_files` - Maximum number of rotated files to keep
 ///
 /// # Examples
 /// ```
-/// init("debug", false, false, false, "./logs", 5242880)?; // Console only
-/// init("info", true, false, true, "./logs", 5242880)?;    // JSON + file with 5MB rotation
+/// init("debug", false, false, false, "./logs", 5242880, 5)?; // Console only
+/// init("info", true, false, true, "./logs", 5242880, 5)?;    // JSON + file with 5MB rotation, 5 files
 /// ```
 ///
 /// # Log Rotation
 /// When a log file reaches `write_max_file_size`, it is rotated:
 /// - Current: logs.log
 /// - After rotation: logs.log.1, logs.log.2, etc.
+/// - Keeps up to `write_max_files` rotated files
 pub fn init(
     level: &str,
     json_format: bool,
@@ -30,6 +32,7 @@ pub fn init(
     write_to_file: bool,
     write_path: &str,
     write_max_file_size: u64,
+    write_max_files: usize,
 ) -> Result<()> {
     // Create filter from level
     let filter = EnvFilter::try_new(level).unwrap_or_else(|e| {
@@ -49,10 +52,13 @@ pub fn init(
 
         // Create size-based rolling file appender
         let log_file_path = PathBuf::from(write_path).join("logs.log");
+        // write_max_files includes the current file, so subtract 1 for rotated files count
+        // e.g., if write_max_files=5: logs.log (current) + logs.log.{1,2,3,4} (4 rotated)
+        let rotated_files_count = write_max_files.saturating_sub(1);
         let file_appender = BasicRollingFileAppender::new(
             log_file_path,
             RollingConditionBasic::new().max_size(write_max_file_size),
-            9, // Keep up to 9 rotated files (logs.log.1 through logs.log.9). TODO: change when SAS_LOG_WRITE_MAX_FILES is implemented
+            rotated_files_count,
         )?;
 
         let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
