@@ -48,8 +48,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Configure TCP keepalive on the listener's socket
     let socket = socket2::Socket::from(listener.into_std()?);
-    let keepalive = socket2::TcpKeepalive::new()
-        .with_time(Duration::from_millis(keep_alive_timeout));
+    let keepalive =
+        socket2::TcpKeepalive::new().with_time(Duration::from_millis(keep_alive_timeout));
     socket.set_tcp_keepalive(&keepalive)?;
     let listener = tokio::net::TcpListener::from_std(socket.into())?;
 
