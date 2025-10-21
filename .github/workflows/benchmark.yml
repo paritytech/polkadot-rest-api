@@ -276,20 +276,20 @@ jobs:
               endpointResults += `- **${endpoint}**: ${rps} req/sec, ${latency} avg latency\n`;
             });
             
-            const comment = `## 📊 Benchmark Results
+            const comment = \`## 📊 Benchmark Results
             
-**Scenario:** ${summary.scenario}
-**Hardware Profile:** ${summary.hardware_profile}
-
-### Memory Profiling
-- **Startup RSS:** ${summary.memory_profiling.startup_rss_mb}MB
-- **After Health Check:** ${summary.memory_profiling.after_health_rss_mb}MB
-- **After Benchmarks:** ${summary.memory_profiling.after_benchmarks_rss_mb}MB
-- **Delta:** ${summary.memory_profiling.delta_rss_mb}MB
-
-### Endpoint Results
-${endpointResults}
-            `;
+            **Scenario:** \${summary.scenario}
+            **Hardware Profile:** \${summary.hardware_profile}
+            
+            ### Memory Profiling
+            - **Startup RSS:** \${summary.memory_profiling.startup_rss_mb}MB
+            - **After Health Check:** \${summary.memory_profiling.after_health_rss_mb}MB
+            - **After Benchmarks:** \${summary.memory_profiling.after_benchmarks_rss_mb}MB
+            - **Delta:** \${summary.memory_profiling.delta_rss_mb}MB
+            
+            ### Endpoint Results
+            \${endpointResults}
+            \`;
             
             github.rest.issues.createComment({
               issue_number: context.issue.number,
