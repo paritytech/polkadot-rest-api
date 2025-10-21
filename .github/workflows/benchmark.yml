@@ -9,18 +9,6 @@ on:
     branches:
       - main
       - master
-  workflow_dispatch:
-    inputs:
-      scenario:
-        description: 'Benchmark scenario to run'
-        required: true
-        default: 'medium_load'
-        type: choice
-        options:
-          - light_load
-          - medium_load
-          - heavy_load
-          - stress_test
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -30,50 +18,42 @@ jobs:
   benchmark:
     name: benchmark
     runs-on: ubuntu-latest
-    
+    container:
+      image: ubuntu:22.04
+
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-        
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-          
-      - name: Cache cargo dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-            
+
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wrk jq bc
-          
+          apt-get update
+          apt-get install -y curl build-essential wrk jq bc
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
       - name: Build server
-        run: cargo build --release
-        
-      - name: Start server
+        run: |
+          cargo build --release
+
+      - name: Run benchmarks
         env:
           SAS_SUBSTRATE_URL: wss://rpc.polkadot.io
         run: |
+          mkdir -p artifacts
+          
+          # Start server in background
           RUST_LOG=info ./target/release/polkadot-rest-api > server.log 2>&1 &
           SERVER_PID=$!
-          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
           
           # Wait for server to start
           echo "Waiting for server to start..."
           for i in {1..30}; do
             if curl -s http://localhost:8080/health > /dev/null 2>&1; then
-              echo "Server started successfully (PID: $SERVER_PID)"
+              echo "Server started successfully"
               break
             fi
             sleep 1
@@ -85,218 +65,29 @@ jobs:
             exit 1
           fi
           
-      - name: Memory profiling - startup
-        run: |
-          sleep 2
-          
-          # Get memory stats
-          MEMORY_INFO=$(ps -o rss=,vsz= -p ${{ env.SERVER_PID }} | awk '{print $1, $2}')
-          RSS_KB=$(echo "$MEMORY_INFO" | awk '{print $1}')
-          VSZ_KB=$(echo "$MEMORY_INFO" | awk '{print $2}')
-          
-          # Convert to MB
-          STARTUP_RSS=$(echo "scale=2; $RSS_KB / 1024" | bc)
-          STARTUP_VSZ=$(echo "scale=2; $VSZ_KB / 1024" | bc)
-          
-          echo "STARTUP_RSS=$STARTUP_RSS" >> $GITHUB_ENV
-          echo "STARTUP_VSZ=$STARTUP_VSZ" >> $GITHUB_ENV
-          
-          echo "Startup memory: RSS=${STARTUP_RSS}MB, VSZ=${STARTUP_VSZ}MB"
-          
-      - name: Warmup - call health endpoint
-        run: |
-          curl -s http://localhost:8080/health > /dev/null
-          sleep 1
-          
-      - name: Memory profiling - after health check
-        run: |
-          # Get memory stats after health check
-          MEMORY_INFO=$(ps -o rss=,vsz= -p ${{ env.SERVER_PID }} | awk '{print $1, $2}')
-          RSS_KB=$(echo "$MEMORY_INFO" | awk '{print $1}')
-          
-          HEALTH_RSS=$(echo "scale=2; $RSS_KB / 1024" | bc)
-          echo "HEALTH_RSS=$HEALTH_RSS" >> $GITHUB_ENV
-          
-          echo "Memory after health check: RSS=${HEALTH_RSS}MB"
-          
-      - name: Run benchmarks
-        run: |
-          mkdir -p artifacts
-          SCENARIO="${{ github.event.inputs.scenario || 'medium_load' }}"
-          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-          
-          echo "Running benchmark scenario: $SCENARIO"
-          
-          # Find all init.sh scripts
+          # Run benchmarks
+          echo "Running benchmarks..."
           for init_script in benchmarks/*/init.sh; do
             if [ -f "$init_script" ]; then
               ENDPOINT_DIR=$(dirname "$init_script")
               ENDPOINT_NAME=$(basename "$ENDPOINT_DIR")
               
               echo "Running benchmark: $ENDPOINT_NAME"
-              
-              # Run benchmark and capture output
               cd "$ENDPOINT_DIR"
-              OUTPUT_FILE="../../artifacts/benchmark_${ENDPOINT_NAME}_${SCENARIO}_ci_runner_${TIMESTAMP}.txt"
-              
-              if bash init.sh "$SCENARIO" > "$OUTPUT_FILE" 2>&1; then
-                echo "✓ $ENDPOINT_NAME completed"
-                cat "$OUTPUT_FILE"
-              else
-                echo "✗ $ENDPOINT_NAME failed"
-                cat "$OUTPUT_FILE"
-                exit 1
-              fi
-              
+              bash init.sh "medium_load" > "../../artifacts/benchmark_${ENDPOINT_NAME}.txt" 2>&1
               cd - > /dev/null
-              echo "---"
             fi
           done
           
-      - name: Memory profiling - after benchmarks
-        run: |
-          # Get final memory stats
-          MEMORY_INFO=$(ps -o rss=,vsz= -p ${{ env.SERVER_PID }} | awk '{print $1, $2}')
-          RSS_KB=$(echo "$MEMORY_INFO" | awk '{print $1}')
-          
-          FINAL_RSS=$(echo "scale=2; $RSS_KB / 1024" | bc)
-          MEMORY_DELTA=$(echo "$FINAL_RSS - ${{ env.STARTUP_RSS }}" | bc)
-          
-          echo "FINAL_RSS=$FINAL_RSS" >> $GITHUB_ENV
-          echo "MEMORY_DELTA=$MEMORY_DELTA" >> $GITHUB_ENV
-          
-          echo "Final memory: RSS=${FINAL_RSS}MB"
-          echo "Memory delta: ${MEMORY_DELTA}MB"
-          
-      - name: Stop server
-        if: always()
-        run: |
-          if [ -n "${{ env.SERVER_PID }}" ]; then
-            echo "Stopping server (PID: ${{ env.SERVER_PID }})"
-            kill ${{ env.SERVER_PID }} 2>/dev/null || true
-          fi
-          
-      - name: Generate summary
-        if: always()
-        run: |
-          SCENARIO="${{ github.event.inputs.scenario || 'medium_load' }}"
-          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-          
-          # Create summary JSON
-          cat > artifacts/summary_${TIMESTAMP}.json << EOF
-          {
-            "timestamp": "$TIMESTAMP",
-            "scenario": "$SCENARIO",
-            "hardware_profile": "ci_runner",
-            "memory_profiling": {
-              "startup_rss_mb": ${{ env.STARTUP_RSS }},
-              "after_health_rss_mb": ${{ env.HEALTH_RSS }},
-              "after_benchmarks_rss_mb": ${{ env.FINAL_RSS }},
-              "delta_rss_mb": ${{ env.MEMORY_DELTA }}
-            },
-            "substrate_url": "wss://rpc.polkadot.io"
-          }
-          EOF
-          
-          echo "Summary saved to artifacts/summary_${TIMESTAMP}.json"
-          cat artifacts/summary_${TIMESTAMP}.json
-          
-      - name: Generate GitHub summary
-        if: always()
-        run: |
-          echo "## 📊 Benchmark Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Scenario:** ${{ github.event.inputs.scenario || 'medium_load' }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Hardware Profile:** ci_runner" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Memory Profiling" >> $GITHUB_STEP_SUMMARY
-          echo "- **Startup RSS:** ${{ env.STARTUP_RSS }}MB" >> $GITHUB_STEP_SUMMARY
-          echo "- **After Health Check:** ${{ env.HEALTH_RSS }}MB" >> $GITHUB_STEP_SUMMARY
-          echo "- **After Benchmarks:** ${{ env.FINAL_RSS }}MB" >> $GITHUB_STEP_SUMMARY
-          echo "- **Delta:** ${{ env.MEMORY_DELTA }}MB" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Endpoint Results" >> $GITHUB_STEP_SUMMARY
-          
-          # Parse individual results
-          for result in artifacts/benchmark_*.txt; do
-            if [ -f "$result" ]; then
-              ENDPOINT=$(basename "$result" | cut -d_ -f2)
-              RPS=$(grep "Requests/sec:" "$result" | awk '{print $2}' || echo "N/A")
-              LATENCY=$(grep "Latency" "$result" | head -1 | awk '{print $2}' || echo "N/A")
-              echo "- **$ENDPOINT**: $RPS req/sec, $LATENCY avg latency" >> $GITHUB_STEP_SUMMARY
-            fi
-          done
-          
+          # Stop server
+          kill $SERVER_PID 2>/dev/null || true
+
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: benchmark-results-${{ github.run_number }}
+          name: benchmark-results
           path: artifacts/
           retention-days: 90
-          
-      - name: Comment PR with results
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const path = require('path');
-            
-            // Find summary file
-            const artifactsDir = 'artifacts';
-            if (!fs.existsSync(artifactsDir)) {
-              console.log('No artifacts found');
-              return;
-            }
-            
-            const summaryFiles = fs.readdirSync(artifactsDir)
-              .filter(f => f.startsWith('summary_') && f.endsWith('.json'))
-              .sort()
-              .reverse();
-            
-            if (summaryFiles.length === 0) {
-              console.log('No summary found');
-              return;
-            }
-            
-            const summaryPath = path.join(artifactsDir, summaryFiles[0]);
-            const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
-            
-            // Find individual results
-            const resultFiles = fs.readdirSync(artifactsDir)
-              .filter(f => f.startsWith('benchmark_') && f.endsWith('.txt'));
-            
-            let endpointResults = '';
-            resultFiles.forEach(file => {
-              const content = fs.readFileSync(path.join(artifactsDir, file), 'utf8');
-              const endpoint = file.split('_')[1];
-              const rps = content.match(/Requests\/sec:\s+([0-9.]+)/)?.[1] || 'N/A';
-              const latency = content.match(/Latency\s+([0-9.]+[a-z]+)/)?.[1] || 'N/A';
-              endpointResults += `- **${endpoint}**: ${rps} req/sec, ${latency} avg latency\n`;
-            });
-            
-            const comment = \`## 📊 Benchmark Results
-            
-            **Scenario:** \${summary.scenario}
-            **Hardware Profile:** \${summary.hardware_profile}
-            
-            ### Memory Profiling
-            - **Startup RSS:** \${summary.memory_profiling.startup_rss_mb}MB
-            - **After Health Check:** \${summary.memory_profiling.after_health_rss_mb}MB
-            - **After Benchmarks:** \${summary.memory_profiling.after_benchmarks_rss_mb}MB
-            - **Delta:** \${summary.memory_profiling.delta_rss_mb}MB
-            
-            ### Endpoint Results
-            \${endpointResults}
-            \`;
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
 
   benchmark-publish:
     name: benchmark publish
@@ -305,38 +96,26 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      
+
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-        
+
       - name: Download benchmark results
         uses: actions/download-artifact@v4
         with:
-          name: benchmark-results-${{ github.run_number }}
+          name: benchmark-results
           path: artifacts
-          
+
       - name: Convert to benchmark-action format
         run: |
-          # Find summary file
-          SUMMARY_FILE=$(ls -t artifacts/summary_*.json | head -1)
-          
-          if [ ! -f "$SUMMARY_FILE" ]; then
-            echo "No summary file found"
-            exit 1
-          fi
-          
-          # Extract memory delta
-          MEMORY_DELTA=$(jq -r '.memory_profiling.delta_rss_mb' "$SUMMARY_FILE")
-          SCENARIO=$(jq -r '.scenario' "$SUMMARY_FILE")
-          
-          # Find benchmark results and extract metrics
+          # Convert wrk results to benchmark-action format
           RESULTS_JSON="["
           FIRST=true
           
           for result in artifacts/benchmark_*.txt; do
             if [ -f "$result" ]; then
-              ENDPOINT=$(basename "$result" | cut -d_ -f2)
+              ENDPOINT=$(basename "$result" | cut -d_ -f2 | cut -d. -f1)
               RPS=$(grep "Requests/sec:" "$result" | awk '{print $2}' || echo "0")
               LATENCY=$(grep "Latency" "$result" | head -1 | awk '{print $2}' | sed 's/[^0-9.]//g' || echo "0")
               
@@ -361,17 +140,11 @@ jobs:
             fi
           done
           
-          # Add memory metric
-          RESULTS_JSON="${RESULTS_JSON},
-          {
-            \"name\": \"Memory Delta (${SCENARIO})\",
-            \"unit\": \"MB\",
-            \"value\": ${MEMORY_DELTA}
-          }]"
+          RESULTS_JSON="${RESULTS_JSON}]"
           
           echo "$RESULTS_JSON" > artifacts/benchmark_results.json
           cat artifacts/benchmark_results.json
-          
+
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
@@ -383,3 +156,4 @@ jobs:
           fail-on-alert: false
           alert-threshold: '150%'
           summary-always: true
+
