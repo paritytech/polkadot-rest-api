@@ -118,7 +118,10 @@ jobs:
             if [ -f "$result" ]; then
               ENDPOINT=$(basename "$result" | cut -d_ -f2 | cut -d. -f1)
               RPS=$(grep "Requests/sec:" "$result" | awk '{print $2}' || echo "0")
-              LATENCY=$(grep "Latency" "$result" | head -1 | awk '{print $2}' | sed 's/[^0-9.]//g' || echo "0")
+              LATENCY_AVG=$(grep "Latency" "$result" | head -1 | awk '{print $2}' | sed 's/[^0-9.]//g' || echo "0")
+              LATENCY_P50=$(grep "50%" "$result" | awk '{print $2}' | sed 's/[^0-9.]//g' || echo "0")
+              LATENCY_P90=$(grep "90%" "$result" | awk '{print $2}' | sed 's/[^0-9.]//g' || echo "0")
+              LATENCY_P99=$(grep "99%" "$result" | awk '{print $2}' | sed 's/[^0-9.]//g' || echo "0")
               
               if [ "$FIRST" = true ]; then
                 FIRST=false
@@ -130,7 +133,22 @@ jobs:
               {
                 \"name\": \"${ENDPOINT} - Avg Latency\",
                 \"unit\": \"ms\",
-                \"value\": ${LATENCY}
+                \"value\": ${LATENCY_AVG}
+              },
+              {
+                \"name\": \"${ENDPOINT} - P50 Latency\",
+                \"unit\": \"ms\",
+                \"value\": ${LATENCY_P50}
+              },
+              {
+                \"name\": \"${ENDPOINT} - P90 Latency\",
+                \"unit\": \"ms\",
+                \"value\": ${LATENCY_P90}
+              },
+              {
+                \"name\": \"${ENDPOINT} - P99 Latency\",
+                \"unit\": \"ms\",
+                \"value\": ${LATENCY_P99}
               },
               {
                 \"name\": \"${ENDPOINT} - Throughput\",
