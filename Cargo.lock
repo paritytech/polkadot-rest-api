@@ -2295,6 +2295,7 @@ dependencies = [
  "config",
  "serde",
  "serde_json",
+ "socket2",
  "subxt-historic",
  "tokio",
  "tower",

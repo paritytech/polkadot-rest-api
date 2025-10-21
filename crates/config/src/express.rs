@@ -21,6 +21,12 @@ pub struct ExpressConfig {
     /// Env: SAS_EXPRESS_REQUEST_LIMIT
     /// Default: 512000 (500kb)
     pub request_limit: usize,
+
+    /// Keep-alive timeout in milliseconds
+    ///
+    /// Env: SAS_EXPRESS_KEEP_ALIVE_TIMEOUT
+    /// Default: 5000
+    pub keep_alive_timeout: u64,
 }
 
 fn default_bind_host() -> String {
@@ -33,6 +39,10 @@ fn default_port() -> u16 {
 
 fn default_request_limit() -> usize {
     512_000 // 500kb
+}
+
+fn default_keep_alive_timeout() -> u64 {
+    5000 // 5 seconds in milliseconds
 }
 
 impl ExpressConfig {
@@ -52,9 +62,17 @@ impl ExpressConfig {
             ))
         })?;
 
+        // Validate request_limit is not zero
         if self.request_limit == 0 {
             return Err(ConfigError::ValidateError(
                 "Request limit cannot be 0".to_string(),
+            ));
+        }
+
+        // Validate keep_alive_timeout is not zero
+        if self.keep_alive_timeout == 0 {
+            return Err(ConfigError::ValidateError(
+                "Keep-alive timeout cannot be 0".to_string(),
             ));
         }
 
@@ -68,6 +86,7 @@ impl Default for ExpressConfig {
             bind_host: default_bind_host(),
             port: default_port(),
             request_limit: default_request_limit(),
+            keep_alive_timeout: default_keep_alive_timeout(),
         }
     }
 }
@@ -89,6 +108,7 @@ mod tests {
             bind_host: "127.0.0.1".to_string(),
             port: 0,
             request_limit: default_request_limit(),
+            keep_alive_timeout: default_keep_alive_timeout(),
         };
         assert!(config.validate().is_err());
     }
@@ -99,6 +119,7 @@ mod tests {
             bind_host: "127.0.0.1".to_string(),
             port: 3000,
             request_limit: default_request_limit(),
+            keep_alive_timeout: default_keep_alive_timeout(),
         };
         assert!(config.validate().is_ok())
     }
@@ -109,6 +130,7 @@ mod tests {
             bind_host: "192.168.1.100".to_string(),
             port: 8080,
             request_limit: default_request_limit(),
+            keep_alive_timeout: default_keep_alive_timeout(),
         };
         assert!(config.validate().is_ok());
     }
@@ -119,6 +141,7 @@ mod tests {
             bind_host: "0.0.0.0".to_string(),
             port: 8080,
             request_limit: default_request_limit(),
+            keep_alive_timeout: default_keep_alive_timeout(),
         };
         assert!(config.validate().is_ok());
     }
@@ -129,6 +152,7 @@ mod tests {
             bind_host: "::1".to_string(),
             port: 8080,
             request_limit: default_request_limit(),
+            keep_alive_timeout: default_keep_alive_timeout(),
         };
         assert!(config.validate().is_ok());
     }
@@ -139,6 +163,7 @@ mod tests {
             bind_host: "not-an-ip".to_string(),
             port: 8080,
             request_limit: default_request_limit(),
+            keep_alive_timeout: default_keep_alive_timeout(),
         };
         assert!(config.validate().is_err());
     }
@@ -149,6 +174,7 @@ mod tests {
             bind_host: "localhost".to_string(),
             port: 8080,
             request_limit: default_request_limit(),
+            keep_alive_timeout: default_keep_alive_timeout(),
         };
         assert!(config.validate().is_err());
     }
@@ -159,6 +185,7 @@ mod tests {
             bind_host: "127.0.0.1".to_string(),
             port: 8080,
             request_limit: 0,
+            keep_alive_timeout: default_keep_alive_timeout(),
         };
         assert!(config.validate().is_err());
     }
@@ -169,6 +196,29 @@ mod tests {
             bind_host: "127.0.0.1".to_string(),
             port: 8080,
             request_limit: 1024,
+            keep_alive_timeout: default_keep_alive_timeout(),
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_keep_alive_timeout_zero() {
+        let config = ExpressConfig {
+            bind_host: "127.0.0.1".to_string(),
+            port: 8080,
+            request_limit: default_request_limit(),
+            keep_alive_timeout: 0,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_keep_alive_timeout_valid() {
+        let config = ExpressConfig {
+            bind_host: "127.0.0.1".to_string(),
+            port: 8080,
+            request_limit: default_request_limit(),
+            keep_alive_timeout: 10000,
         };
         assert!(config.validate().is_ok());
     }

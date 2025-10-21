@@ -23,6 +23,9 @@ struct EnvConfig {
     #[serde(default = "default_express_request_limit")]
     express_request_limit: usize,
 
+    #[serde(default = "default_express_keep_alive_timeout")]
+    express_keep_alive_timeout: u64,
+
     #[serde(default = "default_log_level")]
     log_level: String,
 
@@ -46,6 +49,10 @@ fn default_express_port() -> u16 {
 
 fn default_express_request_limit() -> usize {
     512_000 // 500kb
+}
+
+fn default_express_keep_alive_timeout() -> u64 {
+    5000 // 5 seconds in milliseconds
 }
 
 fn default_log_level() -> String {
@@ -79,6 +86,7 @@ impl SidecarConfig {
     /// - SAS_EXPRESS_BIND_HOST
     /// - SAS_EXPRESS_PORT
     /// - SAS_EXPRESS_REQUEST_LIMIT
+    /// - SAS_EXPRESS_KEEP_ALIVE_TIMEOUT
     /// - SAS_LOG_LEVEL
     /// - SAS_LOG_JSON
     /// - SAS_SUBSTRATE_URL
@@ -105,6 +113,7 @@ impl SidecarConfig {
                 bind_host: env_config.express_bind_host,
                 port: env_config.express_port,
                 request_limit: env_config.express_request_limit,
+                keep_alive_timeout: env_config.express_keep_alive_timeout,
             },
             log: LogConfig {
                 level: env_config.log_level,

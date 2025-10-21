@@ -5,6 +5,7 @@ mod routes;
 mod state;
 
 use std::net::{IpAddr, SocketAddr};
+use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -14,6 +15,7 @@ async fn main() -> anyhow::Result<()> {
     let log_json = state.config.log.json;
     let bind_host = state.config.express.bind_host.clone();
     let port = state.config.express.port;
+    let keep_alive_timeout = state.config.express.keep_alive_timeout;
     let substrate_url = state.config.substrate.url.clone();
     let multi_chain_urls = state.config.substrate.multi_chain_urls.clone();
     logging::init(&log_level, log_json)?;
@@ -43,6 +45,14 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
+
+    // Configure TCP keepalive on the listener's socket
+    let socket = socket2::Socket::from(listener.into_std()?);
+    let keepalive = socket2::TcpKeepalive::new()
+        .with_time(Duration::from_millis(keep_alive_timeout));
+    socket.set_tcp_keepalive(&keepalive)?;
+    let listener = tokio::net::TcpListener::from_std(socket.into())?;
+
     axum::serve(listener, app).await?;
 
     Ok(())
