@@ -1,0 +1,41 @@
+{
+  "server": {
+    "host": "localhost",
+    "port": 8080
+  },
+  "benchmarks": {
+    "health": {
+      "endpoint": "/health",
+      "scenarios": [
+        {
+          "name": "light_load",
+          "description": "Light load testing",
+          "threads": 2,
+          "connections": 10,
+          "duration": "30s"
+        },
+        {
+          "name": "medium_load",
+          "description": "Medium load testing",
+          "threads": 4,
+          "connections": 50,
+          "duration": "60s"
+        },
+        {
+          "name": "heavy_load",
+          "description": "Heavy load testing",
+          "threads": 8,
+          "connections": 100,
+          "duration": "120s"
+        },
+        {
+          "name": "stress_test",
+          "description": "Stress testing",
+          "threads": 12,
+          "connections": 200,
+          "duration": "300s"
+        }
+      ]
+    }
+  }
+}
