@@ -33,6 +33,12 @@ pub struct LogConfig {
     /// Env: SAS_LOG_WRITE_PATH
     /// Default: ./logs
     pub write_path: String,
+
+    /// The max size the log file should not exceed (in bytes)
+    ///
+    /// Env: SAS_LOG_WRITE_MAX_FILE_SIZE
+    /// Default: 5242880 (5MB)
+    pub write_max_file_size: u64,
 }
 
 fn default_level() -> String {
@@ -55,6 +61,10 @@ fn default_write_path() -> String {
     "./logs".to_string()
 }
 
+fn default_write_max_file_size() -> u64 {
+    5_242_880 // 5MB
+}
+
 impl LogConfig {
     pub(crate) fn validate(&self) -> Result<(), ConfigError> {
         let valid_levels = ["trace", "debug", "info", "warn", "error"];
@@ -65,6 +75,18 @@ impl LogConfig {
                 self.level,
                 valid_levels.join(", ")
             )));
+        }
+
+        if self.write_max_file_size == 0 {
+            return Err(ConfigError::ValidateError(
+                "Log write max file size must be greater than 0".to_string(),
+            ));
+        }
+
+        if self.write_max_file_size < 1024 {
+            return Err(ConfigError::ValidateError(
+                "Log write max file size must be at least 1KB (1024 bytes)".to_string(),
+            ));
         }
 
         Ok(())
@@ -79,6 +101,7 @@ impl Default for LogConfig {
             strip_ansi: default_strip_ansi(),
             write: default_write(),
             write_path: default_write_path(),
+            write_max_file_size: default_write_max_file_size(),
         }
     }
 }
@@ -95,6 +118,7 @@ mod tests {
         assert_eq!(config.strip_ansi, false);
         assert_eq!(config.write, false);
         assert_eq!(config.write_path, "./logs");
+        assert_eq!(config.write_max_file_size, 5_242_880);
     }
 
     #[test]
@@ -170,6 +194,49 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(config.write_path, "/var/log");
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_write_max_file_size_default() {
+        let config = LogConfig::default();
+        assert_eq!(config.write_max_file_size, 5_242_880); // 5MB
+    }
+
+    #[test]
+    fn test_write_max_file_size_custom() {
+        let config = LogConfig {
+            write_max_file_size: 10_485_760, // 10MB
+            ..Default::default()
+        };
+        assert_eq!(config.write_max_file_size, 10_485_760);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_write_max_file_size_zero() {
+        let config = LogConfig {
+            write_max_file_size: 0,
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_write_max_file_size_too_small() {
+        let config = LogConfig {
+            write_max_file_size: 512, // Less than 1KB
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_write_max_file_size_minimum() {
+        let config = LogConfig {
+            write_max_file_size: 1024, // Exactly 1KB
+            ..Default::default()
+        };
         assert!(config.validate().is_ok());
     }
 }
