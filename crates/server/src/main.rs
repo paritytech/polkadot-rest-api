@@ -1,9 +1,4 @@
-mod app;
-mod handlers;
-mod logging;
-mod routes;
-mod state;
-
+use server::{app, logging, state};
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 

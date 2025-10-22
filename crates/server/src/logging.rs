@@ -15,9 +15,15 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberI
 /// * `write_max_files` - Maximum number of rotated files to keep
 ///
 /// # Examples
-/// ```
-/// init("debug", false, false, false, "./logs", 5242880, 5)?; // Console only
-/// init("info", true, false, true, "./logs", 5242880, 5)?;    // JSON + file with 5MB rotation, 5 files
+/// ```no_run
+/// use server::logging;
+///
+/// // Console only
+/// logging::init("debug", false, false, false, "./logs", 5242880, 5)?;
+///
+/// // JSON + file with 5MB rotation, 5 files
+/// logging::init("info", true, false, true, "./logs", 5242880, 5)?;
+/// # Ok::<(), anyhow::Error>(())
 /// ```
 ///
 /// # Log Rotation
