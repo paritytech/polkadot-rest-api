@@ -92,7 +92,6 @@ jobs:
 
   benchmark-publish:
     name: benchmark publish
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     needs: [benchmark]
     runs-on: ubuntu-latest
     permissions:
@@ -100,74 +99,30 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Create GitHub App token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.GH_APP_BENCHMARK_APP_ID }}
+          private-key: ${{ secrets.GH_APP_BENCHMARK_PRIVATE_KEY }}
 
       - name: Download benchmark results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: benchmark-results
           path: artifacts
 
-      - name: Convert to benchmark-action format
+      - name: Generate benchmark JSON
         run: |
-          # Convert wrk results to benchmark-action format
-          RESULTS_JSON="["
-          FIRST=true
-          
-          for result in artifacts/benchmark_*.txt; do
-            if [ -f "$result" ]; then
-              ENDPOINT=$(basename "$result" | cut -d_ -f2 | cut -d. -f1)
-              RPS=$(grep "Requests/sec:" "$result" | awk '{print $2}' || echo "0")
-              LATENCY_AVG=$(grep "Latency" "$result" | head -1 | awk '{print $2}' | sed 's/[^0-9.]//g' || echo "0")
-              LATENCY_P50=$(grep "50%" "$result" | awk '{print $2}' | sed 's/[^0-9.]//g' || echo "0")
-              LATENCY_P90=$(grep "90%" "$result" | awk '{print $2}' | sed 's/[^0-9.]//g' || echo "0")
-              LATENCY_P99=$(grep "99%" "$result" | awk '{print $2}' | sed 's/[^0-9.]//g' || echo "0")
-              
-              if [ "$FIRST" = true ]; then
-                FIRST=false
-              else
-                RESULTS_JSON="${RESULTS_JSON},"
-              fi
-              
-              RESULTS_JSON="${RESULTS_JSON}
-              {
-                \"name\": \"${ENDPOINT} - Avg Latency\",
-                \"unit\": \"ms\",
-                \"value\": ${LATENCY_AVG}
-              },
-              {
-                \"name\": \"${ENDPOINT} - P50 Latency\",
-                \"unit\": \"ms\",
-                \"value\": ${LATENCY_P50}
-              },
-              {
-                \"name\": \"${ENDPOINT} - P90 Latency\",
-                \"unit\": \"ms\",
-                \"value\": ${LATENCY_P90}
-              },
-              {
-                \"name\": \"${ENDPOINT} - P99 Latency\",
-                \"unit\": \"ms\",
-                \"value\": ${LATENCY_P99}
-              },
-              {
-                \"name\": \"${ENDPOINT} - Throughput\",
-                \"unit\": \"req/sec\",
-                \"value\": ${RPS},
-                \"extra\": \"biggerIsBetter\"
-              }"
-            fi
-          done
-          
-          RESULTS_JSON="${RESULTS_JSON}]"
-          
-          echo "$RESULTS_JSON" > artifacts/benchmark_results.json
+          ./scripts/ci/benchmarks/generate_benchmark_result.sh artifacts > artifacts/benchmark_results.json
           cat artifacts/benchmark_results.json
 
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@4e0b38bc48375986542b13c0d8976b7b80c60c00
         with:
           tool: 'customSmallerIsBetter'
           output-file-path: artifacts/benchmark_results.json
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ steps.app-token.outputs.token }}
           auto-push: true
