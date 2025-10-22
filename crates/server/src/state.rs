@@ -12,7 +12,10 @@ pub struct AppState {
 impl AppState {
     pub async fn new() -> anyhow::Result<Self> {
         let config = SidecarConfig::from_env()?;
+        Self::new_with_config(config).await
+    }
 
+    pub async fn new_with_config(config: SidecarConfig) -> anyhow::Result<Self> {
         // Create subxt-historic config
         let subxt_config = SubstrateConfig::new();
 
