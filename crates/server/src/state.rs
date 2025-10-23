@@ -73,41 +73,12 @@ async fn get_chain_info(
         .ok_or_else(|| anyhow::anyhow!("spec_name not found in runtime version"))?
         .to_string();
 
-    // Determine chain type based on spec_name
-    let chain_type = determine_chain_type(&spec_name);
+    // Determine chain type from spec_name
+    let chain_type = ChainType::from_spec_name(&spec_name);
 
     Ok(ChainInfo {
         chain_type,
         spec_name,
         spec_version: runtime_version.spec_version,
     })
-}
-
-/// Determine the chain type based on the spec_name
-fn determine_chain_type(spec_name: &str) -> ChainType {
-    let name_lower = spec_name.to_lowercase();
-
-    // Check for Asset Hub first (most specific)
-    // Legacy names: statemint (Polkadot), statemine (Kusama), westmint (Westend)
-    // New names: asset-hub-polkadot, asset-hub-kusama, asset-hub-westend
-    if name_lower == "statemint"
-        || name_lower == "statemine"
-        || name_lower == "westmint"
-        || name_lower.contains("asset-hub")
-        || name_lower.contains("assethub")
-    {
-        return ChainType::AssetHub;
-    }
-
-    // Check for relay chains (exact matches)
-    if name_lower == "polkadot"
-        || name_lower == "kusama"
-        || name_lower == "westend"
-        || name_lower == "paseo"
-    {
-        return ChainType::Relay;
-    }
-
-    // Default to Parachain for everything else
-    ChainType::Parachain
 }

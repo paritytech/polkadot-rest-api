@@ -11,6 +11,40 @@ pub enum ChainType {
     Parachain,
 }
 
+impl ChainType {
+    /// Relay chain spec names
+    pub const RELAY_CHAINS: &'static [&'static str] =
+        &["polkadot", "kusama", "westend", "rococo", "paseo"];
+
+    /// Asset Hub spec names (legacy and current)
+    /// Legacy: statemint (Polkadot), statemine (Kusama), westmint (Westend)
+    /// Current: asset-hub-polkadot, asset-hub-kusama, asset-hub-westend
+    pub const ASSET_HUB_CHAINS: &'static [&'static str] = &[
+        "statemint",
+        "statemine",
+        "westmint",
+        "asset-hub-polkadot",
+        "asset-hub-kusama",
+        "asset-hub-westend",
+    ];
+
+    /// Determine chain type from runtime spec name
+    pub fn from_spec_name(spec_name: &str) -> Self {
+        let name_lower = spec_name.to_lowercase();
+
+        match name_lower.as_str() {
+            // Check exact matches for Asset Hub chains first (most specific)
+            name if Self::ASSET_HUB_CHAINS.contains(&name) => Self::AssetHub,
+            // Check exact matches for relay chains
+            name if Self::RELAY_CHAINS.contains(&name) => Self::Relay,
+            // Check for asset-hub prefix patterns (future-proofing)
+            name if name.starts_with("asset-hub-") || name.contains("assethub") => Self::AssetHub,
+            // Default to Parachain for everything else
+            _ => Self::Parachain,
+        }
+    }
+}
+
 /// Multi-chain URL configuration
 #[derive(Debug, Clone, Deserialize)]
 pub struct ChainUrl {
@@ -228,5 +262,59 @@ mod tests {
         let json = r#"{"url":"ws://test:9944","type":"parachain"}"#;
         let chain_url: ChainUrl = serde_json::from_str(json).unwrap();
         assert_eq!(chain_url.chain_type, ChainType::Parachain);
+    }
+
+    #[test]
+    fn test_chain_type_from_spec_name_relay() {
+        assert_eq!(ChainType::from_spec_name("polkadot"), ChainType::Relay);
+        assert_eq!(ChainType::from_spec_name("kusama"), ChainType::Relay);
+        assert_eq!(ChainType::from_spec_name("westend"), ChainType::Relay);
+        assert_eq!(ChainType::from_spec_name("rococo"), ChainType::Relay);
+        assert_eq!(ChainType::from_spec_name("paseo"), ChainType::Relay);
+        // Test case insensitivity
+        assert_eq!(ChainType::from_spec_name("Polkadot"), ChainType::Relay);
+        assert_eq!(ChainType::from_spec_name("KUSAMA"), ChainType::Relay);
+    }
+
+    #[test]
+    fn test_chain_type_from_spec_name_asset_hub_legacy() {
+        assert_eq!(ChainType::from_spec_name("statemint"), ChainType::AssetHub);
+        assert_eq!(ChainType::from_spec_name("statemine"), ChainType::AssetHub);
+        assert_eq!(ChainType::from_spec_name("westmint"), ChainType::AssetHub);
+        // Test case insensitivity
+        assert_eq!(ChainType::from_spec_name("Statemint"), ChainType::AssetHub);
+        assert_eq!(ChainType::from_spec_name("WESTMINT"), ChainType::AssetHub);
+    }
+
+    #[test]
+    fn test_chain_type_from_spec_name_asset_hub_current() {
+        assert_eq!(
+            ChainType::from_spec_name("asset-hub-polkadot"),
+            ChainType::AssetHub
+        );
+        assert_eq!(
+            ChainType::from_spec_name("asset-hub-kusama"),
+            ChainType::AssetHub
+        );
+        assert_eq!(
+            ChainType::from_spec_name("asset-hub-westend"),
+            ChainType::AssetHub
+        );
+        // Test case insensitivity
+        assert_eq!(
+            ChainType::from_spec_name("Asset-Hub-Polkadot"),
+            ChainType::AssetHub
+        );
+    }
+
+    #[test]
+    fn test_chain_type_from_spec_name_parachain() {
+        assert_eq!(ChainType::from_spec_name("acala"), ChainType::Parachain);
+        assert_eq!(ChainType::from_spec_name("moonbeam"), ChainType::Parachain);
+        assert_eq!(ChainType::from_spec_name("astar"), ChainType::Parachain);
+        assert_eq!(
+            ChainType::from_spec_name("unknown-chain"),
+            ChainType::Parachain
+        );
     }
 }
