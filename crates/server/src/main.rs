@@ -18,6 +18,7 @@ async fn main() -> anyhow::Result<()> {
     let keep_alive_timeout = state.config.express.keep_alive_timeout;
     let substrate_url = state.config.substrate.url.clone();
     let multi_chain_urls = state.config.substrate.multi_chain_urls.clone();
+    let chain_info = state.chain_info.clone();
     logging::init(
         &log_level,
         log_json,
@@ -47,6 +48,12 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("File logging enabled: {}/logs.log", log_write_path);
     }
     tracing::info!("Primary substrate URL: {}", substrate_url);
+    tracing::info!(
+        "Chain: {} (type: {:?}, spec version: {})",
+        chain_info.spec_name,
+        chain_info.chain_type,
+        chain_info.spec_version
+    );
 
     if !multi_chain_urls.is_empty() {
         tracing::info!("Multi-chain configuration:");
