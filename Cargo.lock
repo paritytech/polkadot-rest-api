@@ -2400,6 +2400,7 @@ dependencies = [
  "serde_json",
  "socket2",
  "subxt-historic",
+ "subxt-rpcs",
  "tokio",
  "tower",
  "tower-http",

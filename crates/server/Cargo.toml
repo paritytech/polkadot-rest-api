@@ -22,6 +22,7 @@ tower-http = { version = "0.6.6", features = ["trace", "cors", "limit"] }
 socket2 = "0.6"
 config = { path = "../config" }
 subxt-historic = { version = "0.0.4" }
+subxt-rpcs = { version = "0.44.0" }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
