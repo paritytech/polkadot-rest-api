@@ -1,4 +1,23 @@
-use crate::ConfigError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ExpressError {
+    #[error("Express port cannot be 0")]
+    PortZero,
+
+    #[error("Invalid bind host '{host}': {source}. Must be a valid IP address (IPv4 or IPv6)")]
+    InvalidBindHost {
+        host: String,
+        #[source]
+        source: std::net::AddrParseError,
+    },
+
+    #[error("Request limit cannot be 0")]
+    RequestLimitZero,
+
+    #[error("Keep-alive timeout cannot be 0")]
+    KeepAliveTimeoutZero,
+}
 
 // "Express" naming is an artifact of substrate-api-sidecar that is
 // being carried over to maintain backwards compatibility.
@@ -46,34 +65,28 @@ fn default_keep_alive_timeout() -> u64 {
 }
 
 impl ExpressConfig {
-    pub(crate) fn validate(&self) -> Result<(), ConfigError> {
+    pub(crate) fn validate(&self) -> Result<(), ExpressError> {
         // Validate port
         if self.port == 0 {
-            return Err(ConfigError::ValidateError(
-                "Express port cannot be 0".to_string(),
-            ));
+            return Err(ExpressError::PortZero);
         }
 
         // Validate bind_host is a valid IP address
-        self.bind_host.parse::<std::net::IpAddr>().map_err(|e| {
-            ConfigError::ValidateError(format!(
-                "Invalid bind host '{}': {}. Must be a valid IP address (IPv4 or IPv6)",
-                self.bind_host, e
-            ))
-        })?;
+        self.bind_host
+            .parse::<std::net::IpAddr>()
+            .map_err(|source| ExpressError::InvalidBindHost {
+                host: self.bind_host.clone(),
+                source,
+            })?;
 
         // Validate request_limit is not zero
         if self.request_limit == 0 {
-            return Err(ConfigError::ValidateError(
-                "Request limit cannot be 0".to_string(),
-            ));
+            return Err(ExpressError::RequestLimitZero);
         }
 
         // Validate keep_alive_timeout is not zero
         if self.keep_alive_timeout == 0 {
-            return Err(ConfigError::ValidateError(
-                "Keep-alive timeout cannot be 0".to_string(),
-            ));
+            return Err(ExpressError::KeepAliveTimeoutZero);
         }
 
         Ok(())
