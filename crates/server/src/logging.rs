@@ -1,7 +1,20 @@
-use anyhow::Result;
 use rolling_file::*;
 use std::path::PathBuf;
+use thiserror::Error;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
+#[derive(Debug, Error)]
+pub enum LoggingError {
+    #[error("Invalid log level '{level}': {source}")]
+    InvalidLogLevel {
+        level: String,
+        #[source]
+        source: tracing_subscriber::filter::ParseError,
+    },
+
+    #[error("Failed to create log directory or file appender: {0}")]
+    IoError(#[from] std::io::Error),
+}
 
 /// Initialize tracing/logging with the specified level and format
 ///
@@ -23,7 +36,7 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberI
 ///
 /// // JSON + file with 5MB rotation, 5 files
 /// logging::init("info", true, false, true, "./logs", 5242880, 5)?;
-/// # Ok::<(), anyhow::Error>(())
+/// # Ok::<(), server::logging::LoggingError>(())
 /// ```
 ///
 /// # Log Rotation
@@ -39,15 +52,12 @@ pub fn init(
     write_path: &str,
     write_max_file_size: u64,
     write_max_files: usize,
-) -> Result<()> {
+) -> Result<(), LoggingError> {
     // Create filter from level
-    let filter = EnvFilter::try_new(level).unwrap_or_else(|e| {
-        eprintln!(
-            "Invalid log level '{}': {}. Falling back to 'info'",
-            level, e
-        );
-        EnvFilter::new("info")
-    });
+    let filter = EnvFilter::try_new(level).map_err(|source| LoggingError::InvalidLogLevel {
+        level: level.to_string(),
+        source,
+    })?;
 
     // Build the subscriber based on config
     let registry = tracing_subscriber::registry();
