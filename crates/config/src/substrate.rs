@@ -1,6 +1,89 @@
 use crate::ConfigError;
 use serde::Deserialize;
 
+/// Known relay chains in the ecosystem
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KnownRelayChain {
+    Polkadot,
+    Kusama,
+    Westend,
+    Rococo,
+    Paseo,
+}
+
+impl KnownRelayChain {
+    /// Get the spec_name for this relay chain
+    pub fn spec_name(&self) -> &'static str {
+        match self {
+            Self::Polkadot => "polkadot",
+            Self::Kusama => "kusama",
+            Self::Westend => "westend",
+            Self::Rococo => "rococo",
+            Self::Paseo => "paseo",
+        }
+    }
+
+    /// Parse a relay chain from its spec_name (case-insensitive)
+    pub fn from_spec_name(name: &str) -> Option<Self> {
+        match name.to_lowercase().as_str() {
+            "polkadot" => Some(Self::Polkadot),
+            "kusama" => Some(Self::Kusama),
+            "westend" => Some(Self::Westend),
+            "rococo" => Some(Self::Rococo),
+            "paseo" => Some(Self::Paseo),
+            _ => None,
+        }
+    }
+}
+
+/// Known Asset Hub chains in the ecosystem
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KnownAssetHub {
+    Polkadot,
+    Kusama,
+    Westend,
+    Paseo,
+}
+
+impl KnownAssetHub {
+    /// Get the current spec_name for this Asset Hub
+    pub fn spec_name(&self) -> &'static str {
+        match self {
+            Self::Polkadot => "asset-hub-polkadot",
+            Self::Kusama => "asset-hub-kusama",
+            Self::Westend => "asset-hub-westend",
+            Self::Paseo => "asset-hub-paseo",
+        }
+    }
+
+    /// Get the legacy spec_name for this Asset Hub
+    pub fn legacy_spec_name(&self) -> &'static str {
+        match self {
+            Self::Polkadot => "statemint",
+            Self::Kusama => "statemine",
+            Self::Westend => "westmint",
+            // AssetHub paseo has also been named as `asset-hub-paseo`
+            Self::Paseo => "asset-hub-paseo",
+        }
+    }
+
+    /// Parse an Asset Hub from its spec_name (handles both legacy and current names, case-insensitive)
+    pub fn from_spec_name(name: &str) -> Option<Self> {
+        match name.to_lowercase().as_str() {
+            // Current names
+            "asset-hub-polkadot" => Some(Self::Polkadot),
+            "asset-hub-kusama" => Some(Self::Kusama),
+            "asset-hub-westend" => Some(Self::Westend),
+            "asset-hub-paseo" => Some(Self::Paseo),
+            // Legacy names
+            "statemint" => Some(Self::Polkadot),
+            "statemine" => Some(Self::Kusama),
+            "westmint" => Some(Self::Westend),
+            _ => None,
+        }
+    }
+}
+
 /// Chain type identifier
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -12,35 +95,35 @@ pub enum ChainType {
 }
 
 impl ChainType {
-    /// Relay chain spec names
-    pub const RELAY_CHAINS: &'static [&'static str] =
-        &["polkadot", "kusama", "westend", "rococo", "paseo"];
-
-    /// Asset Hub spec names (legacy and current)
-    /// Legacy: statemint (Polkadot), statemine (Kusama), westmint (Westend)
-    /// Current: asset-hub-polkadot, asset-hub-kusama, asset-hub-westend
-    pub const ASSET_HUB_CHAINS: &'static [&'static str] = &[
-        "statemint",
-        "statemine",
-        "westmint",
-        "asset-hub-polkadot",
-        "asset-hub-kusama",
-        "asset-hub-westend",
-    ];
-
     /// Determine chain type from runtime spec name
     pub fn from_spec_name(spec_name: &str) -> Self {
         let name_lower = spec_name.to_lowercase();
 
         match name_lower.as_str() {
-            // Check exact matches for Asset Hub chains first (most specific)
-            name if Self::ASSET_HUB_CHAINS.contains(&name) => Self::AssetHub,
-            // Check exact matches for relay chains
-            name if Self::RELAY_CHAINS.contains(&name) => Self::Relay,
-            // Check for asset-hub prefix patterns (future-proofing)
+            // Check for known Asset Hubs first (most specific)
+            name if KnownAssetHub::from_spec_name(name).is_some() => Self::AssetHub,
+            // Check for known relay chains
+            name if KnownRelayChain::from_spec_name(name).is_some() => Self::Relay,
+            // Check for asset-hub prefix patterns (future-proofing for unknown Asset Hubs)
             name if name.starts_with("asset-hub-") || name.contains("assethub") => Self::AssetHub,
             // Default to Parachain for everything else
             _ => Self::Parachain,
+        }
+    }
+
+    /// Extract the specific relay chain if this is a Relay chain type
+    pub fn as_relay_chain(&self, spec_name: &str) -> Option<KnownRelayChain> {
+        match self {
+            Self::Relay => KnownRelayChain::from_spec_name(spec_name),
+            _ => None,
+        }
+    }
+
+    /// Extract the specific Asset Hub if this is an AssetHub chain type
+    pub fn as_asset_hub(&self, spec_name: &str) -> Option<KnownAssetHub> {
+        match self {
+            Self::AssetHub => KnownAssetHub::from_spec_name(spec_name),
+            _ => None,
         }
     }
 }
@@ -265,6 +348,112 @@ mod tests {
     }
 
     #[test]
+    fn test_known_relay_chain_spec_name() {
+        assert_eq!(KnownRelayChain::Polkadot.spec_name(), "polkadot");
+        assert_eq!(KnownRelayChain::Kusama.spec_name(), "kusama");
+        assert_eq!(KnownRelayChain::Westend.spec_name(), "westend");
+        assert_eq!(KnownRelayChain::Rococo.spec_name(), "rococo");
+        assert_eq!(KnownRelayChain::Paseo.spec_name(), "paseo");
+    }
+
+    #[test]
+    fn test_known_relay_chain_from_spec_name() {
+        assert_eq!(
+            KnownRelayChain::from_spec_name("polkadot"),
+            Some(KnownRelayChain::Polkadot)
+        );
+        assert_eq!(
+            KnownRelayChain::from_spec_name("kusama"),
+            Some(KnownRelayChain::Kusama)
+        );
+        assert_eq!(
+            KnownRelayChain::from_spec_name("westend"),
+            Some(KnownRelayChain::Westend)
+        );
+        assert_eq!(
+            KnownRelayChain::from_spec_name("rococo"),
+            Some(KnownRelayChain::Rococo)
+        );
+        assert_eq!(
+            KnownRelayChain::from_spec_name("paseo"),
+            Some(KnownRelayChain::Paseo)
+        );
+        // Test case insensitivity
+        assert_eq!(
+            KnownRelayChain::from_spec_name("Polkadot"),
+            Some(KnownRelayChain::Polkadot)
+        );
+        assert_eq!(
+            KnownRelayChain::from_spec_name("KUSAMA"),
+            Some(KnownRelayChain::Kusama)
+        );
+        // Test unknown
+        assert_eq!(KnownRelayChain::from_spec_name("unknown"), None);
+    }
+
+    #[test]
+    fn test_known_asset_hub_spec_name() {
+        assert_eq!(KnownAssetHub::Polkadot.spec_name(), "asset-hub-polkadot");
+        assert_eq!(KnownAssetHub::Kusama.spec_name(), "asset-hub-kusama");
+        assert_eq!(KnownAssetHub::Westend.spec_name(), "asset-hub-westend");
+    }
+
+    #[test]
+    fn test_known_asset_hub_legacy_spec_name() {
+        assert_eq!(KnownAssetHub::Polkadot.legacy_spec_name(), "statemint");
+        assert_eq!(KnownAssetHub::Kusama.legacy_spec_name(), "statemine");
+        assert_eq!(KnownAssetHub::Westend.legacy_spec_name(), "westmint");
+    }
+
+    #[test]
+    fn test_known_asset_hub_from_spec_name_current() {
+        assert_eq!(
+            KnownAssetHub::from_spec_name("asset-hub-polkadot"),
+            Some(KnownAssetHub::Polkadot)
+        );
+        assert_eq!(
+            KnownAssetHub::from_spec_name("asset-hub-kusama"),
+            Some(KnownAssetHub::Kusama)
+        );
+        assert_eq!(
+            KnownAssetHub::from_spec_name("asset-hub-westend"),
+            Some(KnownAssetHub::Westend)
+        );
+        // Test case insensitivity
+        assert_eq!(
+            KnownAssetHub::from_spec_name("Asset-Hub-Polkadot"),
+            Some(KnownAssetHub::Polkadot)
+        );
+    }
+
+    #[test]
+    fn test_known_asset_hub_from_spec_name_legacy() {
+        assert_eq!(
+            KnownAssetHub::from_spec_name("statemint"),
+            Some(KnownAssetHub::Polkadot)
+        );
+        assert_eq!(
+            KnownAssetHub::from_spec_name("statemine"),
+            Some(KnownAssetHub::Kusama)
+        );
+        assert_eq!(
+            KnownAssetHub::from_spec_name("westmint"),
+            Some(KnownAssetHub::Westend)
+        );
+        // Test case insensitivity
+        assert_eq!(
+            KnownAssetHub::from_spec_name("Statemint"),
+            Some(KnownAssetHub::Polkadot)
+        );
+        assert_eq!(
+            KnownAssetHub::from_spec_name("WESTMINT"),
+            Some(KnownAssetHub::Westend)
+        );
+        // Test unknown
+        assert_eq!(KnownAssetHub::from_spec_name("unknown"), None);
+    }
+
+    #[test]
     fn test_chain_type_from_spec_name_relay() {
         assert_eq!(ChainType::from_spec_name("polkadot"), ChainType::Relay);
         assert_eq!(ChainType::from_spec_name("kusama"), ChainType::Relay);
@@ -316,5 +505,49 @@ mod tests {
             ChainType::from_spec_name("unknown-chain"),
             ChainType::Parachain
         );
+    }
+
+    #[test]
+    fn test_chain_type_as_relay_chain() {
+        let chain_type = ChainType::from_spec_name("polkadot");
+        assert_eq!(
+            chain_type.as_relay_chain("polkadot"),
+            Some(KnownRelayChain::Polkadot)
+        );
+
+        let chain_type = ChainType::from_spec_name("kusama");
+        assert_eq!(
+            chain_type.as_relay_chain("kusama"),
+            Some(KnownRelayChain::Kusama)
+        );
+
+        // Non-relay chain returns None
+        let chain_type = ChainType::from_spec_name("statemint");
+        assert_eq!(chain_type.as_relay_chain("statemint"), None);
+
+        let chain_type = ChainType::from_spec_name("acala");
+        assert_eq!(chain_type.as_relay_chain("acala"), None);
+    }
+
+    #[test]
+    fn test_chain_type_as_asset_hub() {
+        let chain_type = ChainType::from_spec_name("statemint");
+        assert_eq!(
+            chain_type.as_asset_hub("statemint"),
+            Some(KnownAssetHub::Polkadot)
+        );
+
+        let chain_type = ChainType::from_spec_name("asset-hub-kusama");
+        assert_eq!(
+            chain_type.as_asset_hub("asset-hub-kusama"),
+            Some(KnownAssetHub::Kusama)
+        );
+
+        // Non-asset-hub chain returns None
+        let chain_type = ChainType::from_spec_name("polkadot");
+        assert_eq!(chain_type.as_asset_hub("polkadot"), None);
+
+        let chain_type = ChainType::from_spec_name("acala");
+        assert_eq!(chain_type.as_asset_hub("acala"), None);
     }
 }

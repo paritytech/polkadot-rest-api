@@ -6,7 +6,7 @@ mod substrate;
 pub use error::ConfigError;
 pub use express::ExpressConfig;
 pub use log::LogConfig;
-pub use substrate::{ChainType, ChainUrl, SubstrateConfig};
+pub use substrate::{ChainType, ChainUrl, KnownAssetHub, KnownRelayChain, SubstrateConfig};
 
 use serde::Deserialize;
 
