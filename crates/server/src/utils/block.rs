@@ -37,6 +37,40 @@ pub struct ResolvedBlock {
     pub number: u64,
 }
 
+/// Helper function to get header JSON and extract block number from hash
+async fn get_block_number_from_hash(
+    state: &AppState,
+    hash: &str,
+) -> Result<u64, BlockResolveError> {
+    // Make raw RPC call to get the header data as JSON
+    // We need to use raw JSON because subxt-historic's RpcConfig has Header = ()
+    let header_json = state
+        .get_header_json(hash)
+        .await
+        .map_err(|e| BlockResolveError::RpcError(e.to_string()))?;
+
+    // Check if the response is null (block doesn't exist)
+    if header_json.is_null() {
+        return Err(BlockResolveError::NotFound(format!(
+            "Block with hash {} not found",
+            hash
+        )));
+    }
+
+    // Extract block number from the header JSON
+    // The response structure is: { "number": "0x..." }
+    let number_hex = header_json
+        .get("number")
+        .and_then(|v| v.as_str())
+        .ok_or(BlockResolveError::BlockNumberNotFound)?;
+
+    // Parse hex string to u64 (remove 0x prefix)
+    let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
+        .map_err(|e| BlockResolveError::BlockNumberParseFailed(e.to_string()))?;
+
+    Ok(number)
+}
+
 /// Resolves a block from an optional "at" parameter
 ///
 /// # Arguments
@@ -64,24 +98,7 @@ pub async fn resolve_block(
                 .map_err(|e| BlockResolveError::FinalizedHeadFailed(e.to_string()))?;
 
             let hash_str = format!("{:?}", hash);
-
-            // Make raw RPC call to get the header data as JSON
-            // We need to use raw JSON because subxt-historic's RpcConfig has Header = ()
-            let header_json = state
-                .get_header_json(&hash_str)
-                .await
-                .map_err(|e| BlockResolveError::RpcError(e.to_string()))?;
-
-            // Extract block number from the header JSON
-            // The response structure is: { "number": "0x..." }
-            let number_hex = header_json
-                .get("number")
-                .and_then(|v| v.as_str())
-                .ok_or(BlockResolveError::BlockNumberNotFound)?;
-
-            // Parse hex string to u64 (remove 0x prefix)
-            let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
-                .map_err(|e| BlockResolveError::BlockNumberParseFailed(e.to_string()))?;
+            let number = get_block_number_from_hash(state, &hash_str).await?;
 
             Ok(ResolvedBlock {
                 hash: hash_str,
@@ -90,29 +107,7 @@ pub async fn resolve_block(
         }
         Some(param) if param.starts_with("0x") => {
             // Treat as block hash
-            // Make raw RPC call to get the header data as JSON
-            let header_json = state
-                .get_header_json(&param)
-                .await
-                .map_err(|e| BlockResolveError::RpcError(e.to_string()))?;
-
-            // Check if the response is null (block doesn't exist)
-            if header_json.is_null() {
-                return Err(BlockResolveError::NotFound(format!(
-                    "Block with hash {} not found",
-                    param
-                )));
-            }
-
-            // Extract block number from the header JSON
-            let number_hex = header_json
-                .get("number")
-                .and_then(|v| v.as_str())
-                .ok_or(BlockResolveError::BlockNumberNotFound)?;
-
-            // Parse hex string to u64 (remove 0x prefix)
-            let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
-                .map_err(|e| BlockResolveError::BlockNumberParseFailed(e.to_string()))?;
+            let number = get_block_number_from_hash(state, &param).await?;
 
             Ok(ResolvedBlock {
                 hash: param,
