@@ -90,10 +90,29 @@ pub async fn resolve_block(
         }
         Some(param) if param.starts_with("0x") => {
             // Treat as block hash
-            // TODO: Parse the hex string to the correct hash type
-            // TODO: Call chain_get_header with the parsed hash
-            // For now, return placeholder
-            let number = 0; // TODO: Get actual block number from header
+            // Make raw RPC call to get the header data as JSON
+            let header_json = state
+                .get_header_json(&param)
+                .await
+                .map_err(|e| BlockResolveError::RpcError(e.to_string()))?;
+
+            // Check if the response is null (block doesn't exist)
+            if header_json.is_null() {
+                return Err(BlockResolveError::NotFound(format!(
+                    "Block with hash {} not found",
+                    param
+                )));
+            }
+
+            // Extract block number from the header JSON
+            let number_hex = header_json
+                .get("number")
+                .and_then(|v| v.as_str())
+                .ok_or(BlockResolveError::BlockNumberNotFound)?;
+
+            // Parse hex string to u64 (remove 0x prefix)
+            let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
+                .map_err(|e| BlockResolveError::BlockNumberParseFailed(e.to_string()))?;
 
             Ok(ResolvedBlock {
                 hash: param,
@@ -106,10 +125,14 @@ pub async fn resolve_block(
                 .parse::<u64>()
                 .map_err(|_| BlockResolveError::InvalidParam(param.clone()))?;
 
-            // TODO: Get block hash at this number
-            // Need to use chain_get_block_hash(Some(number))
-            let hash =
-                "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(); // TODO: Get actual block hash
+            // Get block hash at this number
+            let hash = state
+                .get_block_hash_at_number(number)
+                .await
+                .map_err(|e| BlockResolveError::BlockHashFailed(e.to_string()))?
+                .ok_or_else(|| {
+                    BlockResolveError::NotFound(format!("Block at height {} not found", number))
+                })?;
 
             Ok(ResolvedBlock { hash, number })
         }
