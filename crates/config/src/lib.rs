@@ -4,9 +4,11 @@ mod log;
 mod substrate;
 
 pub use error::ConfigError;
-pub use express::ExpressConfig;
-pub use log::LogConfig;
-pub use substrate::{ChainType, ChainUrl, KnownAssetHub, KnownRelayChain, SubstrateConfig};
+pub use express::{ExpressConfig, ExpressError};
+pub use log::{LogConfig, LogError};
+pub use substrate::{
+    ChainType, ChainUrl, KnownAssetHub, KnownRelayChain, SubstrateConfig, SubstrateError,
+};
 
 use serde::Deserialize;
 
@@ -139,12 +141,7 @@ impl SidecarConfig {
         let multi_chain_urls = if env_config.substrate_multi_chain_url.is_empty() {
             vec![]
         } else {
-            serde_json::from_str(&env_config.substrate_multi_chain_url).map_err(|e| {
-                ConfigError::ValidateError(format!(
-                    "Invalid JSON format for SAS_SUBSTRATE_MULTI_CHAIN_URL: {}",
-                    e
-                ))
-            })?
+            serde_json::from_str(&env_config.substrate_multi_chain_url)?
         };
 
         // Map to nested structure

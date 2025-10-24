@@ -2,6 +2,26 @@ use config::{ChainType, SidecarConfig};
 use std::sync::Arc;
 use subxt_historic::{OnlineClient, SubstrateConfig};
 use subxt_rpcs::{LegacyRpcMethods, RpcClient};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum StateError {
+    #[error("Failed to load configuration")]
+    ConfigLoadFailed(#[from] config::ConfigError),
+
+    #[error("Failed to connect to substrate node at {url}")]
+    ConnectionFailed {
+        url: String,
+        #[source]
+        source: subxt_rpcs::Error,
+    },
+
+    #[error("Failed to get runtime version")]
+    RuntimeVersionFailed(#[source] subxt_rpcs::Error),
+
+    #[error("spec_name not found in runtime version")]
+    SpecNameNotFound,
+}
 
 /// Information about the connected chain
 #[derive(Clone, Debug)]
@@ -25,21 +45,18 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub async fn new() -> anyhow::Result<Self> {
+    pub async fn new() -> Result<Self, StateError> {
         let config = SidecarConfig::from_env()?;
         Self::new_with_config(config).await
     }
 
-    pub async fn new_with_config(config: SidecarConfig) -> anyhow::Result<Self> {
+    pub async fn new_with_config(config: SidecarConfig) -> Result<Self, StateError> {
         // Create RPC client first - we'll use it for both historic client and legacy RPC
         let rpc_client = RpcClient::from_insecure_url(&config.substrate.url)
             .await
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to connect to substrate node at {}: {}",
-                    config.substrate.url,
-                    e
-                )
+            .map_err(|source| StateError::ConnectionFailed {
+                url: config.substrate.url.clone(),
+                source,
             })?;
 
         let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
@@ -59,18 +76,18 @@ impl AppState {
 /// Query the chain to get runtime information via RPC
 async fn get_chain_info(
     legacy_rpc: &LegacyRpcMethods<SubstrateConfig>,
-) -> anyhow::Result<ChainInfo> {
+) -> Result<ChainInfo, StateError> {
     let runtime_version = legacy_rpc
         .state_get_runtime_version(None)
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to get runtime version: {}", e))?;
+        .map_err(StateError::RuntimeVersionFailed)?;
 
     // Extract spec_name from the "other" HashMap
     let spec_name = runtime_version
         .other
         .get("specName")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("spec_name not found in runtime version"))?
+        .ok_or(StateError::SpecNameNotFound)?
         .to_string();
 
     // Determine chain type from spec_name

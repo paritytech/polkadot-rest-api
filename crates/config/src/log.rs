@@ -1,4 +1,19 @@
-use crate::ConfigError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum LogError {
+    #[error("Invalid log level '{level}'. Must be one of: {valid_levels}")]
+    InvalidLogLevel { level: String, valid_levels: String },
+
+    #[error("Log write max file size must be greater than 0")]
+    MaxFileSizeZero,
+
+    #[error("Log write max file size must be at least 1KB (1024 bytes)")]
+    MaxFileSizeTooSmall,
+
+    #[error("Log write max files must be at least 1")]
+    MaxFilesZero,
+}
 
 #[derive(Debug, Clone)]
 pub struct LogConfig {
@@ -76,33 +91,26 @@ fn default_write_max_files() -> usize {
 }
 
 impl LogConfig {
-    pub(crate) fn validate(&self) -> Result<(), ConfigError> {
+    pub(crate) fn validate(&self) -> Result<(), LogError> {
         let valid_levels = ["trace", "debug", "info", "warn", "error"];
 
         if !valid_levels.contains(&self.level.as_str()) {
-            return Err(ConfigError::ValidateError(format!(
-                "Invalid log level '{}'. Must be one of: {}",
-                self.level,
-                valid_levels.join(", ")
-            )));
+            return Err(LogError::InvalidLogLevel {
+                level: self.level.clone(),
+                valid_levels: valid_levels.join(", "),
+            });
         }
 
         if self.write_max_file_size == 0 {
-            return Err(ConfigError::ValidateError(
-                "Log write max file size must be greater than 0".to_string(),
-            ));
+            return Err(LogError::MaxFileSizeZero);
         }
 
         if self.write_max_file_size < 1024 {
-            return Err(ConfigError::ValidateError(
-                "Log write max file size must be at least 1KB (1024 bytes)".to_string(),
-            ));
+            return Err(LogError::MaxFileSizeTooSmall);
         }
 
         if self.write_max_files == 0 {
-            return Err(ConfigError::ValidateError(
-                "Log write max files must be at least 1".to_string(),
-            ));
+            return Err(LogError::MaxFilesZero);
         }
 
         Ok(())
