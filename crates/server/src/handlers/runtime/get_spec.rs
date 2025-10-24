@@ -7,14 +7,14 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum GetSpecError {
-    #[error("Invalid block parameter: {0}")]
-    InvalidBlockParam(String),
+    #[error("Invalid block parameter")]
+    InvalidBlockParam(#[from] crate::utils::BlockResolveError),
 
-    #[error("Failed to get runtime version: {0}")]
-    RuntimeVersionFailed(String),
+    #[error("Failed to get runtime version")]
+    RuntimeVersionFailed(#[source] subxt_rpcs::Error),
 
-    #[error("Failed to get system properties: {0}")]
-    SystemPropertiesFailed(String),
+    #[error("Failed to get system properties")]
+    SystemPropertiesFailed(#[source] subxt_rpcs::Error),
 }
 
 impl IntoResponse for GetSpecError {
@@ -60,9 +60,7 @@ pub async fn runtime_spec(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
 ) -> Result<Json<RuntimeSpecResponse>, GetSpecError> {
-    let resolved_block = utils::resolve_block(&state, params.at)
-        .await
-        .map_err(|e| GetSpecError::InvalidBlockParam(e.to_string()))?;
+    let resolved_block = utils::resolve_block(&state, params.at).await?;
 
     let block_hash_str = resolved_block.hash;
     let block_height = resolved_block.number.to_string();
@@ -70,7 +68,7 @@ pub async fn runtime_spec(
     let runtime_version = state
         .get_runtime_version_at_hash(&block_hash_str)
         .await
-        .map_err(|e| GetSpecError::RuntimeVersionFailed(e.to_string()))?;
+        .map_err(GetSpecError::RuntimeVersionFailed)?;
 
     let spec_name = runtime_version
         .get("specName")
@@ -106,7 +104,7 @@ pub async fn runtime_spec(
         .legacy_rpc
         .system_properties()
         .await
-        .map_err(|e| GetSpecError::SystemPropertiesFailed(e.to_string()))?;
+        .map_err(GetSpecError::SystemPropertiesFailed)?;
 
     // TODO: system_chain_type is not available in LegacyRpcMethods
     // Need to find the correct RPC method or use a different approach
