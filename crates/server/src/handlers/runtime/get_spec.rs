@@ -8,7 +8,10 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum GetSpecError {
     #[error("Invalid block parameter")]
-    InvalidBlockParam(#[from] crate::utils::BlockResolveError),
+    InvalidBlockParam(#[from] crate::utils::BlockIdParseError),
+
+    #[error("Block resolution failed")]
+    BlockResolveFailed(#[from] crate::utils::BlockResolveError),
 
     #[error("Failed to get runtime version")]
     RuntimeVersionFailed(#[source] subxt_rpcs::Error),
@@ -20,7 +23,9 @@ pub enum GetSpecError {
 impl IntoResponse for GetSpecError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
-            GetSpecError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            GetSpecError::InvalidBlockParam(_) | GetSpecError::BlockResolveFailed(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
@@ -60,7 +65,14 @@ pub async fn runtime_spec(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
 ) -> Result<Json<RuntimeSpecResponse>, GetSpecError> {
-    let resolved_block = utils::resolve_block(&state, params.at).await?;
+    // Parse the block identifier in the handler (sync)
+    let block_id = params
+        .at
+        .map(|s| s.parse::<crate::utils::BlockId>())
+        .transpose()?;
+
+    // Resolve the block (async)
+    let resolved_block = utils::resolve_block(&state, block_id).await?;
 
     let block_hash_str = resolved_block.hash;
     let block_height = resolved_block.number.to_string();

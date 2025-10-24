@@ -1,11 +1,47 @@
 use crate::state::AppState;
+use primitive_types::H256;
+use std::str::FromStr;
 use thiserror::Error;
+
+/// Represents a block identifier that can be either a hash or a number
+#[derive(Debug, Clone)]
+pub enum BlockId {
+    /// Block hash (32 bytes)
+    Hash(H256),
+    /// Block number
+    Number(u64),
+}
+
+/// Error type for parsing BlockId from string
+#[derive(Debug, Error)]
+pub enum BlockIdParseError {
+    #[error("Invalid block number")]
+    InvalidNumber(#[source] std::num::ParseIntError),
+
+    #[error("Invalid block hash format")]
+    InvalidHash(#[source] rustc_hex::FromHexError),
+}
+
+impl FromStr for BlockId {
+    type Err = BlockIdParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Try to parse as H256 first (starts with "0x")
+        if s.starts_with("0x") {
+            H256::from_str(s)
+                .map(BlockId::Hash)
+                .map_err(BlockIdParseError::InvalidHash)
+        } else {
+            // Otherwise try to parse as block number
+            s.parse::<u64>()
+                .map(BlockId::Number)
+                .map_err(BlockIdParseError::InvalidNumber)
+        }
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum BlockResolveError {
-    #[error("Invalid block parameter: {0}")]
-    InvalidParam(String),
-
     #[error("Block not found: {0}")]
     NotFound(String),
 
@@ -71,22 +107,22 @@ async fn get_block_number_from_hash(
     Ok(number)
 }
 
-/// Resolves a block from an optional "at" parameter
+/// Resolves a block from an optional block identifier
 ///
 /// # Arguments
 /// * `state` - Application state containing RPC client
-/// * `at` - Optional block identifier (hash as hex string, or number as string)
+/// * `at` - Optional block identifier (hash or number)
 ///
 /// # Returns
 /// * `ResolvedBlock` containing both hash and number
 ///
 /// # Behavior
 /// - If `at` is `None`, returns the latest finalized block
-/// - If `at` starts with "0x", treats it as a block hash and fetches the block number
-/// - Otherwise, treats it as a block number and fetches the block hash
+/// - If `at` is `BlockId::Hash`, fetches the block number for that hash
+/// - If `at` is `BlockId::Number`, fetches the block hash for that number
 pub async fn resolve_block(
     state: &AppState,
-    at: Option<String>,
+    at: Option<BlockId>,
 ) -> Result<ResolvedBlock, BlockResolveError> {
     match at {
         None => {
@@ -105,22 +141,20 @@ pub async fn resolve_block(
                 number,
             })
         }
-        Some(param) if param.starts_with("0x") => {
-            // Treat as block hash
-            let number = get_block_number_from_hash(state, &param).await?;
+        Some(BlockId::Hash(hash)) => {
+            // Convert H256 to hex string for RPC call
+            let hash_str = format!("{:#x}", hash);
+
+            // Fetch block number by hash
+            let number = get_block_number_from_hash(state, &hash_str).await?;
 
             Ok(ResolvedBlock {
-                hash: param,
+                hash: hash_str,
                 number,
             })
         }
-        Some(param) => {
-            // Treat as block number
-            let number = param
-                .parse::<u64>()
-                .map_err(|_| BlockResolveError::InvalidParam(param.clone()))?;
-
-            // Get block hash at this number
+        Some(BlockId::Number(number)) => {
+            // Fetch block hash by number
             let hash = state
                 .get_block_hash_at_number(number)
                 .await
