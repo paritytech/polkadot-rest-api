@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1761309728562,
+  "lastUpdate": 1761310041706,
   "repoUrl": "https://github.com/paritytech/polkadot-rest-api",
   "entries": {
     "Benchmark": [
@@ -186,6 +186,56 @@ window.BENCHMARK_DATA = {
           {
             "name": "health - Throughput",
             "value": 45064.11,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "47201679+TarikGul@users.noreply.github.com",
+            "name": "Tarik Gul",
+            "username": "TarikGul"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7cafa7f06379cf6b809b8b38d98a0addc1f6de63",
+          "message": "feat: standardize errors with thiserror, and enums (#19)\n\n* feat: standardize errors with thiserror, and enums\n\n* Add errors for configs\n\n* Clean up errors, and use native types instead of wrapping in strings",
+          "timestamp": "2025-10-24T08:42:30-04:00",
+          "tree_id": "078abe6677dd95d281652bbe5ac2522ad013d5b2",
+          "url": "https://github.com/paritytech/polkadot-rest-api/commit/7cafa7f06379cf6b809b8b38d98a0addc1f6de63"
+        },
+        "date": 1761310040092,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "health - Avg Latency",
+            "value": 1.07,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P50 Latency",
+            "value": 0.94,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P90 Latency",
+            "value": 2.02,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P99 Latency",
+            "value": 3.18,
+            "unit": "ms"
+          },
+          {
+            "name": "health - Throughput",
+            "value": 44041.99,
             "unit": "req/sec",
             "extra": "biggerIsBetter"
           }
