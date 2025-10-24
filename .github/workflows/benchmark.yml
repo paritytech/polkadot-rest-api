@@ -1,0 +1,121 @@
+name: Benchmark
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: benchmark
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:22.04
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y curl build-essential wrk jq bc
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Build server
+        run: |
+          cargo build --release
+
+      - name: Run benchmarks
+        env:
+          SAS_SUBSTRATE_URL: wss://rpc.polkadot.io
+        run: |
+          mkdir -p artifacts
+          
+          # Start server in background
+          RUST_LOG=info ./target/release/polkadot-rest-api > server.log 2>&1 &
+          SERVER_PID=$!
+          
+          # Wait for server to start
+          echo "Waiting for server to start..."
+          for i in {1..30}; do
+            if curl -s http://localhost:8080/health > /dev/null 2>&1; then
+              echo "Server started successfully"
+              break
+            fi
+            sleep 1
+          done
+          
+          if ! curl -s http://localhost:8080/health > /dev/null 2>&1; then
+            echo "Server failed to start"
+            cat server.log
+            exit 1
+          fi
+          
+          # Run benchmarks
+          echo "Running benchmarks..."
+          HARDWARE_PROFILE="ci_runner"
+          SCENARIO="medium_load"
+          
+          for init_script in benchmarks/*/init.sh; do
+            if [ -f "$init_script" ]; then
+              ENDPOINT_DIR=$(dirname "$init_script")
+              ENDPOINT_NAME=$(basename "$ENDPOINT_DIR")
+              
+              echo "Running benchmark: $ENDPOINT_NAME"
+              cd "$ENDPOINT_DIR"
+              bash init.sh "$SCENARIO" "$HARDWARE_PROFILE" > "../../artifacts/benchmark_${ENDPOINT_NAME}.txt" 2>&1
+              cd - > /dev/null
+            fi
+          done
+          
+          # Stop server
+          kill $SERVER_PID 2>/dev/null || true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: artifacts/
+          retention-days: 90
+
+  benchmark-publish:
+    name: benchmark publish
+    needs: [benchmark]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+
+      - name: Download benchmark results
+        uses: actions/download-artifact@v5
+        with:
+          name: benchmark-results
+          path: artifacts
+
+      - name: Generate benchmark JSON
+        run: |
+          ./scripts/ci/benchmarks/generate_benchmark_result.sh artifacts > artifacts/benchmark_results.json
+          cat artifacts/benchmark_results.json
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@4e0b38bc48375986542b13c0d8976b7b80c60c00
+        with:
+          tool: 'customSmallerIsBetter'
+          output-file-path: artifacts/benchmark_results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
