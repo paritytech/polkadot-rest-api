@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1761310041706,
+  "lastUpdate": 1761312535185,
   "repoUrl": "https://github.com/paritytech/polkadot-rest-api",
   "entries": {
     "Benchmark": [
@@ -236,6 +236,52 @@ window.BENCHMARK_DATA = {
           {
             "name": "health - Throughput",
             "value": 44041.99,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "paritytech",
+            "username": "paritytech"
+          },
+          "committer": {
+            "name": "paritytech",
+            "username": "paritytech"
+          },
+          "id": "90a8ad72cf5f33f5c6260f6893967fd0cf4f0109",
+          "message": "feat: Add resolve_block, and `/runtime/node` endpoint",
+          "timestamp": "2025-10-24T12:42:34Z",
+          "url": "https://github.com/paritytech/polkadot-rest-api/pull/21/commits/90a8ad72cf5f33f5c6260f6893967fd0cf4f0109"
+        },
+        "date": 1761312533771,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "health - Avg Latency",
+            "value": 1.07,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P50 Latency",
+            "value": 0.96,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P90 Latency",
+            "value": 2.02,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P99 Latency",
+            "value": 3.16,
+            "unit": "ms"
+          },
+          {
+            "name": "health - Throughput",
+            "value": 43855.36,
             "unit": "req/sec",
             "extra": "biggerIsBetter"
           }
