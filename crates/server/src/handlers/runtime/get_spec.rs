@@ -113,7 +113,6 @@ pub async fn runtime_spec(
         "live": null
     });
 
-    // 6. Build response
     let response = RuntimeSpecResponse {
         at: BlockInfo {
             hash: block_hash_str,
