@@ -6,14 +6,18 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum StateError {
-    #[error("Failed to load configuration: {0}")]
+    #[error("Failed to load configuration")]
     ConfigLoadFailed(#[from] config::ConfigError),
 
-    #[error("Failed to connect to substrate node at {url}: {error}")]
-    ConnectionFailed { url: String, error: String },
+    #[error("Failed to connect to substrate node at {url}")]
+    ConnectionFailed {
+        url: String,
+        #[source]
+        source: subxt_rpcs::Error,
+    },
 
-    #[error("Failed to get runtime version: {0}")]
-    RuntimeVersionFailed(String),
+    #[error("Failed to get runtime version")]
+    RuntimeVersionFailed(#[source] subxt_rpcs::Error),
 
     #[error("spec_name not found in runtime version")]
     SpecNameNotFound,
@@ -50,9 +54,9 @@ impl AppState {
         // Create RPC client first - we'll use it for both historic client and legacy RPC
         let rpc_client = RpcClient::from_insecure_url(&config.substrate.url)
             .await
-            .map_err(|e| StateError::ConnectionFailed {
+            .map_err(|source| StateError::ConnectionFailed {
                 url: config.substrate.url.clone(),
-                error: e.to_string(),
+                source,
             })?;
 
         let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
@@ -76,7 +80,7 @@ async fn get_chain_info(
     let runtime_version = legacy_rpc
         .state_get_runtime_version(None)
         .await
-        .map_err(|e| StateError::RuntimeVersionFailed(e.to_string()))?;
+        .map_err(StateError::RuntimeVersionFailed)?;
 
     // Extract spec_name from the "other" HashMap
     let spec_name = runtime_version

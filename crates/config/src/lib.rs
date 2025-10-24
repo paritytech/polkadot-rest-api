@@ -141,8 +141,7 @@ impl SidecarConfig {
         let multi_chain_urls = if env_config.substrate_multi_chain_url.is_empty() {
             vec![]
         } else {
-            serde_json::from_str(&env_config.substrate_multi_chain_url)
-                .map_err(|e| ConfigError::InvalidMultiChainJson(e.to_string()))?
+            serde_json::from_str(&env_config.substrate_multi_chain_url)?
         };
 
         // Map to nested structure
