@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1761295863793,
+  "lastUpdate": 1761309728562,
   "repoUrl": "https://github.com/paritytech/polkadot-rest-api",
   "entries": {
     "Benchmark": [
@@ -140,6 +140,52 @@ window.BENCHMARK_DATA = {
           {
             "name": "health - Throughput",
             "value": 73453.33,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "paritytech",
+            "username": "paritytech"
+          },
+          "committer": {
+            "name": "paritytech",
+            "username": "paritytech"
+          },
+          "id": "2005531de93311ec00a019830f42fdbe245e5e2e",
+          "message": "feat: standardize errors with thiserror, and enums",
+          "timestamp": "2025-10-24T08:46:24Z",
+          "url": "https://github.com/paritytech/polkadot-rest-api/pull/19/commits/2005531de93311ec00a019830f42fdbe245e5e2e"
+        },
+        "date": 1761309727878,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "health - Avg Latency",
+            "value": 1.04,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P50 Latency",
+            "value": 0.9,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P90 Latency",
+            "value": 2.01,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P99 Latency",
+            "value": 3.2,
+            "unit": "ms"
+          },
+          {
+            "name": "health - Throughput",
+            "value": 45064.11,
             "unit": "req/sec",
             "extra": "biggerIsBetter"
           }
