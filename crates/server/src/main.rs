@@ -1,9 +1,25 @@
 use server::{app, logging, state};
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+enum MainError {
+    #[error("Failed to initialize application state: {0}")]
+    StateInitFailed(#[from] state::StateError),
+
+    #[error("Failed to initialize logging: {0}")]
+    LoggingInitFailed(#[from] logging::LoggingError),
+
+    #[error("Invalid bind host address: {0}")]
+    InvalidBindHost(#[from] std::net::AddrParseError),
+
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), MainError> {
     let state = state::AppState::new().await?;
     // Extract values we need before cloning state
     let log_level = state.config.log.level.clone();

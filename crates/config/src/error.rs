@@ -2,9 +2,18 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
-    #[error("Failed to load configuration from enviornment: {0}")]
+    #[error("Failed to load configuration from environment")]
     EnvError(#[from] envy::Error),
 
-    #[error("Invalid configuration value: {0}")]
-    ValidateError(String),
+    #[error("Express configuration error")]
+    ExpressError(#[from] crate::express::ExpressError),
+
+    #[error("Log configuration error")]
+    LogError(#[from] crate::log::LogError),
+
+    #[error("Substrate configuration error")]
+    SubstrateError(#[from] crate::substrate::SubstrateError),
+
+    #[error("Invalid multi-chain URL JSON")]
+    InvalidMultiChainJson(#[from] serde_json::Error),
 }

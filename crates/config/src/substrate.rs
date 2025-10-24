@@ -1,5 +1,24 @@
-use crate::ConfigError;
 use serde::Deserialize;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum SubstrateError {
+    #[error("Substrate URL cannot be empty")]
+    UrlEmpty,
+
+    #[error("Invalid URL '{url}': {source}")]
+    UrlParseError {
+        url: String,
+        #[source]
+        source: url::ParseError,
+    },
+
+    #[error("Invalid URL scheme '{scheme}'. Must be ws://, wss://, http://, or https://")]
+    InvalidUrlScheme { scheme: String },
+
+    #[error("Duplicate URL found in multi-chain configuration: {url}")]
+    DuplicateUrl { url: String },
+}
 
 /// Known relay chains in the ecosystem
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,12 +174,10 @@ pub struct SubstrateConfig {
 }
 
 impl SubstrateConfig {
-    pub(crate) fn validate(&self) -> Result<(), ConfigError> {
+    pub(crate) fn validate(&self) -> Result<(), SubstrateError> {
         // Validate primary URL
         if self.url.is_empty() {
-            return Err(ConfigError::ValidateError(
-                "Substrate URL cannot be empty".to_string(),
-            ));
+            return Err(SubstrateError::UrlEmpty);
         }
 
         Self::validate_url(&self.url)?;
@@ -175,10 +192,9 @@ impl SubstrateConfig {
 
             // Check for duplicates
             if !seen_urls.insert(chain_url.url.clone()) {
-                return Err(ConfigError::ValidateError(format!(
-                    "Duplicate URL found in multi-chain configuration: {}",
-                    chain_url.url
-                )));
+                return Err(SubstrateError::DuplicateUrl {
+                    url: chain_url.url.clone(),
+                });
             }
         }
 
@@ -186,24 +202,23 @@ impl SubstrateConfig {
     }
 
     /// Validate a single URL
-    fn validate_url(url_str: &str) -> Result<(), ConfigError> {
+    fn validate_url(url_str: &str) -> Result<(), SubstrateError> {
         if url_str.is_empty() {
-            return Err(ConfigError::ValidateError(
-                "URL cannot be empty".to_string(),
-            ));
+            return Err(SubstrateError::UrlEmpty);
         }
 
         // Parse URL to check format
-        let parsed = url::Url::parse(url_str)
-            .map_err(|e| ConfigError::ValidateError(format!("Invalid URL '{}': {}", url_str, e)))?;
+        let parsed = url::Url::parse(url_str).map_err(|source| SubstrateError::UrlParseError {
+            url: url_str.to_string(),
+            source,
+        })?;
 
         // Check scheme
         match parsed.scheme() {
             "ws" | "wss" | "http" | "https" => Ok(()),
-            scheme => Err(ConfigError::ValidateError(format!(
-                "Invalid URL scheme '{}'. Must be ws://, wss://, http://, or https://",
-                scheme
-            ))),
+            scheme => Err(SubstrateError::InvalidUrlScheme {
+                scheme: scheme.to_string(),
+            }),
         }
     }
 }
