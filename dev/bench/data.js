@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1761252371596,
+  "lastUpdate": 1761295863793,
   "repoUrl": "https://github.com/paritytech/polkadot-rest-api",
   "entries": {
     "Benchmark": [
@@ -90,6 +90,56 @@ window.BENCHMARK_DATA = {
           {
             "name": "health - Throughput",
             "value": 44818.18,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "eugypalu@gmail.com",
+            "name": "Eugenio Paluello",
+            "username": "eugypalu"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e3d31d0de231019d06159a9cabd28dd11a157980",
+          "message": "Merge pull request #14 from paritytech/eugenio/benchmarking\n\nfeat: Benchmarking",
+          "timestamp": "2025-10-24T10:46:19+02:00",
+          "tree_id": "0c60eb8ced755714d19a7a4553c673bae7dfb3a7",
+          "url": "https://github.com/paritytech/polkadot-rest-api/commit/e3d31d0de231019d06159a9cabd28dd11a157980"
+        },
+        "date": 1761295862964,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "health - Avg Latency",
+            "value": 647.7,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P50 Latency",
+            "value": 547,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P90 Latency",
+            "value": 1.24,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P99 Latency",
+            "value": 2.13,
+            "unit": "ms"
+          },
+          {
+            "name": "health - Throughput",
+            "value": 73453.33,
             "unit": "req/sec",
             "extra": "biggerIsBetter"
           }
