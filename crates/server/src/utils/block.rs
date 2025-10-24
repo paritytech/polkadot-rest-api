@@ -9,23 +9,23 @@ pub enum BlockResolveError {
     #[error("Block not found: {0}")]
     NotFound(String),
 
-    #[error("Failed to get finalized head: {0}")]
-    FinalizedHeadFailed(String),
+    #[error("Failed to get finalized head")]
+    FinalizedHeadFailed(#[source] subxt_rpcs::Error),
 
-    #[error("Failed to get block hash: {0}")]
-    BlockHashFailed(String),
+    #[error("Failed to get block hash")]
+    BlockHashFailed(#[source] subxt_rpcs::Error),
 
-    #[error("Failed to get block header: {0}")]
-    BlockHeaderFailed(String),
+    #[error("Failed to get block header")]
+    BlockHeaderFailed(#[source] subxt_rpcs::Error),
 
     #[error("Block number not found in header")]
     BlockNumberNotFound,
 
-    #[error("Failed to parse block number from header: {0}")]
-    BlockNumberParseFailed(String),
+    #[error("Failed to parse block number from header")]
+    BlockNumberParseFailed(#[source] std::num::ParseIntError),
 
-    #[error("RPC error: {0}")]
-    RpcError(String),
+    #[error("RPC error")]
+    RpcError(#[source] subxt_rpcs::Error),
 }
 
 /// Represents a resolved block with both hash and number
@@ -47,7 +47,7 @@ async fn get_block_number_from_hash(
     let header_json = state
         .get_header_json(hash)
         .await
-        .map_err(|e| BlockResolveError::RpcError(e.to_string()))?;
+        .map_err(BlockResolveError::RpcError)?;
 
     // Check if the response is null (block doesn't exist)
     if header_json.is_null() {
@@ -66,7 +66,7 @@ async fn get_block_number_from_hash(
 
     // Parse hex string to u64 (remove 0x prefix)
     let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
-        .map_err(|e| BlockResolveError::BlockNumberParseFailed(e.to_string()))?;
+        .map_err(BlockResolveError::BlockNumberParseFailed)?;
 
     Ok(number)
 }
@@ -95,7 +95,7 @@ pub async fn resolve_block(
                 .legacy_rpc
                 .chain_get_finalized_head()
                 .await
-                .map_err(|e| BlockResolveError::FinalizedHeadFailed(e.to_string()))?;
+                .map_err(BlockResolveError::FinalizedHeadFailed)?;
 
             let hash_str = format!("{:?}", hash);
             let number = get_block_number_from_hash(state, &hash_str).await?;
@@ -124,7 +124,7 @@ pub async fn resolve_block(
             let hash = state
                 .get_block_hash_at_number(number)
                 .await
-                .map_err(|e| BlockResolveError::BlockHashFailed(e.to_string()))?
+                .map_err(BlockResolveError::BlockHashFailed)?
                 .ok_or_else(|| {
                     BlockResolveError::NotFound(format!("Block at height {} not found", number))
                 })?;
