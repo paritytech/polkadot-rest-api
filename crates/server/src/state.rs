@@ -77,6 +77,16 @@ impl AppState {
             .await?;
         Ok(result)
     }
+
+    /// Make a raw JSON-RPC call to get runtime version at a specific block hash
+    pub async fn get_runtime_version_at_hash(
+        &self,
+        hash: &str,
+    ) -> Result<Value, subxt_rpcs::Error> {
+        self.rpc_client
+            .request("state_getRuntimeVersion", rpc_params![hash])
+            .await
+    }
 }
 
 /// Query the chain to get runtime information via RPC
