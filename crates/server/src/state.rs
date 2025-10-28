@@ -1,7 +1,8 @@
 use config::{ChainType, SidecarConfig};
+use serde_json::Value;
 use std::sync::Arc;
 use subxt_historic::{OnlineClient, SubstrateConfig};
-use subxt_rpcs::{LegacyRpcMethods, RpcClient};
+use subxt_rpcs::{LegacyRpcMethods, RpcClient, rpc_params};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -41,6 +42,7 @@ pub struct AppState {
     pub client: Arc<OnlineClient<SubstrateConfig>>,
     #[allow(dead_code)] // Will be used when implementing endpoints
     pub legacy_rpc: Arc<LegacyRpcMethods<SubstrateConfig>>,
+    pub rpc_client: Arc<RpcClient>,
     pub chain_info: ChainInfo,
 }
 
@@ -61,15 +63,46 @@ impl AppState {
 
         let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
         let subxt_config = SubstrateConfig::new();
-        let client = OnlineClient::from_rpc_client(subxt_config, rpc_client);
+        let client = OnlineClient::from_rpc_client(subxt_config, rpc_client.clone());
         let chain_info = get_chain_info(&legacy_rpc).await?;
 
         Ok(Self {
             config,
             client: Arc::new(client),
             legacy_rpc: Arc::new(legacy_rpc),
+            rpc_client: Arc::new(rpc_client),
             chain_info,
         })
+    }
+
+    /// Make a raw JSON-RPC call to get a header and return the result as a Value
+    /// This is needed because subxt-historic's RpcConfig has Header = ()
+    pub async fn get_header_json(&self, hash: &str) -> Result<Value, subxt_rpcs::Error> {
+        self.rpc_client
+            .request("chain_getHeader", rpc_params![hash])
+            .await
+    }
+
+    /// Make a raw JSON-RPC call to get a block hash at a specific block number
+    pub async fn get_block_hash_at_number(
+        &self,
+        number: u64,
+    ) -> Result<Option<String>, subxt_rpcs::Error> {
+        let result: Option<String> = self
+            .rpc_client
+            .request("chain_getBlockHash", rpc_params![number])
+            .await?;
+        Ok(result)
+    }
+
+    /// Make a raw JSON-RPC call to get runtime version at a specific block hash
+    pub async fn get_runtime_version_at_hash(
+        &self,
+        hash: &str,
+    ) -> Result<Value, subxt_rpcs::Error> {
+        self.rpc_client
+            .request("state_getRuntimeVersion", rpc_params![hash])
+            .await
     }
 }
 

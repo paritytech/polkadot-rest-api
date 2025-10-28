@@ -23,6 +23,8 @@ socket2 = "0.6"
 config = { path = "../config" }
 subxt-historic = { version = "0.0.4" }
 subxt-rpcs = { version = "0.44.0" }
+primitive-types = "0.13"
+rustc-hex = "2.1"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
