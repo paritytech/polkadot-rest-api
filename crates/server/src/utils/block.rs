@@ -167,3 +167,269 @@ pub async fn resolve_block(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use primitive_types::H256;
+    use std::str::FromStr;
+
+    // ===== BlockId::from_str tests =====
+
+    #[test]
+    fn test_blockid_parse_valid_hash() {
+        let hash_str = "0x1234567890123456789012345678901234567890123456789012345678901234";
+        let result = BlockId::from_str(hash_str);
+
+        assert!(result.is_ok());
+        match result.unwrap() {
+            BlockId::Hash(h) => {
+                assert_eq!(format!("{:#x}", h), hash_str);
+            }
+            BlockId::Number(_) => panic!("Expected Hash variant"),
+        }
+    }
+
+    #[test]
+    fn test_blockid_parse_valid_number() {
+        let result = BlockId::from_str("12345");
+
+        assert!(result.is_ok());
+        match result.unwrap() {
+            BlockId::Number(n) => assert_eq!(n, 12345),
+            BlockId::Hash(_) => panic!("Expected Number variant"),
+        }
+    }
+
+    #[test]
+    fn test_blockid_parse_zero() {
+        let result = BlockId::from_str("0");
+
+        assert!(result.is_ok());
+        match result.unwrap() {
+            BlockId::Number(n) => assert_eq!(n, 0),
+            BlockId::Hash(_) => panic!("Expected Number variant"),
+        }
+    }
+
+    #[test]
+    fn test_blockid_parse_invalid_hash_too_short() {
+        let hash_str = "0x1234"; // Too short
+        let result = BlockId::from_str(hash_str);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockIdParseError::InvalidHash(_)
+        ));
+    }
+
+    #[test]
+    fn test_blockid_parse_invalid_hash_too_long() {
+        let hash_str = "0x12345678901234567890123456789012345678901234567890123456789012345"; // Too long (65 hex chars)
+        let result = BlockId::from_str(hash_str);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockIdParseError::InvalidHash(_)
+        ));
+    }
+
+    #[test]
+    fn test_blockid_parse_invalid_hash_non_hex() {
+        let hash_str = "0xGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG";
+        let result = BlockId::from_str(hash_str);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockIdParseError::InvalidHash(_)
+        ));
+    }
+
+    #[test]
+    fn test_blockid_parse_invalid_number() {
+        let result = BlockId::from_str("not_a_number");
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockIdParseError::InvalidNumber(_)
+        ));
+    }
+
+    #[test]
+    fn test_blockid_parse_invalid_negative_number() {
+        let result = BlockId::from_str("-123");
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockIdParseError::InvalidNumber(_)
+        ));
+    }
+
+    #[test]
+    fn test_blockid_parse_empty_string() {
+        let result = BlockId::from_str("");
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockIdParseError::InvalidNumber(_)
+        ));
+    }
+
+    // ===== resolve_block tests =====
+
+    use crate::state::AppState;
+    use config::SidecarConfig;
+    use serde_json::json;
+    use std::sync::Arc;
+    use subxt_rpcs::client::mock_rpc_client::Json;
+    use subxt_rpcs::client::{MockRpcClient, RpcClient};
+
+    /// Helper to create a test AppState with mocked RPC responses
+    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+        let config = SidecarConfig::default();
+        let rpc_client = Arc::new(RpcClient::new(mock_client));
+        let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
+        let chain_info = crate::state::ChainInfo {
+            chain_type: config::ChainType::Relay,
+            spec_name: "test".to_string(),
+            spec_version: 1,
+        };
+
+        AppState {
+            config,
+            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
+                subxt_historic::SubstrateConfig::new(),
+                (*rpc_client).clone(),
+            )),
+            legacy_rpc,
+            rpc_client,
+            chain_info,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_block_finalized() {
+        let mock_client = MockRpcClient::builder()
+            .method_handler("chain_getFinalizedHead", async |_params| {
+                Json("0x1234567890123456789012345678901234567890123456789012345678901234")
+            })
+            .method_handler("chain_getHeader", async |_params| {
+                Json(json!({
+                    "number": "0x2a", // Block 42
+                    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "stateRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "extrinsicsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000"
+                }))
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+
+        let result = resolve_block(&state, None).await;
+        assert!(result.is_ok());
+
+        let resolved = result.unwrap();
+        assert_eq!(resolved.number, 42);
+        assert!(resolved.hash.starts_with("0x"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_block_by_hash() {
+        let test_hash = "0xabcdef1234567890123456789012345678901234567890123456789012345678";
+
+        let mock_client = MockRpcClient::builder()
+            .method_handler("chain_getHeader", async |_params| {
+                Json(json!({
+                    "number": "0x64", // Block 100
+                    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "stateRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "extrinsicsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000"
+                }))
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+
+        let block_id = BlockId::Hash(H256::from_str(test_hash).unwrap());
+        let result = resolve_block(&state, Some(block_id)).await;
+
+        assert!(result.is_ok());
+
+        let resolved = result.unwrap();
+        assert_eq!(resolved.number, 100);
+        assert_eq!(resolved.hash, test_hash);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_block_by_number() {
+        let test_number = 200u64;
+        let expected_hash = "0x9876543210987654321098765432109876543210987654321098765432109876";
+
+        let mock_client = MockRpcClient::builder()
+            .method_handler("chain_getBlockHash", async |_params| {
+                Json("0x9876543210987654321098765432109876543210987654321098765432109876")
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+
+        let block_id = BlockId::Number(test_number);
+        let result = resolve_block(&state, Some(block_id)).await;
+
+        assert!(result.is_ok());
+
+        let resolved = result.unwrap();
+        assert_eq!(resolved.number, test_number);
+        assert_eq!(resolved.hash, expected_hash);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_block_hash_not_found() {
+        let test_hash = "0xabcdef1234567890123456789012345678901234567890123456789012345678";
+
+        let mock_client = MockRpcClient::builder()
+            .method_handler("chain_getHeader", async |_params| {
+                Json(serde_json::Value::Null) // Block doesn't exist
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+
+        let block_id = BlockId::Hash(H256::from_str(test_hash).unwrap());
+        let result = resolve_block(&state, Some(block_id)).await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockResolveError::NotFound(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_block_number_not_found() {
+        let test_number = 999999u64;
+
+        let mock_client = MockRpcClient::builder()
+            .method_handler("chain_getBlockHash", async |_params| {
+                Json(serde_json::Value::Null) // Block doesn't exist
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+
+        let block_id = BlockId::Number(test_number);
+        let result = resolve_block(&state, Some(block_id)).await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockResolveError::NotFound(_)
+        ));
+    }
+}
