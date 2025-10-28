@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1761662059580,
+  "lastUpdate": 1761665483969,
   "repoUrl": "https://github.com/paritytech/polkadot-rest-api",
   "entries": {
     "Benchmark": [
@@ -470,6 +470,56 @@ window.BENCHMARK_DATA = {
           {
             "name": "health - Throughput",
             "value": 44976.65,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "47201679+TarikGul@users.noreply.github.com",
+            "name": "Tarik Gul",
+            "username": "TarikGul"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "44d3f2f9fdd04eb858b5b0688ca709021df46663",
+          "message": "test: add tests for `utils/block.rs`, and `get_spec` with subxt mock rpc client. (#22)\n\n* Add mock rpc client from subxt\n\n* Add tests for get_spec\n\n* add tests for util blocks",
+          "timestamp": "2025-10-28T11:26:44-04:00",
+          "tree_id": "8878d5b8690c0ef4fd3d5ccd299297bde7c59d17",
+          "url": "https://github.com/paritytech/polkadot-rest-api/commit/44d3f2f9fdd04eb858b5b0688ca709021df46663"
+        },
+        "date": 1761665483003,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "health - Avg Latency",
+            "value": 1.06,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P50 Latency",
+            "value": 0.93,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P90 Latency",
+            "value": 2.02,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P99 Latency",
+            "value": 3.25,
+            "unit": "ms"
+          },
+          {
+            "name": "health - Throughput",
+            "value": 44507.5,
             "unit": "req/sec",
             "extra": "biggerIsBetter"
           }
