@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1761325228809,
+  "lastUpdate": 1761657370884,
   "repoUrl": "https://github.com/paritytech/polkadot-rest-api",
   "entries": {
     "Benchmark": [
@@ -374,6 +374,56 @@ window.BENCHMARK_DATA = {
           {
             "name": "health - Throughput",
             "value": 42965.76,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "47201679+TarikGul@users.noreply.github.com",
+            "name": "Tarik Gul",
+            "username": "TarikGul"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "bcc9ff09f9a0b7ee547f5e37a59799f37141622c",
+          "message": "feat: Add resolve_block, and `/runtime/node` endpoint (#21)\n\n* Initial at logic for controllers\n\n* Add finished at logic\n\n* Cleanup code, and keep it dry\n\n* Add raw json rpc calls to state\n\n* export utils\n\n* Add /runtime/node endpoint\n\n* Fix error handling to be native errors\n\n* Remove comment\n\n* Adjust errors in BlockResolveError\n\n* Update BlockId",
+          "timestamp": "2025-10-28T09:11:33-04:00",
+          "tree_id": "74d0314eda60dafb47c026e42af14977ba24307e",
+          "url": "https://github.com/paritytech/polkadot-rest-api/commit/bcc9ff09f9a0b7ee547f5e37a59799f37141622c"
+        },
+        "date": 1761657370182,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "health - Avg Latency",
+            "value": 1.05,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P50 Latency",
+            "value": 0.97,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P90 Latency",
+            "value": 1.95,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P99 Latency",
+            "value": 3.14,
+            "unit": "ms"
+          },
+          {
+            "name": "health - Throughput",
+            "value": 44623.62,
             "unit": "req/sec",
             "extra": "biggerIsBetter"
           }
