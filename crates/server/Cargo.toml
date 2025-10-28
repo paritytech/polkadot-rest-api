@@ -29,3 +29,4 @@ rustc-hex = "2.1"
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+subxt-rpcs = { version = "0.44.0", features = ["mock-rpc-client"] }
