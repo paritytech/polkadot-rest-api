@@ -62,6 +62,80 @@
           "timeout": "360s"
         }
       ]
+    },
+    "runtime": {
+      "endpoint": "/v1/runtime/spec",
+      "scenarios": [
+        {
+          "name": "light_load",
+          "description": "Light load testing - suitable for development and CI",
+          "threads": 2,
+          "connections": 10,
+          "duration": "30s",
+          "timeout": "60s"
+        },
+        {
+          "name": "medium_load",
+          "description": "Medium load testing - balanced performance test",
+          "threads": 4,
+          "connections": 50,
+          "duration": "60s",
+          "timeout": "120s"
+        },
+        {
+          "name": "heavy_load",
+          "description": "Heavy load testing - high performance test",
+          "threads": 8,
+          "connections": 100,
+          "duration": "120s",
+          "timeout": "180s"
+        },
+        {
+          "name": "stress_test",
+          "description": "Stress testing - maximum load test",
+          "threads": 12,
+          "connections": 200,
+          "duration": "300s",
+          "timeout": "360s"
+        }
+      ]
+    },
+    "version": {
+      "endpoint": "/v1/version",
+      "scenarios": [
+        {
+          "name": "light_load",
+          "description": "Light load testing - suitable for development and CI",
+          "threads": 2,
+          "connections": 10,
+          "duration": "30s",
+          "timeout": "60s"
+        },
+        {
+          "name": "medium_load",
+          "description": "Medium load testing - balanced performance test",
+          "threads": 4,
+          "connections": 50,
+          "duration": "60s",
+          "timeout": "120s"
+        },
+        {
+          "name": "heavy_load",
+          "description": "Heavy load testing - high performance test",
+          "threads": 8,
+          "connections": 100,
+          "duration": "120s",
+          "timeout": "180s"
+        },
+        {
+          "name": "stress_test",
+          "description": "Stress testing - maximum load test",
+          "threads": 12,
+          "connections": 200,
+          "duration": "300s",
+          "timeout": "360s"
+        }
+      ]
     }
   }
 }
