@@ -17,6 +17,12 @@ pub enum GetBlockError {
 
     #[error("Block resolution failed")]
     BlockResolveFailed(#[from] crate::utils::BlockResolveError),
+
+    #[error("Failed to get block header")]
+    HeaderFetchFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Header field missing: {0}")]
+    HeaderFieldMissing(String),
 }
 
 impl IntoResponse for GetBlockError {
@@ -24,6 +30,12 @@ impl IntoResponse for GetBlockError {
         let (status, message) = match self {
             GetBlockError::InvalidBlockParam(_) | GetBlockError::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockError::HeaderFetchFailed(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            GetBlockError::HeaderFieldMissing(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
 
@@ -37,9 +49,13 @@ impl IntoResponse for GetBlockError {
 
 /// Basic block information
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BlockResponse {
     pub number: String,
     pub hash: String,
+    pub parent_hash: String,
+    pub state_root: String,
+    pub extrinsics_root: String,
     // TODO: Add more fields (extrinsics, logs, onInitialize, onFinalize, etc.)
 }
 
@@ -56,10 +72,38 @@ pub async fn get_block(
     // Resolve the block
     let resolved_block = utils::resolve_block(&state, Some(block_id)).await?;
 
-    // Build basic response (more fields to be added)
+    // Fetch the full header to get additional fields
+    let header_json = state
+        .get_header_json(&resolved_block.hash)
+        .await
+        .map_err(GetBlockError::HeaderFetchFailed)?;
+
+    // Extract header fields
+    let parent_hash = header_json
+        .get("parentHash")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("parentHash".to_string()))?
+        .to_string();
+
+    let state_root = header_json
+        .get("stateRoot")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("stateRoot".to_string()))?
+        .to_string();
+
+    let extrinsics_root = header_json
+        .get("extrinsicsRoot")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
+        .to_string();
+
+    // Build response
     let response = BlockResponse {
         number: resolved_block.number.to_string(),
         hash: resolved_block.hash,
+        parent_hash,
+        state_root,
+        extrinsics_root,
     };
 
     Ok(Json(response))
@@ -104,6 +148,14 @@ mod tests {
             .method_handler("chain_getBlockHash", async |_params| {
                 MockJson("0x1234567890123456789012345678901234567890123456789012345678901234")
             })
+            .method_handler("chain_getHeader", async |_params| {
+                MockJson(json!({
+                    "number": "0x64",
+                    "parentHash": "0xabcdef0000000000000000000000000000000000000000000000000000000000",
+                    "stateRoot": "0xdef0000000000000000000000000000000000000000000000000000000000000",
+                    "extrinsicsRoot": "0x1230000000000000000000000000000000000000000000000000000000000000"
+                }))
+            })
             .build();
 
         let state = create_test_state_with_mock(mock_client);
@@ -117,6 +169,18 @@ mod tests {
             response.hash,
             "0x1234567890123456789012345678901234567890123456789012345678901234"
         );
+        assert_eq!(
+            response.parent_hash,
+            "0xabcdef0000000000000000000000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            response.state_root,
+            "0xdef0000000000000000000000000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            response.extrinsics_root,
+            "0x1230000000000000000000000000000000000000000000000000000000000000"
+        );
     }
 
     #[tokio::test]
@@ -127,6 +191,9 @@ mod tests {
             .method_handler("chain_getHeader", async |_params| {
                 MockJson(json!({
                     "number": "0x64", // Block 100
+                    "parentHash": "0x9999990000000000000000000000000000000000000000000000000000000000",
+                    "stateRoot": "0x8888880000000000000000000000000000000000000000000000000000000000",
+                    "extrinsicsRoot": "0x7777770000000000000000000000000000000000000000000000000000000000"
                 }))
             })
             .build();
@@ -139,6 +206,18 @@ mod tests {
         let response = result.unwrap().0;
         assert_eq!(response.number, "100");
         assert_eq!(response.hash, test_hash);
+        assert_eq!(
+            response.parent_hash,
+            "0x9999990000000000000000000000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            response.state_root,
+            "0x8888880000000000000000000000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            response.extrinsics_root,
+            "0x7777770000000000000000000000000000000000000000000000000000000000"
+        );
     }
 
     #[tokio::test]
