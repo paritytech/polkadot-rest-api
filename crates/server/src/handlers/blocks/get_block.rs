@@ -7,7 +7,7 @@ use axum::{
     response::IntoResponse,
 };
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{Value, json};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -47,6 +47,97 @@ impl IntoResponse for GetBlockError {
     }
 }
 
+/// Represents a decoded digest log entry
+#[derive(Debug, Serialize)]
+pub struct DigestLog {
+    #[serde(rename = "type")]
+    pub log_type: String,
+    pub index: u32,
+    pub value: Value,
+}
+
+/// Extract author ID from block header digest logs
+///
+/// TODO: Implement author extraction using validator set and consensus-specific logic.
+/// This requires:
+/// 1. Fetching the validator set for the block
+/// 2. Using consensus-specific logic (BABE/Aura/Nimbus) to map PreRuntime data to a validator
+/// 3. Handling different consensus mechanisms
+///
+/// For now, this always returns None.
+fn _extract_author_from_digest(_header_json: &Value) -> Option<String> {
+    None
+}
+
+/// Decode digest logs from hex-encoded strings in the JSON response
+/// Each hex string is a SCALE-encoded DigestItem
+fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
+    let logs = match header_json
+        .get("digest")
+        .and_then(|d| d.get("logs"))
+        .and_then(|l| l.as_array())
+    {
+        Some(logs) => logs,
+        None => return Vec::new(),
+    };
+
+    logs.iter()
+        .enumerate()
+        .filter_map(|(index, log_hex)| {
+            let hex_str = log_hex.as_str()?;
+            let hex_data = hex_str.strip_prefix("0x")?;
+            let bytes = hex::decode(hex_data).ok()?;
+
+            if bytes.is_empty() {
+                return None;
+            }
+
+            // The first byte is the digest item type discriminant
+            let discriminant = bytes[0];
+            let data = &bytes[1..];
+
+            let (log_type, value) = match discriminant {
+                // PreRuntime: [consensus_engine_id (4 bytes), data]
+                6 if data.len() >= 4 => {
+                    let engine_id = String::from_utf8_lossy(&data[0..4]).to_string();
+                    let payload = format!("0x{}", hex::encode(&data[4..]));
+                    ("PreRuntime".to_string(), json!([engine_id, payload]))
+                }
+                // Consensus: [consensus_engine_id (4 bytes), data]
+                4 if data.len() >= 4 => {
+                    let engine_id = String::from_utf8_lossy(&data[0..4]).to_string();
+                    let payload = format!("0x{}", hex::encode(&data[4..]));
+                    ("Consensus".to_string(), json!([engine_id, payload]))
+                }
+                // Seal: [consensus_engine_id (4 bytes), data]
+                5 if data.len() >= 4 => {
+                    let engine_id = String::from_utf8_lossy(&data[0..4]).to_string();
+                    let payload = format!("0x{}", hex::encode(&data[4..]));
+                    ("Seal".to_string(), json!([engine_id, payload]))
+                }
+                // Other
+                0 => (
+                    "Other".to_string(),
+                    json!(format!("0x{}", hex::encode(data))),
+                ),
+                // RuntimeEnvironmentUpdated
+                8 => ("RuntimeEnvironmentUpdated".to_string(), Value::Null),
+                // Unknown/Other discriminants
+                _ => (
+                    "Other".to_string(),
+                    json!(format!("0x{}", hex::encode(bytes))),
+                ),
+            };
+
+            Some(DigestLog {
+                log_type,
+                index: index as u32,
+                value,
+            })
+        })
+        .collect()
+}
+
 /// Basic block information
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,7 +147,10 @@ pub struct BlockResponse {
     pub parent_hash: String,
     pub state_root: String,
     pub extrinsics_root: String,
-    // TODO: Add more fields (extrinsics, logs, onInitialize, onFinalize, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author_id: Option<String>,
+    pub logs: Vec<DigestLog>,
+    // TODO: Add more fields (extrinsics, onInitialize, onFinalize, etc.)
 }
 
 /// Handler for GET /blocks/{blockId}
@@ -72,7 +166,7 @@ pub async fn get_block(
     // Resolve the block
     let resolved_block = utils::resolve_block(&state, Some(block_id)).await?;
 
-    // Fetch the full header to get additional fields
+    // Fetch the header JSON
     let header_json = state
         .get_header_json(&resolved_block.hash)
         .await
@@ -97,6 +191,13 @@ pub async fn get_block(
         .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
         .to_string();
 
+    // TODO: Extract author from digest logs requires validator set and consensus logic
+    // For now, always return None
+    let author_id = None;
+
+    // Decode digest logs from hex strings into structured format
+    let logs = decode_digest_logs(&header_json);
+
     // Build response
     let response = BlockResponse {
         number: resolved_block.number.to_string(),
@@ -104,6 +205,8 @@ pub async fn get_block(
         parent_hash,
         state_root,
         extrinsics_root,
+        author_id,
+        logs,
     };
 
     Ok(Json(response))
@@ -153,7 +256,13 @@ mod tests {
                     "number": "0x64",
                     "parentHash": "0xabcdef0000000000000000000000000000000000000000000000000000000000",
                     "stateRoot": "0xdef0000000000000000000000000000000000000000000000000000000000000",
-                    "extrinsicsRoot": "0x1230000000000000000000000000000000000000000000000000000000000000"
+                    "extrinsicsRoot": "0x1230000000000000000000000000000000000000000000000000000000000000",
+                    "digest": {
+                        "logs": [
+                            // PreRuntime log: discriminant (6) + engine_id ("BABE") + data
+                            "0x064241424501020304"
+                        ]
+                    }
                 }))
             })
             .build();
@@ -181,6 +290,19 @@ mod tests {
             response.extrinsics_root,
             "0x1230000000000000000000000000000000000000000000000000000000000000"
         );
+        // TODO: Author extraction not yet implemented
+        assert_eq!(response.author_id, None);
+        // Verify logs are decoded
+        assert_eq!(response.logs.len(), 1);
+        assert_eq!(response.logs[0].log_type, "PreRuntime");
+        assert_eq!(response.logs[0].index, 0);
+        // Verify the engine ID is "BABE" and payload is present
+        if let Some(arr) = response.logs[0].value.as_array() {
+            assert_eq!(arr[0].as_str(), Some("BABE"));
+            assert!(arr[1].as_str().unwrap().starts_with("0x"));
+        } else {
+            panic!("Expected PreRuntime log value to be an array");
+        }
     }
 
     #[tokio::test]
@@ -193,7 +315,10 @@ mod tests {
                     "number": "0x64", // Block 100
                     "parentHash": "0x9999990000000000000000000000000000000000000000000000000000000000",
                     "stateRoot": "0x8888880000000000000000000000000000000000000000000000000000000000",
-                    "extrinsicsRoot": "0x7777770000000000000000000000000000000000000000000000000000000000"
+                    "extrinsicsRoot": "0x7777770000000000000000000000000000000000000000000000000000000000",
+                    "digest": {
+                        "logs": []
+                    }
                 }))
             })
             .build();
@@ -218,6 +343,10 @@ mod tests {
             response.extrinsics_root,
             "0x7777770000000000000000000000000000000000000000000000000000000000"
         );
+        // TODO: Author extraction not yet implemented
+        assert_eq!(response.author_id, None);
+        // Empty logs array
+        assert_eq!(response.logs.len(), 0);
     }
 
     #[tokio::test]

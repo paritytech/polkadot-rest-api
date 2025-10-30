@@ -2387,6 +2387,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "config",
+ "hex",
  "http-body-util",
  "primitive-types",
  "rolling-file",
