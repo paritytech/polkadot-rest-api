@@ -63,6 +63,50 @@ impl IntoResponse for GetBlockError {
     }
 }
 
+/// SCALE encoding discriminants for the DigestItem enum from sp_runtime::generic
+///
+/// These discriminants match the SCALE encoding of substrate's DigestItem enum.
+/// Reference: sp_runtime::generic::DigestItem
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum DigestItemDiscriminant {
+    /// ChangesTrieRoot has been removed but was 2
+    /// ChangesTrieSignal has been removed but was 3
+    Other = 0,
+    Consensus = 4,
+    Seal = 5,
+    PreRuntime = 6,
+    RuntimeEnvironmentUpdated = 8,
+}
+
+impl TryFrom<u8> for DigestItemDiscriminant {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Other),
+            4 => Ok(Self::Consensus),
+            5 => Ok(Self::Seal),
+            6 => Ok(Self::PreRuntime),
+            8 => Ok(Self::RuntimeEnvironmentUpdated),
+            _ => Err(()),
+        }
+    }
+}
+
+impl DigestItemDiscriminant {
+    /// Convert discriminant to string representation for JSON serialization
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Other => "Other",
+            Self::Consensus => "Consensus",
+            Self::Seal => "Seal",
+            Self::PreRuntime => "PreRuntime",
+            Self::RuntimeEnvironmentUpdated => "RuntimeEnvironmentUpdated",
+        }
+    }
+}
+
 /// Represents a decoded digest log entry
 #[derive(Debug, Serialize)]
 pub struct DigestLog {
@@ -140,7 +184,7 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
                     let authority_index = pre_digest.authority_index() as usize;
                     let author = validators.get(authority_index)?;
 
-                    return Some(format!("0x{}", hex::encode(author.as_ref() as &[u8])));
+                    return Some(hex_with_prefix(author.as_ref() as &[u8]));
                 }
                 AURA_ENGINE => {
                     // Aura: slot_number (u64 LE), calculate index = slot % validator_count
@@ -152,7 +196,7 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
 
                         let index = slot % validators.len();
                         let author = validators.get(index)?;
-                        return Some(format!("0x{}", hex::encode(author.as_ref() as &[u8])));
+                        return Some(hex_with_prefix(author.as_ref() as &[u8]));
                     }
                 }
                 _ => continue,
@@ -173,13 +217,33 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
                 // PoW: author is directly in payload (32-byte AccountId)
                 let payload = hex::decode(payload_hex.strip_prefix("0x")?).ok()?;
                 if payload.len() >= 32 {
-                    return Some(format!("0x{}", hex::encode(&payload[..32])));
+                    return Some(hex_with_prefix(&payload[..32]));
                 }
             }
         }
     }
 
     None
+}
+
+/// Length of consensus engine ID in digest items (e.g., "BABE", "aura", "pow_")
+const CONSENSUS_ENGINE_ID_LEN: usize = 4;
+
+/// Format bytes as hex string with "0x" prefix
+fn hex_with_prefix(data: &[u8]) -> String {
+    format!("0x{}", hex::encode(data))
+}
+
+/// Decode a consensus digest item (PreRuntime, Consensus, or Seal)
+/// Format: [consensus_engine_id (4 bytes), payload_data]
+fn decode_consensus_digest(data: &[u8]) -> Option<Value> {
+    if data.len() < CONSENSUS_ENGINE_ID_LEN {
+        return None;
+    }
+
+    let engine_id = String::from_utf8_lossy(&data[0..CONSENSUS_ENGINE_ID_LEN]).to_string();
+    let payload = hex_with_prefix(&data[CONSENSUS_ENGINE_ID_LEN..]);
+    Some(json!([engine_id, payload]))
 }
 
 /// Decode digest logs from hex-encoded strings in the JSON response
@@ -206,39 +270,30 @@ fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
             }
 
             // The first byte is the digest item type discriminant
-            let discriminant = bytes[0];
+            let discriminant_byte = bytes[0];
             let data = &bytes[1..];
 
+            // Try to parse the discriminant into a known type
+            let discriminant = DigestItemDiscriminant::try_from(discriminant_byte)
+                .unwrap_or(DigestItemDiscriminant::Other);
+
             let (log_type, value) = match discriminant {
-                // PreRuntime: [consensus_engine_id (4 bytes), data]
-                6 if data.len() >= 4 => {
-                    let engine_id = String::from_utf8_lossy(&data[0..4]).to_string();
-                    let payload = format!("0x{}", hex::encode(&data[4..]));
-                    ("PreRuntime".to_string(), json!([engine_id, payload]))
+                // Consensus-related digests: PreRuntime, Consensus, Seal
+                // All have format: [consensus_engine_id (4 bytes), payload_data]
+                DigestItemDiscriminant::PreRuntime
+                | DigestItemDiscriminant::Consensus
+                | DigestItemDiscriminant::Seal => match decode_consensus_digest(data) {
+                    Some(val) => (discriminant.as_str().to_string(), val),
+                    None => ("Other".to_string(), json!(hex_with_prefix(&bytes))),
+                },
+                // RuntimeEnvironmentUpdated has no associated data
+                DigestItemDiscriminant::RuntimeEnvironmentUpdated => {
+                    (discriminant.as_str().to_string(), Value::Null)
                 }
-                // Consensus: [consensus_engine_id (4 bytes), data]
-                4 if data.len() >= 4 => {
-                    let engine_id = String::from_utf8_lossy(&data[0..4]).to_string();
-                    let payload = format!("0x{}", hex::encode(&data[4..]));
-                    ("Consensus".to_string(), json!([engine_id, payload]))
-                }
-                // Seal: [consensus_engine_id (4 bytes), data]
-                5 if data.len() >= 4 => {
-                    let engine_id = String::from_utf8_lossy(&data[0..4]).to_string();
-                    let payload = format!("0x{}", hex::encode(&data[4..]));
-                    ("Seal".to_string(), json!([engine_id, payload]))
-                }
-                // Other
-                0 => (
-                    "Other".to_string(),
-                    json!(format!("0x{}", hex::encode(data))),
-                ),
-                // RuntimeEnvironmentUpdated
-                8 => ("RuntimeEnvironmentUpdated".to_string(), Value::Null),
-                // Unknown/Other discriminants
-                _ => (
-                    "Other".to_string(),
-                    json!(format!("0x{}", hex::encode(bytes))),
+                // Other (includes unknown discriminants that were converted to Other)
+                DigestItemDiscriminant::Other => (
+                    discriminant.as_str().to_string(),
+                    json!(hex_with_prefix(data)),
                 ),
             };
 
