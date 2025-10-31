@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1761918136023,
+  "lastUpdate": 1761918737117,
   "repoUrl": "https://github.com/paritytech/polkadot-rest-api",
   "entries": {
     "Benchmark": [
@@ -916,6 +916,108 @@ window.BENCHMARK_DATA = {
           {
             "name": "version - Throughput",
             "value": 34746.91,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "47201679+TarikGul@users.noreply.github.com",
+            "name": "Tarik Gul",
+            "username": "TarikGul"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4358dbc8b41ab2acf43009149dfe75062cac44c4",
+          "message": "feat: Add `/blocks/{blockId}` with a partial response no query params (#24)\n\n* feat: Add basis for `/block/{blockId}`\n\n* Add /v1/blocks/{blockId}\n\n* Add extrinsicRoot, stateRoot, and parentHash\n\n* Add logs and todo for authorId\n\n* Get AuthorId working\n\n* Cleanup digest items, and remove an magic numbers",
+          "timestamp": "2025-10-31T09:43:19-04:00",
+          "tree_id": "efcb4b6af75bd24d5215e19fee458a6f89ba5bbf",
+          "url": "https://github.com/paritytech/polkadot-rest-api/commit/4358dbc8b41ab2acf43009149dfe75062cac44c4"
+        },
+        "date": 1761918736429,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "health - Avg Latency",
+            "value": 1.07,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P50 Latency",
+            "value": 0.95,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P90 Latency",
+            "value": 2.03,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P99 Latency",
+            "value": 3.17,
+            "unit": "ms"
+          },
+          {
+            "name": "health - Throughput",
+            "value": 43650.47,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "runtime - Avg Latency",
+            "value": 391.64,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - P50 Latency",
+            "value": 384.17,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - P90 Latency",
+            "value": 429.23,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - P99 Latency",
+            "value": 499.68,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - Throughput",
+            "value": 122.21,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "version - Avg Latency",
+            "value": 1.32,
+            "unit": "ms"
+          },
+          {
+            "name": "version - P50 Latency",
+            "value": 1.26,
+            "unit": "ms"
+          },
+          {
+            "name": "version - P90 Latency",
+            "value": 2.21,
+            "unit": "ms"
+          },
+          {
+            "name": "version - P99 Latency",
+            "value": 3.12,
+            "unit": "ms"
+          },
+          {
+            "name": "version - Throughput",
+            "value": 34881.33,
             "unit": "req/sec",
             "extra": "biggerIsBetter"
           }
