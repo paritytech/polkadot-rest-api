@@ -26,6 +26,9 @@ subxt-rpcs = { version = "0.44.0" }
 primitive-types = "0.13"
 rustc-hex = "2.1"
 hex = "0.4"
+parity-scale-codec = { version = "3.0", features = ["derive"] }
+sp-core = "34"
+sp-consensus-babe = "0.40"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

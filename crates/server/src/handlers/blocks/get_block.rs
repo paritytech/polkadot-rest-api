@@ -8,21 +8,35 @@ use axum::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
+use sp_core::crypto::AccountId32;
+use subxt_historic::error::{OnlineClientAtBlockError, StorageEntryIsNotAPlainValue, StorageError};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum GetBlockError {
     #[error("Invalid block parameter")]
-    InvalidBlockParam(#[from] crate::utils::BlockIdParseError),
+    InvalidBlockParam(#[from] utils::BlockIdParseError),
 
     #[error("Block resolution failed")]
-    BlockResolveFailed(#[from] crate::utils::BlockResolveError),
+    BlockResolveFailed(#[from] utils::BlockResolveError),
 
     #[error("Failed to get block header")]
     HeaderFetchFailed(#[source] subxt_rpcs::Error),
 
     #[error("Header field missing: {0}")]
     HeaderFieldMissing(String),
+
+    #[error("Failed to get client at block")]
+    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+
+    #[error("Failed to fetch chain storage")]
+    StorageFetchFailed(#[from] StorageError),
+
+    #[error("Storage entry is not a plain value")]
+    StorageNotPlainValue(#[from] StorageEntryIsNotAPlainValue),
+
+    #[error("Failed to decode storage value")]
+    StorageDecodeFailed(#[from] parity_scale_codec::Error),
 }
 
 impl IntoResponse for GetBlockError {
@@ -31,10 +45,12 @@ impl IntoResponse for GetBlockError {
             GetBlockError::InvalidBlockParam(_) | GetBlockError::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
-            GetBlockError::HeaderFetchFailed(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            GetBlockError::HeaderFieldMissing(_) => {
+            GetBlockError::HeaderFetchFailed(_)
+            | GetBlockError::HeaderFieldMissing(_)
+            | GetBlockError::ClientAtBlockFailed(_)
+            | GetBlockError::StorageFetchFailed(_)
+            | GetBlockError::StorageNotPlainValue(_)
+            | GetBlockError::StorageDecodeFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -56,16 +72,113 @@ pub struct DigestLog {
     pub value: Value,
 }
 
-/// Extract author ID from block header digest logs
-///
-/// TODO: Implement author extraction using validator set and consensus-specific logic.
-/// This requires:
-/// 1. Fetching the validator set for the block
-/// 2. Using consensus-specific logic (BABE/Aura/Nimbus) to map PreRuntime data to a validator
-/// 3. Handling different consensus mechanisms
-///
-/// For now, this always returns None.
-fn _extract_author_from_digest(_header_json: &Value) -> Option<String> {
+/// Fetch validator set from chain state at a specific block
+async fn get_validators_at_block(
+    state: &AppState,
+    block_number: u64,
+) -> Result<Vec<AccountId32>, GetBlockError> {
+    use parity_scale_codec::Decode;
+
+    let client_at_block = state.client.at(block_number).await?;
+    let storage_entry = client_at_block.storage().entry("Session", "Validators")?;
+    let plain_entry = storage_entry.into_plain()?;
+    let validators_value = plain_entry.fetch().await?.ok_or_else(|| {
+        // Use the parity_scale_codec::Error for missing validators which will be converted to StorageDecodeFailed
+        parity_scale_codec::Error::from("validators storage not found")
+    })?;
+    let raw_bytes = validators_value.into_bytes();
+    let validators_raw: Vec<[u8; 32]> = Vec::<[u8; 32]>::decode(&mut &raw_bytes[..])?;
+    let validators: Vec<AccountId32> = validators_raw.into_iter().map(AccountId32::from).collect();
+
+    if validators.is_empty() {
+        return Err(parity_scale_codec::Error::from("no validators found in storage").into());
+    }
+
+    Ok(validators)
+}
+
+/// Extract author ID from block header digest logs by mapping authority index to validator
+async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog]) -> Option<String> {
+    use parity_scale_codec::{Compact, Decode};
+    use sp_consensus_babe::digests::PreDigest;
+
+    const BABE_ENGINE: &[u8] = b"BABE";
+    const AURA_ENGINE: &[u8] = b"aura";
+    const POW_ENGINE: &[u8] = b"pow_";
+
+    // Fetch validators once for this block
+    let validators = match get_validators_at_block(state, block_number).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::debug!("Failed to get validators for block {}: {}", block_number, e);
+            return None;
+        }
+    };
+
+    // Check PreRuntime logs for BABE/Aura
+    for log in logs {
+        if log.log_type == "PreRuntime"
+            && let Some(arr) = log.value.as_array()
+            && arr.len() >= 2
+        {
+            let engine_id = arr[0].as_str()?;
+            let payload_hex = arr[1].as_str()?;
+            let payload = hex::decode(payload_hex.strip_prefix("0x")?).ok()?;
+
+            match engine_id.as_bytes() {
+                BABE_ENGINE => {
+                    if payload.is_empty() {
+                        continue;
+                    }
+
+                    // The payload is wrapped in a compact-encoded Vec<u8>, so we need to skip the length prefix
+                    let mut cursor = &payload[..];
+                    // Decode and skip the length prefix
+                    let _length = Compact::<u32>::decode(&mut cursor).ok()?;
+                    // Now decode the PreDigest from the remaining bytes
+                    let pre_digest = PreDigest::decode(&mut cursor).ok()?;
+                    let authority_index = pre_digest.authority_index() as usize;
+                    let author = validators.get(authority_index)?;
+
+                    return Some(format!("0x{}", hex::encode(author.as_ref() as &[u8])));
+                }
+                AURA_ENGINE => {
+                    // Aura: slot_number (u64 LE), calculate index = slot % validator_count
+                    if payload.len() >= 8 {
+                        let slot = u64::from_le_bytes([
+                            payload[0], payload[1], payload[2], payload[3], payload[4], payload[5],
+                            payload[6], payload[7],
+                        ]) as usize;
+
+                        let index = slot % validators.len();
+                        let author = validators.get(index)?;
+                        return Some(format!("0x{}", hex::encode(author.as_ref() as &[u8])));
+                    }
+                }
+                _ => continue,
+            }
+        }
+    }
+
+    // Check Consensus logs for PoW
+    for log in logs {
+        if log.log_type == "Consensus"
+            && let Some(arr) = log.value.as_array()
+            && arr.len() >= 2
+        {
+            let engine_id = arr[0].as_str()?;
+            let payload_hex = arr[1].as_str()?;
+
+            if engine_id.as_bytes() == POW_ENGINE {
+                // PoW: author is directly in payload (32-byte AccountId)
+                let payload = hex::decode(payload_hex.strip_prefix("0x")?).ok()?;
+                if payload.len() >= 32 {
+                    return Some(format!("0x{}", hex::encode(&payload[..32])));
+                }
+            }
+        }
+    }
+
     None
 }
 
@@ -191,12 +304,11 @@ pub async fn get_block(
         .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
         .to_string();
 
-    // TODO: Extract author from digest logs requires validator set and consensus logic
-    // For now, always return None
-    let author_id = None;
-
     // Decode digest logs from hex strings into structured format
     let logs = decode_digest_logs(&header_json);
+
+    // Extract author from digest logs by mapping authority index to validator
+    let author_id = extract_author(&state, resolved_block.number, &logs).await;
 
     // Build response
     let response = BlockResponse {
@@ -247,6 +359,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_block_by_number() {
+        // Note: We don't mock state_getStorage here, so author_id will be None
+        // Full author extraction is tested against live chain
         let mock_client = MockRpcClient::builder()
             .method_handler("chain_getBlockHash", async |_params| {
                 MockJson("0x1234567890123456789012345678901234567890123456789012345678901234")
@@ -259,8 +373,8 @@ mod tests {
                     "extrinsicsRoot": "0x1230000000000000000000000000000000000000000000000000000000000000",
                     "digest": {
                         "logs": [
-                            // PreRuntime log: discriminant (6) + engine_id ("BABE") + data
-                            "0x064241424501020304"
+                            // PreRuntime log: discriminant (6) + engine_id ("BABE") + variant (01) + authority_index (03000000 = 3 in LE)
+                            "0x06424142450103000000"
                         ]
                     }
                 }))
@@ -290,7 +404,7 @@ mod tests {
             response.extrinsics_root,
             "0x1230000000000000000000000000000000000000000000000000000000000000"
         );
-        // TODO: Author extraction not yet implemented
+        // Author extraction requires validators from chain state - tested with live chain
         assert_eq!(response.author_id, None);
         // Verify logs are decoded
         assert_eq!(response.logs.len(), 1);
@@ -343,7 +457,7 @@ mod tests {
             response.extrinsics_root,
             "0x7777770000000000000000000000000000000000000000000000000000000000"
         );
-        // TODO: Author extraction not yet implemented
+        // No logs means no author can be extracted
         assert_eq!(response.author_id, None);
         // Empty logs array
         assert_eq!(response.logs.len(), 0);
