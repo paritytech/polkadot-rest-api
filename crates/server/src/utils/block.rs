@@ -1,0 +1,435 @@
+use crate::state::AppState;
+use primitive_types::H256;
+use std::str::FromStr;
+use thiserror::Error;
+
+/// Represents a block identifier that can be either a hash or a number
+#[derive(Debug, Clone)]
+pub enum BlockId {
+    /// Block hash (32 bytes)
+    Hash(H256),
+    /// Block number
+    Number(u64),
+}
+
+/// Error type for parsing BlockId from string
+#[derive(Debug, Error)]
+pub enum BlockIdParseError {
+    #[error("Invalid block number")]
+    InvalidNumber(#[source] std::num::ParseIntError),
+
+    #[error("Invalid block hash format")]
+    InvalidHash(#[source] rustc_hex::FromHexError),
+}
+
+impl FromStr for BlockId {
+    type Err = BlockIdParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Try to parse as H256 first (starts with "0x")
+        if s.starts_with("0x") {
+            H256::from_str(s)
+                .map(BlockId::Hash)
+                .map_err(BlockIdParseError::InvalidHash)
+        } else {
+            // Otherwise try to parse as block number
+            s.parse::<u64>()
+                .map(BlockId::Number)
+                .map_err(BlockIdParseError::InvalidNumber)
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum BlockResolveError {
+    #[error("Block not found: {0}")]
+    NotFound(String),
+
+    #[error("Failed to get finalized head")]
+    FinalizedHeadFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Failed to get block hash")]
+    BlockHashFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Failed to get block header")]
+    BlockHeaderFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Block number not found in header")]
+    BlockNumberNotFound,
+
+    #[error("Failed to parse block number from header")]
+    BlockNumberParseFailed(#[source] std::num::ParseIntError),
+
+    #[error("RPC error")]
+    RpcError(#[source] subxt_rpcs::Error),
+}
+
+/// Represents a resolved block with both hash and number
+#[derive(Debug, Clone)]
+pub struct ResolvedBlock {
+    /// Block hash as hex string (with 0x prefix)
+    pub hash: String,
+    /// Block number
+    pub number: u64,
+}
+
+/// Helper function to get header JSON and extract block number from hash
+async fn get_block_number_from_hash(
+    state: &AppState,
+    hash: &str,
+) -> Result<u64, BlockResolveError> {
+    // Make raw RPC call to get the header data as JSON
+    // We need to use raw JSON because subxt-historic's RpcConfig has Header = ()
+    let header_json = state
+        .get_header_json(hash)
+        .await
+        .map_err(BlockResolveError::RpcError)?;
+
+    // Check if the response is null (block doesn't exist)
+    if header_json.is_null() {
+        return Err(BlockResolveError::NotFound(format!(
+            "Block with hash {} not found",
+            hash
+        )));
+    }
+
+    // Extract block number from the header JSON
+    // The response structure is: { "number": "0x..." }
+    let number_hex = header_json
+        .get("number")
+        .and_then(|v| v.as_str())
+        .ok_or(BlockResolveError::BlockNumberNotFound)?;
+
+    // Parse hex string to u64 (remove 0x prefix)
+    let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
+        .map_err(BlockResolveError::BlockNumberParseFailed)?;
+
+    Ok(number)
+}
+
+/// Resolves a block from an optional block identifier
+///
+/// # Arguments
+/// * `state` - Application state containing RPC client
+/// * `at` - Optional block identifier (hash or number)
+///
+/// # Returns
+/// * `ResolvedBlock` containing both hash and number
+///
+/// # Behavior
+/// - If `at` is `None`, returns the latest finalized block
+/// - If `at` is `BlockId::Hash`, fetches the block number for that hash
+/// - If `at` is `BlockId::Number`, fetches the block hash for that number
+pub async fn resolve_block(
+    state: &AppState,
+    at: Option<BlockId>,
+) -> Result<ResolvedBlock, BlockResolveError> {
+    match at {
+        None => {
+            // Get latest finalized block header hash
+            let hash = state
+                .legacy_rpc
+                .chain_get_finalized_head()
+                .await
+                .map_err(BlockResolveError::FinalizedHeadFailed)?;
+
+            let hash_str = format!("{:?}", hash);
+            let number = get_block_number_from_hash(state, &hash_str).await?;
+
+            Ok(ResolvedBlock {
+                hash: hash_str,
+                number,
+            })
+        }
+        Some(BlockId::Hash(hash)) => {
+            // Convert H256 to hex string for RPC call
+            let hash_str = format!("{:#x}", hash);
+
+            // Fetch block number by hash
+            let number = get_block_number_from_hash(state, &hash_str).await?;
+
+            Ok(ResolvedBlock {
+                hash: hash_str,
+                number,
+            })
+        }
+        Some(BlockId::Number(number)) => {
+            // Fetch block hash by number
+            let hash = state
+                .get_block_hash_at_number(number)
+                .await
+                .map_err(BlockResolveError::BlockHashFailed)?
+                .ok_or_else(|| {
+                    BlockResolveError::NotFound(format!("Block at height {} not found", number))
+                })?;
+
+            Ok(ResolvedBlock { hash, number })
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use primitive_types::H256;
+    use std::str::FromStr;
+
+    // ===== BlockId::from_str tests =====
+
+    #[test]
+    fn test_blockid_parse_valid_hash() {
+        let hash_str = "0x1234567890123456789012345678901234567890123456789012345678901234";
+        let result = BlockId::from_str(hash_str);
+
+        assert!(result.is_ok());
+        match result.unwrap() {
+            BlockId::Hash(h) => {
+                assert_eq!(format!("{:#x}", h), hash_str);
+            }
+            BlockId::Number(_) => panic!("Expected Hash variant"),
+        }
+    }
+
+    #[test]
+    fn test_blockid_parse_valid_number() {
+        let result = BlockId::from_str("12345");
+
+        assert!(result.is_ok());
+        match result.unwrap() {
+            BlockId::Number(n) => assert_eq!(n, 12345),
+            BlockId::Hash(_) => panic!("Expected Number variant"),
+        }
+    }
+
+    #[test]
+    fn test_blockid_parse_zero() {
+        let result = BlockId::from_str("0");
+
+        assert!(result.is_ok());
+        match result.unwrap() {
+            BlockId::Number(n) => assert_eq!(n, 0),
+            BlockId::Hash(_) => panic!("Expected Number variant"),
+        }
+    }
+
+    #[test]
+    fn test_blockid_parse_invalid_hash_too_short() {
+        let hash_str = "0x1234"; // Too short
+        let result = BlockId::from_str(hash_str);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockIdParseError::InvalidHash(_)
+        ));
+    }
+
+    #[test]
+    fn test_blockid_parse_invalid_hash_too_long() {
+        let hash_str = "0x12345678901234567890123456789012345678901234567890123456789012345"; // Too long (65 hex chars)
+        let result = BlockId::from_str(hash_str);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockIdParseError::InvalidHash(_)
+        ));
+    }
+
+    #[test]
+    fn test_blockid_parse_invalid_hash_non_hex() {
+        let hash_str = "0xGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG";
+        let result = BlockId::from_str(hash_str);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockIdParseError::InvalidHash(_)
+        ));
+    }
+
+    #[test]
+    fn test_blockid_parse_invalid_number() {
+        let result = BlockId::from_str("not_a_number");
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockIdParseError::InvalidNumber(_)
+        ));
+    }
+
+    #[test]
+    fn test_blockid_parse_invalid_negative_number() {
+        let result = BlockId::from_str("-123");
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockIdParseError::InvalidNumber(_)
+        ));
+    }
+
+    #[test]
+    fn test_blockid_parse_empty_string() {
+        let result = BlockId::from_str("");
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockIdParseError::InvalidNumber(_)
+        ));
+    }
+
+    // ===== resolve_block tests =====
+
+    use crate::state::AppState;
+    use config::SidecarConfig;
+    use serde_json::json;
+    use std::sync::Arc;
+    use subxt_rpcs::client::mock_rpc_client::Json;
+    use subxt_rpcs::client::{MockRpcClient, RpcClient};
+
+    /// Helper to create a test AppState with mocked RPC responses
+    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+        let config = SidecarConfig::default();
+        let rpc_client = Arc::new(RpcClient::new(mock_client));
+        let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
+        let chain_info = crate::state::ChainInfo {
+            chain_type: config::ChainType::Relay,
+            spec_name: "test".to_string(),
+            spec_version: 1,
+        };
+
+        AppState {
+            config,
+            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
+                subxt_historic::SubstrateConfig::new(),
+                (*rpc_client).clone(),
+            )),
+            legacy_rpc,
+            rpc_client,
+            chain_info,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_block_finalized() {
+        let mock_client = MockRpcClient::builder()
+            .method_handler("chain_getFinalizedHead", async |_params| {
+                Json("0x1234567890123456789012345678901234567890123456789012345678901234")
+            })
+            .method_handler("chain_getHeader", async |_params| {
+                Json(json!({
+                    "number": "0x2a", // Block 42
+                    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "stateRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "extrinsicsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000"
+                }))
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+
+        let result = resolve_block(&state, None).await;
+        assert!(result.is_ok());
+
+        let resolved = result.unwrap();
+        assert_eq!(resolved.number, 42);
+        assert!(resolved.hash.starts_with("0x"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_block_by_hash() {
+        let test_hash = "0xabcdef1234567890123456789012345678901234567890123456789012345678";
+
+        let mock_client = MockRpcClient::builder()
+            .method_handler("chain_getHeader", async |_params| {
+                Json(json!({
+                    "number": "0x64", // Block 100
+                    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "stateRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "extrinsicsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000"
+                }))
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+
+        let block_id = BlockId::Hash(H256::from_str(test_hash).unwrap());
+        let result = resolve_block(&state, Some(block_id)).await;
+
+        assert!(result.is_ok());
+
+        let resolved = result.unwrap();
+        assert_eq!(resolved.number, 100);
+        assert_eq!(resolved.hash, test_hash);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_block_by_number() {
+        let test_number = 200u64;
+        let expected_hash = "0x9876543210987654321098765432109876543210987654321098765432109876";
+
+        let mock_client = MockRpcClient::builder()
+            .method_handler("chain_getBlockHash", async |_params| {
+                Json("0x9876543210987654321098765432109876543210987654321098765432109876")
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+
+        let block_id = BlockId::Number(test_number);
+        let result = resolve_block(&state, Some(block_id)).await;
+
+        assert!(result.is_ok());
+
+        let resolved = result.unwrap();
+        assert_eq!(resolved.number, test_number);
+        assert_eq!(resolved.hash, expected_hash);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_block_hash_not_found() {
+        let test_hash = "0xabcdef1234567890123456789012345678901234567890123456789012345678";
+
+        let mock_client = MockRpcClient::builder()
+            .method_handler("chain_getHeader", async |_params| {
+                Json(serde_json::Value::Null) // Block doesn't exist
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+
+        let block_id = BlockId::Hash(H256::from_str(test_hash).unwrap());
+        let result = resolve_block(&state, Some(block_id)).await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockResolveError::NotFound(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_block_number_not_found() {
+        let test_number = 999999u64;
+
+        let mock_client = MockRpcClient::builder()
+            .method_handler("chain_getBlockHash", async |_params| {
+                Json(serde_json::Value::Null) // Block doesn't exist
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+
+        let block_id = BlockId::Number(test_number);
+        let result = resolve_block(&state, Some(block_id)).await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BlockResolveError::NotFound(_)
+        ));
+    }
+}
