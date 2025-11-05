@@ -1,4 +1,5 @@
 use crate::state::AppState;
+use crate::utils::compute_block_hash_from_header_json;
 use axum::{
     Json,
     extract::{Query, State},
@@ -41,13 +42,17 @@ pub enum GetBlockHeadHeaderError {
 
     #[error("Header field missing: {0}")]
     HeaderFieldMissing(String),
+
+    #[error("Failed to compute block hash: {0}")]
+    HashComputationFailed(#[from] crate::utils::HashError),
 }
 
 impl IntoResponse for GetBlockHeadHeaderError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
             GetBlockHeadHeaderError::HeaderFetchFailed(_)
-            | GetBlockHeadHeaderError::HeaderFieldMissing(_) => {
+            | GetBlockHeadHeaderError::HeaderFieldMissing(_)
+            | GetBlockHeadHeaderError::HashComputationFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -66,82 +71,59 @@ impl IntoResponse for GetBlockHeadHeaderError {
 ///
 /// Query Parameters:
 /// - `finalized` (boolean, default: true): When true, returns finalized head. When false, returns canonical head.
+///
+/// Optimizations:
+/// - Computes block hash locally from header data (saves 1 RPC call)
+/// - Reuses header data instead of fetching twice (saves 1 RPC call)
 pub async fn get_blocks_head_header(
     State(state): State<AppState>,
     Query(params): Query<BlockQueryParams>,
 ) -> Result<Json<BlockHeaderResponse>, GetBlockHeadHeaderError> {
-    // Determine which block to fetch based on finalized parameter
-    let (block_hash, block_number) = if params.finalized {
-        // Get finalized head
+    let (block_hash, header_json) = if params.finalized {
+        // Finalized head: need to get the finalized hash first
         let finalized_hash = state
             .legacy_rpc
             .chain_get_finalized_head()
             .await
             .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
 
-        // Get the header to extract block number
+        let hash_str = format!("{:?}", finalized_hash);
+
+        // Get the header for this block
         let header_json = state
-            .get_header_json(&format!("{:?}", finalized_hash))
+            .get_header_json(&hash_str)
             .await
             .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
 
-        let block_number_hex = header_json
-            .get("number")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("number".to_string()))?;
-
-        let block_number = u64::from_str_radix(
-            block_number_hex
-                .strip_prefix("0x")
-                .unwrap_or(block_number_hex),
-            16,
-        )
-        .map_err(|_| {
-            GetBlockHeadHeaderError::HeaderFieldMissing("number (invalid format)".to_string())
-        })?;
-
-        (format!("{:?}", finalized_hash), block_number)
+        (hash_str, header_json)
     } else {
-        // Get canonical head (latest block, may not be finalized)
+        // Canonical head (may not be finalized): get latest header
+        // OPTIMIZATION: This returns the header without hash, so we compute it locally
         let header_json = state
             .rpc_client
             .request::<serde_json::Value>("chain_getHeader", rpc_params![])
             .await
             .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
 
-        // Extract block number
-        let block_number_hex = header_json
-            .get("number")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("number".to_string()))?;
+        // OPTIMIZATION: Compute hash locally from header data
+        // This saves 1 RPC call (chain_getBlockHash)
+        let block_hash = compute_block_hash_from_header_json(&header_json)?;
 
-        let block_number = u64::from_str_radix(
-            block_number_hex
-                .strip_prefix("0x")
-                .unwrap_or(block_number_hex),
-            16,
-        )
+        (block_hash, header_json)
+    };
+
+    // Extract header fields from the JSON we already have
+    // OPTIMIZATION: We don't fetch the header again - we already have it!
+    let number_hex = header_json
+        .get("number")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("number".to_string()))?;
+
+    let block_number = u64::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16)
         .map_err(|_| {
             GetBlockHeadHeaderError::HeaderFieldMissing("number (invalid format)".to_string())
         })?;
 
-        // Get block hash by querying chain_getBlockHash with the block number
-        let block_hash = state
-            .rpc_client
-            .request::<String>("chain_getBlockHash", rpc_params![block_number])
-            .await
-            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
-
-        (block_hash, block_number)
-    };
-
-    // Fetch the header JSON
-    let header_json = state
-        .get_header_json(&block_hash)
-        .await
-        .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
-
-    // Extract header fields (no digest/author processing for lightweight response)
     let parent_hash = header_json
         .get("parentHash")
         .and_then(|v| v.as_str())
