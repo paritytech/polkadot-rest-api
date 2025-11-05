@@ -28,6 +28,7 @@ rustc-hex = "2.1"
 hex = "0.4"
 parity-scale-codec = { version = "3.0", features = ["derive"] }
 sp-core = "34"
+sp-runtime = "39"
 sp-consensus-babe = "0.40"
 
 [dev-dependencies]

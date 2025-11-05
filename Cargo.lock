@@ -3280,6 +3280,7 @@ dependencies = [
  "socket2",
  "sp-consensus-babe",
  "sp-core",
+ "sp-runtime",
  "subxt-historic",
  "subxt-rpcs",
  "thiserror 2.0.17",
