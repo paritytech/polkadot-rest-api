@@ -1,0 +1,14 @@
+{
+  "extrinsics": [
+    "0x280402000be07f6ee77501"
+  ],
+  "extrinsicsRoot": "0x0be6c2645bde0d08e70262b99688f3870cbd9d43333fe2592d5c3d3744e4a0ce",
+  "hash": "0xe360cc614f6de435a6e1e2598795aca7ca9dfc658b84ecf8e7139b89d7a161e3",
+  "number": "5000000",
+  "parentHash": "0x7d8e83ec7763a48d56e106d6dfcfaf317df6bd0b47807451020e5d74719b2385",
+  "spec": {
+    "specName": "unknown",
+    "specVersion": 2026
+  },
+  "stateRoot": "0x565958c31834a6597def78433707c72fc0efc4695035f335885e62901ad15bc5"
+}

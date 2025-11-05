@@ -1,0 +1,71 @@
+{
+  "chains": [
+    {
+      "name": "polkadot",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [
+        "15oF4uVJwmo4TdGW7VfQxNLavjXviFrm5aSjS4uG3jH7v3Yx",
+        "1FRMM8PEiWXYax7rpS6X4XZX1aAAxSWx1svkt5RQcNQ6YqDQ"
+      ],
+      "extra": {}
+    },
+    {
+      "name": "kusama",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [
+        "FksYiYDinzkfEeZhHpUZ8Xr5v2r3qJ2K9mP5vQ7rT4sY1xW2z",
+        "GqLzY9JkP3mN5vQ7rT4sY1xW2zFksYiYDinzkfEeZhHpU"
+      ],
+      "extra": {}
+    },
+    {
+      "name": "westend",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {}
+    },
+    {
+      "name": "asset-hub-polkadot",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {}
+    },
+    {
+      "name": "asset-hub-kusama",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {}
+    },
+    {
+      "name": "asset-hub-westend",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {}
+    },
+    {
+      "name": "moonbeam",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {}
+    }
+  ],
+  "latest_endpoints": [
+    {
+      "path": "/v1/health",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
+    },
+    {
+      "path": "/v1/version",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
+    }
+  ],
+  "historical_tests": {
+    "polkadot": [],
+    "kusama": []
+  }
+}
+
