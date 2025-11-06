@@ -107,7 +107,10 @@ pub async fn get_blocks_head_header(
 
         // OPTIMIZATION: Compute hash locally from header data
         // This saves 1 RPC call (chain_getBlockHash)
-        let block_hash = compute_block_hash_from_header_json(&header_json)?;
+        let block_hash_h256 = compute_block_hash_from_header_json(&header_json)?;
+
+        // Convert H256 to String at boundary (for JSON response)
+        let block_hash = format!("{:?}", block_hash_h256);
 
         (block_hash, header_json)
     };
