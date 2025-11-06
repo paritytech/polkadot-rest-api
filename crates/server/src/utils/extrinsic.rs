@@ -1,12 +1,62 @@
 //! Extrinsic parsing utilities
 //!
-//! This module contains utilities for parsing and extracting information from
-//! Substrate extrinsics, particularly era/mortality information.
+//! This module handles era/mortality extraction from Substrate extrinsics.
+//!
+//! ## Why Manual Parsing?
+//!
+//! Era information is encoded in the SignedExtra/TransactionExtensions section
+//! of signed extrinsics. While modern Substrate uses transaction extensions,
+//! the era data isn't always reliably exposed as a named extension through
+//! subxt's API (e.g., CheckMortality may not appear in the extensions list).
+//!
+//! To reliably extract era information, we manually parse the SCALE-encoded
+//! extrinsic bytes by navigating through the structure:
+//! 1. Version byte (signed bit | version)
+//! 2. MultiAddress (sender address - 5 variants)
+//! 3. MultiSignature (signature - 3 types: Ed25519, Sr25519, Ecdsa)
+//! 4. SignedExtra/Extensions (era is the first field here)
+//!
+//! This approach works across different Substrate versions and chain configurations.
+//!
+//! ## Functions
+//!
+//! - [`extract_era_from_extrinsic_bytes`]: Main function to extract era from raw extrinsic bytes
+//! - [`decode_era_from_bytes`]: Low-level SCALE decoder for era bytes
+//! - [`parse_era_info`]: JSON parser for era from transaction extension data
 
 use serde::Serialize;
 use serde_json::Value;
 
 /// Era information for extrinsics
+///
+/// Represents transaction mortality - whether a transaction is valid indefinitely
+/// or only for a specific number of blocks.
+///
+/// ## Mortality
+///
+/// Substrate transactions can be either immortal or mortal:
+///
+/// - **Immortal**: The transaction never expires and can be included in any future block.
+///   This is represented as `immortalEra: "0x00"`. Typically used for unsigned extrinsics
+///   (like inherents) or transactions that don't need time bounds.
+///
+/// - **Mortal**: The transaction expires after a certain number of blocks. This prevents
+///   replay attacks and helps manage the transaction pool. Represented as
+///   `mortalEra: [period, phase]` where:
+///   - `period`: Number of blocks the transaction is valid for (power of 2, e.g., 64, 128)
+///   - `phase`: Offset within the period when the transaction can be included
+///
+/// ## Example
+///
+/// ```json
+/// {
+///   "era": {
+///     "mortalEra": ["64", "19"]
+///   }
+/// }
+/// ```
+///
+/// This indicates the transaction is valid for 64 blocks, with phase 19.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EraInfo {
@@ -17,11 +67,24 @@ pub struct EraInfo {
 }
 
 /// Decode Era from SCALE bytes using sp_runtime::generic::Era
+///
+/// Decodes era information from raw SCALE-encoded bytes at the given offset.
+///
+/// # Arguments
+///
+/// * `bytes` - SCALE-encoded bytes containing era data
+/// * `offset` - Current position in bytes, will be updated after decoding
+///
+/// # Returns
+///
+/// * `Some(EraInfo)` - Successfully decoded era information
+/// * `None` - Failed to decode (insufficient bytes or invalid encoding)
 pub fn decode_era_from_bytes(bytes: &[u8], offset: &mut usize) -> Option<EraInfo> {
     use parity_scale_codec::Decode;
     use sp_runtime::generic::Era;
 
     if *offset >= bytes.len() {
+        tracing::debug!("Cannot decode era: offset {} exceeds byte length {}", offset, bytes.len());
         return None;
     }
 
@@ -50,7 +113,7 @@ pub fn decode_era_from_bytes(bytes: &[u8], offset: &mut usize) -> Option<EraInfo
             }
         }
         Err(e) => {
-            tracing::trace!("Failed to decode Era: {:?}", e);
+            tracing::warn!("Failed to decode Era from bytes at offset {}: {:?}", offset, e);
             None
         }
     }
@@ -58,14 +121,31 @@ pub fn decode_era_from_bytes(bytes: &[u8], offset: &mut usize) -> Option<EraInfo
 
 /// Extract era from raw extrinsic bytes by manually parsing SCALE encoding
 ///
-/// In a signed extrinsic, the structure is:
-/// [version:1 byte] [address:SCALE] [signature:SCALE] [extra:SCALE] [call:SCALE]
+/// This is the main function for extracting era information from Substrate extrinsics.
+/// It manually navigates through the SCALE-encoded structure to find the era field.
 ///
-/// Era is the first field in the extra/SignedExtra section
+/// # Arguments
+///
+/// * `bytes` - Raw extrinsic bytes from `extrinsic.bytes()` (without length prefix)
+///
+/// # Returns
+///
+/// * `Some(EraInfo)` - Successfully extracted era (immortal for unsigned, mortal/immortal for signed)
+/// * `None` - Parsing failed due to malformed or insufficient bytes
+///
+/// # Structure
+///
+/// For signed extrinsics, the byte structure is:
+/// ```text
+/// [version:1 byte] [address:SCALE] [signature:SCALE] [extra:SCALE] [call:SCALE]
+/// ```
+///
+/// Era is the first field in the extra/SignedExtra section.
 pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
     use parity_scale_codec::Decode;
 
     if bytes.is_empty() {
+        tracing::debug!("Cannot extract era: empty extrinsic bytes");
         return None;
     }
 
@@ -73,6 +153,7 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
     let version = bytes[0];
     if version & 0b1000_0000 == 0 {
         // Unsigned extrinsic - immortal
+        tracing::trace!("Unsigned extrinsic detected, using immortal era");
         return Some(EraInfo {
             immortal_era: Some("0x00".to_string()),
             mortal_era: None,
@@ -85,8 +166,8 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
     // Decode and skip MultiAddress enum
     let address_variant = match u8::decode(&mut cursor) {
         Ok(v) => v,
-        Err(_) => {
-            tracing::trace!("Failed to decode address variant");
+        Err(e) => {
+            tracing::warn!("Failed to decode address variant from extrinsic: {:?}", e);
             return None;
         }
     };
@@ -96,15 +177,15 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
         0x00 => {
             // Id variant - AccountId32 (32 bytes)
             if cursor.len() < 32 {
-                tracing::trace!("Not enough bytes for Id variant");
+                tracing::warn!("Insufficient bytes for Id address variant: need 32, have {}", cursor.len());
                 return None;
             }
             cursor = &cursor[32..];
         }
         0x01 => {
             // Index variant - Compact<u32>
-            if parity_scale_codec::Compact::<u32>::decode(&mut cursor).is_err() {
-                tracing::trace!("Failed to decode Index variant");
+            if let Err(e) = parity_scale_codec::Compact::<u32>::decode(&mut cursor) {
+                tracing::warn!("Failed to decode Index address variant: {:?}", e);
                 return None;
             }
         }
@@ -112,13 +193,13 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
             // Raw variant - Vec<u8> (compact length + bytes)
             let len = match parity_scale_codec::Compact::<u32>::decode(&mut cursor) {
                 Ok(l) => l.0 as usize,
-                Err(_) => {
-                    tracing::trace!("Failed to decode Raw variant length");
+                Err(e) => {
+                    tracing::warn!("Failed to decode Raw address variant length: {:?}", e);
                     return None;
                 }
             };
             if cursor.len() < len {
-                tracing::trace!("Not enough bytes for Raw variant");
+                tracing::warn!("Insufficient bytes for Raw address variant: need {}, have {}", len, cursor.len());
                 return None;
             }
             cursor = &cursor[len..];
@@ -126,7 +207,7 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
         0x03 => {
             // Address32 variant - [u8; 32]
             if cursor.len() < 32 {
-                tracing::trace!("Not enough bytes for Address32 variant");
+                tracing::warn!("Insufficient bytes for Address32 variant: need 32, have {}", cursor.len());
                 return None;
             }
             cursor = &cursor[32..];
@@ -134,13 +215,13 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
         0x04 => {
             // Address20 variant - [u8; 20]
             if cursor.len() < 20 {
-                tracing::trace!("Not enough bytes for Address20 variant");
+                tracing::warn!("Insufficient bytes for Address20 variant: need 20, have {}", cursor.len());
                 return None;
             }
             cursor = &cursor[20..];
         }
         _ => {
-            tracing::trace!("Unknown address variant: {}", address_variant);
+            tracing::warn!("Unknown address variant: 0x{:02x}", address_variant);
             return None;
         }
     }
@@ -148,8 +229,8 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
     // Decode and skip MultiSignature enum
     let sig_variant = match u8::decode(&mut cursor) {
         Ok(v) => v,
-        Err(_) => {
-            tracing::trace!("Failed to decode signature variant");
+        Err(e) => {
+            tracing::warn!("Failed to decode signature variant from extrinsic: {:?}", e);
             return None;
         }
     };
@@ -159,7 +240,7 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
         0x00 | 0x01 => {
             // Ed25519 (0x00) or Sr25519 (0x01) - both 64 bytes
             if cursor.len() < 64 {
-                tracing::trace!("Not enough bytes for Ed25519/Sr25519 signature");
+                tracing::warn!("Insufficient bytes for Ed25519/Sr25519 signature: need 64, have {}", cursor.len());
                 return None;
             }
             cursor = &cursor[64..];
@@ -167,13 +248,13 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
         0x02 => {
             // Ecdsa - 65 bytes
             if cursor.len() < 65 {
-                tracing::trace!("Not enough bytes for Ecdsa signature");
+                tracing::warn!("Insufficient bytes for Ecdsa signature: need 65, have {}", cursor.len());
                 return None;
             }
             cursor = &cursor[65..];
         }
         _ => {
-            tracing::trace!("Unknown signature variant: {}", sig_variant);
+            tracing::warn!("Unknown signature variant: 0x{:02x}", sig_variant);
             return None;
         }
     }
@@ -196,7 +277,22 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
 
 /// Parse era information from transaction extension JSON
 ///
-/// This is used when era is extracted through subxt's transaction extensions API
+/// This is a fallback parser used when era information is successfully extracted
+/// through subxt's transaction extensions API (when CheckMortality extension is present).
+///
+/// # Arguments
+///
+/// * `era_json` - JSON value containing era data from transaction extension
+///
+/// # Returns
+///
+/// `EraInfo` - Parsed era information, defaults to immortal if parsing fails
+///
+/// # Note
+///
+/// This function is less commonly used than [`extract_era_from_extrinsic_bytes`]
+/// because CheckMortality doesn't always appear in the extension list. It's kept
+/// as a fallback for cases where the extension is available.
 pub fn parse_era_info(era_json: &Value) -> EraInfo {
     // Era can be immortal (0x00) or mortal (period, phase)
     // Check if it's an object with "Mortal" or contains array with period/phase
