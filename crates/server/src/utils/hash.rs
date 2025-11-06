@@ -1,3 +1,4 @@
+use crate::types::BlockHash;
 use parity_scale_codec::{Decode, Encode};
 use sp_core::H256;
 use sp_runtime::generic::{Digest, DigestItem};
@@ -23,13 +24,11 @@ pub enum HashError {
 /// This reconstructs the SCALE-encoded header and hashes it with Blake2b-256,
 /// matching Substrate's block hash calculation.
 ///
-/// Returns `H256` for type safety and composability. Convert to string with:
-/// - `format!("{:?}", hash)` for "0x..." format
-/// - `format!("0x{}", hex::encode(hash))` for explicit hex encoding
+/// Returns `BlockHash` wrapper type with controlled string formatting.
+/// Convert to string with `hash.to_string()` or use directly in JSON responses.
 pub fn compute_block_hash_from_header_json(
     header_json: &serde_json::Value,
-) -> Result<H256, HashError> {
-    // Extract fields from JSON
+) -> Result<BlockHash, HashError> {
     let parent_hash = extract_hash(header_json, "parentHash")?;
     let number = extract_block_number(header_json, "number")?;
     let state_root = extract_hash(header_json, "stateRoot")?;
@@ -49,7 +48,7 @@ pub fn compute_block_hash_from_header_json(
     let encoded = header.encode();
     let hash = sp_core::blake2_256(&encoded);
 
-    Ok(H256::from(hash))
+    Ok(BlockHash::from(H256::from(hash)))
 }
 
 /// Extract a hash field (H256) from JSON
@@ -175,20 +174,20 @@ mod tests {
         let computed_hash = compute_block_hash_from_header_json(&header_json)
             .expect("Failed to compute hash from real Polkadot header");
 
-        // Expected hash as H256
-        let expected_hash = H256::from_slice(
+        // Expected hash as BlockHash
+        let expected_hash = BlockHash::from(H256::from_slice(
             &hex::decode("490cd542b4a40ad743183c7d1088a4fe7b1edf21e50c850b86f29e389f31c5c1")
                 .unwrap(),
-        );
+        ));
 
         assert_eq!(
             computed_hash, expected_hash,
             "Computed hash doesn't match actual Polkadot block 1,000,000 hash"
         );
 
-        // Also verify the string representation matches
+        // Verify the string representation uses to_string() (idiomatic)
         assert_eq!(
-            format!("{:?}", computed_hash),
+            computed_hash.to_string(),
             "0x490cd542b4a40ad743183c7d1088a4fe7b1edf21e50c850b86f29e389f31c5c1"
         );
     }
@@ -212,12 +211,12 @@ mod tests {
             "Should successfully compute hash for simple header"
         );
 
-        // Hash should be valid H256 (32 bytes)
+        // Hash should be valid BlockHash wrapping 32 bytes
         let hash = result.unwrap();
         assert_eq!(hash.as_bytes().len(), 32);
 
         // String representation should be a valid 0x-prefixed hex string
-        let hash_str = format!("{:?}", hash);
+        let hash_str = hash.to_string();
         assert!(hash_str.starts_with("0x"));
         assert_eq!(hash_str.len(), 66); // "0x" + 64 hex chars
     }

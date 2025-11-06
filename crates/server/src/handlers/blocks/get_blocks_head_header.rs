@@ -1,4 +1,5 @@
 use crate::state::AppState;
+use crate::types::BlockHash;
 use crate::utils::compute_block_hash_from_header_json;
 use axum::{
     Json,
@@ -80,16 +81,13 @@ pub async fn get_blocks_head_header(
     Query(params): Query<BlockQueryParams>,
 ) -> Result<Json<BlockHeaderResponse>, GetBlockHeadHeaderError> {
     let (block_hash, header_json) = if params.finalized {
-        // Finalized head: need to get the finalized hash first
         let finalized_hash = state
             .legacy_rpc
             .chain_get_finalized_head()
             .await
             .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
-
-        let hash_str = format!("{:?}", finalized_hash);
-
-        // Get the header for this block
+        let block_hash_typed = BlockHash::from(finalized_hash);
+        let hash_str = block_hash_typed.to_string();
         let header_json = state
             .get_header_json(&hash_str)
             .await
@@ -107,10 +105,8 @@ pub async fn get_blocks_head_header(
 
         // OPTIMIZATION: Compute hash locally from header data
         // This saves 1 RPC call (chain_getBlockHash)
-        let block_hash_h256 = compute_block_hash_from_header_json(&header_json)?;
-
-        // Convert H256 to String at boundary (for JSON response)
-        let block_hash = format!("{:?}", block_hash_h256);
+        let block_hash_typed = compute_block_hash_from_header_json(&header_json)?;
+        let block_hash = block_hash_typed.to_string();
 
         (block_hash, header_json)
     };
