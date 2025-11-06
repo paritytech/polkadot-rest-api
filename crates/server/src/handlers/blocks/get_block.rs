@@ -332,6 +332,16 @@ pub struct SignatureInfo {
     pub signer: String,
 }
 
+/// Era information for extrinsics
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EraInfo {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub immortal_era: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mortal_era: Option<Vec<String>>,
+}
+
 /// Extrinsic information matching sidecar format
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -341,11 +351,16 @@ pub struct ExtrinsicInfo {
     pub signature: Option<SignatureInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>,
-    pub args: Value,
+    /// Args as a JSON object where bytes are hex-encoded and large numbers are strings
+    pub args: serde_json::Map<String, Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tip: Option<String>,
     pub hash: String,
-    // TODO: Add more fields (info, events, success, paysFee)
+    /// Runtime dispatch info (empty for now, populated later with events)
+    pub info: serde_json::Map<String, Value>,
+    /// Transaction era/mortality information
+    pub era: EraInfo,
+    // TODO: Add more fields (events, success, paysFee)
 }
 
 /// Basic block information
@@ -362,6 +377,133 @@ pub struct BlockResponse {
     pub logs: Vec<DigestLog>,
     pub extrinsics: Vec<ExtrinsicInfo>,
     // TODO: Add more fields (onInitialize, onFinalize, etc.)
+}
+
+/// Parse era information from transaction extension JSON
+fn parse_era_info(era_json: &Value) -> EraInfo {
+    // Era can be immortal (0x00) or mortal (period, phase)
+    // Check if it's an object with "Mortal" or contains array with period/phase
+    if let Value::Object(map) = era_json {
+        if map.contains_key("name") {
+            if let Some(Value::String(name)) = map.get("name") {
+                if name == "Mortal" {
+                    // Extract mortal era values (period, phase)
+                    if let Some(Value::Array(values)) = map.get("values") {
+                        let mortal_values: Vec<String> = values
+                            .iter()
+                            .filter_map(|v| {
+                                if let Value::Array(arr) = v {
+                                    arr.first()
+                                        .and_then(|val| val.as_u64())
+                                        .map(|n| n.to_string())
+                                } else {
+                                    v.as_u64().map(|n| n.to_string())
+                                }
+                            })
+                            .collect();
+
+                        if !mortal_values.is_empty() {
+                            return EraInfo {
+                                immortal_era: None,
+                                mortal_era: Some(mortal_values),
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Default to immortal
+    EraInfo {
+        immortal_era: Some("0x00".to_string()),
+        mortal_era: None,
+    }
+}
+
+/// Extract a numeric value from a JSON value as a string
+/// Handles direct numbers, nested objects, or string representations
+fn extract_numeric_string(value: &Value) -> String {
+    match value {
+        // Direct number
+        Value::Number(n) => n.to_string(),
+        // Direct string
+        Value::String(s) => {
+            // Remove parentheses if present: "(23)" -> "23"
+            // This was present with Nonce values
+            s.trim_matches(|c| c == '(' || c == ')').to_string()
+        }
+        // Object - might be {"primitive": 23} or similar
+        Value::Object(map) => {
+            // Try to find a numeric field
+            if let Some(val) = map.get("primitive") {
+                return extract_numeric_string(val);
+            }
+            // Try other common field names
+            for key in ["value", "0"] {
+                if let Some(val) = map.get(key) {
+                    return extract_numeric_string(val);
+                }
+            }
+            // Fallback to "0"
+            "0".to_string()
+        }
+        // Array - take first element
+        Value::Array(arr) => {
+            if let Some(first) = arr.first() {
+                extract_numeric_string(first)
+            } else {
+                "0".to_string()
+            }
+        }
+        _ => "0".to_string(),
+    }
+}
+
+/// Convert JSON value, replacing byte arrays with hex strings and large numbers with strings recursively
+fn convert_bytes_to_hex(value: Value) -> Value {
+    match value {
+        Value::Number(n) => {
+            // Convert large numbers (> 2^53-1) to strings to avoid precision loss in JavaScript
+            if let Some(u) = n.as_u64() {
+                if u > 9007199254740991 { // 2^53 - 1 (max safe integer in JavaScript)
+                    Value::String(u.to_string())
+                } else {
+                    Value::Number(n)
+                }
+            } else if let Some(i) = n.as_i64() {
+                if i.abs() > 9007199254740991 {
+                    Value::String(i.to_string())
+                } else {
+                    Value::Number(n)
+                }
+            } else {
+                // f64 or too large - convert to string
+                Value::String(n.to_string())
+            }
+        }
+        Value::Array(arr) => {
+            // Check if this is a byte array (all elements are numbers 0-255)
+            if arr.iter().all(|v| matches!(v, Value::Number(n) if n.is_u64() && n.as_u64().unwrap() <= 255)) {
+                // Convert to hex string
+                let bytes: Vec<u8> = arr.iter()
+                    .filter_map(|v| v.as_u64().map(|n| n as u8))
+                    .collect();
+                Value::String(format!("0x{}", hex::encode(&bytes)))
+            } else {
+                // Recurse into array elements
+                Value::Array(arr.into_iter().map(convert_bytes_to_hex).collect())
+            }
+        }
+        Value::Object(mut map) => {
+            // Recurse into object values
+            for (_, v) in map.iter_mut() {
+                *v = convert_bytes_to_hex(v.clone());
+            }
+            Value::Object(map)
+        }
+        other => other,
+    }
 }
 
 /// Extract extrinsics from a block using subxt-historic
@@ -397,8 +539,8 @@ async fn extract_extrinsics(
         let method_name = extrinsic.call().name().to_string();
 
         // Extract call arguments
-        // We decode into scale_value::Value which can represent any SCALE type
-        let args = extrinsic
+        // We decode into scale_value::Composite which can represent any SCALE type
+        let args_composite = extrinsic
             .call()
             .fields()
             .decode::<scale_value::Composite<()>>()
@@ -406,10 +548,21 @@ async fn extract_extrinsics(
                 GetBlockError::ExtrinsicDecodeFailed(format!("Failed to decode args: {}", e))
             })?;
 
-        // Convert to JSON
-        let args_json = serde_json::to_value(&args).map_err(|e| {
+        // Convert to JSON using serde
+        let args_json = serde_json::to_value(&args_composite).map_err(|e| {
             GetBlockError::ExtrinsicDecodeFailed(format!("Failed to serialize args: {}", e))
         })?;
+
+        // Convert byte arrays to hex strings
+        let args_converted = convert_bytes_to_hex(args_json);
+
+        // Extract as map (should be an object from Composite)
+        let args_map = if let Value::Object(map) = args_converted {
+            map
+        } else {
+            // Fallback to empty map if not an object
+            serde_json::Map::new()
+        };
 
         // Extract signature and signer (if signed)
         let signature_info = if extrinsic.is_signed() {
@@ -428,32 +581,61 @@ async fn extract_extrinsics(
             None
         };
 
-        // Extract nonce and tip from transaction extensions (if present)
-        let (nonce, tip) = if let Some(extensions) = extrinsic.transaction_extensions() {
+        // Extract nonce, tip, and era from transaction extensions (if present)
+        let (nonce, tip, era_info) = if let Some(extensions) = extrinsic.transaction_extensions() {
             let mut nonce_value = None;
             let mut tip_value = None;
+            let mut era_value = None;
 
             for ext in extensions.iter() {
                 match ext.name() {
                     "CheckNonce" => {
-                        // Decode as a u64/u32 compact value
+                        // Decode as a u64/u32 compact value, then serialize to JSON
                         if let Ok(n) = ext.decode::<scale_value::Value>() {
-                            nonce_value = Some(n.to_string());
+                            if let Ok(json_val) = serde_json::to_value(&n) {
+                                // The value might be nested in an object, so we need to extract it
+                                nonce_value = Some(extract_numeric_string(&json_val));
+                            }
                         }
                     }
                     "ChargeTransactionPayment" => {
                         // The tip is typically a Compact<u128>
                         if let Ok(t) = ext.decode::<scale_value::Value>() {
-                            tip_value = Some(t.to_string());
+                            if let Ok(json_val) = serde_json::to_value(&t) {
+                                tip_value = Some(extract_numeric_string(&json_val));
+                            }
+                        }
+                    }
+                    "CheckMortality" => {
+                        // Era information
+                        if let Ok(e) = ext.decode::<scale_value::Value>() {
+                            if let Ok(json_val) = serde_json::to_value(&e) {
+                                era_value = Some(json_val);
+                            }
                         }
                     }
                     _ => {}
                 }
             }
 
-            (nonce_value, tip_value)
+            let era = if let Some(era_json) = era_value {
+                // Try to parse era information
+                parse_era_info(&era_json)
+            } else {
+                // Default to immortal era for signed transactions without explicit era
+                EraInfo {
+                    immortal_era: Some("0x00".to_string()),
+                    mortal_era: None,
+                }
+            };
+
+            (nonce_value, tip_value, era)
         } else {
-            (None, None)
+            // Unsigned extrinsics are immortal
+            (None, None, EraInfo {
+                immortal_era: Some("0x00".to_string()),
+                mortal_era: None,
+            })
         };
 
         // Compute extrinsic hash: Blake2-256 of raw bytes
@@ -467,9 +649,11 @@ async fn extract_extrinsics(
             },
             signature: signature_info,
             nonce,
-            args: args_json,
+            args: args_map,
             tip,
             hash,
+            info: serde_json::Map::new(), // Empty for now, populated with events later
+            era: era_info,
         });
     }
 
