@@ -84,7 +84,11 @@ pub fn decode_era_from_bytes(bytes: &[u8], offset: &mut usize) -> Option<EraInfo
     use sp_runtime::generic::Era;
 
     if *offset >= bytes.len() {
-        tracing::debug!("Cannot decode era: offset {} exceeds byte length {}", offset, bytes.len());
+        tracing::debug!(
+            "Cannot decode era: offset {} exceeds byte length {}",
+            offset,
+            bytes.len()
+        );
         return None;
     }
 
@@ -113,7 +117,11 @@ pub fn decode_era_from_bytes(bytes: &[u8], offset: &mut usize) -> Option<EraInfo
             }
         }
         Err(e) => {
-            tracing::warn!("Failed to decode Era from bytes at offset {}: {:?}", offset, e);
+            tracing::warn!(
+                "Failed to decode Era from bytes at offset {}: {:?}",
+                offset,
+                e
+            );
             None
         }
     }
@@ -177,7 +185,10 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
         0x00 => {
             // Id variant - AccountId32 (32 bytes)
             if cursor.len() < 32 {
-                tracing::warn!("Insufficient bytes for Id address variant: need 32, have {}", cursor.len());
+                tracing::warn!(
+                    "Insufficient bytes for Id address variant: need 32, have {}",
+                    cursor.len()
+                );
                 return None;
             }
             cursor = &cursor[32..];
@@ -199,7 +210,11 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
                 }
             };
             if cursor.len() < len {
-                tracing::warn!("Insufficient bytes for Raw address variant: need {}, have {}", len, cursor.len());
+                tracing::warn!(
+                    "Insufficient bytes for Raw address variant: need {}, have {}",
+                    len,
+                    cursor.len()
+                );
                 return None;
             }
             cursor = &cursor[len..];
@@ -207,7 +222,10 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
         0x03 => {
             // Address32 variant - [u8; 32]
             if cursor.len() < 32 {
-                tracing::warn!("Insufficient bytes for Address32 variant: need 32, have {}", cursor.len());
+                tracing::warn!(
+                    "Insufficient bytes for Address32 variant: need 32, have {}",
+                    cursor.len()
+                );
                 return None;
             }
             cursor = &cursor[32..];
@@ -215,7 +233,10 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
         0x04 => {
             // Address20 variant - [u8; 20]
             if cursor.len() < 20 {
-                tracing::warn!("Insufficient bytes for Address20 variant: need 20, have {}", cursor.len());
+                tracing::warn!(
+                    "Insufficient bytes for Address20 variant: need 20, have {}",
+                    cursor.len()
+                );
                 return None;
             }
             cursor = &cursor[20..];
@@ -240,7 +261,10 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
         0x00 | 0x01 => {
             // Ed25519 (0x00) or Sr25519 (0x01) - both 64 bytes
             if cursor.len() < 64 {
-                tracing::warn!("Insufficient bytes for Ed25519/Sr25519 signature: need 64, have {}", cursor.len());
+                tracing::warn!(
+                    "Insufficient bytes for Ed25519/Sr25519 signature: need 64, have {}",
+                    cursor.len()
+                );
                 return None;
             }
             cursor = &cursor[64..];
@@ -248,7 +272,10 @@ pub fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
         0x02 => {
             // Ecdsa - 65 bytes
             if cursor.len() < 65 {
-                tracing::warn!("Insufficient bytes for Ecdsa signature: need 65, have {}", cursor.len());
+                tracing::warn!(
+                    "Insufficient bytes for Ecdsa signature: need 65, have {}",
+                    cursor.len()
+                );
                 return None;
             }
             cursor = &cursor[65..];
