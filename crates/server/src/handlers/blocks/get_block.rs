@@ -379,6 +379,184 @@ pub struct BlockResponse {
     // TODO: Add more fields (onInitialize, onFinalize, etc.)
 }
 
+/// Decode Era from SCALE bytes using sp_runtime::generic::Era
+fn decode_era_from_bytes(bytes: &[u8], offset: &mut usize) -> Option<EraInfo> {
+    use parity_scale_codec::Decode;
+    use sp_runtime::generic::Era;
+
+    if *offset >= bytes.len() {
+        return None;
+    }
+
+    // Try to decode Era using the built-in SCALE decoder
+    let mut cursor = &bytes[*offset..];
+    match Era::decode(&mut cursor) {
+        Ok(era) => {
+            // Update offset based on how many bytes were consumed
+            let consumed = bytes[*offset..].len() - cursor.len();
+            *offset += consumed;
+
+            match era {
+                Era::Immortal => Some(EraInfo {
+                    immortal_era: Some("0x00".to_string()),
+                    mortal_era: None,
+                }),
+                Era::Mortal(period, phase) => {
+                    // Note: the period in Era::Mortal is the actual period (power of 2)
+                    // and phase is the quantized phase
+                    // To get the values matching sidecar, we need period and phase as-is
+                    Some(EraInfo {
+                        immortal_era: None,
+                        mortal_era: Some(vec![period.to_string(), phase.to_string()]),
+                    })
+                }
+            }
+        }
+        Err(e) => {
+            tracing::trace!("Failed to decode Era: {:?}", e);
+            None
+        }
+    }
+}
+
+/// Extract era from raw extrinsic bytes by manually parsing SCALE encoding
+///
+/// In a signed extrinsic, the structure is:
+/// [version:1 byte] [address:SCALE] [signature:SCALE] [extra:SCALE] [call:SCALE]
+///
+/// Era is the first field in the extra/SignedExtra section
+fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
+    use parity_scale_codec::Decode;
+
+    if bytes.is_empty() {
+        return None;
+    }
+
+    // First byte is version (signed bit | version)
+    let version = bytes[0];
+    if version & 0b1000_0000 == 0 {
+        // Unsigned extrinsic - immortal
+        return Some(EraInfo {
+            immortal_era: Some("0x00".to_string()),
+            mortal_era: None,
+        });
+    }
+
+    // For signed extrinsics, manually parse SCALE encoding to find era
+    let mut cursor = &bytes[1..]; // Skip version byte
+
+    // Decode and skip MultiAddress enum
+    let address_variant = match u8::decode(&mut cursor) {
+        Ok(v) => v,
+        Err(_) => {
+            tracing::trace!("Failed to decode address variant");
+            return None;
+        }
+    };
+
+    // Parse address based on variant
+    match address_variant {
+        0x00 => {
+            // Id variant - AccountId32 (32 bytes)
+            if cursor.len() < 32 {
+                tracing::trace!("Not enough bytes for Id variant");
+                return None;
+            }
+            cursor = &cursor[32..];
+        }
+        0x01 => {
+            // Index variant - Compact<u32>
+            if parity_scale_codec::Compact::<u32>::decode(&mut cursor).is_err() {
+                tracing::trace!("Failed to decode Index variant");
+                return None;
+            }
+        }
+        0x02 => {
+            // Raw variant - Vec<u8> (compact length + bytes)
+            let len = match parity_scale_codec::Compact::<u32>::decode(&mut cursor) {
+                Ok(l) => l.0 as usize,
+                Err(_) => {
+                    tracing::trace!("Failed to decode Raw variant length");
+                    return None;
+                }
+            };
+            if cursor.len() < len {
+                tracing::trace!("Not enough bytes for Raw variant");
+                return None;
+            }
+            cursor = &cursor[len..];
+        }
+        0x03 => {
+            // Address32 variant - [u8; 32]
+            if cursor.len() < 32 {
+                tracing::trace!("Not enough bytes for Address32 variant");
+                return None;
+            }
+            cursor = &cursor[32..];
+        }
+        0x04 => {
+            // Address20 variant - [u8; 20]
+            if cursor.len() < 20 {
+                tracing::trace!("Not enough bytes for Address20 variant");
+                return None;
+            }
+            cursor = &cursor[20..];
+        }
+        _ => {
+            tracing::trace!("Unknown address variant: {}", address_variant);
+            return None;
+        }
+    }
+
+    // Decode and skip MultiSignature enum
+    let sig_variant = match u8::decode(&mut cursor) {
+        Ok(v) => v,
+        Err(_) => {
+            tracing::trace!("Failed to decode signature variant");
+            return None;
+        }
+    };
+
+    // Parse signature based on variant
+    match sig_variant {
+        0x00 | 0x01 => {
+            // Ed25519 (0x00) or Sr25519 (0x01) - both 64 bytes
+            if cursor.len() < 64 {
+                tracing::trace!("Not enough bytes for Ed25519/Sr25519 signature");
+                return None;
+            }
+            cursor = &cursor[64..];
+        }
+        0x02 => {
+            // Ecdsa - 65 bytes
+            if cursor.len() < 65 {
+                tracing::trace!("Not enough bytes for Ecdsa signature");
+                return None;
+            }
+            cursor = &cursor[65..];
+        }
+        _ => {
+            tracing::trace!("Unknown signature variant: {}", sig_variant);
+            return None;
+        }
+    }
+
+    // Now we're at the SignedExtra/TransactionExtensions section
+    // Era is the first field encoded here
+    tracing::trace!(
+        "Remaining bytes after address+signature: {} bytes, first few: {:?}",
+        cursor.len(),
+        &cursor[..cursor.len().min(10)]
+    );
+
+    let mut offset = 0;
+    let result = decode_era_from_bytes(cursor, &mut offset);
+
+    tracing::trace!("Era decode result: {:?}", result);
+
+    result
+}
+
 /// Parse era information from transaction extension JSON
 fn parse_era_info(era_json: &Value) -> EraInfo {
     // Era can be immortal (0x00) or mortal (period, phase)
@@ -466,7 +644,8 @@ fn convert_bytes_to_hex(value: Value) -> Value {
         Value::Number(n) => {
             // Convert large numbers (> 2^53-1) to strings to avoid precision loss in JavaScript
             if let Some(u) = n.as_u64() {
-                if u > 9007199254740991 { // 2^53 - 1 (max safe integer in JavaScript)
+                if u > 9007199254740991 {
+                    // 2^53 - 1 (max safe integer in JavaScript)
                     Value::String(u.to_string())
                 } else {
                     Value::Number(n)
@@ -484,9 +663,13 @@ fn convert_bytes_to_hex(value: Value) -> Value {
         }
         Value::Array(arr) => {
             // Check if this is a byte array (all elements are numbers 0-255)
-            if arr.iter().all(|v| matches!(v, Value::Number(n) if n.is_u64() && n.as_u64().unwrap() <= 255)) {
+            if arr
+                .iter()
+                .all(|v| matches!(v, Value::Number(n) if n.is_u64() && n.as_u64().unwrap() <= 255))
+            {
                 // Convert to hex string
-                let bytes: Vec<u8> = arr.iter()
+                let bytes: Vec<u8> = arr
+                    .iter()
                     .filter_map(|v| v.as_u64().map(|n| n as u8))
                     .collect();
                 Value::String(format!("0x{}", hex::encode(&bytes)))
@@ -565,7 +748,7 @@ async fn extract_extrinsics(
         };
 
         // Extract signature and signer (if signed)
-        let signature_info = if extrinsic.is_signed() {
+        let (signature_info, era_from_bytes) = if extrinsic.is_signed() {
             let sig_bytes = extrinsic.signature_bytes().ok_or_else(|| {
                 GetBlockError::ExtrinsicDecodeFailed("Missing signature bytes".to_string())
             })?;
@@ -573,12 +756,19 @@ async fn extract_extrinsics(
                 GetBlockError::ExtrinsicDecodeFailed("Missing address bytes".to_string())
             })?;
 
-            Some(SignatureInfo {
-                signature: format!("0x{}", hex::encode(sig_bytes)),
-                signer: format!("0x{}", hex::encode(addr_bytes)),
-            })
+            // Try to extract era from raw extrinsic bytes
+            // Era comes right after address and signature in the SignedExtra/TransactionExtension
+            let era_info = extract_era_from_extrinsic_bytes(extrinsic.bytes());
+
+            (
+                Some(SignatureInfo {
+                    signature: format!("0x{}", hex::encode(sig_bytes)),
+                    signer: format!("0x{}", hex::encode(addr_bytes)),
+                }),
+                era_info,
+            )
         } else {
-            None
+            (None, None)
         };
 
         // Extract nonce, tip, and era from transaction extensions (if present)
@@ -587,8 +777,17 @@ async fn extract_extrinsics(
             let mut tip_value = None;
             let mut era_value = None;
 
+            tracing::trace!(
+                "Extrinsic {} has {} extensions",
+                extrinsic.index(),
+                extensions.iter().count()
+            );
+
             for ext in extensions.iter() {
-                match ext.name() {
+                let ext_name = ext.name();
+                tracing::trace!("Extension name: {}", ext_name);
+
+                match ext_name {
                     "CheckNonce" => {
                         // Decode as a u64/u32 compact value, then serialize to JSON
                         if let Ok(n) = ext.decode::<scale_value::Value>() {
@@ -598,7 +797,7 @@ async fn extract_extrinsics(
                             }
                         }
                     }
-                    "ChargeTransactionPayment" => {
+                    "ChargeTransactionPayment" | "ChargeAssetTxPayment" => {
                         // The tip is typically a Compact<u128>
                         if let Ok(t) = ext.decode::<scale_value::Value>() {
                             if let Ok(json_val) = serde_json::to_value(&t) {
@@ -606,21 +805,58 @@ async fn extract_extrinsics(
                             }
                         }
                     }
-                    "CheckMortality" => {
-                        // Era information
-                        if let Ok(e) = ext.decode::<scale_value::Value>() {
-                            if let Ok(json_val) = serde_json::to_value(&e) {
-                                era_value = Some(json_val);
+                    "CheckMortality" | "CheckEra" => {
+                        // Era information - decode directly from raw bytes
+                        // The JSON representation is complex (e.g., "Mortal230") and harder to parse
+                        let era_bytes = ext.bytes();
+                        tracing::debug!(
+                            "Found CheckMortality extension, raw bytes: {}",
+                            hex::encode(era_bytes)
+                        );
+
+                        let mut offset = 0;
+                        if let Some(decoded_era) = decode_era_from_bytes(era_bytes, &mut offset) {
+                            tracing::debug!("Decoded era: {:?}", decoded_era);
+
+                            // Create a JSON representation that parse_era_info can understand
+                            if let Some(ref mortal) = decoded_era.mortal_era {
+                                // Format: {"name": "Mortal", "values": [[period], [phase]]}
+                                let mut map = serde_json::Map::new();
+                                map.insert("name".to_string(), Value::String("Mortal".to_string()));
+
+                                let values = vec![
+                                    Value::Array(vec![Value::Number(
+                                        mortal[0].parse::<u64>().unwrap().into(),
+                                    )]),
+                                    Value::Array(vec![Value::Number(
+                                        mortal[1].parse::<u64>().unwrap().into(),
+                                    )]),
+                                ];
+                                map.insert("values".to_string(), Value::Array(values));
+
+                                era_value = Some(Value::Object(map));
+                            } else if decoded_era.immortal_era.is_some() {
+                                let mut map = serde_json::Map::new();
+                                map.insert(
+                                    "name".to_string(),
+                                    Value::String("Immortal".to_string()),
+                                );
+                                era_value = Some(Value::Object(map));
                             }
                         }
                     }
-                    _ => {}
+                    _ => {
+                        // Silently skip other extensions
+                    }
                 }
             }
 
             let era = if let Some(era_json) = era_value {
-                // Try to parse era information
+                // Try to parse era information from extension
                 parse_era_info(&era_json)
+            } else if let Some(era_parsed) = era_from_bytes {
+                // Use era extracted from raw bytes
+                era_parsed
             } else {
                 // Default to immortal era for signed transactions without explicit era
                 EraInfo {
@@ -632,10 +868,14 @@ async fn extract_extrinsics(
             (nonce_value, tip_value, era)
         } else {
             // Unsigned extrinsics are immortal
-            (None, None, EraInfo {
-                immortal_era: Some("0x00".to_string()),
-                mortal_era: None,
-            })
+            (
+                None,
+                None,
+                EraInfo {
+                    immortal_era: Some("0x00".to_string()),
+                    mortal_era: None,
+                },
+            )
         };
 
         // Compute extrinsic hash: Blake2-256 of raw bytes
