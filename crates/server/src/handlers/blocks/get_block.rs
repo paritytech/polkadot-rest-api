@@ -561,34 +561,29 @@ fn extract_era_from_extrinsic_bytes(bytes: &[u8]) -> Option<EraInfo> {
 fn parse_era_info(era_json: &Value) -> EraInfo {
     // Era can be immortal (0x00) or mortal (period, phase)
     // Check if it's an object with "Mortal" or contains array with period/phase
-    if let Value::Object(map) = era_json {
-        if map.contains_key("name") {
-            if let Some(Value::String(name)) = map.get("name") {
-                if name == "Mortal" {
-                    // Extract mortal era values (period, phase)
-                    if let Some(Value::Array(values)) = map.get("values") {
-                        let mortal_values: Vec<String> = values
-                            .iter()
-                            .filter_map(|v| {
-                                if let Value::Array(arr) = v {
-                                    arr.first()
-                                        .and_then(|val| val.as_u64())
-                                        .map(|n| n.to_string())
-                                } else {
-                                    v.as_u64().map(|n| n.to_string())
-                                }
-                            })
-                            .collect();
-
-                        if !mortal_values.is_empty() {
-                            return EraInfo {
-                                immortal_era: None,
-                                mortal_era: Some(mortal_values),
-                            };
-                        }
-                    }
+    if let Value::Object(map) = era_json
+        && let Some(Value::String(name)) = map.get("name")
+        && name == "Mortal"
+        && let Some(Value::Array(values)) = map.get("values")
+    {
+        let mortal_values: Vec<String> = values
+            .iter()
+            .filter_map(|v| {
+                if let Value::Array(arr) = v {
+                    arr.first()
+                        .and_then(|val| val.as_u64())
+                        .map(|n| n.to_string())
+                } else {
+                    v.as_u64().map(|n| n.to_string())
                 }
-            }
+            })
+            .collect();
+
+        if !mortal_values.is_empty() {
+            return EraInfo {
+                immortal_era: None,
+                mortal_era: Some(mortal_values),
+            };
         }
     }
 
@@ -790,19 +785,19 @@ async fn extract_extrinsics(
                 match ext_name {
                     "CheckNonce" => {
                         // Decode as a u64/u32 compact value, then serialize to JSON
-                        if let Ok(n) = ext.decode::<scale_value::Value>() {
-                            if let Ok(json_val) = serde_json::to_value(&n) {
-                                // The value might be nested in an object, so we need to extract it
-                                nonce_value = Some(extract_numeric_string(&json_val));
-                            }
+                        if let Ok(n) = ext.decode::<scale_value::Value>()
+                            && let Ok(json_val) = serde_json::to_value(&n)
+                        {
+                            // The value might be nested in an object, so we need to extract it
+                            nonce_value = Some(extract_numeric_string(&json_val));
                         }
                     }
                     "ChargeTransactionPayment" | "ChargeAssetTxPayment" => {
                         // The tip is typically a Compact<u128>
-                        if let Ok(t) = ext.decode::<scale_value::Value>() {
-                            if let Ok(json_val) = serde_json::to_value(&t) {
-                                tip_value = Some(extract_numeric_string(&json_val));
-                            }
+                        if let Ok(t) = ext.decode::<scale_value::Value>()
+                            && let Ok(json_val) = serde_json::to_value(&t)
+                        {
+                            tip_value = Some(extract_numeric_string(&json_val));
                         }
                     }
                     "CheckMortality" | "CheckEra" => {
