@@ -293,4 +293,204 @@ mod tests {
         assert_eq!(result.immortal_era, Some("0x00".to_string()));
         assert_eq!(result.mortal_era, None);
     }
+
+    #[test]
+    fn test_extract_era_unsigned_extrinsic() {
+        // Unsigned extrinsic starts with version byte without signed bit (e.g., 0x04)
+        let extrinsic_bytes = vec![0x04, 0x00, 0x01]; // Minimal unsigned extrinsic
+        let result = extract_era_from_extrinsic_bytes(&extrinsic_bytes);
+
+        assert!(result.is_some());
+        let era = result.unwrap();
+        assert_eq!(era.immortal_era, Some("0x00".to_string()));
+        assert_eq!(era.mortal_era, None);
+    }
+
+    #[test]
+    fn test_extract_era_signed_extrinsic_with_immortal_era() {
+        // Construct a minimal signed extrinsic:
+        // - Version byte: 0x84 (signed bit | version 4)
+        // - MultiAddress Id variant (0x00) + 32 bytes AccountId32
+        // - MultiSignature Sr25519 variant (0x01) + 64 bytes signature
+        // - Era: 0x00 (immortal)
+        let mut extrinsic_bytes = vec![0x84]; // Signed version byte
+
+        // Address: Id variant (0x00) + 32-byte account
+        extrinsic_bytes.push(0x00);
+        extrinsic_bytes.extend_from_slice(&[0x42; 32]);
+
+        // Signature: Sr25519 variant (0x01) + 64-byte signature
+        extrinsic_bytes.push(0x01);
+        extrinsic_bytes.extend_from_slice(&[0xAA; 64]);
+
+        // Era: Immortal (0x00)
+        extrinsic_bytes.push(0x00);
+
+        let result = extract_era_from_extrinsic_bytes(&extrinsic_bytes);
+
+        assert!(result.is_some());
+        let era = result.unwrap();
+        assert_eq!(era.immortal_era, Some("0x00".to_string()));
+        assert_eq!(era.mortal_era, None);
+    }
+
+    #[test]
+    fn test_extract_era_signed_extrinsic_with_mortal_era() {
+        // Construct a signed extrinsic with mortal era (period=128, phase=46)
+        let mut extrinsic_bytes = vec![0x84]; // Signed version byte
+
+        // Address: Id variant (0x00) + 32-byte account
+        extrinsic_bytes.push(0x00);
+        extrinsic_bytes.extend_from_slice(&[0x42; 32]);
+
+        // Signature: Sr25519 variant (0x01) + 64-byte signature
+        extrinsic_bytes.push(0x01);
+        extrinsic_bytes.extend_from_slice(&[0xAA; 64]);
+
+        // Era: Mortal (0xe602 = period 128, phase 46)
+        extrinsic_bytes.push(0xe6);
+        extrinsic_bytes.push(0x02);
+
+        let result = extract_era_from_extrinsic_bytes(&extrinsic_bytes);
+
+        assert!(result.is_some());
+        let era = result.unwrap();
+        assert_eq!(era.immortal_era, None);
+        assert_eq!(
+            era.mortal_era,
+            Some(vec!["128".to_string(), "46".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_extract_era_signed_extrinsic_with_ed25519_signature() {
+        // Test with Ed25519 signature variant (0x00)
+        let mut extrinsic_bytes = vec![0x84];
+
+        // Address: Id variant + 32-byte account
+        extrinsic_bytes.push(0x00);
+        extrinsic_bytes.extend_from_slice(&[0x42; 32]);
+
+        // Signature: Ed25519 variant (0x00) + 64-byte signature
+        extrinsic_bytes.push(0x00);
+        extrinsic_bytes.extend_from_slice(&[0xBB; 64]);
+
+        // Era: Immortal
+        extrinsic_bytes.push(0x00);
+
+        let result = extract_era_from_extrinsic_bytes(&extrinsic_bytes);
+
+        assert!(result.is_some());
+        let era = result.unwrap();
+        assert_eq!(era.immortal_era, Some("0x00".to_string()));
+        assert_eq!(era.mortal_era, None);
+    }
+
+    #[test]
+    fn test_extract_era_signed_extrinsic_with_ecdsa_signature() {
+        // Test with Ecdsa signature variant (0x02) which is 65 bytes
+        let mut extrinsic_bytes = vec![0x84];
+
+        // Address: Id variant + 32-byte account
+        extrinsic_bytes.push(0x00);
+        extrinsic_bytes.extend_from_slice(&[0x42; 32]);
+
+        // Signature: Ecdsa variant (0x02) + 65-byte signature
+        extrinsic_bytes.push(0x02);
+        extrinsic_bytes.extend_from_slice(&[0xCC; 65]);
+
+        // Era: Mortal
+        extrinsic_bytes.push(0xe6);
+        extrinsic_bytes.push(0x02);
+
+        let result = extract_era_from_extrinsic_bytes(&extrinsic_bytes);
+
+        assert!(result.is_some());
+        let era = result.unwrap();
+        assert_eq!(era.immortal_era, None);
+        assert_eq!(
+            era.mortal_era,
+            Some(vec!["128".to_string(), "46".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_extract_era_empty_bytes() {
+        let result = extract_era_from_extrinsic_bytes(&[]);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_era_insufficient_bytes() {
+        // Not enough bytes after address to contain signature
+        let mut extrinsic_bytes = vec![0x84];
+        extrinsic_bytes.push(0x00);
+        extrinsic_bytes.extend_from_slice(&[0x42; 32]);
+        extrinsic_bytes.push(0x01); // Signature variant but no signature bytes
+
+        let result = extract_era_from_extrinsic_bytes(&extrinsic_bytes);
+        assert!(result.is_none());
+    }
+
+    // Real-world test fixtures from Polkadot chain
+    // These tests use actual extrinsic bytes captured from the chain to ensure
+    // our parsing logic works correctly with production data.
+
+    #[test]
+    fn test_extract_era_real_polkadot_staking_nominate() {
+        // Source: Polkadot block 24500000, extrinsic index 2
+        // Method: Staking::nominate
+        // Expected era: mortalEra ["64", "19"]
+        //
+        // Note: The raw bytes from the chain include a compact length prefix (ed09)
+        // which indicates the extrinsic is 605 bytes long. The actual extrinsic data
+        // starts at the version byte (84).
+        //
+        // Breakdown of the extrinsic bytes (after length prefix):
+        // - 84: Version byte (signed, version 4)
+        // - 00: Address variant (Id)
+        // - af3e1d...224b74: 32-byte AccountId32
+        // - 00: Signature variant (Ed25519)
+        // - 48ceb5...48c06: 64-byte signature
+        // - 35: First era byte
+        // - 01: Second era byte (together 0x3501 encodes period=64, phase=19)
+        // - 74: Nonce (compact encoded)
+        // - 00: Tip (compact encoded)
+        // - ...rest of extrinsic (call data)
+        let extrinsic_hex = "8400af3e1db41e95040f7630e64d1b3104235c08545e452b15fd70601881aa224b740048ceb5c1995db4427ba1322f48702cebe4b4564e03d660d6a713f25e48143be454875d56716def88a61283643fcb9a0aed7caccbfe285dfba8399b07bc448c063501740001070540000000966d74f8027e07b43717b6876d97544fe0d71facef06acc8382749ae944e00005fa73637062b";
+        let extrinsic_bytes = hex::decode(extrinsic_hex).unwrap();
+
+        let result = extract_era_from_extrinsic_bytes(&extrinsic_bytes);
+
+        assert!(
+            result.is_some(),
+            "Should successfully parse real Polkadot extrinsic"
+        );
+        let era = result.unwrap();
+        assert_eq!(era.immortal_era, None);
+        assert_eq!(
+            era.mortal_era,
+            Some(vec!["64".to_string(), "19".to_string()]),
+            "Should extract correct mortal era from real extrinsic"
+        );
+    }
+
+    #[test]
+    fn test_decode_era_bytes_from_polkadot_extrinsic() {
+        // The era bytes extracted from the above extrinsic: 0x3501
+        // This encodes period=64, phase=19
+        let era_bytes = hex::decode("3501").unwrap();
+        let mut offset = 0;
+
+        let result = decode_era_from_bytes(&era_bytes, &mut offset);
+
+        assert!(result.is_some());
+        let era = result.unwrap();
+        assert_eq!(era.immortal_era, None);
+        assert_eq!(
+            era.mortal_era,
+            Some(vec!["64".to_string(), "19".to_string()])
+        );
+        assert_eq!(offset, 2, "Should consume both era bytes");
+    }
 }
