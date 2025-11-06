@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1762439505995,
+  "lastUpdate": 1762440329057,
   "repoUrl": "https://github.com/paritytech/polkadot-rest-api",
   "entries": {
     "Benchmark": [
@@ -1508,6 +1508,108 @@ window.BENCHMARK_DATA = {
           {
             "name": "version - Throughput",
             "value": 35343.54,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "47201679+TarikGul@users.noreply.github.com",
+            "name": "Tarik Gul",
+            "username": "TarikGul"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6c9c0924322de00ccda315964e94441a9a72ae03",
+          "message": "feat: Add /blocks/head/header (#26)\n\n* Refactor code\n\n* Restore changes to get_block.rs\n\n* add sp-runtime\n\n* Add hash utils which gets the blockhash by using the SCALE-Encoded header\n\n* Add real world test\n\n* Return H256\n\n* Add BlockHash wrapper type\n\n* implement BlockHash wrapper where needed",
+          "timestamp": "2025-11-06T09:36:55-05:00",
+          "tree_id": "86adf80df6bdd4b6ab0e3045077cd07626cb2794",
+          "url": "https://github.com/paritytech/polkadot-rest-api/commit/6c9c0924322de00ccda315964e94441a9a72ae03"
+        },
+        "date": 1762440328547,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "health - Avg Latency",
+            "value": 1.07,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P50 Latency",
+            "value": 0.95,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P90 Latency",
+            "value": 2.04,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P99 Latency",
+            "value": 3.18,
+            "unit": "ms"
+          },
+          {
+            "name": "health - Throughput",
+            "value": 43746.95,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "runtime - Avg Latency",
+            "value": 653.48,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - P50 Latency",
+            "value": 640.91,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - P90 Latency",
+            "value": 701.01,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - P99 Latency",
+            "value": 813.54,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - Throughput",
+            "value": 73.02,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "version - Avg Latency",
+            "value": 1.32,
+            "unit": "ms"
+          },
+          {
+            "name": "version - P50 Latency",
+            "value": 1.26,
+            "unit": "ms"
+          },
+          {
+            "name": "version - P90 Latency",
+            "value": 2.21,
+            "unit": "ms"
+          },
+          {
+            "name": "version - P99 Latency",
+            "value": 3.1,
+            "unit": "ms"
+          },
+          {
+            "name": "version - Throughput",
+            "value": 34946.2,
             "unit": "req/sec",
             "extra": "biggerIsBetter"
           }
