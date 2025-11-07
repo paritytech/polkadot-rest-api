@@ -1,6 +1,10 @@
 use anyhow::{Context, Result};
 use futures::future::join_all;
-use integration_tests::{client::TestClient, config::TestConfig};
+use integration_tests::{
+    client::TestClient,
+    config::TestConfig,
+    constants::API_READY_TIMEOUT_SECONDS,
+};
 use std::collections::HashMap;
 use std::env;
 
@@ -222,7 +226,7 @@ async fn test_latest_polkadot() -> Result<()> {
     let client = TestClient::new(api_url);
     let config = TestConfig::from_file(&config_path)?;
 
-    client.wait_for_ready(30).await?;
+    client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
 
     let mut runner = LatestTestRunner::new(client, config, "polkadot".to_string());
     let results = runner.run_all().await?;
@@ -256,7 +260,7 @@ async fn test_latest_kusama() -> Result<()> {
     let client = TestClient::new(api_url);
     let config = TestConfig::from_file(&config_path)?;
 
-    client.wait_for_ready(30).await?;
+    client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
 
     let mut runner = LatestTestRunner::new(client, config, "kusama".to_string());
     let results = runner.run_all().await?;

@@ -1,5 +1,6 @@
 use anyhow::Result;
-use integration_tests::client::TestClient;
+use futures::future::join_all;
+use integration_tests::{client::TestClient, constants::API_READY_TIMEOUT_SECONDS};
 use std::env;
 
 /// Test basic endpoints that are already implemented
@@ -11,7 +12,7 @@ async fn test_basic_endpoints() -> Result<()> {
     let client = TestClient::new(api_url);
 
     // Wait for API to be ready
-    client.wait_for_ready(30).await?;
+    client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
 
     // Test health endpoint
     tracing::info!("Testing /v1/health endpoint");
@@ -43,7 +44,7 @@ async fn test_health_consistency() -> Result<()> {
     let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
     let client = TestClient::new(api_url);
 
-    client.wait_for_ready(30).await?;
+    client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
 
     // Test health endpoint multiple times to ensure consistency
     for i in 0..5 {
@@ -73,7 +74,7 @@ async fn test_version_structure() -> Result<()> {
     let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
     let client = TestClient::new(api_url);
 
-    client.wait_for_ready(30).await?;
+    client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
 
     let (status, version_json) = client.get_json("/v1/version").await?;
     assert!(status.is_success(), "Version endpoint should return success status");
@@ -111,22 +112,36 @@ async fn test_invalid_endpoints() -> Result<()> {
     let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
     let client = TestClient::new(api_url);
 
-    client.wait_for_ready(30).await?;
+    client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
 
-    let invalid_endpoints = vec![
+    let not_found_endpoints = vec![
         "/v1/invalid-endpoint",
-        "/v1/blocks/invalid-block-id",
         "/v1/accounts/invalid-account-id",
         "/v1/runtime/invalid-metadata",
         "/invalid-path",
     ];
 
-    for endpoint in invalid_endpoints {
+    for endpoint in not_found_endpoints {
         let response = client.get(endpoint).await?;
         assert_eq!(
             response.status.as_u16(),
             404,
-            "Invalid endpoint {} should return 404",
+            "Non-existent endpoint {} should return 404",
+            endpoint
+        );
+    }
+
+    // Test 400 for invalid parameters on valid endpoints
+    let bad_request_endpoints = vec![
+        "/v1/blocks/invalid-block-id",
+    ];
+
+    for endpoint in bad_request_endpoints {
+        let response = client.get(endpoint).await?;
+        assert_eq!(
+            response.status.as_u16(),
+            400,
+            "Valid endpoint {} with invalid parameter should return 400",
             endpoint
         );
     }
@@ -143,36 +158,62 @@ async fn test_concurrent_requests() -> Result<()> {
     let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
     let client = TestClient::new(api_url);
 
-    client.wait_for_ready(30).await?;
+    client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
 
     // Make 10 concurrent requests
-    let mut handles = Vec::new();
-    for i in 0..10 {
-        let client = client.clone();
-        let handle = tokio::spawn(async move {
-            let (status, health_json) = client.get_json("/v1/health").await?;
-            anyhow::ensure!(
-                status.is_success(),
-                "Request {} should succeed",
-                i
-            );
-            anyhow::ensure!(
-                health_json["status"] == "ok",
-                "Request {} should return ok status",
-                i
-            );
-            Ok::<(), anyhow::Error>(())
-        });
-        handles.push(handle);
+    let futures: Vec<_> = (0..10)
+        .map(|i| {
+            let client = client.clone();
+            async move {
+                let result = async {
+                    let (status, health_json) = client.get_json("/v1/health").await?;
+                    anyhow::ensure!(
+                        status.is_success(),
+                        "Request {} should succeed",
+                        i
+                    );
+                    anyhow::ensure!(
+                        health_json["status"] == "ok",
+                        "Request {} should return ok status",
+                        i
+                    );
+                    Ok::<(), anyhow::Error>(())
+                }
+                .await;
+                (i, result)
+            }
+        })
+        .collect();
+
+    // Execute all requests in parallel and collect results
+    let all_results = join_all(futures).await;
+
+    // Check results and collect failures
+    let mut failures = Vec::new();
+
+    for (i, result) in all_results {
+        match result {
+            Ok(()) => {
+                tracing::debug!("Concurrent request {} succeeded", i);
+            }
+            Err(e) => {
+                let error_msg = e.to_string();
+                tracing::error!("Concurrent request {} failed: {}", i, error_msg);
+                failures.push((i, error_msg));
+            }
+        }
     }
 
-    // Wait for all requests to complete
-    for (i, handle) in handles.into_iter().enumerate() {
-        handle.await??;
-        tracing::debug!("Concurrent request {} completed", i);
+    // Report results
+    if !failures.is_empty() {
+        println!("✗ {} out of 10 concurrent requests failed:", failures.len());
+        for (i, error_msg) in &failures {
+            println!("  - Request {}: {}", i, error_msg);
+        }
+        anyhow::bail!("{} out of 10 concurrent requests failed", failures.len());
     }
 
-    println!("✓ Concurrent requests test passed");
+    println!("✓ All 10 concurrent requests succeeded");
     Ok(())
 }
 

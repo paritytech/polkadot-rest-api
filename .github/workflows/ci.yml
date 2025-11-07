@@ -134,53 +134,120 @@ jobs:
 
       - name: Build server
         run: cargo build --release --package server
-        env:
-          SAS_SUBSTRATE_URL: wss://rpc.polkadot.io
 
-      - name: Start server in background
+      # ========================================
+      # Polkadot Tests
+      # ========================================
+      
+      - name: Start Polkadot server
         run: |
-          RUST_LOG=info ./target/release/polkadot-rest-api > server.log 2>&1 &
-          echo $! > server.pid
-          sleep 5
+          RUST_LOG=info ./target/release/polkadot-rest-api > polkadot-server.log 2>&1 &
+          echo $! > polkadot-server.pid
         env:
           SAS_SUBSTRATE_URL: wss://rpc.polkadot.io
+      
+      - name: Wait for Polkadot server to be ready
+        run: |
+          echo "Waiting for Polkadot API to be ready..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/v1/health > /dev/null 2>&1; then
+              echo "✓ Polkadot API is ready"
+              exit 0
+            fi
+            echo "  Attempt $i/30: API not ready yet, retrying in 1s..."
+            sleep 1
+          done
+          echo "✗ Polkadot API did not become ready after 30 seconds"
+          cat polkadot-server.log
+          exit 1
 
-      - name: Run basic integration tests
+      - name: Run basic integration tests (Polkadot)
         run: cargo test --package integration_tests --test basic
         env:
           API_URL: http://localhost:8080
           RUST_LOG: info
         timeout-minutes: 10
 
-      - name: Run latest integration tests
+      - name: Run latest integration tests (Polkadot)
         run: cargo test --package integration_tests --test latest
         env:
           API_URL: http://localhost:8080
           RUST_LOG: info
         timeout-minutes: 20
-        continue-on-error: true
 
-      - name: Run historical integration tests
-        run: cargo test --package integration_tests --test historical
+      - name: Run historical integration tests (Polkadot)
+        run: cargo test --package integration_tests test_historical_polkadot
         env:
           API_URL: http://localhost:8080
           RUST_LOG: info
-        timeout-minutes: 30
-        continue-on-error: true
+        timeout-minutes: 15
 
-      - name: Stop server
+      - name: Stop Polkadot server
         if: always()
         run: |
-          if [ -f server.pid ]; then
-            kill $(cat server.pid) || true
+          if [ -f polkadot-server.pid ]; then
+            kill $(cat polkadot-server.pid) || true
+            rm polkadot-server.pid
           fi
 
-      - name: Upload server logs
+      # ========================================
+      # Kusama Tests
+      # ========================================
+      
+      - name: Start Kusama server
+        run: |
+          RUST_LOG=info ./target/release/polkadot-rest-api > kusama-server.log 2>&1 &
+          echo $! > kusama-server.pid
+        env:
+          SAS_SUBSTRATE_URL: wss://kusama-rpc.polkadot.io
+      
+      - name: Wait for Kusama server to be ready
+        run: |
+          echo "Waiting for Kusama API to be ready..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/v1/health > /dev/null 2>&1; then
+              echo "✓ Kusama API is ready"
+              exit 0
+            fi
+            echo "  Attempt $i/30: API not ready yet, retrying in 1s..."
+            sleep 1
+          done
+          echo "✗ Kusama API did not become ready after 30 seconds"
+          cat kusama-server.log
+          exit 1
+
+      - name: Run historical integration tests (Kusama)
+        run: cargo test --package integration_tests test_historical_kusama
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 15
+
+      - name: Stop Kusama server
+        if: always()
+        run: |
+          if [ -f kusama-server.pid ]; then
+            kill $(cat kusama-server.pid) || true
+            rm kusama-server.pid
+          fi
+
+      # ========================================
+      # Upload Logs on Failure
+      # ========================================
+
+      - name: Upload Polkadot server logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: server-logs
-          path: server.log
+          name: polkadot-server-logs
+          path: polkadot-server.log
+
+      - name: Upload Kusama server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kusama-server-logs
+          path: kusama-server.log
 
   clippy:
     name: Clippy

@@ -1,7 +1,11 @@
 use anyhow::{Context, Result};
 use futures::future::join_all;
 use integration_tests::{
-    client::TestClient, config::TestConfig, fixtures::FixtureLoader, utils::compare_json,
+    client::TestClient,
+    config::TestConfig,
+    constants::API_READY_TIMEOUT_SECONDS,
+    fixtures::FixtureLoader,
+    utils::compare_json,
 };
 use std::collections::HashMap;
 use std::env;
@@ -165,7 +169,7 @@ async fn test_historical_polkadot() -> Result<()> {
     let fixture_loader = FixtureLoader::new(&fixtures_dir);
 
     // Wait for API to be ready
-    client.wait_for_ready(30).await?;
+    client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
 
     let runner = HistoricalTestRunner::new(client, config, fixture_loader, "polkadot".to_string());
     let results = runner.run_all().await?;
@@ -211,7 +215,7 @@ async fn test_historical_kusama() -> Result<()> {
     let config = TestConfig::from_file(&config_path)?;
     let fixture_loader = FixtureLoader::new(&fixtures_dir);
 
-    client.wait_for_ready(30).await?;
+    client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
 
     let runner = HistoricalTestRunner::new(client, config, fixture_loader, "kusama".to_string());
     let results = runner.run_all().await?;
