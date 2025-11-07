@@ -178,23 +178,6 @@ jobs:
           path: artifacts/comparison_report.txt
           retention-days: 90
 
-      - name: Comment on PR with comparison
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const report = fs.readFileSync('artifacts/comparison_report.txt', 'utf8');
-            
-            const body = `## 📊 Benchmark Comparison: Local API vs Sidecar\n\n\`\`\`\n${report}\n\`\`\`\n\n*This comparison shows how your API performs against the public Sidecar instance.*`;
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
-            });
-
       - name: Store comparison result on GitHub Pages
         uses: benchmark-action/github-action-benchmark@4e0b38bc48375986542b13c0d8976b7b80c60c00
         with:
