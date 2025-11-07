@@ -218,8 +218,8 @@ struct Failure {
     error: String,
 }
 
-#[tokio::test]
-async fn test_latest_polkadot() -> Result<()> {
+/// Helper function to run latest tests for a specific chain
+async fn run_latest_test_for_chain(chain_name: &str) -> Result<()> {
     init_tracing();
 
     let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
@@ -233,10 +233,10 @@ async fn test_latest_polkadot() -> Result<()> {
 
     client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
 
-    let mut runner = LatestTestRunner::new(client, config, "polkadot".to_string());
+    let mut runner = LatestTestRunner::new(client, config, chain_name.to_string());
     let results = runner.run_all().await?;
 
-    println!("\n=== Latest Test Results ===");
+    println!("\n=== Latest Test Results for {} ===", chain_name);
     println!("Passed: {}", results.passed);
     println!("Failed: {}", results.failed);
 
@@ -253,37 +253,13 @@ async fn test_latest_polkadot() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_latest_polkadot() -> Result<()> {
+    run_latest_test_for_chain("polkadot").await
+}
+
+#[tokio::test]
 async fn test_latest_kusama() -> Result<()> {
-    init_tracing();
-
-    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
-    let config_path = env::var("TEST_CONFIG_PATH").unwrap_or_else(|_| {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        format!("{}/tests/config/test_config.json", manifest_dir)
-    });
-
-    let client = TestClient::new(api_url);
-    let config = TestConfig::from_file(&config_path)?;
-
-    client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
-
-    let mut runner = LatestTestRunner::new(client, config, "kusama".to_string());
-    let results = runner.run_all().await?;
-
-    println!("\n=== Latest Test Results ===");
-    println!("Passed: {}", results.passed);
-    println!("Failed: {}", results.failed);
-
-    if !results.failures.is_empty() {
-        println!("\nFailures:");
-        for failure in &results.failures {
-            println!("  - {}: {}", failure.endpoint, failure.error);
-        }
-    }
-
-    assert_eq!(results.failed, 0, "{} test(s) failed", results.failed);
-
-    Ok(())
+    run_latest_test_for_chain("kusama").await
 }
 
 fn init_tracing() {

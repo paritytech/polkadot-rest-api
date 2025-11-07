@@ -154,8 +154,8 @@ struct Failure {
     error: String,
 }
 
-#[tokio::test]
-async fn test_historical_polkadot() -> Result<()> {
+/// Helper function to run historical tests for a specific chain
+async fn run_historical_test_for_chain(chain_name: &str) -> Result<()> {
     init_tracing();
 
     let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
@@ -175,10 +175,10 @@ async fn test_historical_polkadot() -> Result<()> {
     // Wait for API to be ready
     client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
 
-    let runner = HistoricalTestRunner::new(client, config, fixture_loader, "polkadot".to_string());
+    let runner = HistoricalTestRunner::new(client, config, fixture_loader, chain_name.to_string());
     let results = runner.run_all().await?;
 
-    println!("\n=== Historical Test Results ===");
+    println!("\n=== Historical Test Results for {} ===", chain_name);
     println!("Passed: {}", results.passed);
     println!("Failed: {}", results.failed);
 
@@ -198,42 +198,13 @@ async fn test_historical_polkadot() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_historical_polkadot() -> Result<()> {
+    run_historical_test_for_chain("polkadot").await
+}
+
+#[tokio::test]
 async fn test_historical_kusama() -> Result<()> {
-    init_tracing();
-
-    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
-    let config_path = env::var("TEST_CONFIG_PATH").unwrap_or_else(|_| {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        format!("{}/tests/config/test_config.json", manifest_dir)
-    });
-    let fixtures_dir = env::var("FIXTURES_DIR").unwrap_or_else(|_| {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        format!("{}/tests/fixtures", manifest_dir)
-    });
-
-    let client = TestClient::new(api_url);
-    let config = TestConfig::from_file(&config_path)?;
-    let fixture_loader = FixtureLoader::new(&fixtures_dir);
-
-    client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
-
-    let runner = HistoricalTestRunner::new(client, config, fixture_loader, "kusama".to_string());
-    let results = runner.run_all().await?;
-
-    println!("\n=== Historical Test Results ===");
-    println!("Passed: {}", results.passed);
-    println!("Failed: {}", results.failed);
-
-    if !results.failures.is_empty() {
-        println!("\nFailures:");
-        for failure in &results.failures {
-            println!("  - {}: {}", failure.endpoint, failure.error);
-        }
-    }
-
-    assert_eq!(results.failed, 0, "{} test(s) failed", results.failed);
-
-    Ok(())
+    run_historical_test_for_chain("kusama").await
 }
 
 fn init_tracing() {
