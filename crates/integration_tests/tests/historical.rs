@@ -1,11 +1,8 @@
 use anyhow::{Context, Result};
 use futures::future::join_all;
 use integration_tests::{
-    client::TestClient,
-    config::TestConfig,
-    constants::API_READY_TIMEOUT_SECONDS,
-    fixtures::FixtureLoader,
-    utils::compare_json,
+    client::TestClient, config::TestConfig, constants::API_READY_TIMEOUT_SECONDS,
+    fixtures::FixtureLoader, utils::compare_json,
 };
 use std::collections::HashMap;
 use std::env;
@@ -79,7 +76,10 @@ impl HistoricalTestRunner {
     }
 
     /// Run a single historical test case
-    async fn run_test_case(&self, test_case: &integration_tests::config::HistoricalTestCase) -> Result<()> {
+    async fn run_test_case(
+        &self,
+        test_case: &integration_tests::config::HistoricalTestCase,
+    ) -> Result<()> {
         // Build the endpoint path with replacements
         let mut replacements = HashMap::new();
 
@@ -91,7 +91,8 @@ impl HistoricalTestRunner {
             replacements.insert("accountId".to_string(), account_id.clone());
         }
 
-        let endpoint_path = integration_tests::utils::replace_placeholders(&test_case.endpoint, &replacements);
+        let endpoint_path =
+            integration_tests::utils::replace_placeholders(&test_case.endpoint, &replacements);
         let query_string = integration_tests::utils::build_query_string(&test_case.query_params);
         let full_path = format!("{}{}", endpoint_path, query_string);
 
@@ -115,7 +116,10 @@ impl HistoricalTestRunner {
         let expected_json = self
             .fixture_loader
             .load(&test_case.fixture_path)
-            .context(format!("Failed to load fixture: {:?}", test_case.fixture_path))?;
+            .context(format!(
+                "Failed to load fixture: {:?}",
+                test_case.fixture_path
+            ))?;
 
         // Compare responses
         // Ignore fields that may vary (timestamps, etc.)
@@ -188,11 +192,7 @@ async fn test_historical_polkadot() -> Result<()> {
         }
     }
 
-    assert_eq!(
-        results.failed, 0,
-        "{} test(s) failed",
-        results.failed
-    );
+    assert_eq!(results.failed, 0, "{} test(s) failed", results.failed);
 
     Ok(())
 }
@@ -241,4 +241,3 @@ fn init_tracing() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init();
 }
-

@@ -2,7 +2,11 @@ use anyhow::Result;
 use serde_json::Value;
 use std::collections::HashMap;
 
-pub fn compare_json(actual: &Value, expected: &Value, ignore_fields: &[&str]) -> Result<ComparisonResult> {
+pub fn compare_json(
+    actual: &Value,
+    expected: &Value,
+    ignore_fields: &[&str],
+) -> Result<ComparisonResult> {
     let mut differences = Vec::new();
 
     compare_json_recursive(actual, expected, ignore_fields, "", &mut differences);
@@ -31,14 +35,21 @@ fn compare_json_recursive(
                 };
 
                 // Skip ignored fields
-                if ignore_fields.iter().any(|&field| {
-                    current_path.ends_with(field) || current_path == field
-                }) {
+                if ignore_fields
+                    .iter()
+                    .any(|&field| current_path.ends_with(field) || current_path == field)
+                {
                     continue;
                 }
 
                 if let Some(actual_val) = actual_obj.get(key) {
-                    compare_json_recursive(actual_val, expected_val, ignore_fields, &current_path, differences);
+                    compare_json_recursive(
+                        actual_val,
+                        expected_val,
+                        ignore_fields,
+                        &current_path,
+                        differences,
+                    );
                 } else {
                     differences.push(format!("Missing field: {}", current_path));
                 }
@@ -66,9 +77,17 @@ fn compare_json_recursive(
                     actual_arr.len()
                 ));
             } else {
-                for (i, (actual_val, expected_val)) in actual_arr.iter().zip(expected_arr.iter()).enumerate() {
+                for (i, (actual_val, expected_val)) in
+                    actual_arr.iter().zip(expected_arr.iter()).enumerate()
+                {
                     let current_path = format!("{}[{}]", path, i);
-                    compare_json_recursive(actual_val, expected_val, ignore_fields, &current_path, differences);
+                    compare_json_recursive(
+                        actual_val,
+                        expected_val,
+                        ignore_fields,
+                        &current_path,
+                        differences,
+                    );
                 }
             }
         }
@@ -119,8 +138,6 @@ pub fn build_query_string(params: &std::collections::HashMap<String, String>) ->
         let pairs: Vec<(&String, &String)> = params.iter().collect();
         serde_urlencoded::to_string(pairs)
             .map(|encoded| format!("?{}", encoded))
-            .unwrap_or_else(|_| {
-                String::new()
-            })
+            .unwrap_or_else(|_| String::new())
     }
 }

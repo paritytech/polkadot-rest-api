@@ -13,5 +13,3 @@ pub mod constants {
     /// Maximum number of retries when waiting for the API to be ready (in seconds)
     pub const API_READY_TIMEOUT_SECONDS: u32 = 30;
 }
-
-

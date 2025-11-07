@@ -1,9 +1,7 @@
 use anyhow::{Context, Result};
 use futures::future::join_all;
 use integration_tests::{
-    client::TestClient,
-    config::TestConfig,
-    constants::API_READY_TIMEOUT_SECONDS,
+    client::TestClient, config::TestConfig, constants::API_READY_TIMEOUT_SECONDS,
 };
 use std::collections::HashMap;
 use std::env;
@@ -85,13 +83,11 @@ impl LatestTestRunner {
 
         // Test each configured endpoint in parallel
         let endpoint_configs = self.config.latest_endpoints.clone();
-        
+
         // Create futures for parallel execution
         let futures: Vec<_> = endpoint_configs
             .iter()
-            .map(|endpoint_config| {
-                self.test_endpoint(endpoint_config, &chain_config, latest_block)
-            })
+            .map(|endpoint_config| self.test_endpoint(endpoint_config, &chain_config, latest_block))
             .collect();
 
         // Execute all tests in parallel
@@ -135,7 +131,11 @@ impl LatestTestRunner {
             if chain_config.test_accounts.is_empty() {
                 vec![None]
             } else {
-                chain_config.test_accounts.iter().map(|a| Some(a.clone())).collect()
+                chain_config
+                    .test_accounts
+                    .iter()
+                    .map(|a| Some(a.clone()))
+                    .collect()
             }
         } else {
             vec![None]
@@ -151,14 +151,19 @@ impl LatestTestRunner {
                 // Replace placeholders in query params
                 let mut resolved_query_params = HashMap::new();
                 for (key, value) in query_params {
-                    let resolved_key = integration_tests::utils::replace_placeholders(key, &replacements);
-                    let resolved_value = integration_tests::utils::replace_placeholders(value, &replacements);
+                    let resolved_key =
+                        integration_tests::utils::replace_placeholders(key, &replacements);
+                    let resolved_value =
+                        integration_tests::utils::replace_placeholders(value, &replacements);
                     resolved_query_params.insert(resolved_key, resolved_value);
                 }
 
-                let endpoint_path =
-                    integration_tests::utils::replace_placeholders(&endpoint_config.path, &replacements);
-                let query_string = integration_tests::utils::build_query_string(&resolved_query_params);
+                let endpoint_path = integration_tests::utils::replace_placeholders(
+                    &endpoint_config.path,
+                    &replacements,
+                );
+                let query_string =
+                    integration_tests::utils::build_query_string(&resolved_query_params);
                 let full_path = format!("{}{}", endpoint_path, query_string);
 
                 match self.test_single_request(&full_path).await {
@@ -286,4 +291,3 @@ fn init_tracing() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init();
 }
-

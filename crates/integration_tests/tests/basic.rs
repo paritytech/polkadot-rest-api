@@ -17,13 +17,19 @@ async fn test_basic_endpoints() -> Result<()> {
     // Test health endpoint
     tracing::info!("Testing /v1/health endpoint");
     let (status, health_json) = client.get_json("/v1/health").await?;
-    assert!(status.is_success(), "Health endpoint should return success status");
+    assert!(
+        status.is_success(),
+        "Health endpoint should return success status"
+    );
     assert_eq!(health_json["status"], "ok", "Health status should be 'ok'");
 
     // Test version endpoint
     tracing::info!("Testing /v1/version endpoint");
     let (status, version_json) = client.get_json("/v1/version").await?;
-    assert!(status.is_success(), "Version endpoint should return success status");
+    assert!(
+        status.is_success(),
+        "Version endpoint should return success status"
+    );
     assert!(
         version_json["version"].is_string(),
         "Version should be a string"
@@ -77,10 +83,16 @@ async fn test_version_structure() -> Result<()> {
     client.wait_for_ready(API_READY_TIMEOUT_SECONDS).await?;
 
     let (status, version_json) = client.get_json("/v1/version").await?;
-    assert!(status.is_success(), "Version endpoint should return success status");
+    assert!(
+        status.is_success(),
+        "Version endpoint should return success status"
+    );
 
     // Validate version structure
-    assert!(version_json.is_object(), "Version response should be an object");
+    assert!(
+        version_json.is_object(),
+        "Version response should be an object"
+    );
     assert!(
         version_json.get("version").is_some(),
         "Version response should contain 'version' field"
@@ -91,7 +103,10 @@ async fn test_version_structure() -> Result<()> {
     );
 
     let version_str = version_json["version"].as_str().unwrap();
-    assert!(!version_str.is_empty(), "Version string should not be empty");
+    assert!(
+        !version_str.is_empty(),
+        "Version string should not be empty"
+    );
 
     // Version should be in semver format (e.g., "0.1.0")
     let parts: Vec<&str> = version_str.split('.').collect();
@@ -132,9 +147,7 @@ async fn test_invalid_endpoints() -> Result<()> {
     }
 
     // Test 400 for invalid parameters on valid endpoints
-    let bad_request_endpoints = vec![
-        "/v1/blocks/invalid-block-id",
-    ];
+    let bad_request_endpoints = vec!["/v1/blocks/invalid-block-id"];
 
     for endpoint in bad_request_endpoints {
         let response = client.get(endpoint).await?;
@@ -167,11 +180,7 @@ async fn test_concurrent_requests() -> Result<()> {
             async move {
                 let result = async {
                     let (status, health_json) = client.get_json("/v1/health").await?;
-                    anyhow::ensure!(
-                        status.is_success(),
-                        "Request {} should succeed",
-                        i
-                    );
+                    anyhow::ensure!(status.is_success(), "Request {} should succeed", i);
                     anyhow::ensure!(
                         health_json["status"] == "ok",
                         "Request {} should return ok status",

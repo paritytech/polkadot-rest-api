@@ -73,8 +73,10 @@ impl TestClient {
     /// Make a GET request and parse JSON response
     pub async fn get_json(&self, path: &str) -> Result<(reqwest::StatusCode, Value)> {
         let response = self.get(path).await?;
-        let json: Value = serde_json::from_str(&response.body)
-            .context(format!("Failed to parse JSON response from {}", response.url))?;
+        let json: Value = serde_json::from_str(&response.body).context(format!(
+            "Failed to parse JSON response from {}",
+            response.url
+        ))?;
         Ok((response.status, json))
     }
 
@@ -88,7 +90,11 @@ impl TestClient {
                 }
                 _ => {
                     if i < max_retries - 1 {
-                        tracing::debug!("API not ready yet, retrying in 1s... (attempt {}/{})", i + 1, max_retries);
+                        tracing::debug!(
+                            "API not ready yet, retrying in 1s... (attempt {}/{})",
+                            i + 1,
+                            max_retries
+                        );
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                 }
@@ -117,4 +123,3 @@ impl ApiResponse {
             .context(format!("Failed to parse JSON response from {}", self.url))
     }
 }
-

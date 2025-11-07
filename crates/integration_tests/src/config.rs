@@ -45,7 +45,7 @@ pub struct HistoricalTestCase {
     pub endpoint: String,
     /// Block height to test against
     pub block_height: Option<u64>,
-    /// Account identifier to test 
+    /// Account identifier to test
     pub account_id: Option<String>,
     /// Query parameters (if any)
     #[serde(default)]
@@ -72,10 +72,14 @@ pub struct TestConfig {
 impl TestConfig {
     /// Load test configuration from a JSON file
     pub fn from_file(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        let content = std::fs::read_to_string(path.as_ref())
-            .context(format!("Failed to read test config from {:?}", path.as_ref()))?;
-        let config: TestConfig = serde_json::from_str(&content)
-            .context(format!("Failed to parse test config from {:?}", path.as_ref()))?;
+        let content = std::fs::read_to_string(path.as_ref()).context(format!(
+            "Failed to read test config from {:?}",
+            path.as_ref()
+        ))?;
+        let config: TestConfig = serde_json::from_str(&content).context(format!(
+            "Failed to parse test config from {:?}",
+            path.as_ref()
+        ))?;
         Ok(config)
     }
 
@@ -122,5 +126,3 @@ impl Default for TestConfig {
         }
     }
 }
-
-

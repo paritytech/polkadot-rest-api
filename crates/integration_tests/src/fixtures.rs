@@ -46,5 +46,3 @@ impl FixtureLoader {
         &self.fixtures_dir
     }
 }
-
-
