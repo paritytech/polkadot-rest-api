@@ -408,28 +408,15 @@ fn extract_numeric_string(value: &Value) -> String {
     }
 }
 
-/// Convert JSON value, replacing byte arrays with hex strings and large numbers with strings recursively
+/// Convert JSON value, replacing byte arrays with hex strings and all numbers with strings recursively
+///
+/// This matches substrate-api-sidecar's behavior of returning all numeric values as strings
+/// for consistency across the API.
 fn convert_bytes_to_hex(value: Value) -> Value {
     match value {
         Value::Number(n) => {
-            // Convert large numbers (> 2^53-1) to strings to avoid precision loss in JavaScript
-            if let Some(u) = n.as_u64() {
-                if u > 9007199254740991 {
-                    // 2^53 - 1 (max safe integer in JavaScript)
-                    Value::String(u.to_string())
-                } else {
-                    Value::Number(n)
-                }
-            } else if let Some(i) = n.as_i64() {
-                if i.abs() > 9007199254740991 {
-                    Value::String(i.to_string())
-                } else {
-                    Value::Number(n)
-                }
-            } else {
-                // f64 or too large - convert to string
-                Value::String(n.to_string())
-            }
+            // Convert all numbers to strings to match substrate-api-sidecar behavior
+            Value::String(n.to_string())
         }
         Value::Array(arr) => {
             // Check if this is a byte array (all elements are numbers 0-255)
@@ -445,10 +432,45 @@ fn convert_bytes_to_hex(value: Value) -> Value {
                 Value::String(format!("0x{}", hex::encode(&bytes)))
             } else {
                 // Recurse into array elements
-                Value::Array(arr.into_iter().map(convert_bytes_to_hex).collect())
+                let converted: Vec<Value> = arr.into_iter().map(convert_bytes_to_hex).collect();
+
+                // If array has single element, unwrap it (this handles cases like ["0x..."] -> "0x...")
+                // This is specific to how the data is formatted in substrate-api-sidecar
+                if converted.len() == 1 {
+                    converted.into_iter().next().unwrap()
+                } else {
+                    Value::Array(converted)
+                }
             }
         }
         Value::Object(mut map) => {
+            // Check if this is a bitvec object (scale-value represents bitvecs specially)
+            if let Some(Value::Array(bits)) = map.get("__bitvec__values__") {
+                // Convert boolean array to bytes, then to hex
+                // BitVec uses LSB0 ordering (least significant bit first within each byte)
+                let mut bytes = Vec::new();
+                let mut current_byte = 0u8;
+
+                for (i, bit) in bits.iter().enumerate() {
+                    if let Some(true) = bit.as_bool() {
+                        current_byte |= 1 << (i % 8);
+                    }
+
+                    // Every 8 bits, push the byte and reset
+                    if (i + 1) % 8 == 0 {
+                        bytes.push(current_byte);
+                        current_byte = 0;
+                    }
+                }
+
+                // Push any remaining bits
+                if bits.len() % 8 != 0 {
+                    bytes.push(current_byte);
+                }
+
+                return Value::String(format!("0x{}", hex::encode(&bytes)));
+            }
+
             // Recurse into object values
             for (_, v) in map.iter_mut() {
                 *v = convert_bytes_to_hex(v.clone());
