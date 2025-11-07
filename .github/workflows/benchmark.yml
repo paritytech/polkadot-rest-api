@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update
-          apt-get install -y curl build-essential wrk jq bc
+          apt-get install -y curl build-essential wrk jq bc pkg-config libssl-dev
 
       - name: Install Rust
         run: |
