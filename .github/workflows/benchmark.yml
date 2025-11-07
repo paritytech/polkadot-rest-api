@@ -90,6 +90,120 @@ jobs:
           path: artifacts/
           retention-days: 90
 
+  benchmark-sidecar:
+    name: benchmark sidecar
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:22.04
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y curl wrk jq bc
+
+      - name: Run Sidecar benchmarks
+        run: |
+          mkdir -p artifacts_sidecar
+          
+          # Run benchmarks against public Sidecar instance
+          echo "Running Sidecar benchmarks..."
+          HARDWARE_PROFILE="ci_runner"
+          SCENARIO="medium_load"
+          
+          for init_script in benchmarks_sidecar/*/init.sh; do
+            if [ -f "$init_script" ]; then
+              ENDPOINT_DIR=$(dirname "$init_script")
+              ENDPOINT_NAME=$(basename "$ENDPOINT_DIR")
+              
+              echo "Running Sidecar benchmark: $ENDPOINT_NAME"
+              cd "$ENDPOINT_DIR"
+              bash init.sh "$SCENARIO" "$HARDWARE_PROFILE" > "../../artifacts_sidecar/benchmark_sidecar_${ENDPOINT_NAME}.txt" 2>&1
+              cd - > /dev/null
+            fi
+          done
+
+      - name: Upload Sidecar benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-sidecar-results
+          path: artifacts_sidecar/
+          retention-days: 90
+
+  benchmark-comparison:
+    name: benchmark comparison
+    needs: [benchmark, benchmark-sidecar]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+
+      - name: Download local benchmark results
+        uses: actions/download-artifact@v5
+        with:
+          name: benchmark-results
+          path: artifacts
+
+      - name: Download Sidecar benchmark results
+        uses: actions/download-artifact@v5
+        with:
+          name: benchmark-sidecar-results
+          path: artifacts_sidecar
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc jq
+
+      - name: Generate comparison report
+        run: |
+          ./scripts/ci/benchmarks/compare_results.sh artifacts artifacts_sidecar > artifacts/comparison_report.txt
+          cat artifacts/comparison_report.txt
+
+      - name: Generate comparison JSON for GitHub Pages
+        run: |
+          ./scripts/ci/benchmarks/generate_comparison_json.sh artifacts artifacts_sidecar > artifacts/comparison_results.json
+          cat artifacts/comparison_results.json
+
+      - name: Upload comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-comparison-report
+          path: artifacts/comparison_report.txt
+          retention-days: 90
+
+      - name: Comment on PR with comparison
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('artifacts/comparison_report.txt', 'utf8');
+            
+            const body = `## 📊 Benchmark Comparison: Local API vs Sidecar\n\n\`\`\`\n${report}\n\`\`\`\n\n*This comparison shows how your API performs against the public Sidecar instance.*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Store comparison result on GitHub Pages
+        uses: benchmark-action/github-action-benchmark@4e0b38bc48375986542b13c0d8976b7b80c60c00
+        with:
+          tool: 'customBiggerIsBetter'
+          output-file-path: artifacts/comparison_results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          benchmark-data-dir-path: 'dev/bench/comparison'
+
   benchmark-publish:
     name: benchmark publish
     needs: [benchmark]

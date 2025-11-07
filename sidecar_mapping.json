@@ -1,0 +1,60 @@
+{
+  "sidecar_server": {
+    "host": "polkadot-public-sidecar.parity-chains.parity.io",
+    "port": 443,
+    "protocol": "https"
+  },
+  "endpoint_mapping": {
+    "runtime": {
+      "local_endpoint": "/v1/runtime/spec",
+      "sidecar_endpoint": "/runtime/spec",
+      "description": "Runtime specification information"
+    },
+    "version": {
+      "local_endpoint": "/v1/version",
+      "sidecar_endpoint": "/node/version",
+      "description": "Node version information"
+    }
+  },
+  "benchmarks": {
+    "runtime": {
+      "endpoint": "/runtime/spec",
+      "scenarios": [
+        {
+          "name": "light_load",
+          "threads": 2,
+          "connections": 10,
+          "duration": "30s",
+          "timeout": "60s"
+        },
+        {
+          "name": "medium_load",
+          "threads": 4,
+          "connections": 50,
+          "duration": "60s",
+          "timeout": "120s"
+        }
+      ]
+    },
+    "version": {
+      "endpoint": "/node/version",
+      "scenarios": [
+        {
+          "name": "light_load",
+          "threads": 2,
+          "connections": 10,
+          "duration": "30s",
+          "timeout": "60s"
+        },
+        {
+          "name": "medium_load",
+          "threads": 4,
+          "connections": 50,
+          "duration": "60s",
+          "timeout": "120s"
+        }
+      ]
+    }
+  }
+}
+
