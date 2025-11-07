@@ -339,14 +339,14 @@ pub struct ExtrinsicInfo {
     pub method: MethodInfo,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<SignatureInfo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Nonce - shown as null when extraction fails (matching sidecar behavior)
     pub nonce: Option<String>,
     /// Args as a JSON object where bytes are hex-encoded and large numbers are strings
     pub args: serde_json::Map<String, Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Tip - shown as null when extraction fails (matching sidecar behavior)
     pub tip: Option<String>,
     pub hash: String,
-    /// Runtime dispatch info (empty for now, populated later with events)
+    /// Runtime dispatch info (empty for now, populated later with proper weight and fees)
     pub info: serde_json::Map<String, Value>,
     /// Transaction era/mortality information
     pub era: EraInfo,
@@ -371,15 +371,18 @@ pub struct BlockResponse {
 
 /// Extract a numeric value from a JSON value as a string
 /// Handles direct numbers, nested objects, or string representations
-fn extract_numeric_string(value: &Value) -> String {
+///
+/// Returns None if the value cannot be extracted, which will serialize as null
+/// in the JSON response (matching sidecar's behavior for missing/unextractable values)
+fn extract_numeric_string(value: &Value) -> Option<String> {
     match value {
         // Direct number
-        Value::Number(n) => n.to_string(),
+        Value::Number(n) => Some(n.to_string()),
         // Direct string
         Value::String(s) => {
             // Remove parentheses if present: "(23)" -> "23"
             // This was present with Nonce values
-            s.trim_matches(|c| c == '(' || c == ')').to_string()
+            Some(s.trim_matches(|c| c == '(' || c == ')').to_string())
         }
         // Object - might be {"primitive": 23} or similar
         Value::Object(map) => {
@@ -393,18 +396,26 @@ fn extract_numeric_string(value: &Value) -> String {
                     return extract_numeric_string(val);
                 }
             }
-            // Fallback to "0"
-            "0".to_string()
+            // Could not find expected numeric field
+            tracing::warn!(
+                "Could not extract numeric value from object with keys: {:?}",
+                map.keys().collect::<Vec<_>>()
+            );
+            None
         }
         // Array - take first element
         Value::Array(arr) => {
             if let Some(first) = arr.first() {
                 extract_numeric_string(first)
             } else {
-                "0".to_string()
+                tracing::warn!("Cannot extract numeric value from empty array");
+                None
             }
         }
-        _ => "0".to_string(),
+        _ => {
+            tracing::warn!("Unexpected JSON type for numeric extraction: {:?}", value);
+            None
+        }
     }
 }
 
@@ -586,7 +597,8 @@ async fn extract_extrinsics(
                             && let Ok(json_val) = serde_json::to_value(&n)
                         {
                             // The value might be nested in an object, so we need to extract it
-                            nonce_value = Some(extract_numeric_string(&json_val));
+                            // If extraction fails, nonce_value remains None (serialized as null)
+                            nonce_value = extract_numeric_string(&json_val);
                         }
                     }
                     "ChargeTransactionPayment" | "ChargeAssetTxPayment" => {
@@ -594,7 +606,8 @@ async fn extract_extrinsics(
                         if let Ok(t) = ext.decode::<scale_value::Value>()
                             && let Ok(json_val) = serde_json::to_value(&t)
                         {
-                            tip_value = Some(extract_numeric_string(&json_val));
+                            // If extraction fails, tip_value remains None (serialized as null)
+                            tip_value = extract_numeric_string(&json_val);
                         }
                     }
                     "CheckMortality" | "CheckEra" => {
