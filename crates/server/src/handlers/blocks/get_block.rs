@@ -43,7 +43,13 @@ pub enum GetBlockError {
     #[error("Failed to fetch extrinsics")]
     ExtrinsicsFetchFailed(String),
 
-    #[error("Failed to decode extrinsic field")]
+    #[error("Missing signature bytes for signed extrinsic")]
+    MissingSignatureBytes,
+
+    #[error("Missing address bytes for signed extrinsic")]
+    MissingAddressBytes,
+
+    #[error("Failed to decode extrinsic field: {0}")]
     ExtrinsicDecodeFailed(String),
 }
 
@@ -60,6 +66,8 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::StorageNotPlainValue(_)
             | GetBlockError::StorageDecodeFailed(_)
             | GetBlockError::ExtrinsicsFetchFailed(_)
+            | GetBlockError::MissingSignatureBytes
+            | GetBlockError::MissingAddressBytes
             | GetBlockError::ExtrinsicDecodeFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
@@ -552,12 +560,12 @@ async fn extract_extrinsics(
 
         // Extract signature and signer (if signed)
         let (signature_info, era_from_bytes) = if extrinsic.is_signed() {
-            let sig_bytes = extrinsic.signature_bytes().ok_or_else(|| {
-                GetBlockError::ExtrinsicDecodeFailed("Missing signature bytes".to_string())
-            })?;
-            let addr_bytes = extrinsic.address_bytes().ok_or_else(|| {
-                GetBlockError::ExtrinsicDecodeFailed("Missing address bytes".to_string())
-            })?;
+            let sig_bytes = extrinsic
+                .signature_bytes()
+                .ok_or(GetBlockError::MissingSignatureBytes)?;
+            let addr_bytes = extrinsic
+                .address_bytes()
+                .ok_or(GetBlockError::MissingAddressBytes)?;
 
             // Try to extract era from raw extrinsic bytes
             // Era comes right after address and signature in the SignedExtra/TransactionExtension
