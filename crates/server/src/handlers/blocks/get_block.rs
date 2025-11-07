@@ -509,9 +509,15 @@ async fn extract_extrinsics(
     // This ensures we use the correct metadata for that block
     let client_at_block = match state.client.at(block_number).await {
         Ok(client) => client,
-        Err(_) => {
-            // If we can't get the client at the block (e.g., in tests with mock RPC),
-            // return empty extrinsics. In production with real chains, this will work.
+        Err(e) => {
+            // This should never happen in production with real chains
+            // If it does, it indicates a serious issue with metadata or RPC
+            tracing::warn!(
+                "Failed to get client at block {}: {:?}. Returning empty extrinsics. \
+                 This is expected in tests with mock RPC, but should not happen in production.",
+                block_number,
+                e
+            );
             return Ok(Vec::new());
         }
     };
@@ -519,8 +525,13 @@ async fn extract_extrinsics(
     // Fetch extrinsics for this block
     let extrinsics = match client_at_block.extrinsics().fetch().await {
         Ok(exts) => exts,
-        Err(_) => {
-            // If fetching fails, return empty (graceful degradation)
+        Err(e) => {
+            // This could indicate RPC issues or network problems
+            tracing::warn!(
+                "Failed to fetch extrinsics for block {}: {:?}. Returning empty extrinsics.",
+                block_number,
+                e
+            );
             return Ok(Vec::new());
         }
     };
