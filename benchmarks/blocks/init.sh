@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Version endpoint benchmark
+# Blocks endpoint benchmark
 # This script assumes the server is already running on localhost:8080
 # Usage: ./init.sh [scenario] [hardware_profile]
 
@@ -33,22 +33,22 @@ fi
 
 # Get benchmark configuration
 # Try custom scenarios first, fall back to standard scenarios
-THREADS=$(jq -r ".benchmarks.version.custom_scenarios[]? | select(.name == \"$SCENARIO\") | .threads" "$CONFIG_FILE")
+THREADS=$(jq -r ".benchmarks.blocks.custom_scenarios[]? | select(.name == \"$SCENARIO\") | .threads" "$CONFIG_FILE")
 if [ -z "$THREADS" ] || [ "$THREADS" == "null" ]; then
     THREADS=$(jq -r ".standard_scenarios[] | select(.name == \"$SCENARIO\") | .threads" "$CONFIG_FILE")
 fi
 
-CONNECTIONS=$(jq -r ".benchmarks.version.custom_scenarios[]? | select(.name == \"$SCENARIO\") | .connections" "$CONFIG_FILE")
+CONNECTIONS=$(jq -r ".benchmarks.blocks.custom_scenarios[]? | select(.name == \"$SCENARIO\") | .connections" "$CONFIG_FILE")
 if [ -z "$CONNECTIONS" ] || [ "$CONNECTIONS" == "null" ]; then
     CONNECTIONS=$(jq -r ".standard_scenarios[] | select(.name == \"$SCENARIO\") | .connections" "$CONFIG_FILE")
 fi
 
-DURATION=$(jq -r ".benchmarks.version.custom_scenarios[]? | select(.name == \"$SCENARIO\") | .duration" "$CONFIG_FILE")
+DURATION=$(jq -r ".benchmarks.blocks.custom_scenarios[]? | select(.name == \"$SCENARIO\") | .duration" "$CONFIG_FILE")
 if [ -z "$DURATION" ] || [ "$DURATION" == "null" ]; then
     DURATION=$(jq -r ".standard_scenarios[] | select(.name == \"$SCENARIO\") | .duration" "$CONFIG_FILE")
 fi
 
-TIMEOUT=$(jq -r ".benchmarks.version.custom_scenarios[]? | select(.name == \"$SCENARIO\") | .timeout" "$CONFIG_FILE")
+TIMEOUT=$(jq -r ".benchmarks.blocks.custom_scenarios[]? | select(.name == \"$SCENARIO\") | .timeout" "$CONFIG_FILE")
 if [ -z "$TIMEOUT" ] || [ "$TIMEOUT" == "null" ]; then
     TIMEOUT=$(jq -r ".standard_scenarios[] | select(.name == \"$SCENARIO\") | .timeout" "$CONFIG_FILE")
 fi
@@ -65,12 +65,11 @@ SERVER_PORT=$(jq -r '.server.port' "$CONFIG_FILE")
 # Get hardware profile description
 PROFILE_DESC=$(jq -r ".hardware_profiles.\"$HARDWARE_PROFILE\".description" "$CONFIG_FILE")
 
-echo "Running version endpoint benchmark: $SCENARIO"
+echo "Running blocks endpoint benchmark: $SCENARIO"
 echo "Hardware profile: $HARDWARE_PROFILE ($PROFILE_DESC)"
 echo "Configuration: threads=$THREADS, connections=$CONNECTIONS, duration=$DURATION, timeout=${TIMEOUT:-120s}"
 
 # Run wrk benchmark
 cd "$SCRIPT_DIR"
 wrk -d"$DURATION" -t"$THREADS" -c"$CONNECTIONS" --timeout "${TIMEOUT:-120s}" --latency \
-    -s ./version.lua "http://$SERVER_HOST:$SERVER_PORT"
-
+    -s ./blocks.lua "http://$SERVER_HOST:$SERVER_PORT"
