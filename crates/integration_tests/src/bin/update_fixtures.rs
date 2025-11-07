@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
 
 async fn wait_for_api(client: &Client, api_url: &str) -> Result<bool> {
     for i in 0..API_READY_TIMEOUT_SECONDS {
-        match client.get(&format!("{}/v1/health", api_url)).send().await {
+        match client.get(format!("{}/v1/health", api_url)).send().await {
             Ok(response) if response.status().is_success() => {
                 println!("✓ API is ready");
                 return Ok(true);
@@ -155,7 +155,7 @@ async fn fetch_block_from_api(client: &Client, api_url: &str, block_id: &str) ->
         "extrinsicsRoot",
     ];
     for field in &required_fields {
-        if !block_data.get(field).is_some() {
+        if block_data.get(field).is_none() {
             anyhow::bail!("API response missing required field: {}", field);
         }
     }
