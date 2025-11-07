@@ -95,7 +95,7 @@ jobs:
             ${{ runner.os }}-target-
 
       - name: Run tests
-        run: cargo test --workspace --all-features
+        run: cargo test --workspace --all-features --exclude integration_tests
 
   integration-test:
     name: Integration Tests
