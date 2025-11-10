@@ -325,11 +325,33 @@ fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
 }
 
 /// Method information for extrinsic calls
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MethodInfo {
     pub pallet: String,
     pub method: String,
+}
+
+/// Event information in block response
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Event {
+    pub method: MethodInfo,
+    pub data: Vec<Value>,
+}
+
+/// Events that occurred during block initialization
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnInitialize {
+    pub events: Vec<Event>,
+}
+
+/// Events that occurred during block finalization
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnFinalize {
+    pub events: Vec<Event>,
 }
 
 /// Signature information for signed extrinsics
@@ -358,7 +380,9 @@ pub struct ExtrinsicInfo {
     pub info: serde_json::Map<String, Value>,
     /// Transaction era/mortality information
     pub era: EraInfo,
-    // TODO: Add more fields (events, success, paysFee)
+    /// Events emitted by this extrinsic
+    pub events: Vec<Event>,
+    // TODO: Add more fields (success, paysFee)
 }
 
 /// Basic block information
@@ -373,8 +397,9 @@ pub struct BlockResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author_id: Option<String>,
     pub logs: Vec<DigestLog>,
+    pub on_initialize: OnInitialize,
     pub extrinsics: Vec<ExtrinsicInfo>,
-    // TODO: Add more fields (onInitialize, onFinalize, etc.)
+    pub on_finalize: OnFinalize,
 }
 
 /// Extract a numeric value from a JSON value as a string
@@ -498,6 +523,215 @@ fn convert_bytes_to_hex(value: Value) -> Value {
         }
         other => other,
     }
+}
+
+/// Event phase - when during block execution the event was emitted
+#[derive(Debug, Clone)]
+enum EventPhase {
+    /// During block initialization
+    Initialization,
+    /// During extrinsic application (contains extrinsic index)
+    ApplyExtrinsic(u32),
+    /// During block finalization
+    Finalization,
+}
+
+/// A parsed event with its phase information
+#[derive(Debug)]
+struct ParsedEvent {
+    /// When in the block this event occurred
+    phase: EventPhase,
+    /// Event pallet name
+    pallet_name: String,
+    /// Event variant name
+    event_name: String,
+    /// Event data as JSON
+    event_data: Vec<Value>,
+}
+
+/// Fetch and parse all events for a block
+async fn fetch_block_events(
+    state: &AppState,
+    block_number: u64,
+) -> Result<Vec<ParsedEvent>, GetBlockError> {
+    // Get client at block
+    let client_at_block = state.client.at(block_number).await?;
+
+    // Fetch System.Events storage
+    // This contains all events that occurred during block execution
+    let storage_entry = client_at_block.storage().entry("System", "Events")?;
+    let plain_entry = storage_entry.into_plain()?;
+    let events_value = plain_entry.fetch().await?.ok_or_else(|| {
+        tracing::warn!("No events storage found for block {}", block_number);
+        parity_scale_codec::Error::from("Events storage not found")
+    })?;
+
+    // Decode events as Vec<EventRecord>
+    // EventRecord is a struct with fields: phase, event, topics
+    let events_vec = events_value
+        .decode::<Vec<scale_value::Value<()>>>()
+        .map_err(|e| {
+            tracing::warn!(
+                "Failed to decode events for block {}: {:?}",
+                block_number,
+                e
+            );
+            GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
+                "Failed to decode events",
+            ))
+        })?;
+
+    let mut parsed_events = Vec::new();
+
+    for event_record in events_vec {
+        // EventRecord structure: { phase, event, topics }
+        // Each event_record is a Value with Composite inside
+        let event_composite = match &event_record.value {
+            scale_value::ValueDef::Composite(comp) => comp,
+            _ => {
+                tracing::warn!("Event record is not a composite");
+                continue;
+            }
+        };
+
+        // Get the fields - for Named composites, we have (name, value) pairs
+        let fields: Vec<&scale_value::Value<()>> = event_composite.values().collect();
+
+        // EventRecord has 3 fields in order: phase, event, topics
+        if fields.len() < 2 {
+            tracing::warn!("Event record has insufficient fields");
+            continue;
+        }
+
+        // Parse phase (field 0)
+        let phase = parse_event_phase(&fields[0].value)?;
+
+        // Parse event (field 1)
+        // Event structure: Variant(Pallet) { values: Variant(Event) { values: event_data } }
+        if let scale_value::ValueDef::Variant(pallet_variant) = &fields[1].value {
+            let pallet_name = pallet_variant.name.clone();
+
+            // The pallet variant contains a single inner variant which is the actual event
+            let inner_values: Vec<&scale_value::Value<()>> =
+                pallet_variant.values.values().collect();
+
+            if let Some(inner_value) = inner_values.first() {
+                if let scale_value::ValueDef::Variant(event_variant) = &inner_value.value {
+                    let event_name = event_variant.name.clone();
+
+                    // Decode event fields to JSON
+                    let event_data: Vec<Value> = event_variant
+                        .values
+                        .values()
+                        .filter_map(|field| serde_json::to_value(&field.value).ok())
+                        .map(convert_bytes_to_hex)
+                        .collect();
+
+                    parsed_events.push(ParsedEvent {
+                        phase,
+                        pallet_name,
+                        event_name,
+                        event_data,
+                    });
+                } else {
+                    tracing::warn!("Inner event value is not a variant");
+                }
+            } else {
+                tracing::warn!("Pallet variant has no inner values");
+            }
+        }
+    }
+
+    Ok(parsed_events)
+}
+
+/// Parse event phase from scale_value
+fn parse_event_phase(phase_value: &scale_value::ValueDef<()>) -> Result<EventPhase, GetBlockError> {
+    if let scale_value::ValueDef::Variant(variant) = phase_value {
+        match variant.name.as_str() {
+            "Initialization" => Ok(EventPhase::Initialization),
+            "ApplyExtrinsic" => {
+                // Extract the extrinsic index (stored as u128)
+                let index_fields: Vec<&scale_value::Value<()>> = variant.values.values().collect();
+                if let Some(index_field) = index_fields.first() {
+                    // Try to extract as u128
+                    if let scale_value::ValueDef::Primitive(scale_value::Primitive::U128(index)) =
+                        &index_field.value
+                    {
+                        return Ok(EventPhase::ApplyExtrinsic(*index as u32));
+                    }
+                    // Try helper method
+                    if let Some(index_u128) = index_field.as_u128() {
+                        return Ok(EventPhase::ApplyExtrinsic(index_u128 as u32));
+                    }
+                }
+                tracing::warn!("ApplyExtrinsic phase missing or invalid index");
+                Ok(EventPhase::ApplyExtrinsic(0))
+            }
+            "Finalization" => Ok(EventPhase::Finalization),
+            other => {
+                tracing::warn!("Unknown event phase: {}", other);
+                Ok(EventPhase::Initialization)
+            }
+        }
+    } else {
+        tracing::warn!("Event phase is not a variant");
+        Ok(EventPhase::Initialization)
+    }
+}
+
+/// Categorize parsed events into onInitialize, per-extrinsic, and onFinalize arrays
+fn categorize_events(
+    parsed_events: Vec<ParsedEvent>,
+    num_extrinsics: usize,
+) -> (OnInitialize, Vec<Vec<Event>>, OnFinalize) {
+    let mut on_initialize_events = Vec::new();
+    let mut on_finalize_events = Vec::new();
+    // Create empty event vectors for each extrinsic
+    let mut per_extrinsic_events: Vec<Vec<Event>> = vec![Vec::new(); num_extrinsics];
+
+    for parsed_event in parsed_events {
+        // Convert ParsedEvent to Event
+        let event = Event {
+            method: MethodInfo {
+                pallet: parsed_event.pallet_name,
+                method: parsed_event.event_name,
+            },
+            data: parsed_event.event_data,
+        };
+
+        // Categorize by phase
+        match parsed_event.phase {
+            EventPhase::Initialization => {
+                on_initialize_events.push(event);
+            }
+            EventPhase::ApplyExtrinsic(index) => {
+                // Add to the corresponding extrinsic's event list
+                if let Some(extrinsic_events) = per_extrinsic_events.get_mut(index as usize) {
+                    extrinsic_events.push(event);
+                } else {
+                    tracing::warn!(
+                        "Event has ApplyExtrinsic phase with index {} but only {} extrinsics exist",
+                        index,
+                        num_extrinsics
+                    );
+                }
+            }
+            EventPhase::Finalization => {
+                on_finalize_events.push(event);
+            }
+        }
+    }
+
+    (
+        OnInitialize {
+            events: on_initialize_events,
+        },
+        per_extrinsic_events,
+        OnFinalize {
+            events: on_finalize_events,
+        },
+    )
 }
 
 /// Extract extrinsics from a block using subxt-historic
@@ -720,6 +954,7 @@ async fn extract_extrinsics(
             hash,
             info: serde_json::Map::new(), // Empty for now, populated with events later
             era: era_info,
+            events: Vec::new(), // Will be populated with events during categorization
         });
     }
 
@@ -773,6 +1008,21 @@ pub async fn get_block(
     // Extract extrinsics using subxt-historic for historical integrity
     let extrinsics = extract_extrinsics(&state, resolved_block.number).await?;
 
+    // Fetch all block events
+    let block_events = fetch_block_events(&state, resolved_block.number).await?;
+
+    // Categorize events by phase
+    let (on_initialize, per_extrinsic_events, on_finalize) =
+        categorize_events(block_events, extrinsics.len());
+
+    // Populate each extrinsic with its events
+    let mut extrinsics_with_events = extrinsics;
+    for (i, extrinsic_events) in per_extrinsic_events.into_iter().enumerate() {
+        if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
+            extrinsic.events = extrinsic_events;
+        }
+    }
+
     // Build response
     let response = BlockResponse {
         number: resolved_block.number.to_string(),
@@ -782,7 +1032,9 @@ pub async fn get_block(
         extrinsics_root,
         author_id,
         logs,
-        extrinsics,
+        on_initialize,
+        extrinsics: extrinsics_with_events,
+        on_finalize,
     };
 
     Ok(Json(response))
