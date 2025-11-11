@@ -1,0 +1,83 @@
+{
+  "chains": [
+    {
+      "name": "polkadot",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {}
+    },
+    {
+      "name": "kusama",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {}
+    },
+    {
+      "name": "westend",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {}
+    },
+    {
+      "name": "asset-hub-polkadot",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {}
+    },
+    {
+      "name": "asset-hub-kusama",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {}
+    },
+    {
+      "name": "asset-hub-westend",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {}
+    },
+    {
+      "name": "moonbeam",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {}
+    }
+  ],
+  "latest_endpoints": [
+    {
+      "path": "/v1/health",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
+    },
+    {
+      "path": "/v1/version",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
+    }
+  ],
+  "historical_tests": {
+    "polkadot": [
+      {
+        "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 1000000,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "polkadot/blocks_1000000.json",
+        "description": "Test block endpoint at Polkadot block 1,000,000"
+      }
+    ],
+    "kusama": [
+      {
+        "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 5000000,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "kusama/blocks_5000000.json",
+        "description": "Test block endpoint at Kusama block 5,000,000"
+      }
+    ]
+  }
+}
+

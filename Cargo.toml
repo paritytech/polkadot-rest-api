@@ -2,7 +2,8 @@
 resolver = "2"
 members = [
     "crates/server",
-    "crates/config"
+    "crates/config",
+    "crates/integration_tests"
 ]
 
 [workspace.package]
