@@ -238,12 +238,6 @@ async fn handle_from_relay(
 
 /// Query storage for an Option<u32> value from a pallet at a specific block
 /// Returns Some(value) if found, None otherwise
-///
-/// # Arguments
-/// * `state` - Application state
-/// * `pallet` - Pallet name (e.g., "RcMigrator")
-/// * `storage_item` - Storage item name (e.g., "MigrationStartBlock")
-/// * `at_hash` - Optional block hash to query at specific block. If None, queries at latest finalized block.
 async fn query_storage_u32(
     state: &AppState,
     pallet: &str,
