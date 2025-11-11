@@ -73,32 +73,95 @@ wrk -d"$DURATION" -t"$THREADS" -c"$CONNECTIONS" --timeout "${TIMEOUT:-120s}" --l
 
 ### 3. Add Configuration
 
-Add your endpoint to `benchmark_config.json`:
+Add your endpoint to `benchmark_config.json`. You can either use standard scenarios or define custom ones:
+
+#### Option 1: Use Standard Scenarios
+
+When `use_standard_scenarios` is set to `true`, your endpoint will automatically use the predefined standard scenarios:
 
 ```json
 {
   "benchmarks": {
     "blocks": {
       "endpoint": "/blocks/:block_id",
-      "scenarios": [
+      "use_standard_scenarios": true
+    }
+  }
+}
+```
+
+This will use the following standard scenarios defined in `benchmark_config.json`:
+
+```json
+{
+  "standard_scenarios": [
+    {
+      "name": "light_load",
+      "description": "Light load testing - suitable for development and CI",
+      "threads": 2,
+      "connections": 10,
+      "duration": "30s",
+      "timeout": "60s"
+    },
+    {
+      "name": "medium_load",
+      "description": "Medium load testing - balanced performance test",
+      "threads": 4,
+      "connections": 50,
+      "duration": "60s",
+      "timeout": "120s"
+    },
+    {
+      "name": "heavy_load",
+      "description": "Heavy load testing - high performance test",
+      "threads": 8,
+      "connections": 100,
+      "duration": "120s",
+      "timeout": "180s"
+    },
+    {
+      "name": "stress_test",
+      "description": "Stress testing - maximum load test",
+      "threads": 12,
+      "connections": 200,
+      "duration": "300s",
+      "timeout": "360s"
+    }
+  ]
+}
+```
+
+#### Option 2: Define Custom Scenarios
+
+When you need specific performance parameters for your endpoint, you can define custom scenarios. Set `use_standard_scenarios` to `false` and provide your own `custom_scenarios` array:
+
+```json
+{
+  "benchmarks": {
+    "your_endpoint": {
+      "endpoint": "/your/endpoint/path",
+      "use_standard_scenarios": false,
+      "custom_scenarios": [
         {
-          "name": "light_load",
-          "description": "Light load - development/CI",
-          "threads": 2,
-          "connections": 10,
-          "duration": "30s",
-          "timeout": "60s"
-        },
-        {
-          "name": "medium_load",
-          "description": "Medium load - regular testing",
-          "threads": 4,
-          "connections": 50,
-          "duration": "60s",
-          "timeout": "120s"
+          "name": "scenario_name",
+          "description": "Description of this scenario",
+          "threads": <number>,
+          "connections": <number>,
+          "duration": "<duration>s",
+          "timeout": "<timeout>s"
         }
       ]
     }
   }
 }
 ```
+
+Each custom scenario must include:
+- **`name`**: Unique identifier for the scenario (e.g., "light_load", "medium_load")
+- **`description`**: Human-readable description of what this scenario tests
+- **`threads`**: Number of threads to use in wrk
+- **`connections`**: Number of concurrent connections to maintain
+- **`duration`**: How long to run the test (e.g., "30s", "60s", "120s")
+- **`timeout`**: Request timeout (e.g., "60s", "120s", "180s")
+
+**Note**: The benchmark scripts will first check for custom scenarios, then fall back to standard scenarios if not found. This allows you to override specific scenarios while keeping others standard.

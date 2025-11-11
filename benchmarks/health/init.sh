@@ -32,10 +32,26 @@ if ! echo "$SUPPORTED_SCENARIOS" | grep -q "^$SCENARIO$"; then
 fi
 
 # Get benchmark configuration
-THREADS=$(jq -r ".benchmarks.health.scenarios[] | select(.name == \"$SCENARIO\") | .threads" "$CONFIG_FILE")
-CONNECTIONS=$(jq -r ".benchmarks.health.scenarios[] | select(.name == \"$SCENARIO\") | .connections" "$CONFIG_FILE")
-DURATION=$(jq -r ".benchmarks.health.scenarios[] | select(.name == \"$SCENARIO\") | .duration" "$CONFIG_FILE")
-TIMEOUT=$(jq -r ".benchmarks.health.scenarios[] | select(.name == \"$SCENARIO\") | .timeout" "$CONFIG_FILE")
+# Try custom scenarios first, fall back to standard scenarios
+THREADS=$(jq -r ".benchmarks.health.custom_scenarios[]? | select(.name == \"$SCENARIO\") | .threads" "$CONFIG_FILE")
+if [ -z "$THREADS" ] || [ "$THREADS" == "null" ]; then
+    THREADS=$(jq -r ".standard_scenarios[] | select(.name == \"$SCENARIO\") | .threads" "$CONFIG_FILE")
+fi
+
+CONNECTIONS=$(jq -r ".benchmarks.health.custom_scenarios[]? | select(.name == \"$SCENARIO\") | .connections" "$CONFIG_FILE")
+if [ -z "$CONNECTIONS" ] || [ "$CONNECTIONS" == "null" ]; then
+    CONNECTIONS=$(jq -r ".standard_scenarios[] | select(.name == \"$SCENARIO\") | .connections" "$CONFIG_FILE")
+fi
+
+DURATION=$(jq -r ".benchmarks.health.custom_scenarios[]? | select(.name == \"$SCENARIO\") | .duration" "$CONFIG_FILE")
+if [ -z "$DURATION" ] || [ "$DURATION" == "null" ]; then
+    DURATION=$(jq -r ".standard_scenarios[] | select(.name == \"$SCENARIO\") | .duration" "$CONFIG_FILE")
+fi
+
+TIMEOUT=$(jq -r ".benchmarks.health.custom_scenarios[]? | select(.name == \"$SCENARIO\") | .timeout" "$CONFIG_FILE")
+if [ -z "$TIMEOUT" ] || [ "$TIMEOUT" == "null" ]; then
+    TIMEOUT=$(jq -r ".standard_scenarios[] | select(.name == \"$SCENARIO\") | .timeout" "$CONFIG_FILE")
+fi
 
 if [ -z "$THREADS" ] || [ "$THREADS" == "null" ]; then
     echo "Error: Scenario '$SCENARIO' not found in config"
