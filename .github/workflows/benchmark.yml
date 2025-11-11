@@ -90,52 +90,9 @@ jobs:
           path: artifacts/
           retention-days: 90
 
-  benchmark-sidecar:
-    name: benchmark sidecar
-    runs-on: ubuntu-latest
-    container:
-      image: ubuntu:22.04
-
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          apt-get update
-          apt-get install -y curl wrk jq bc
-
-      - name: Run Sidecar benchmarks
-        run: |
-          mkdir -p artifacts_sidecar
-          
-          # Run benchmarks against public Sidecar instance
-          echo "Running Sidecar benchmarks..."
-          HARDWARE_PROFILE="ci_runner"
-          SCENARIO="medium_load"
-          
-          for init_script in benchmarks_sidecar/*/init.sh; do
-            if [ -f "$init_script" ]; then
-              ENDPOINT_DIR=$(dirname "$init_script")
-              ENDPOINT_NAME=$(basename "$ENDPOINT_DIR")
-              
-              echo "Running Sidecar benchmark: $ENDPOINT_NAME"
-              cd "$ENDPOINT_DIR"
-              bash init.sh "$SCENARIO" "$HARDWARE_PROFILE" > "../../artifacts_sidecar/benchmark_sidecar_${ENDPOINT_NAME}.txt" 2>&1
-              cd - > /dev/null
-            fi
-          done
-
-      - name: Upload Sidecar benchmark results
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-sidecar-results
-          path: artifacts_sidecar/
-          retention-days: 90
-
   benchmark-comparison:
     name: benchmark comparison
-    needs: [benchmark, benchmark-sidecar]
+    needs: [benchmark]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -150,16 +107,16 @@ jobs:
           name: benchmark-results
           path: artifacts
 
-      - name: Download Sidecar benchmark results
-        uses: actions/download-artifact@v5
-        with:
-          name: benchmark-sidecar-results
-          path: artifacts_sidecar
-
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y bc jq
+
+      - name: Parse Sidecar benchmarks from file
+        run: |
+          mkdir -p artifacts_sidecar
+          chmod +x ./scripts/ci/benchmarks/parse_sidecar_benchmarks.sh
+          ./scripts/ci/benchmarks/parse_sidecar_benchmarks.sh sidecar-benchmarks.txt artifacts_sidecar
 
       - name: Generate comparison report
         run: |
