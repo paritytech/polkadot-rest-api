@@ -91,10 +91,7 @@ pub async fn ahm_info(
     axum::extract::Query(params): axum::extract::Query<AhmInfoParams>,
 ) -> Result<Json<AhmInfoResponse>, GetAhmInfoError> {
     // Parse the block identifier
-    let block_id = params
-        .at
-        .map(|s| s.parse::<utils::BlockId>())
-        .transpose()?;
+    let block_id = params.at.map(|s| s.parse::<utils::BlockId>()).transpose()?;
 
     // Resolve the block (if `at` is provided)
     let (at_hash, at_number) = if let Some(block_id) = block_id {
@@ -107,12 +104,8 @@ pub async fn ahm_info(
     // Determine if we're connected to a relay chain or asset hub
     // Pass both hash and number to handlers so they can respect the `at` parameter
     let (relay, asset_hub) = match state.chain_info.chain_type {
-        ChainType::AssetHub => {
-            handle_from_asset_hub(&state, at_hash.as_deref(), at_number).await?
-        }
-        ChainType::Relay => {
-            handle_from_relay(&state, at_hash.as_deref(), at_number).await?
-        }
+        ChainType::AssetHub => handle_from_asset_hub(&state, at_hash.as_deref(), at_number).await?,
+        ChainType::Relay => handle_from_relay(&state, at_hash.as_deref(), at_number).await?,
         _ => {
             return Err(GetAhmInfoError::NoMigrationData(
                 state.chain_info.spec_name.clone(),
@@ -120,10 +113,7 @@ pub async fn ahm_info(
         }
     };
 
-    Ok(Json(AhmInfoResponse {
-        relay,
-        asset_hub,
-    }))
+    Ok(Json(AhmInfoResponse { relay, asset_hub }))
 }
 
 /// Handle AHM info when connected to Asset Hub
@@ -193,8 +183,8 @@ async fn handle_from_relay(
     let spec_name = &state.chain_info.spec_name;
 
     // Map relay spec name to asset hub spec name
-    let asset_hub_spec_name = get_asset_hub_spec_name(spec_name.as_str())
-        .ok_or(GetAhmInfoError::InvalidChainSpec)?;
+    let asset_hub_spec_name =
+        get_asset_hub_spec_name(spec_name.as_str()).ok_or(GetAhmInfoError::InvalidChainSpec)?;
 
     // If `at` is provided, always query on-chain to get the state at that specific block
     // Static boundaries are NOT used when `at` is specified. only on-chain results are returned
@@ -248,7 +238,7 @@ async fn handle_from_relay(
 
 /// Query storage for an Option<u32> value from a pallet at a specific block
 /// Returns Some(value) if found, None otherwise
-/// 
+///
 /// # Arguments
 /// * `state` - Application state
 /// * `pallet` - Pallet name (e.g., "RcMigrator")
@@ -263,20 +253,20 @@ async fn query_storage_u32(
     // Construct storage key using twox_128 hash
     let pallet_hash = twox_128(pallet.as_bytes());
     let storage_hash = twox_128(storage_item.as_bytes());
-    
+
     let mut key = Vec::with_capacity(32);
     key.extend_from_slice(&pallet_hash);
     key.extend_from_slice(&storage_hash);
-    
+
     let key_hex = format!("0x{}", hex::encode(&key));
-    
+
     // Query storage using RPC - if at_hash is provided, query at that block
     let params = if let Some(hash) = at_hash {
         rpc_params![key_hex, hash]
     } else {
         rpc_params![key_hex]
     };
-    
+
     match state
         .rpc_client
         .request::<Option<String>>("state_getStorage", params)
@@ -284,7 +274,7 @@ async fn query_storage_u32(
     {
         Ok(Some(value_hex)) => {
             let value_hex = value_hex.strip_prefix("0x").unwrap_or(&value_hex);
-            
+
             if let Ok(bytes) = hex::decode(value_hex)
                 && let Ok(value) = u32::decode(&mut &bytes[..])
             {
@@ -300,8 +290,8 @@ async fn query_storage_u32(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use config::SidecarConfig;
     use crate::state::AppState;
+    use config::SidecarConfig;
 
     async fn create_state_with_url(url: &str) -> AppState {
         let mut config = SidecarConfig::default();
@@ -316,16 +306,16 @@ mod tests {
         // Test: Asset Hub with static boundaries (westmint)
         // This should return static migration boundaries without querying on-chain pallets
         let state = create_state_with_url("wss://westmint-rpc.polkadot.io").await;
-        
+
         // Verify we're connected to westmint
         assert_eq!(state.chain_info.spec_name, "westmint");
-        
+
         let params = AhmInfoParams { at: None };
         let result = ahm_info(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
-        
+
         assert_eq!(response.relay.start_block, Some(26041702));
         assert_eq!(response.relay.end_block, Some(26071771));
         assert_eq!(response.asset_hub.start_block, Some(11716733));
@@ -337,17 +327,17 @@ mod tests {
         // Test: Asset Hub with static boundaries using `at` parameter (block number)
         // When `at` is provided, we query on-chain at that specific block (no static fallback)
         let state = create_state_with_url("wss://westmint-rpc.polkadot.io").await;
-        
+
         // Use a block number within the migration period
         let params = AhmInfoParams {
             at: Some("11720000".to_string()),
         };
-        
+
         let result = ahm_info(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
-        
+
         // Should query on-chain at that block - returns only on-chain results (no static fallback)
         // Relay chain data is not available from Asset Hub
         assert_eq!(response.relay.start_block, None);
@@ -356,7 +346,9 @@ mod tests {
         // Values may be None if not yet written on-chain, even if block is during migration
         // Block 11720000 is during migration (11716733 < 11720000 < 11736597)
         // We just verify the response structure, values depend on on-chain state
-        assert!(response.asset_hub.start_block.is_none() || response.asset_hub.start_block.is_some());
+        assert!(
+            response.asset_hub.start_block.is_none() || response.asset_hub.start_block.is_some()
+        );
         assert!(response.asset_hub.end_block.is_none() || response.asset_hub.end_block.is_some());
     }
 
@@ -364,17 +356,17 @@ mod tests {
     async fn test_ahm_info_asset_hub_westmint_with_at_before_migration() {
         // Test: Asset Hub querying at a block before migration started
         let state = create_state_with_url("wss://westmint-rpc.polkadot.io").await;
-        
+
         // Use a block before migration (11700000 < 11716733)
         let params = AhmInfoParams {
             at: Some("11700000".to_string()),
         };
-        
+
         let result = ahm_info(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
-        
+
         // Before migration, values should be null
         assert_eq!(response.relay.start_block, None);
         assert_eq!(response.relay.end_block, None);
@@ -387,23 +379,23 @@ mod tests {
         // Test: Asset Hub with static boundaries using `at` parameter (block hash)
         // When `at` is provided, we query on-chain at that specific block (no static fallback)
         let state = create_state_with_url("wss://westmint-rpc.polkadot.io").await;
-        
+
         // Get real block hash for a block within migration period
         let block_hash = state
             .get_block_hash_at_number(11720000)
             .await
             .expect("Failed to get block hash")
             .expect("Block not found");
-        
+
         let params = AhmInfoParams {
             at: Some(block_hash),
         };
-        
+
         let result = ahm_info(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
-        
+
         // Should query on-chain at that block - returns only on-chain results (no static fallback)
         // Relay chain data is not available from Asset Hub
         assert_eq!(response.relay.start_block, None);
@@ -412,7 +404,9 @@ mod tests {
         // Values may be None if not yet written on-chain, even if block is during migration
         // Block 11720000 is during migration (11716733 < 11720000 < 11736597)
         // We just verify the response structure, values depend on on-chain state
-        assert!(response.asset_hub.start_block.is_none() || response.asset_hub.start_block.is_some());
+        assert!(
+            response.asset_hub.start_block.is_none() || response.asset_hub.start_block.is_some()
+        );
         assert!(response.asset_hub.end_block.is_none() || response.asset_hub.end_block.is_some());
     }
 
@@ -421,16 +415,16 @@ mod tests {
         // Test: Relay Chain with static boundaries (westend)
         // This should map westend -> westmint and return static boundaries
         let state = create_state_with_url("wss://westend-rpc.polkadot.io").await;
-        
+
         // Verify we're connected to westend
         assert_eq!(state.chain_info.spec_name, "westend");
-        
+
         let params = AhmInfoParams { at: None };
         let result = ahm_info(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
-        
+
         assert_eq!(response.relay.start_block, Some(26041702));
         assert_eq!(response.relay.end_block, Some(26071771));
         assert_eq!(response.asset_hub.start_block, Some(11716733));
@@ -442,17 +436,17 @@ mod tests {
         // Test: Relay Chain with static boundaries using `at` parameter (block number)
         // When `at` is provided, we query on-chain at that specific block (no static fallback)
         let state = create_state_with_url("wss://westend-rpc.polkadot.io").await;
-        
+
         // Use a block number within the migration period
         let params = AhmInfoParams {
             at: Some("26050000".to_string()),
         };
-        
+
         let result = ahm_info(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
-        
+
         // Should query on-chain at that block - returns only on-chain results (no static fallback)
         // Relay chain values depend on what's actually stored on-chain at that block
         // Values may be None if not yet written on-chain, even if block is during migration
@@ -469,17 +463,17 @@ mod tests {
     async fn test_ahm_info_relay_westend_with_at_before_migration() {
         // Test: Relay Chain querying at a block before migration started
         let state = create_state_with_url("wss://westend-rpc.polkadot.io").await;
-        
+
         // Use a block before migration (26000000 < 26041702)
         let params = AhmInfoParams {
             at: Some("26000000".to_string()),
         };
-        
+
         let result = ahm_info(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
-        
+
         // Before migration, values should be null
         assert_eq!(response.relay.start_block, None);
         assert_eq!(response.relay.end_block, None);
@@ -492,23 +486,23 @@ mod tests {
         // Test: Relay Chain with static boundaries using `at` parameter (block hash)
         // When `at` is provided, we query on-chain at that specific block (no static fallback)
         let state = create_state_with_url("wss://westend-rpc.polkadot.io").await;
-        
+
         // Get real block hash for a block within migration period
         let block_hash = state
             .get_block_hash_at_number(26050000)
             .await
             .expect("Failed to get block hash")
             .expect("Block not found");
-        
+
         let params = AhmInfoParams {
             at: Some(block_hash),
         };
-        
+
         let result = ahm_info(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
-        
+
         // Should query on-chain at that block - returns only on-chain results (no static fallback)
         // Relay chain values depend on what's actually stored on-chain at that block
         // Values may be None if not yet written on-chain, even if block is during migration
@@ -526,16 +520,16 @@ mod tests {
         // Test: Relay Chain (Polkadot) with on-chain pallet querying
         // Polkadot doesn't have static boundaries, so it should query RcMigrator pallet
         let state = create_state_with_url("wss://rpc.polkadot.io").await;
-        
+
         // Verify we're connected to polkadot
         assert_eq!(state.chain_info.spec_name, "polkadot");
-        
+
         let params = AhmInfoParams { at: None };
         let result = ahm_info(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
-        
+
         // Should query on-chain pallets and return real values
         // Polkadot migration start block is 28490502
         assert_eq!(response.relay.start_block, Some(28490502));
@@ -549,17 +543,17 @@ mod tests {
     async fn test_ahm_info_relay_polkadot_with_at_block_number() {
         // Test: Relay Chain (Polkadot) with on-chain pallets using `at` parameter (block number)
         let state = create_state_with_url("wss://rpc.polkadot.io").await;
-        
+
         // Use a block after migration end to ensure both start and end are available
         let params = AhmInfoParams {
             at: Some("28500000".to_string()),
         };
-        
+
         let result = ahm_info(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
-        
+
         // Should query on-chain pallets at the specified block
         // At a block after migration, both start and end should be available
         assert_eq!(response.relay.start_block, Some(28490502));
@@ -572,23 +566,23 @@ mod tests {
     async fn test_ahm_info_relay_polkadot_with_at_block_hash() {
         // Test: Relay Chain (Polkadot) with on-chain pallets using `at` parameter (block hash)
         let state = create_state_with_url("wss://rpc.polkadot.io").await;
-        
+
         // Get real block hash for a block after migration end to ensure both values are available
         let block_hash = state
             .get_block_hash_at_number(28500000)
             .await
             .expect("Failed to get block hash")
             .expect("Block not found");
-        
+
         let params = AhmInfoParams {
             at: Some(block_hash),
         };
-        
+
         let result = ahm_info(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
-        
+
         // Should query on-chain pallets at the specified block
         // At a block after migration, both start and end should be available
         assert_eq!(response.relay.start_block, Some(28490502));
@@ -601,23 +595,21 @@ mod tests {
     async fn test_ahm_info_relay_polkadot_with_at_before_migration() {
         // Test: Relay Chain (Polkadot) querying at a block before migration started
         let state = create_state_with_url("wss://rpc.polkadot.io").await;
-        
+
         // Use a block before migration (28490000)
         let params = AhmInfoParams {
             at: Some("28490000".to_string()),
         };
-        
+
         let result = ahm_info(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
-        
+
         // Before migration, values should be null
         assert_eq!(response.relay.start_block, None);
         assert_eq!(response.relay.end_block, None);
         assert_eq!(response.asset_hub.start_block, None);
         assert_eq!(response.asset_hub.end_block, None);
     }
-
-
 }
