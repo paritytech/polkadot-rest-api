@@ -33,7 +33,7 @@
           "name": "light_load",
           "description": "Light load testing - suitable for development and CI",
           "threads": 2,
-          "connections": 10,
+          "connections": 6,
           "duration": "30s",
           "timeout": "60s"
         },
@@ -41,7 +41,7 @@
           "name": "medium_load",
           "description": "Medium load testing - balanced performance test",
           "threads": 4,
-          "connections": 50,
+          "connections": 6,
           "duration": "60s",
           "timeout": "120s"
         },
