@@ -152,18 +152,18 @@ async fn fetch_block_from_api(client: &Client, api_url: &str, block_id: &str) ->
     let required_fields = [
         "number",
         "hash",
-        "parentHash",      // from parent_hash
-        "stateRoot",       // from state_root
-        "extrinsicsRoot",  // from extrinsics_root
-        "logs",            // Vec<DigestLog>
-        "extrinsics",      // Vec<ExtrinsicInfo>
+        "parentHash",     // from parent_hash
+        "stateRoot",      // from state_root
+        "extrinsicsRoot", // from extrinsics_root
+        "logs",           // Vec<DigestLog>
+        "extrinsics",     // Vec<ExtrinsicInfo>
     ];
     for field in &required_fields {
         if block_data.get(field).is_none() {
             anyhow::bail!("API response missing required field: {}", field);
         }
     }
-    
+
     // Verify that logs and extrinsics are arrays
     if !block_data["logs"].is_array() {
         anyhow::bail!("API response field 'logs' is not an array");
