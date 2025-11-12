@@ -146,18 +146,30 @@ async fn fetch_block_from_api(client: &Client, api_url: &str, block_id: &str) ->
         anyhow::bail!("API response is not a JSON object");
     }
 
-    // Check for required fields
+    // Check for required fields matching BlockResponse struct
+    // BlockResponse fields: number, hash, parent_hash, state_root, extrinsics_root,
+    //                       author_id (optional), logs, extrinsics
     let required_fields = [
         "number",
         "hash",
-        "parentHash",
-        "stateRoot",
-        "extrinsicsRoot",
+        "parentHash",      // from parent_hash
+        "stateRoot",       // from state_root
+        "extrinsicsRoot",  // from extrinsics_root
+        "logs",            // Vec<DigestLog>
+        "extrinsics",      // Vec<ExtrinsicInfo>
     ];
     for field in &required_fields {
         if block_data.get(field).is_none() {
             anyhow::bail!("API response missing required field: {}", field);
         }
+    }
+    
+    // Verify that logs and extrinsics are arrays
+    if !block_data["logs"].is_array() {
+        anyhow::bail!("API response field 'logs' is not an array");
+    }
+    if !block_data["extrinsics"].is_array() {
+        anyhow::bail!("API response field 'extrinsics' is not an array");
     }
 
     println!("  ✓ Block {}", block_data["number"]);
