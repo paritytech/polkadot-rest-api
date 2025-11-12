@@ -34,6 +34,28 @@ pub const MIGRATION_BOUNDARIES: &[(&str, MigrationBoundaries)] = &[
             relay_migration_ended_at: 7927225,
         },
     ),
+    (
+        "statemine",
+        MigrationBoundaries {
+            relay_chain_last_era: 8662,
+            asset_hub_first_era: 8662,
+            asset_hub_migration_started_at: 11150168,
+            asset_hub_migration_ended_at: 11151931,
+            relay_migration_started_at: 30423691,
+            relay_migration_ended_at: 30425590,
+        },
+    ),
+    (
+        "statemint",
+        MigrationBoundaries {
+            relay_chain_last_era: 1981,
+            asset_hub_first_era: 1981,
+            asset_hub_migration_started_at: 10254470,
+            asset_hub_migration_ended_at: 10259208,
+            relay_migration_started_at: 28490502,
+            relay_migration_ended_at: 28495696,
+        },
+    ),
 ];
 
 /// Mapping from relay chain spec names to their AssetHub spec names
