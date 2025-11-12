@@ -128,7 +128,6 @@ fn handle_from_relay(
     ))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
