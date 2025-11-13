@@ -90,6 +90,60 @@ jobs:
           path: artifacts/
           retention-days: 90
 
+  benchmark-comparison:
+    name: benchmark comparison
+    needs: [benchmark]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+
+      - name: Download local benchmark results
+        uses: actions/download-artifact@v5
+        with:
+          name: benchmark-results
+          path: artifacts
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc jq
+
+      - name: Parse Sidecar benchmarks from file
+        run: |
+          mkdir -p artifacts_sidecar
+          chmod +x ./scripts/ci/benchmarks/parse_sidecar_benchmarks.sh
+          ./scripts/ci/benchmarks/parse_sidecar_benchmarks.sh sidecar-benchmarks.txt artifacts_sidecar
+
+      - name: Generate comparison report
+        run: |
+          ./scripts/ci/benchmarks/compare_results.sh artifacts artifacts_sidecar > artifacts/comparison_report.txt
+          cat artifacts/comparison_report.txt
+
+      - name: Generate comparison JSON for GitHub Pages
+        run: |
+          ./scripts/ci/benchmarks/generate_comparison_json.sh artifacts artifacts_sidecar > artifacts/comparison_results.json
+          cat artifacts/comparison_results.json
+
+      - name: Upload comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-comparison-report
+          path: artifacts/comparison_report.txt
+          retention-days: 90
+
+      - name: Store comparison result on GitHub Pages
+        uses: benchmark-action/github-action-benchmark@4e0b38bc48375986542b13c0d8976b7b80c60c00
+        with:
+          tool: 'customBiggerIsBetter'
+          output-file-path: artifacts/comparison_results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          benchmark-data-dir-path: 'dev/bench/comparison'
+
   benchmark-publish:
     name: benchmark publish
     needs: [benchmark]

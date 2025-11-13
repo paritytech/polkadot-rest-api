@@ -1,0 +1,720 @@
+Result of /accounts/{accountId}/balance-info: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   151.08ms  123.99ms   1.24s    93.42%
+    Req/Sec     8.71      2.40    10.00     76.65%
+  Latency Distribution
+     50%  119.41ms
+     75%  126.74ms
+     90%  143.13ms
+     99%  745.35ms
+  1747 requests in 1.00m, 0.97MB read
+Requests/sec:     29.08
+Transfer/sec:     16.50KB
+--------------------------
+Total completed requests:       	1747
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          151.08ms
+Max RequestTime(Latency):          1236.772ms
+Min RequestTime(Latency):          102.898ms
+Benchmark finished.
+
+Result of /accounts/{accountId}/vesting-info: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   370.70ms  610.72ms   3.43s    88.19%
+    Req/Sec     8.10      2.79    10.00     65.98%
+  Latency Distribution
+     50%  129.91ms
+     75%  140.95ms
+     90%    1.18s 
+     99%    2.84s 
+  1211 requests in 1.00m, 498.29KB read
+Requests/sec:     20.15
+Transfer/sec:      8.29KB
+--------------------------
+Total completed requests:       	1211
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          370.70ms
+Max RequestTime(Latency):          3430.801ms
+Min RequestTime(Latency):          115.438ms
+Benchmark finished.
+
+Result of /accounts/{accountId}/staking-info: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   429.94ms  720.23ms   4.38s    89.69%
+    Req/Sec     6.56      3.02    10.00     50.99%
+  Latency Distribution
+     50%  155.55ms
+     75%  176.71ms
+     90%    1.18s 
+     99%    3.95s 
+  955 requests in 1.00m, 1.96MB read
+Requests/sec:     15.89
+Transfer/sec:     33.36KB
+--------------------------
+Total completed requests:       	955
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          429.94ms
+Max RequestTime(Latency):          4383.566ms
+Min RequestTime(Latency):          135.02ms
+Benchmark finished.
+
+Result of /accounts/{accountId}/staking-payouts: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   126.16ms   54.16ms 487.52ms   96.14%
+    Req/Sec     8.97      2.15    10.00     80.90%
+  Latency Distribution
+     50%  115.66ms
+     75%  116.38ms
+     90%  117.66ms
+     99%  474.37ms
+  1932 requests in 1.00m, 2.16MB read
+  Non-2xx or 3xx responses: 1932
+Requests/sec:     32.16
+Transfer/sec:     36.87KB
+--------------------------
+Total completed requests:       	1932
+Failed requests:                	1932
+Timeouts:                       	1932
+Avg RequestTime(Latency):          126.16ms
+Max RequestTime(Latency):          487.516ms
+Min RequestTime(Latency):          113.365ms
+Benchmark finished.
+
+Result of /accounts/{accountId}/validate: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   416.40us  792.25us  21.92ms   96.77%
+    Req/Sec   686.36     46.81   747.00     91.62%
+  Latency Distribution
+     50%  310.00us
+     75%  351.00us
+     90%  407.00us
+     99%    2.79ms
+  164070 requests in 1.00m, 57.02MB read
+Requests/sec:   2732.55
+Transfer/sec:      0.95MB
+--------------------------
+Total completed requests:       	164070
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          0.42ms
+Max RequestTime(Latency):          21.923ms
+Min RequestTime(Latency):          0.184ms
+Benchmark finished.
+
+Result of /accounts/{accountId}/convert: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   390.16us  733.26us  21.09ms   96.75%
+    Req/Sec   697.46     47.43   757.00     91.62%
+  Latency Distribution
+     50%  290.00us
+     75%  314.00us
+     90%  349.00us
+     99%    2.75ms
+  166658 requests in 1.00m, 72.48MB read
+Requests/sec:   2775.94
+Transfer/sec:      1.21MB
+--------------------------
+Total completed requests:       	166658
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          0.39ms
+Max RequestTime(Latency):          21.09ms
+Min RequestTime(Latency):          0.212ms
+Benchmark finished.
+
+Result of /blocks/{blockId}: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.46s   723.69ms   3.74s    69.33%
+    Req/Sec     0.35      0.68     3.00     90.80%
+  Latency Distribution
+     50%    1.33s 
+     75%    1.84s 
+     90%    2.54s 
+     99%    3.50s 
+  163 requests in 1.00m, 126.76MB read
+Requests/sec:      2.71
+Transfer/sec:      2.11MB
+--------------------------
+Total completed requests:       	163
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          1463.73ms
+Max RequestTime(Latency):          3735.683ms
+Min RequestTime(Latency):          242.806ms
+Benchmark finished.
+
+Result of /blocks/{blockId}/header: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   134.90ms   98.61ms 967.53ms   87.65%
+    Req/Sec     9.21      2.24    10.00     88.85%
+  Latency Distribution
+     50%  101.10ms
+     75%  102.99ms
+     90%  298.15ms
+     99%  503.87ms
+  1875 requests in 1.00m, 1.67MB read
+Requests/sec:     31.21
+Transfer/sec:     28.49KB
+--------------------------
+Total completed requests:       	1875
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          134.90ms
+Max RequestTime(Latency):          967.531ms
+Min RequestTime(Latency):          99.495ms
+Benchmark finished.
+
+Result of /blocks/{blockId}/extrinsics/{extrinsicIndex}: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   879.04ms  699.81ms   3.33s    80.29%
+    Req/Sec     2.03      2.42    10.00     81.09%
+  Latency Distribution
+     50%  900.05ms
+     75%    1.12s 
+     90%    2.03s 
+     99%    3.33s 
+  275 requests in 1.00m, 203.32KB read
+Requests/sec:      4.58
+Transfer/sec:      3.38KB
+--------------------------
+Total completed requests:       	275
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          879.04ms
+Max RequestTime(Latency):          3333.045ms
+Min RequestTime(Latency):          119.062ms
+Benchmark finished.
+
+Result of /blocks/head: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   184.03ms  112.49ms   1.30s    94.44%
+    Req/Sec     6.76      2.62    10.00     57.79%
+  Latency Distribution
+     50%  158.24ms
+     75%  168.11ms
+     90%  183.53ms
+     99%  738.72ms
+  1360 requests in 1.00m, 372.28MB read
+Requests/sec:     22.64
+Transfer/sec:      6.20MB
+--------------------------
+Total completed requests:       	1360
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          184.03ms
+Max RequestTime(Latency):          1303.139ms
+Min RequestTime(Latency):          140.689ms
+Benchmark finished.
+
+Result of /blocks/head/header: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   107.53ms   27.44ms 348.04ms   97.83%
+    Req/Sec     9.62      1.40    10.00     93.31%
+  Latency Distribution
+     50%  103.17ms
+     75%  104.27ms
+     90%  106.52ms
+     99%  309.43ms
+  2212 requests in 1.00m, 2.19MB read
+Requests/sec:     36.82
+Transfer/sec:     37.29KB
+--------------------------
+Total completed requests:       	2212
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          107.53ms
+Max RequestTime(Latency):          348.038ms
+Min RequestTime(Latency):          100.999ms
+Benchmark finished.
+
+Result of /pallets/staking/progress: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   436.36ms  600.13ms   4.01s    85.98%
+    Req/Sec     5.61      2.70    10.00     69.26%
+  Latency Distribution
+     50%  178.57ms
+     75%  199.26ms
+     90%    1.22s 
+     99%    3.08s 
+  784 requests in 1.00m, 11.95MB read
+Requests/sec:     13.05
+Transfer/sec:    203.71KB
+--------------------------
+Total completed requests:       	784
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          436.36ms
+Max RequestTime(Latency):          4005.096ms
+Min RequestTime(Latency):          153.101ms
+Benchmark finished.
+
+Result of /pallets/{palletId}/storage: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   188.91ms  351.71ms   3.38s    96.26%
+    Req/Sec     8.58      2.33    10.00     72.75%
+  Latency Distribution
+     50%  124.26ms
+     75%  131.20ms
+     90%  146.99ms
+     99%    2.43s 
+  1747 requests in 1.00m, 4.22MB read
+Requests/sec:     29.08
+Transfer/sec:     71.85KB
+--------------------------
+Total completed requests:       	1747
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          188.91ms
+Max RequestTime(Latency):          3383.802ms
+Min RequestTime(Latency):          110.704ms
+Benchmark finished.
+
+Result of /pallets/{palletId}/storage/{storageItemId}: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   133.14ms   99.50ms   1.36s    95.54%
+    Req/Sec     9.02      2.20    10.00     82.85%
+  Latency Distribution
+     50%  110.60ms
+     75%  114.32ms
+     90%  207.78ms
+     99%  495.92ms
+  1907 requests in 1.00m, 1.12MB read
+Requests/sec:     31.74
+Transfer/sec:     19.11KB
+--------------------------
+Total completed requests:       	1907
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          133.14ms
+Max RequestTime(Latency):          1361.382ms
+Min RequestTime(Latency):          100.714ms
+Benchmark finished.
+
+Result of /pallets/{palletId}/errors: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   127.97ms   79.15ms   1.13s    98.13%
+    Req/Sec     8.98      2.07    10.00     80.32%
+  Latency Distribution
+     50%  116.48ms
+     75%  123.52ms
+     90%  133.91ms
+     99%  570.33ms
+  1951 requests in 1.00m, 2.61MB read
+Requests/sec:     32.48
+Transfer/sec:     44.47KB
+--------------------------
+Total completed requests:       	1951
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          127.97ms
+Max RequestTime(Latency):          1126.682ms
+Min RequestTime(Latency):          101.206ms
+Benchmark finished.
+
+Result of /pallets/{palletId}/errors/{errorItemId}: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   122.80ms   77.56ms   1.07s    96.95%
+    Req/Sec     9.30      1.84    10.00     87.27%
+  Latency Distribution
+     50%  110.99ms
+     75%  113.82ms
+     90%  117.10ms
+     99%  536.74ms
+  2043 requests in 1.00m, 813.12KB read
+Requests/sec:     34.01
+Transfer/sec:     13.53KB
+--------------------------
+Total completed requests:       	2043
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          122.80ms
+Max RequestTime(Latency):          1069.397ms
+Min RequestTime(Latency):          100.57ms
+Benchmark finished.
+
+Result of /pallets/nomination-pools/info: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   122.36ms   54.14ms 512.14ms   96.06%
+    Req/Sec     9.14      2.02    10.00     84.49%
+  Latency Distribution
+     50%  110.85ms
+     75%  116.00ms
+     90%  125.52ms
+     99%  460.83ms
+  1992 requests in 1.00m, 1.22MB read
+Requests/sec:     33.16
+Transfer/sec:     20.72KB
+--------------------------
+Total completed requests:       	1992
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          122.36ms
+Max RequestTime(Latency):          512.138ms
+Min RequestTime(Latency):          101.248ms
+Benchmark finished.
+
+Result of /pallets/nomination-pools/{poolId}: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   132.57ms  101.09ms   1.33s    96.48%
+    Req/Sec     8.96      2.12    10.00     80.19%
+  Latency Distribution
+     50%  115.10ms
+     75%  121.99ms
+     90%  134.03ms
+     99%  758.76ms
+  1923 requests in 1.00m, 1.50MB read
+Requests/sec:     32.00
+Transfer/sec:     25.48KB
+--------------------------
+Total completed requests:       	1923
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          132.57ms
+Max RequestTime(Latency):          1326.997ms
+Min RequestTime(Latency):          101.062ms
+Benchmark finished.
+
+Result of /pallets/staking/validators: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   379.79ms  317.49ms   2.23s    86.57%
+    Req/Sec     3.61      1.62    10.00     88.57%
+  Latency Distribution
+     50%  259.74ms
+     75%  281.73ms
+     90%  849.86ms
+     99%    1.67s 
+  691 requests in 1.00m, 71.46MB read
+Requests/sec:     11.50
+Transfer/sec:      1.19MB
+--------------------------
+Total completed requests:       	691
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          379.79ms
+Max RequestTime(Latency):          2227.171ms
+Min RequestTime(Latency):          177.022ms
+Benchmark finished.
+
+Result of /paras: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   175.60ms  168.91ms   1.53s    91.21%
+    Req/Sec     8.36      2.64    10.00     70.55%
+  Latency Distribution
+     50%  123.64ms
+     75%  132.67ms
+     90%  260.89ms
+     99%  902.88ms
+  1579 requests in 1.00m, 2.55MB read
+Requests/sec:     26.28
+Transfer/sec:     43.47KB
+--------------------------
+Total completed requests:       	1579
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          175.60ms
+Max RequestTime(Latency):          1525.432ms
+Min RequestTime(Latency):          104.068ms
+Benchmark finished.
+
+Result of /paras/leases/current: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   440.33ms  909.94ms   5.74s    91.05%
+    Req/Sec     8.17      2.75    10.00     67.49%
+  Latency Distribution
+     50%  129.32ms
+     75%  132.48ms
+     90%    1.02s 
+     99%    4.88s 
+  1255 requests in 1.00m, 636.66KB read
+Requests/sec:     20.89
+Transfer/sec:     10.60KB
+--------------------------
+Total completed requests:       	1255
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          440.33ms
+Max RequestTime(Latency):          5743.527ms
+Min RequestTime(Latency):          115.411ms
+Benchmark finished.
+
+Result of /paras/auctions/current: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   160.99ms  141.15ms   1.38s    92.70%
+    Req/Sec     8.50      2.54    10.00     73.12%
+  Latency Distribution
+     50%  121.09ms
+     75%  129.43ms
+     90%  184.14ms
+     99%  812.89ms
+  1663 requests in 1.00m, 1.63MB read
+Requests/sec:     27.68
+Transfer/sec:     27.77KB
+--------------------------
+Total completed requests:       	1663
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          160.99ms
+Max RequestTime(Latency):          1382.01ms
+Min RequestTime(Latency):          102.081ms
+Benchmark finished.
+
+Result of /paras/crowdloans: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   189.15ms  174.12ms   1.51s    91.01%
+    Req/Sec     7.93      2.85    10.00     63.58%
+  Latency Distribution
+     50%  129.73ms
+     75%  145.11ms
+     90%  345.40ms
+     99%  973.58ms
+  1447 requests in 1.00m, 9.07MB read
+Requests/sec:     24.08
+Transfer/sec:    154.59KB
+--------------------------
+Total completed requests:       	1447
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          189.15ms
+Max RequestTime(Latency):          1510.532ms
+Min RequestTime(Latency):          109.343ms
+Benchmark finished.
+
+Result of /paras/{paraId}/crowdloan-info: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   155.73ms  130.02ms   1.39s    93.69%
+    Req/Sec     8.51      2.52    10.00     72.80%
+  Latency Distribution
+     50%  122.03ms
+     75%  129.60ms
+     90%  154.42ms
+     99%  759.93ms
+  1695 requests in 1.00m, 1.02MB read
+Requests/sec:     28.21
+Transfer/sec:     17.46KB
+--------------------------
+Total completed requests:       	1695
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          155.73ms
+Max RequestTime(Latency):          1394.121ms
+Min RequestTime(Latency):          103.875ms
+Benchmark finished.
+
+Result of /paras/{paraId}/lease-info: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   160.26ms  139.42ms   1.39s    93.20%
+    Req/Sec     8.46      2.54    10.00     71.99%
+  Latency Distribution
+     50%  121.84ms
+     75%  133.98ms
+     90%  163.10ms
+     99%  784.07ms
+  1667 requests in 1.00m, 1.28MB read
+Requests/sec:     27.75
+Transfer/sec:     21.88KB
+--------------------------
+Total completed requests:       	1667
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          160.26ms
+Max RequestTime(Latency):          1389.315ms
+Min RequestTime(Latency):          100.516ms
+Benchmark finished.
+
+Result of /node/network: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   219.94ms   16.30ms 282.25ms   74.35%
+    Req/Sec     4.55      0.82     5.00     78.97%
+  Latency Distribution
+     50%  215.77ms
+     75%  226.73ms
+     90%  242.38ms
+     99%  273.74ms
+  1084 requests in 1.00m, 674.32KB read
+Requests/sec:     18.04
+Transfer/sec:     11.22KB
+--------------------------
+Total completed requests:       	1084
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          219.94ms
+Max RequestTime(Latency):          282.252ms
+Min RequestTime(Latency):          196.017ms
+Benchmark finished.
+
+Result of /node/transaction-pool: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   110.73ms   16.45ms 332.40ms   91.61%
+    Req/Sec     9.41      1.64    10.00     88.63%
+  Latency Distribution
+     50%  106.76ms
+     75%  114.54ms
+     90%  124.46ms
+     99%  170.04ms
+  2146 requests in 1.00m, 513.45KB read
+Requests/sec:     35.71
+Transfer/sec:      8.54KB
+--------------------------
+Total completed requests:       	2146
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          110.73ms
+Max RequestTime(Latency):          332.398ms
+Min RequestTime(Latency):          96.716ms
+Benchmark finished.
+
+Result of /node/version: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   117.03ms   13.92ms 232.90ms   90.55%
+    Req/Sec     9.09      1.94    10.00     81.89%
+  Latency Distribution
+     50%  113.18ms
+     75%  120.08ms
+     90%  129.61ms
+     99%  165.60ms
+  2032 requests in 1.00m, 648.89KB read
+Requests/sec:     33.82
+Transfer/sec:     10.80KB
+--------------------------
+Total completed requests:       	2032
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          117.03ms
+Max RequestTime(Latency):          232.903ms
+Min RequestTime(Latency):          102.352ms
+Benchmark finished.
+
+Result of /runtime/spec: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   222.19ms   93.55ms   1.06s    93.88%
+    Req/Sec     4.75      0.91    10.00     92.64%
+  Latency Distribution
+     50%  199.13ms
+     75%  201.32ms
+     90%  207.46ms
+     99%  637.57ms
+  1087 requests in 1.00m, 605.81KB read
+Requests/sec:     18.09
+Transfer/sec:     10.08KB
+--------------------------
+Total completed requests:       	1087
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          222.19ms
+Max RequestTime(Latency):          1056.691ms
+Min RequestTime(Latency):          172.242ms
+Benchmark finished.
+
+Result of /transaction/material: ↓ 
+
+Running 1m test @ http://127.0.0.1:8080
+  4 threads and 6 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   249.04ms  106.60ms   1.13s    92.90%
+    Req/Sec     4.29      1.16     5.00     71.66%
+  Latency Distribution
+     50%  218.67ms
+     75%  235.25ms
+     90%  270.08ms
+     99%  683.66ms
+  967 requests in 1.00m, 476.60KB read
+Requests/sec:     16.09
+Transfer/sec:      7.93KB
+--------------------------
+Total completed requests:       	967
+Failed requests:                	0
+Timeouts:                       	0
+Avg RequestTime(Latency):          249.04ms
+Max RequestTime(Latency):          1129.411ms
+Min RequestTime(Latency):          198.346ms
+Benchmark finished.

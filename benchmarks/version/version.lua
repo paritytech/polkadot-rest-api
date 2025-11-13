@@ -1,6 +1,8 @@
 -- Version endpoint benchmark script
 -- Tests the /version endpoint for latency and throughput
 
+local util = require("../util")
+
 -- Setup the request
 request = function()
     return wrk.format("GET", "/v1/version")
@@ -11,8 +13,6 @@ delay = function()
     -- No delay by default
 end
 
--- Signal completion
-done = function()
-    -- Setup complete
-end
+-- Signal completion with statistics
+done = util.done()
 
