@@ -41,7 +41,23 @@ update_chain_fixtures() {
     # Wait for server to be ready
     echo ""
     echo "Waiting for API to be ready..."
-    sleep 3
+    local max_wait=30
+    local waited=0
+    while [ $waited -lt $max_wait ]; do
+        if curl -s "${API_URL}/v1/health" > /dev/null 2>&1; then
+            echo "  ✓ API is ready"
+            break
+        fi
+        sleep 1
+        waited=$((waited + 1))
+        echo -n "."
+    done
+    echo ""
+    if [ $waited -eq $max_wait ]; then
+        echo "  ✗ API did not become ready after ${max_wait} seconds"
+        kill ${SERVER_PID} 2>/dev/null || true
+        exit 1
+    fi
     
     # Run the fixture updater for this chain
     echo ""
@@ -65,12 +81,16 @@ update_chain_fixtures "polkadot" "wss://rpc.polkadot.io"
 # Update Kusama fixtures
 update_chain_fixtures "kusama" "wss://kusama-rpc.polkadot.io"
 
+# Update Asset Hub Polkadot fixtures
+update_chain_fixtures "asset-hub-polkadot" "wss://polkadot-asset-hub-rpc.polkadot.io"
+
+# Update Asset Hub Kusama fixtures
+update_chain_fixtures "asset-hub-kusama" "wss://kusama-asset-hub-rpc.polkadot.io"
+
 echo "================================================================"
 echo "✓ All fixtures updated successfully!"
 echo "================================================================"
 echo ""
-echo "Updated fixtures:"
-echo "  - crates/integration_tests/tests/fixtures/polkadot/blocks_1000000.json"
-echo "  - crates/integration_tests/tests/fixtures/kusama/blocks_5000000.json"
+echo "Updated fixtures for all chains (see test_config.json for details)"
 echo ""
 

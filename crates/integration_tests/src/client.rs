@@ -18,10 +18,10 @@ impl TestClient {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             client: Client::builder()
-                .timeout(Duration::from_secs(30))
+                .timeout(Duration::from_secs(120))
                 .build()
                 .expect("Failed to create HTTP client"),
-            timeout: Duration::from_secs(30),
+            timeout: Duration::from_secs(120),
         }
     }
 

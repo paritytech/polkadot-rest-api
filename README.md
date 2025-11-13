@@ -52,6 +52,8 @@ cargo test --package integration_tests test_latest_polkadot
 cargo test --package integration_tests test_latest_kusama
 cargo test --package integration_tests test_historical_polkadot
 cargo test --package integration_tests test_historical_kusama
+cargo test --package integration_tests test_historical_asset_hub_polkadot
+cargo test --package integration_tests test_historical_asset_hub_kusama
 
 # Run basic endpoint tests (chain-agnostic)
 cargo test --package integration_tests --test basic
