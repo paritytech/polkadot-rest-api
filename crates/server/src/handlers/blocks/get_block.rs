@@ -707,15 +707,25 @@ fn snake_to_camel(s: &str) -> String {
 }
 
 /// Decode account address bytes to SS58 format
-/// Handles MultiAddress::Id variant which has a 0x00 prefix followed by 32 bytes
+/// Tries to decode:
+/// 1. MultiAddress::Id variant (0x00 + 32 bytes)
+/// 2. Raw 32-byte AccountId32 (0x + 32 bytes)
 fn decode_address_to_ss58(hex_str: &str) -> Option<String> {
-    // Check if this looks like a MultiAddress::Id (0x00 + 32 bytes = 66 chars total)
-    if !hex_str.starts_with("0x00") || hex_str.len() != 66 {
+    if !hex_str.starts_with("0x") {
         return None;
     }
 
-    // Extract the 32-byte account ID (skip "0x00" prefix)
-    let account_bytes = hex::decode(&hex_str[4..]).ok()?;
+    let account_bytes = if hex_str.starts_with("0x00") && hex_str.len() == 68 {
+        // MultiAddress::Id: skip "0x00" variant prefix
+        hex::decode(&hex_str[4..]).ok()?
+    } else if hex_str.len() == 66 {
+        // Raw AccountId32: skip "0x" prefix
+        hex::decode(&hex_str[2..]).ok()?
+    } else {
+        return None;
+    };
+
+    // Must be exactly 32 bytes
     if account_bytes.len() != 32 {
         return None;
     }
@@ -724,6 +734,7 @@ fn decode_address_to_ss58(hex_str: &str) -> Option<String> {
     let account_id = sp_core::crypto::AccountId32::try_from(account_bytes.as_slice()).ok()?;
 
     // Encode to SS58 with Polkadot prefix (0)
+    // TODO make this flexible depending on network
     Some(account_id.to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(0)))
 }
 
@@ -738,10 +749,13 @@ fn transform_args(value: Value) -> Value {
         Value::Object(map) => {
             // Check if this is a SCALE enum variant: {"name": "X", "values": Y}
             if map.len() == 2
-                && let (Some(Value::String(name)), Some(values)) = (map.get("name"), map.get("values"))
+                && let (Some(Value::String(name)), Some(values)) =
+                    (map.get("name"), map.get("values"))
             {
                 // If values is "0x" (empty), return just the name as string
-                if let Value::String(v) = values && v == "0x" {
+                if let Value::String(v) = values
+                    && v == "0x"
+                {
                     return Value::String(name.clone());
                 }
 
@@ -765,17 +779,17 @@ fn transform_args(value: Value) -> Value {
             Value::Object(transformed)
         }
         Value::String(s) => {
-            // Try to decode as SS58 address if it looks like MultiAddress::Id
-            if s.starts_with("0x00") && s.len() == 66
+            // Try to decode as SS58 address if it looks like an account ID
+            // (either MultiAddress::Id with 0x00 prefix or raw AccountId32)
+            if s.starts_with("0x")
+                && (s.len() == 66 || s.len() == 68)
                 && let Some(ss58_addr) = decode_address_to_ss58(&s)
             {
                 return Value::String(ss58_addr);
             }
             Value::String(s)
         }
-        Value::Array(arr) => {
-            Value::Array(arr.into_iter().map(transform_args).collect())
-        }
+        Value::Array(arr) => Value::Array(arr.into_iter().map(transform_args).collect()),
         other => other,
     }
 }
@@ -954,15 +968,13 @@ async fn extract_extrinsics(
 
             // Decode signer address to SS58
             let signer_hex = format!("0x{}", hex::encode(addr_bytes));
-            let signer_ss58 = decode_address_to_ss58(&signer_hex)
-                .unwrap_or_else(|| signer_hex.clone());
+            let signer_ss58 =
+                decode_address_to_ss58(&signer_hex).unwrap_or_else(|| signer_hex.clone());
 
             (
                 Some(SignatureInfo {
                     signature: format!("0x{}", hex::encode(sig_bytes)),
-                    signer: SignerId {
-                        id: signer_ss58,
-                    },
+                    signer: SignerId { id: signer_ss58 },
                 }),
                 era_info,
             )
