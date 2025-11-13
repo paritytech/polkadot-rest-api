@@ -609,7 +609,8 @@ async fn fetch_block_events(
         // Parse event (field 1)
         // Event structure: Variant(Pallet) { values: Variant(Event) { values: event_data } }
         if let scale_value::ValueDef::Variant(pallet_variant) = &fields[1].value {
-            let pallet_name = pallet_variant.name.clone();
+            // Convert pallet name to lowercase to match sidecar format
+            let pallet_name = pallet_variant.name.to_lowercase();
 
             // The pallet variant contains a single inner variant which is the actual event
             let inner_values: Vec<&scale_value::Value<()>> =
@@ -619,12 +620,13 @@ async fn fetch_block_events(
                 if let scale_value::ValueDef::Variant(event_variant) = &inner_value.value {
                     let event_name = event_variant.name.clone();
 
-                    // Decode event fields to JSON
+                    // Decode event fields to JSON, then transform to match sidecar format
                     let event_data: Vec<Value> = event_variant
                         .values
                         .values()
                         .filter_map(|field| serde_json::to_value(&field.value).ok())
                         .map(convert_bytes_to_hex)
+                        .map(transform_event_data)
                         .collect();
 
                     parsed_events.push(ParsedEvent {
@@ -643,6 +645,58 @@ async fn fetch_block_events(
     }
 
     Ok(parsed_events)
+}
+
+/// Transform event data to match sidecar format
+/// - Converts snake_case to camelCase
+/// - Simplifies enum variants from {"name": "X", "values": ...} to just "X"
+/// - Converts byte arrays to hex strings
+fn transform_event_data(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            // Check if this is an enum variant object with "name" and "values" fields
+            // If values is "0x" (empty), just return the name as a string
+            if map.len() == 2 {
+                match (map.get("name"), map.get("values")) {
+                    (Some(Value::String(name)), Some(Value::String(values))) if values == "0x" => {
+                        return Value::String(name.clone());
+                    }
+                    _ => {}
+                }
+            }
+
+            // Otherwise, transform object keys from snake_case to camelCase
+            let transformed: serde_json::Map<String, Value> = map
+                .into_iter()
+                .map(|(key, val)| {
+                    let camel_key = snake_to_camel(&key);
+                    (camel_key, transform_event_data(val))
+                })
+                .collect();
+            Value::Object(transformed)
+        }
+        Value::Array(arr) => Value::Array(arr.into_iter().map(transform_event_data).collect()),
+        other => other,
+    }
+}
+
+/// Convert snake_case to camelCase
+fn snake_to_camel(s: &str) -> String {
+    let mut result = String::new();
+    let mut capitalize_next = false;
+
+    for ch in s.chars() {
+        if ch == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(ch.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
 }
 
 /// Parse event phase from scale_value
