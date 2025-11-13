@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
-use sp_core::crypto::AccountId32;
+use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash as HashT;
 use subxt_historic::error::{OnlineClientAtBlockError, StorageEntryIsNotAPlainValue, StorageError};
@@ -354,12 +354,19 @@ pub struct OnFinalize {
     pub events: Vec<Event>,
 }
 
+/// Signer ID wrapper matching sidecar format
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignerId {
+    pub id: String,
+}
+
 /// Signature information for signed extrinsics
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureInfo {
     pub signature: String,
-    pub signer: String,
+    pub signer: SignerId,
 }
 
 /// Extrinsic information matching sidecar format
@@ -649,7 +656,7 @@ async fn fetch_block_events(
 
 /// Transform event data to match sidecar format
 /// - Converts snake_case to camelCase
-/// - Simplifies enum variants from {"name": "X", "values": ...} to just "X"
+/// - Simplifies enum variants from {"name": "X", "values": ...} to just "X" (for empty values)
 /// - Converts byte arrays to hex strings
 fn transform_event_data(value: Value) -> Value {
     match value {
@@ -697,6 +704,80 @@ fn snake_to_camel(s: &str) -> String {
     }
 
     result
+}
+
+/// Decode account address bytes to SS58 format
+/// Handles MultiAddress::Id variant which has a 0x00 prefix followed by 32 bytes
+fn decode_address_to_ss58(hex_str: &str) -> Option<String> {
+    // Check if this looks like a MultiAddress::Id (0x00 + 32 bytes = 66 chars total)
+    if !hex_str.starts_with("0x00") || hex_str.len() != 66 {
+        return None;
+    }
+
+    // Extract the 32-byte account ID (skip "0x00" prefix)
+    let account_bytes = hex::decode(&hex_str[4..]).ok()?;
+    if account_bytes.len() != 32 {
+        return None;
+    }
+
+    // Convert to AccountId32
+    let account_id = sp_core::crypto::AccountId32::try_from(account_bytes.as_slice()).ok()?;
+
+    // Encode to SS58 with Polkadot prefix (0)
+    Some(account_id.to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(0)))
+}
+
+/// Transform args to match sidecar format
+/// Generic transformation for SCALE enum variants:
+/// - {"name": "X", "values": Y} -> {"x": Y} (lowercase name as key)
+/// - {"name": "X", "values": "0x"} -> "X" (empty enum variant becomes string)
+/// - Decodes MultiAddress account IDs to SS58 format
+/// - Converts snake_case to camelCase for field names
+fn transform_args(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            // Check if this is a SCALE enum variant: {"name": "X", "values": Y}
+            if map.len() == 2
+                && let (Some(Value::String(name)), Some(values)) = (map.get("name"), map.get("values"))
+            {
+                // If values is "0x" (empty), return just the name as string
+                if let Value::String(v) = values && v == "0x" {
+                    return Value::String(name.clone());
+                }
+
+                // Otherwise, transform to {"<lowercase_name>": <transformed_values>}
+                let key = name.to_lowercase();
+                let transformed_value = transform_args(values.clone());
+
+                let mut result = serde_json::Map::new();
+                result.insert(key, transformed_value);
+                return Value::Object(result);
+            }
+
+            // Regular object: transform keys from snake_case to camelCase and recurse
+            let transformed: serde_json::Map<String, Value> = map
+                .into_iter()
+                .map(|(key, val)| {
+                    let camel_key = snake_to_camel(&key);
+                    (camel_key, transform_args(val))
+                })
+                .collect();
+            Value::Object(transformed)
+        }
+        Value::String(s) => {
+            // Try to decode as SS58 address if it looks like MultiAddress::Id
+            if s.starts_with("0x00") && s.len() == 66
+                && let Some(ss58_addr) = decode_address_to_ss58(&s)
+            {
+                return Value::String(ss58_addr);
+            }
+            Value::String(s)
+        }
+        Value::Array(arr) => {
+            Value::Array(arr.into_iter().map(transform_args).collect())
+        }
+        other => other,
+    }
 }
 
 /// Parse event phase from scale_value
@@ -846,11 +927,12 @@ async fn extract_extrinsics(
             GetBlockError::ExtrinsicDecodeFailed(format!("Failed to serialize args: {}", e))
         })?;
 
-        // Convert byte arrays to hex strings
+        // Convert byte arrays to hex strings and transform to match sidecar format
         let args_converted = convert_bytes_to_hex(args_json);
+        let args_transformed = transform_args(args_converted);
 
         // Extract as map (should be an object from Composite)
-        let args_map = if let Value::Object(map) = args_converted {
+        let args_map = if let Value::Object(map) = args_transformed {
             map
         } else {
             // Fallback to empty map if not an object
@@ -870,10 +952,17 @@ async fn extract_extrinsics(
             // Era comes right after address and signature in the SignedExtra/TransactionExtension
             let era_info = utils::extract_era_from_extrinsic_bytes(extrinsic.bytes());
 
+            // Decode signer address to SS58
+            let signer_hex = format!("0x{}", hex::encode(addr_bytes));
+            let signer_ss58 = decode_address_to_ss58(&signer_hex)
+                .unwrap_or_else(|| signer_hex.clone());
+
             (
                 Some(SignatureInfo {
                     signature: format!("0x{}", hex::encode(sig_bytes)),
-                    signer: format!("0x{}", hex::encode(addr_bytes)),
+                    signer: SignerId {
+                        id: signer_ss58,
+                    },
                 }),
                 era_info,
             )
