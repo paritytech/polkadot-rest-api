@@ -31,6 +31,9 @@ sp-core = "34"
 sp-runtime = "39"
 sp-consensus-babe = "0.40"
 scale-value = "0.18"
+prometheus = "0.13"
+lazy_static = "1.4"
+regex = "1.10"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

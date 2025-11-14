@@ -1,11 +1,13 @@
 mod error;
 mod express;
 mod log;
+mod metrics;
 mod substrate;
 
 pub use error::ConfigError;
 pub use express::{ExpressConfig, ExpressError};
 pub use log::{LogConfig, LogError};
+pub use metrics::{MetricsConfig, MetricsError};
 pub use substrate::{
     ChainType, ChainUrl, KnownAssetHub, KnownRelayChain, SubstrateConfig, SubstrateError,
 };
@@ -54,6 +56,18 @@ struct EnvConfig {
 
     #[serde(default = "default_substrate_multi_chain_url")]
     substrate_multi_chain_url: String,
+
+    #[serde(default = "default_metrics_enabled")]
+    metrics_enabled: bool,
+
+    #[serde(default = "default_metrics_prom_host")]
+    metrics_prom_host: String,
+
+    #[serde(default = "default_metrics_prom_port")]
+    metrics_prom_port: u16,
+
+    #[serde(default = "default_metrics_include_queryparams")]
+    metrics_include_queryparams: bool,
 }
 
 fn default_express_bind_host() -> String {
@@ -108,12 +122,29 @@ fn default_substrate_multi_chain_url() -> String {
     String::new()
 }
 
+fn default_metrics_enabled() -> bool {
+    false
+}
+
+fn default_metrics_prom_host() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_metrics_prom_port() -> u16 {
+    9100
+}
+
+fn default_metrics_include_queryparams() -> bool {
+    false
+}
+
 /// Main configuration struct
 #[derive(Debug, Clone, Default)]
 pub struct SidecarConfig {
     pub express: ExpressConfig,
     pub log: LogConfig,
     pub substrate: SubstrateConfig,
+    pub metrics: MetricsConfig,
 }
 
 impl SidecarConfig {
@@ -133,6 +164,10 @@ impl SidecarConfig {
     /// - SAS_LOG_WRITE_MAX_FILES
     /// - SAS_SUBSTRATE_URL
     /// - SAS_SUBSTRATE_MULTI_CHAIN_URL
+    /// - SAS_METRICS_ENABLED
+    /// - SAS_METRICS_PROM_HOST
+    /// - SAS_METRICS_PROM_PORT
+    /// - SAS_METRICS_INCLUDE_QUERYPARAMS
     pub fn from_env() -> Result<Self, ConfigError> {
         // Load flat env config
         let env_config = envy::prefixed("SAS_").from_env::<EnvConfig>()?;
@@ -165,6 +200,12 @@ impl SidecarConfig {
                 url: env_config.substrate_url,
                 multi_chain_urls,
             },
+            metrics: MetricsConfig {
+                enabled: env_config.metrics_enabled,
+                prom_host: env_config.metrics_prom_host,
+                prom_port: env_config.metrics_prom_port,
+                include_queryparams: env_config.metrics_include_queryparams,
+            },
         };
 
         // Validate
@@ -176,6 +217,7 @@ impl SidecarConfig {
         self.express.validate()?;
         self.log.validate()?;
         self.substrate.validate()?;
+        self.metrics.validate()?;
         Ok(())
     }
 }

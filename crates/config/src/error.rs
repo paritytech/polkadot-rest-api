@@ -14,6 +14,9 @@ pub enum ConfigError {
     #[error("Substrate configuration error")]
     SubstrateError(#[from] crate::substrate::SubstrateError),
 
+    #[error("Metrics configuration error")]
+    MetricsError(#[from] crate::metrics::MetricsError),
+
     #[error("Invalid multi-chain URL JSON")]
     InvalidMultiChainJson(#[from] serde_json::Error),
 }
