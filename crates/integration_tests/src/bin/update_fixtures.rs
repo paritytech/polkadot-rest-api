@@ -118,7 +118,7 @@ async fn update_chain_fixtures(
     println!("{}", "-".repeat(60));
 
     let test_cases = config.get_historical_tests(chain_name);
-    
+
     if test_cases.is_empty() {
         println!("  No historical tests found for {}", chain_name);
         return Ok(());
@@ -127,15 +127,16 @@ async fn update_chain_fixtures(
     for test_case in &test_cases {
         if let Some(block_height) = test_case.block_height {
             println!("\nFetching block {} from API...", block_height);
-            let block_data = fetch_block_from_api(client, api_url, &block_height.to_string()).await?;
-            
+            let block_data =
+                fetch_block_from_api(client, api_url, &block_height.to_string()).await?;
+
             // Extract filename from fixture_path
             let filename = test_case
                 .fixture_path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .context("Invalid fixture path")?;
-            
+
             save_fixture(chain_name, filename, &block_data)?;
         }
     }
