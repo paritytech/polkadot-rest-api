@@ -658,11 +658,10 @@ async fn fetch_block_events(
                             let with_hex = convert_bytes_to_hex(json_value);
 
                             // If this field position should contain an AccountId32, try to convert it
-                            if account_positions.contains(&idx) {
-                                if let Some(ss58_value) = try_convert_to_ss58_event_field(&with_hex)
-                                {
-                                    return Some(ss58_value);
-                                }
+                            if account_positions.contains(&idx)
+                                && let Some(ss58_value) = try_convert_to_ss58_event_field(&with_hex)
+                            {
+                                return Some(ss58_value);
                             }
 
                             // Otherwise, apply standard transformation
@@ -694,14 +693,14 @@ fn try_convert_to_ss58_event_field(value: &Value) -> Option<Value> {
     match value {
         Value::String(hex_str) if hex_str.starts_with("0x") && hex_str.len() == 66 => {
             // Try to decode as 32-byte AccountId32
-            if let Ok(bytes) = hex::decode(&hex_str[2..]) {
-                if bytes.len() == 32 {
-                    let mut arr = [0u8; 32];
-                    arr.copy_from_slice(&bytes);
-                    let account_id = AccountId32::from(arr);
-                    let ss58 = account_id.to_ss58check_with_version(0u16.into());
-                    return Some(Value::String(ss58));
-                }
+            if let Ok(bytes) = hex::decode(&hex_str[2..])
+                && bytes.len() == 32
+            {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&bytes);
+                let account_id = AccountId32::from(arr);
+                let ss58 = account_id.to_ss58check_with_version(0u16.into());
+                return Some(Value::String(ss58));
             }
             None
         }
@@ -1138,7 +1137,7 @@ async fn extract_extrinsics(
                 } else if let Ok(accounts) = field.decode::<Vec<[u8; 32]>>() {
                     // Try Vec<[u8; 32]>
                     let ss58_addresses: Vec<String> =
-                        accounts.iter().map(|bytes| bytes_to_ss58(bytes)).collect();
+                        accounts.iter().map(&bytes_to_ss58).collect();
                     args_map.insert(camel_field_name.clone(), json!(ss58_addresses));
                     decoded_account = true;
                 } else if let Ok(multi_addr) = field.decode::<MultiAddress>() {
@@ -1168,7 +1167,7 @@ async fn extract_extrinsics(
             // For non-account fields (or account fields that failed to decode), use Value<()>
             match field.decode::<scale_value::Value<()>>() {
                 Ok(value) => {
-                    let json_value = serde_json::to_value(&value).unwrap_or_else(|_| Value::Null);
+                    let json_value = serde_json::to_value(&value).unwrap_or(Value::Null);
                     let converted = convert_bytes_to_hex(json_value);
                     let transformed = transform_args(converted);
                     args_map.insert(camel_field_name, transformed);
