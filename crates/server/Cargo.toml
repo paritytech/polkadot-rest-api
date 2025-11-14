@@ -31,6 +31,7 @@ sp-core = "34"
 sp-runtime = "39"
 sp-consensus-babe = "0.40"
 scale-value = "0.18"
+scale-decode = { version = "0.16", features = ["derive"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

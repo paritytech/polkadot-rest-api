@@ -53,6 +53,23 @@ pub enum GetBlockError {
     ExtrinsicDecodeFailed(String),
 }
 
+/// MultiAddress type for decoding Substrate address variants
+/// This represents the different ways an address can be encoded in Substrate
+#[derive(scale_decode::DecodeAsType)]
+#[allow(dead_code)]
+enum MultiAddress {
+    /// An AccountId32 (32 bytes)
+    Id([u8; 32]),
+    /// An account index
+    Index(u32),
+    /// Raw bytes
+    Raw(Vec<u8>),
+    /// A 32-byte address
+    Address32([u8; 32]),
+    /// A 20-byte address (Ethereum-style)
+    Address20([u8; 20]),
+}
+
 impl IntoResponse for GetBlockError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
@@ -627,18 +644,35 @@ async fn fetch_block_events(
                 if let scale_value::ValueDef::Variant(event_variant) = &inner_value.value {
                     let event_name = event_variant.name.clone();
 
+                    // Get the positions of AccountId32 fields for this event type
+                    let account_positions = get_account_field_positions(&pallet_name, &event_name);
+
                     // Decode event fields to JSON, then transform to match sidecar format
                     let event_data: Vec<Value> = event_variant
                         .values
                         .values()
-                        .filter_map(|field| serde_json::to_value(&field.value).ok())
-                        .map(convert_bytes_to_hex)
-                        .map(transform_event_data)
+                        .enumerate()
+                        .filter_map(|(idx, field)| {
+                            // Convert to JSON
+                            let json_value = serde_json::to_value(&field.value).ok()?;
+                            let with_hex = convert_bytes_to_hex(json_value);
+
+                            // If this field position should contain an AccountId32, try to convert it
+                            if account_positions.contains(&idx) {
+                                if let Some(ss58_value) = try_convert_to_ss58_event_field(&with_hex)
+                                {
+                                    return Some(ss58_value);
+                                }
+                            }
+
+                            // Otherwise, apply standard transformation
+                            Some(transform_event_data(with_hex))
+                        })
                         .collect();
 
                     parsed_events.push(ParsedEvent {
                         phase,
-                        pallet_name,
+                        pallet_name: pallet_name.clone(),
                         event_name,
                         event_data,
                     });
@@ -652,6 +686,129 @@ async fn fetch_block_events(
     }
 
     Ok(parsed_events)
+}
+
+/// Try to convert an event field value to SS58 format if it's a valid AccountId32
+/// Handles hex strings of 32 bytes (0x + 64 chars)
+fn try_convert_to_ss58_event_field(value: &Value) -> Option<Value> {
+    match value {
+        Value::String(hex_str) if hex_str.starts_with("0x") && hex_str.len() == 66 => {
+            // Try to decode as 32-byte AccountId32
+            if let Ok(bytes) = hex::decode(&hex_str[2..]) {
+                if bytes.len() == 32 {
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&bytes);
+                    let account_id = AccountId32::from(arr);
+                    let ss58 = account_id.to_ss58check_with_version(0u16.into());
+                    return Some(Value::String(ss58));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Returns a set of field positions that contain AccountId32 values for a given event type
+/// This is used to convert specific event fields to SS58 addresses
+fn get_account_field_positions(pallet: &str, event: &str) -> Vec<usize> {
+    match (pallet, event) {
+        // Balances pallet events
+        ("balances", "Deposit") => vec![0],               // who
+        ("balances", "Transfer") => vec![0, 1],           // from, to
+        ("balances", "Withdraw") => vec![0],              // who
+        ("balances", "Reserved") => vec![0],              // who
+        ("balances", "Unreserved") => vec![0],            // who
+        ("balances", "ReserveRepatriated") => vec![0, 1], // from, to
+        ("balances", "BalanceSet") => vec![0],            // who
+        ("balances", "Endowed") => vec![0],               // account
+        ("balances", "DustLost") => vec![0],              // account
+        ("balances", "Slashed") => vec![0],               // who
+        ("balances", "Minted") => vec![0],                // who
+        ("balances", "Burned") => vec![0],                // who
+        ("balances", "Suspended") => vec![0],             // who
+        ("balances", "Restored") => vec![0],              // who
+        ("balances", "Upgraded") => vec![0],              // who
+        ("balances", "Issued") => vec![],                 // amount only
+        ("balances", "Rescinded") => vec![],              // amount only
+        ("balances", "Locked") => vec![0],                // who
+        ("balances", "Unlocked") => vec![0],              // who
+        ("balances", "Frozen") => vec![0],                // who
+        ("balances", "Thawed") => vec![0],                // who
+
+        // Staking pallet events
+        ("staking", "Bonded") => vec![0],        // stash
+        ("staking", "Unbonded") => vec![0],      // stash
+        ("staking", "Withdrawn") => vec![0],     // stash
+        ("staking", "Rewarded") => vec![0],      // stash
+        ("staking", "Slashed") => vec![0],       // validator/nominator
+        ("staking", "SlashReported") => vec![0], // validator
+        ("staking", "OldSlashingReportDiscarded") => vec![], // session_index only
+        ("staking", "StakersElected") => vec![], // no accounts
+        ("staking", "ForceEra") => vec![],       // mode only
+        ("staking", "ValidatorPrefsSet") => vec![0], // stash
+        ("staking", "SnapshotVotersSizeExceeded") => vec![], // size only
+        ("staking", "SnapshotTargetsSizeExceeded") => vec![], // size only
+        ("staking", "Chilled") => vec![0],       // stash
+        ("staking", "PayoutStarted") => vec![1], // validator (era_index, validator_stash)
+        ("staking", "Kicked") => vec![0, 1],     // nominator, stash
+
+        // Session pallet events
+        ("session", "NewSession") => vec![], // session_index only
+
+        // Treasury pallet events
+        ("treasury", "Proposed") => vec![], // proposal_index only
+        ("treasury", "Spending") => vec![], // budget_remaining only
+        ("treasury", "Awarded") => vec![1], // beneficiary (proposal_index, award, account)
+        ("treasury", "Rejected") => vec![], // proposal_index, slashed only
+        ("treasury", "Burnt") => vec![],    // burnt_funds only
+        ("treasury", "Rollover") => vec![], // rollover_balance only
+        ("treasury", "Deposit") => vec![],  // value only
+        ("treasury", "SpendApproved") => vec![2], // beneficiary (proposal_index, amount, beneficiary)
+
+        // Identity pallet events
+        ("identity", "IdentitySet") => vec![0],        // who
+        ("identity", "IdentityCleared") => vec![0],    // who
+        ("identity", "IdentityKilled") => vec![0],     // who
+        ("identity", "JudgementRequested") => vec![0], // who
+        ("identity", "JudgementUnrequested") => vec![0], // who
+        ("identity", "JudgementGiven") => vec![0],     // target
+        ("identity", "RegistrarAdded") => vec![],      // registrar_index only
+        ("identity", "SubIdentityAdded") => vec![0, 1], // sub, main
+        ("identity", "SubIdentityRemoved") => vec![0, 1], // sub, main
+        ("identity", "SubIdentityRevoked") => vec![0, 1], // sub, main
+
+        // Proxy pallet events
+        ("proxy", "ProxyExecuted") => vec![], // result only (no direct account in event data)
+        ("proxy", "PureCreated") => vec![0, 1], // pure, who
+        ("proxy", "Announced") => vec![0, 1], // real, proxy
+        ("proxy", "ProxyAdded") => vec![0, 1], // delegator, delegatee
+        ("proxy", "ProxyRemoved") => vec![0, 1], // delegator, delegatee
+
+        // Multisig pallet events
+        ("multisig", "NewMultisig") => vec![0, 1], // approving, multisig
+        ("multisig", "MultisigApproval") => vec![0, 1], // approving, multisig
+        ("multisig", "MultisigExecuted") => vec![0, 1], // approving, multisig
+        ("multisig", "MultisigCancelled") => vec![0, 1], // cancelling, multisig
+
+        // Vesting pallet events
+        ("vesting", "VestingUpdated") => vec![0], // account
+        ("vesting", "VestingCompleted") => vec![0], // account
+
+        // Utility pallet events
+        ("utility", "BatchInterrupted") => vec![], // index, error only
+        ("utility", "BatchCompleted") => vec![],   // no accounts
+        ("utility", "BatchCompletedWithErrors") => vec![], // no accounts
+        ("utility", "ItemCompleted") => vec![],    // no accounts
+        ("utility", "ItemFailed") => vec![],       // error only
+        ("utility", "DispatchedAs") => vec![],     // result only
+
+        // Transaction Payment pallet events
+        ("transactionpayment", "TransactionFeePaid") => vec![0], // who
+
+        // Default: no account fields
+        _ => vec![],
+    }
 }
 
 /// Transform event data to match sidecar format
@@ -704,6 +861,35 @@ fn snake_to_camel(s: &str) -> String {
     }
 
     result
+}
+
+/// Check if a field name is a known AccountId32 field
+fn is_account_field(field_name: &str) -> bool {
+    matches!(
+        field_name,
+        "dest"
+            | "source"
+            | "target"
+            | "targets"
+            | "beneficiary"
+            | "controller"
+            | "stash"
+            | "payee"
+            | "account"
+            | "who"
+            | "real"
+            | "delegate"
+            | "delegator"
+            | "delegatee"
+            | "nominee"
+            | "nominator"
+            | "validator"
+            | "validators"
+            | "new_"
+            | "old"
+            | "sender"
+            | "receiver"
+    )
 }
 
 /// Decode account address bytes to SS58 format
@@ -926,32 +1112,78 @@ async fn extract_extrinsics(
         let pallet_name = extrinsic.call().pallet_name().to_string();
         let method_name = extrinsic.call().name().to_string();
 
-        // Extract call arguments
-        // We decode into scale_value::Composite which can represent any SCALE type
-        let args_composite = extrinsic
-            .call()
-            .fields()
-            .decode::<scale_value::Composite<()>>()
-            .map_err(|e| {
-                GetBlockError::ExtrinsicDecodeFailed(format!("Failed to decode args: {}", e))
-            })?;
+        // Extract call arguments with field-name-based AccountId32 detection
+        let fields = extrinsic.call().fields();
+        let mut args_map = serde_json::Map::new();
 
-        // Convert to JSON using serde
-        let args_json = serde_json::to_value(&args_composite).map_err(|e| {
-            GetBlockError::ExtrinsicDecodeFailed(format!("Failed to serialize args: {}", e))
-        })?;
+        for field in fields.iter() {
+            let field_name = field.name();
+            let camel_field_name = snake_to_camel(field_name);
 
-        // Convert byte arrays to hex strings and transform to match sidecar format
-        let args_converted = convert_bytes_to_hex(args_json);
-        let args_transformed = transform_args(args_converted);
+            // Try to decode as AccountId32-related types for known fields
+            if is_account_field(field_name) {
+                let mut decoded_account = false;
 
-        // Extract as map (should be an object from Composite)
-        let args_map = if let Value::Object(map) = args_transformed {
-            map
-        } else {
-            // Fallback to empty map if not an object
-            serde_json::Map::new()
-        };
+                // Helper to convert bytes to SS58
+                let bytes_to_ss58 = |bytes: &[u8; 32]| {
+                    let account_id = AccountId32::from(*bytes);
+                    account_id.to_ss58check_with_version(0u16.into())
+                };
+
+                // Try decoding as [u8; 32]
+                if let Ok(account_bytes) = field.decode::<[u8; 32]>() {
+                    let ss58 = bytes_to_ss58(&account_bytes);
+                    args_map.insert(camel_field_name.clone(), json!(ss58));
+                    decoded_account = true;
+                } else if let Ok(accounts) = field.decode::<Vec<[u8; 32]>>() {
+                    // Try Vec<[u8; 32]>
+                    let ss58_addresses: Vec<String> =
+                        accounts.iter().map(|bytes| bytes_to_ss58(bytes)).collect();
+                    args_map.insert(camel_field_name.clone(), json!(ss58_addresses));
+                    decoded_account = true;
+                } else if let Ok(multi_addr) = field.decode::<MultiAddress>() {
+                    // Try MultiAddress enum
+                    let value = match multi_addr {
+                        MultiAddress::Id(bytes) | MultiAddress::Address32(bytes) => {
+                            json!(bytes_to_ss58(&bytes))
+                        }
+                        MultiAddress::Index(index) => json!({ "index": index }),
+                        MultiAddress::Raw(bytes) => {
+                            json!({ "raw": format!("0x{}", hex::encode(bytes)) })
+                        }
+                        MultiAddress::Address20(bytes) => {
+                            json!({ "address20": format!("0x{}", hex::encode(bytes)) })
+                        }
+                    };
+                    args_map.insert(camel_field_name.clone(), value);
+                    decoded_account = true;
+                }
+
+                if decoded_account {
+                    continue;
+                }
+                // If we failed to decode as account types, fall through to Value<()> decoding
+            }
+
+            // For non-account fields (or account fields that failed to decode), use Value<()>
+            match field.decode::<scale_value::Value<()>>() {
+                Ok(value) => {
+                    let json_value = serde_json::to_value(&value).unwrap_or_else(|_| Value::Null);
+                    let converted = convert_bytes_to_hex(json_value);
+                    let transformed = transform_args(converted);
+                    args_map.insert(camel_field_name, transformed);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to decode field '{}' in {}.{}: {}",
+                        field_name,
+                        pallet_name,
+                        method_name,
+                        e
+                    );
+                }
+            }
+        }
 
         // Extract signature and signer (if signed)
         let (signature_info, era_from_bytes) = if extrinsic.is_signed() {
