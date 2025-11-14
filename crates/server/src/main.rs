@@ -38,6 +38,7 @@ async fn main() -> Result<(), MainError> {
     let metrics_enabled = state.config.metrics.enabled;
     let metrics_host = state.config.metrics.prom_host.clone();
     let metrics_port = state.config.metrics.prom_port;
+    let metrics_prefix = state.config.metrics.prometheus_prefix.clone();
 
     logging::init(
         &log_level,
@@ -64,11 +65,12 @@ async fn main() -> Result<(), MainError> {
     let addr = SocketAddr::new(ip, port);
     // Initialize metrics if enabled
     if metrics_enabled {
-        server::metrics::init();
+        server::metrics::init(&metrics_prefix);
         tracing::info!(
-            "Prometheus metrics enabled at http://{}:{}/metrics",
+            "Prometheus metrics enabled at http://{}:{}/metrics (prefix: {})",
             metrics_host,
-            metrics_port
+            metrics_port,
+            metrics_prefix
         );
         tracing::info!(
             "Prometheus metrics (JSON) enabled at http://{}:{}/metrics.json",

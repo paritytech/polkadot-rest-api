@@ -66,6 +66,9 @@ struct EnvConfig {
     #[serde(default = "default_metrics_prom_port")]
     metrics_prom_port: u16,
 
+    #[serde(default = "default_metrics_prometheus_prefix")]
+    metrics_prometheus_prefix: String,
+
     #[serde(default = "default_metrics_include_queryparams")]
     metrics_include_queryparams: bool,
 }
@@ -134,6 +137,10 @@ fn default_metrics_prom_port() -> u16 {
     9100
 }
 
+fn default_metrics_prometheus_prefix() -> String {
+    "polkadot_rest_api".to_string()
+}
+
 fn default_metrics_include_queryparams() -> bool {
     false
 }
@@ -167,6 +174,7 @@ impl SidecarConfig {
     /// - SAS_METRICS_ENABLED
     /// - SAS_METRICS_PROM_HOST
     /// - SAS_METRICS_PROM_PORT
+    /// - SAS_METRICS_PROMETHEUS_PREFIX
     /// - SAS_METRICS_INCLUDE_QUERYPARAMS
     pub fn from_env() -> Result<Self, ConfigError> {
         // Load flat env config
@@ -204,6 +212,7 @@ impl SidecarConfig {
                 enabled: env_config.metrics_enabled,
                 prom_host: env_config.metrics_prom_host,
                 prom_port: env_config.metrics_prom_port,
+                prometheus_prefix: env_config.metrics_prometheus_prefix,
                 include_queryparams: env_config.metrics_include_queryparams,
             },
         };

@@ -24,6 +24,9 @@ pub struct MetricsConfig {
     /// Prometheus server port
     pub prom_port: u16,
 
+    /// Prometheus metric name prefix (default: "polkadot_rest_api")
+    pub prometheus_prefix: String,
+
     /// Include query parameters in route labels (matches sidecar's INCLUDE_QUERYPARAMS)
     pub include_queryparams: bool,
 }
@@ -34,6 +37,7 @@ impl Default for MetricsConfig {
             enabled: false,
             prom_host: "127.0.0.1".to_string(),
             prom_port: 9100,
+            prometheus_prefix: "polkadot_rest_api".to_string(),
             include_queryparams: false,
         }
     }
@@ -65,6 +69,7 @@ mod tests {
         assert_eq!(config.enabled, false);
         assert_eq!(config.prom_host, "127.0.0.1");
         assert_eq!(config.prom_port, 9100);
+        assert_eq!(config.prometheus_prefix, "polkadot_rest_api");
         assert_eq!(config.include_queryparams, false);
         assert!(config.validate().is_ok());
     }
@@ -75,6 +80,7 @@ mod tests {
             enabled: true,
             prom_host: "::1".to_string(),
             prom_port: 9100,
+            prometheus_prefix: "test".to_string(),
             include_queryparams: false,
         };
         assert!(config.validate().is_ok());
@@ -86,6 +92,7 @@ mod tests {
             enabled: true,
             prom_host: "not-an-ip".to_string(),
             prom_port: 9100,
+            prometheus_prefix: "test".to_string(),
             include_queryparams: false,
         };
         assert!(config.validate().is_err());
@@ -97,6 +104,7 @@ mod tests {
             enabled: true,
             prom_host: "127.0.0.1".to_string(),
             prom_port: 0,
+            prometheus_prefix: "test".to_string(),
             include_queryparams: false,
         };
         assert!(config.validate().is_err());

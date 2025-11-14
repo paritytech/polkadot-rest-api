@@ -22,7 +22,19 @@ pub async fn get_metrics_json() -> impl IntoResponse {
     use prometheus::proto::MetricFamily;
     use serde_json::json;
 
-    let metric_families = crate::metrics::registry::REGISTRY.gather();
+    let registry_guard = crate::metrics::registry::REGISTRY.lock().unwrap();
+    let registry = match registry_guard.as_ref() {
+        Some(r) => r,
+        None => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Metrics not initialized".to_string(),
+            )
+                .into_response();
+        }
+    };
+
+    let metric_families = registry.gather();
     let metrics_json: Vec<serde_json::Value> = metric_families
         .iter()
         .map(|mf: &MetricFamily| {
