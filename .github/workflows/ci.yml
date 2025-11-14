@@ -232,6 +232,102 @@ jobs:
           fi
 
       # ========================================
+      # Asset Hub Polkadot Tests
+      # ========================================
+      
+      - name: Start Asset Hub Polkadot server
+        run: |
+          RUST_LOG=info ./target/release/polkadot-rest-api > asset-hub-polkadot-server.log 2>&1 &
+          echo $! > asset-hub-polkadot-server.pid
+        env:
+          SAS_SUBSTRATE_URL: wss://polkadot-asset-hub-rpc.polkadot.io
+      
+      - name: Wait for Asset Hub Polkadot server to be ready
+        run: |
+          echo "Waiting for Asset Hub Polkadot API to be ready..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/v1/health > /dev/null 2>&1; then
+              echo "✓ Asset Hub Polkadot API is ready"
+              exit 0
+            fi
+            echo "  Attempt $i/30: API not ready yet, retrying in 1s..."
+            sleep 1
+          done
+          echo "✗ Asset Hub Polkadot API did not become ready after 30 seconds"
+          cat asset-hub-polkadot-server.log
+          exit 1
+
+      - name: Run latest integration tests (Asset Hub Polkadot)
+        run: cargo test --package integration_tests test_latest_asset_hub_polkadot
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 20
+
+      - name: Run historical integration tests (Asset Hub Polkadot)
+        run: cargo test --package integration_tests test_historical_asset_hub_polkadot
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 15
+
+      - name: Stop Asset Hub Polkadot server
+        if: always()
+        run: |
+          if [ -f asset-hub-polkadot-server.pid ]; then
+            kill $(cat asset-hub-polkadot-server.pid) || true
+            rm asset-hub-polkadot-server.pid
+          fi
+
+      # ========================================
+      # Asset Hub Kusama Tests
+      # ========================================
+      
+      - name: Start Asset Hub Kusama server
+        run: |
+          RUST_LOG=info ./target/release/polkadot-rest-api > asset-hub-kusama-server.log 2>&1 &
+          echo $! > asset-hub-kusama-server.pid
+        env:
+          SAS_SUBSTRATE_URL: wss://kusama-asset-hub-rpc.polkadot.io
+      
+      - name: Wait for Asset Hub Kusama server to be ready
+        run: |
+          echo "Waiting for Asset Hub Kusama API to be ready..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/v1/health > /dev/null 2>&1; then
+              echo "✓ Asset Hub Kusama API is ready"
+              exit 0
+            fi
+            echo "  Attempt $i/30: API not ready yet, retrying in 1s..."
+            sleep 1
+          done
+          echo "✗ Asset Hub Kusama API did not become ready after 30 seconds"
+          cat asset-hub-kusama-server.log
+          exit 1
+
+      - name: Run latest integration tests (Asset Hub Kusama)
+        run: cargo test --package integration_tests test_latest_asset_hub_kusama
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 20
+
+      - name: Run historical integration tests (Asset Hub Kusama)
+        run: cargo test --package integration_tests test_historical_asset_hub_kusama
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 15
+
+      - name: Stop Asset Hub Kusama server
+        if: always()
+        run: |
+          if [ -f asset-hub-kusama-server.pid ]; then
+            kill $(cat asset-hub-kusama-server.pid) || true
+            rm asset-hub-kusama-server.pid
+          fi
+
+      # ========================================
       # Upload Logs on Failure
       # ========================================
 
@@ -248,6 +344,20 @@ jobs:
         with:
           name: kusama-server-logs
           path: kusama-server.log
+
+      - name: Upload Asset Hub Polkadot server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asset-hub-polkadot-server-logs
+          path: asset-hub-polkadot-server.log
+
+      - name: Upload Asset Hub Kusama server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asset-hub-kusama-server-logs
+          path: asset-hub-kusama-server.log
 
   clippy:
     name: Clippy
