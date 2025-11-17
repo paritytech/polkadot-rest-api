@@ -207,6 +207,16 @@ async fn test_historical_kusama() -> Result<()> {
     run_historical_test_for_chain("kusama").await
 }
 
+#[tokio::test]
+async fn test_historical_asset_hub_polkadot() -> Result<()> {
+    run_historical_test_for_chain("asset-hub-polkadot").await
+}
+
+#[tokio::test]
+async fn test_historical_asset_hub_kusama() -> Result<()> {
+    run_historical_test_for_chain("asset-hub-kusama").await
+}
+
 fn init_tracing() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())

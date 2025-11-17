@@ -46,21 +46,38 @@ async fn main() -> Result<()> {
         );
     }
 
+    // Load test config to get all historical test cases
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let config_path = PathBuf::from(manifest_dir)
+        .join("tests")
+        .join("config")
+        .join("test_config.json");
+    let config = integration_tests::config::TestConfig::from_file(&config_path)
+        .context("Failed to load test config")?;
+
     // Update fixtures based on chain argument
     match chain.as_str() {
         "polkadot" => {
-            update_polkadot_fixtures(&client, &api_url).await?;
+            update_chain_fixtures(&client, &api_url, "polkadot", &config).await?;
         }
         "kusama" => {
-            update_kusama_fixtures(&client, &api_url).await?;
+            update_chain_fixtures(&client, &api_url, "kusama", &config).await?;
+        }
+        "asset-hub-polkadot" => {
+            update_chain_fixtures(&client, &api_url, "asset-hub-polkadot", &config).await?;
+        }
+        "asset-hub-kusama" => {
+            update_chain_fixtures(&client, &api_url, "asset-hub-kusama", &config).await?;
         }
         "all" => {
-            update_polkadot_fixtures(&client, &api_url).await?;
-            update_kusama_fixtures(&client, &api_url).await?;
+            update_chain_fixtures(&client, &api_url, "polkadot", &config).await?;
+            update_chain_fixtures(&client, &api_url, "kusama", &config).await?;
+            update_chain_fixtures(&client, &api_url, "asset-hub-polkadot", &config).await?;
+            update_chain_fixtures(&client, &api_url, "asset-hub-kusama", &config).await?;
         }
         _ => {
             anyhow::bail!(
-                "Invalid chain argument: {}. Use 'polkadot', 'kusama', or 'all'",
+                "Invalid chain argument: {}. Use 'polkadot', 'kusama', 'asset-hub-polkadot', 'asset-hub-kusama', or 'all'",
                 chain
             );
         }
@@ -91,30 +108,40 @@ async fn wait_for_api(client: &Client, api_url: &str) -> Result<bool> {
     Ok(false)
 }
 
-async fn update_polkadot_fixtures(client: &Client, api_url: &str) -> Result<()> {
-    println!("Updating Polkadot fixtures...");
+async fn update_chain_fixtures(
+    client: &Client,
+    api_url: &str,
+    chain_name: &str,
+    config: &integration_tests::config::TestConfig,
+) -> Result<()> {
+    println!("\nUpdating {} fixtures...", chain_name);
     println!("{}", "-".repeat(60));
 
-    // Fetch block 1000000
-    println!("\nFetching block 1000000 from API...");
-    let block_data = fetch_block_from_api(client, api_url, "1000000").await?;
-    save_fixture("polkadot", "blocks_1000000.json", &block_data)?;
+    let test_cases = config.get_historical_tests(chain_name);
 
-    println!("\n✓ Polkadot fixtures updated");
+    if test_cases.is_empty() {
+        println!("  No historical tests found for {}", chain_name);
+        return Ok(());
+    }
 
-    Ok(())
-}
+    for test_case in &test_cases {
+        if let Some(block_height) = test_case.block_height {
+            println!("\nFetching block {} from API...", block_height);
+            let block_data =
+                fetch_block_from_api(client, api_url, &block_height.to_string()).await?;
 
-async fn update_kusama_fixtures(client: &Client, api_url: &str) -> Result<()> {
-    println!("\nUpdating Kusama fixtures...");
-    println!("{}", "-".repeat(60));
+            // Extract filename from fixture_path
+            let filename = test_case
+                .fixture_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .context("Invalid fixture path")?;
 
-    // Fetch block 5000000
-    println!("\nFetching block 5000000 from API...");
-    let block_data = fetch_block_from_api(client, api_url, "5000000").await?;
-    save_fixture("kusama", "blocks_5000000.json", &block_data)?;
+            save_fixture(chain_name, filename, &block_data)?;
+        }
+    }
 
-    println!("\n✓ Kusama fixtures updated");
+    println!("\n✓ {} fixtures updated", chain_name);
 
     Ok(())
 }
