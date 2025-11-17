@@ -79,6 +79,10 @@
     "blocks_head_header": {
       "endpoint": "/blocks/head/header",
       "use_standard_scenarios": true
+    },
+    "ahm_info": {
+      "endpoint": "/v1/ahm-info",
+      "use_standard_scenarios": true
     }
   }
 }
