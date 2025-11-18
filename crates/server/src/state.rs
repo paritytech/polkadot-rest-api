@@ -1,4 +1,4 @@
-use config::{ChainType, SidecarConfig};
+use config::{ChainType, KnownRelayChain, SidecarConfig};
 use serde_json::Value;
 use std::sync::Arc;
 use subxt_historic::{OnlineClient, SubstrateConfig};
@@ -62,9 +62,31 @@ impl AppState {
             })?;
 
         let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
-        let subxt_config = SubstrateConfig::new();
-        let client = OnlineClient::from_rpc_client(subxt_config, rpc_client.clone());
+
+        // Get chain info first to determine which legacy types to load
         let chain_info = get_chain_info(&legacy_rpc).await?;
+
+        // Configure SubstrateConfig with appropriate legacy types based on chain
+        let subxt_config = match chain_info.chain_type.as_relay_chain(&chain_info.spec_name) {
+            Some(KnownRelayChain::Polkadot) => {
+                // Load Polkadot-specific legacy types for historic block support
+                SubstrateConfig::new()
+                    .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
+            }
+            Some(KnownRelayChain::Kusama) | Some(KnownRelayChain::Westend) |
+            Some(KnownRelayChain::Rococo) | Some(KnownRelayChain::Paseo) => {
+                // For other known relay chains, use Polkadot types as fallback
+                // TODO: Add chain-specific legacy types when available
+                SubstrateConfig::new()
+                    .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
+            }
+            None => {
+                // For parachains and unknown chains, use empty legacy types
+                SubstrateConfig::new()
+            }
+        };
+
+        let client = OnlineClient::from_rpc_client(subxt_config, rpc_client.clone());
 
         Ok(Self {
             config,
