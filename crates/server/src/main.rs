@@ -39,6 +39,15 @@ async fn main() -> Result<(), MainError> {
     let metrics_host = state.config.metrics.prom_host.clone();
     let metrics_port = state.config.metrics.prom_port;
     let metrics_prefix = state.config.metrics.prometheus_prefix.clone();
+    let loki_host = state.config.metrics.loki_host.clone();
+    let loki_port = state.config.metrics.loki_port;
+
+    // Build Loki URL if metrics are enabled (Loki is part of metrics/observability stack)
+    let loki_url = if metrics_enabled {
+        Some(format!("http://{}:{}", loki_host, loki_port))
+    } else {
+        None
+    };
 
     logging::init(
         &log_level,
@@ -48,6 +57,7 @@ async fn main() -> Result<(), MainError> {
         &log_write_path,
         log_write_max_file_size,
         log_write_max_files,
+        loki_url.as_deref(),
     )?;
 
     // Parse bind_host to IpAddr
