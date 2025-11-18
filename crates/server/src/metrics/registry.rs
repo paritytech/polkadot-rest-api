@@ -144,14 +144,23 @@ pub fn init(prefix: &str) {
     });
 }
 
+/// Gather metric families from the registry
+pub fn gather_metric_families()
+-> Result<Vec<prometheus::proto::MetricFamily>, Box<dyn std::error::Error>> {
+    let registry_guard = REGISTRY.lock().unwrap_or_else(|poisoned| {
+        tracing::warn!("Metrics registry mutex poisoned, recovering");
+        poisoned.into_inner()
+    });
+    let registry = registry_guard
+        .as_ref()
+        .ok_or("Metrics not initialized - call init() first")?;
+    Ok(registry.gather())
+}
+
 /// Gather all metrics as Prometheus text format
 pub fn gather_metrics() -> Result<String, Box<dyn std::error::Error>> {
     let encoder = TextEncoder::new();
-    let registry_guard = REGISTRY.lock().unwrap();
-    let registry = registry_guard
-        .as_ref()
-        .expect("Metrics not initialized - call init() first");
-    let metric_families = registry.gather();
+    let metric_families = gather_metric_families()?;
     let mut buffer = Vec::new();
     encoder.encode(&metric_families, &mut buffer)?;
     Ok(String::from_utf8(buffer)?)
