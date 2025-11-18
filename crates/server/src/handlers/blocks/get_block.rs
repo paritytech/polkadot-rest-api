@@ -363,7 +363,7 @@ fn extract_numeric_string(value: &Value) -> Option<String> {
 /// Tries to decode:
 /// 1. MultiAddress::Id variant (0x00 + 32 bytes)
 /// 2. Raw 32-byte AccountId32 (0x + 32 bytes)
-fn decode_address_to_ss58(hex_str: &str) -> Option<String> {
+fn decode_address_to_ss58(hex_str: &str, ss58_prefix: u16) -> Option<String> {
     if !hex_str.starts_with("0x") {
         return None;
     }
@@ -386,9 +386,11 @@ fn decode_address_to_ss58(hex_str: &str) -> Option<String> {
     // Convert to AccountId32
     let account_id = sp_core::crypto::AccountId32::try_from(account_bytes.as_slice()).ok()?;
 
-    // Encode to SS58 with Polkadot prefix (0)
-    // TODO make this flexible depending on network
-    Some(account_id.to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(0)))
+    // Encode to SS58 with chain-specific prefix
+    Some(
+        account_id
+            .to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(ss58_prefix)),
+    )
 }
 
 /// Convert JSON value, replacing byte arrays with hex strings and all numbers with strings recursively
@@ -470,7 +472,7 @@ fn convert_bytes_to_hex(value: Value) -> Value {
 /// - {"name": "X", "values": "0x"} -> "X" (empty enum variant becomes string)
 /// - Decodes MultiAddress account IDs to SS58 format
 /// - Converts snake_case to camelCase for field names
-fn transform_args(value: Value) -> Value {
+fn transform_args(value: Value, ss58_prefix: u16) -> Value {
     match value {
         Value::Object(map) => {
             // Check if this is a SCALE enum variant: {"name": "X", "values": Y}
@@ -487,7 +489,7 @@ fn transform_args(value: Value) -> Value {
 
                 // Otherwise, transform to {"<lowercase_name>": <transformed_values>}
                 let key = name.to_lowercase();
-                let transformed_value = transform_args(values.clone());
+                let transformed_value = transform_args(values.clone(), ss58_prefix);
 
                 let mut result = serde_json::Map::new();
                 result.insert(key, transformed_value);
@@ -499,7 +501,7 @@ fn transform_args(value: Value) -> Value {
                 .into_iter()
                 .map(|(key, val)| {
                     let camel_key = snake_to_camel(&key);
-                    (camel_key, transform_args(val))
+                    (camel_key, transform_args(val, ss58_prefix))
                 })
                 .collect();
             Value::Object(transformed)
@@ -509,13 +511,17 @@ fn transform_args(value: Value) -> Value {
             // (either MultiAddress::Id with 0x00 prefix or raw AccountId32)
             if s.starts_with("0x")
                 && (s.len() == 66 || s.len() == 68)
-                && let Some(ss58_addr) = decode_address_to_ss58(&s)
+                && let Some(ss58_addr) = decode_address_to_ss58(&s, ss58_prefix)
             {
                 return Value::String(ss58_addr);
             }
             Value::String(s)
         }
-        Value::Array(arr) => Value::Array(arr.into_iter().map(transform_args).collect()),
+        Value::Array(arr) => Value::Array(
+            arr.into_iter()
+                .map(|v| transform_args(v, ss58_prefix))
+                .collect(),
+        ),
         other => other,
     }
 }
@@ -712,7 +718,7 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
 
 /// Try to convert an event field value to SS58 format if it's a valid AccountId32
 /// Handles hex strings of 32 bytes (0x + 64 chars)
-fn try_convert_to_ss58_event_field(value: &Value) -> Option<Value> {
+fn try_convert_to_ss58_event_field(value: &Value, ss58_prefix: u16) -> Option<Value> {
     match value {
         Value::String(hex_str) if hex_str.starts_with("0x") && hex_str.len() == 66 => {
             // Try to decode as 32-byte AccountId32
@@ -722,7 +728,7 @@ fn try_convert_to_ss58_event_field(value: &Value) -> Option<Value> {
                 let mut arr = [0u8; 32];
                 arr.copy_from_slice(&bytes);
                 let account_id = AccountId32::from(arr);
-                let ss58 = account_id.to_ss58check_with_version(0u16.into());
+                let ss58 = account_id.to_ss58check_with_version(ss58_prefix.into());
                 return Some(Value::String(ss58));
             }
             None
@@ -885,7 +891,10 @@ async fn fetch_block_events(
 
                             // If this field position should contain an AccountId32, try to convert it
                             if account_positions.contains(&idx)
-                                && let Some(ss58_value) = try_convert_to_ss58_event_field(&with_hex)
+                                && let Some(ss58_value) = try_convert_to_ss58_event_field(
+                                    &with_hex,
+                                    state.chain_info.ss58_prefix,
+                                )
                             {
                                 return Some(ss58_value);
                             }
@@ -1026,10 +1035,11 @@ async fn extract_extrinsics(
             if is_account_field(field_name) {
                 let mut decoded_account = false;
 
-                // Helper to convert bytes to SS58
+                // Helper to convert bytes to SS58 with chain-specific prefix
+                let ss58_prefix = state.chain_info.ss58_prefix;
                 let bytes_to_ss58 = |bytes: &[u8; 32]| {
                     let account_id = AccountId32::from(*bytes);
-                    account_id.to_ss58check_with_version(0u16.into())
+                    account_id.to_ss58check_with_version(ss58_prefix.into())
                 };
 
                 // Try decoding as [u8; 32]
@@ -1071,7 +1081,7 @@ async fn extract_extrinsics(
                 Ok(value) => {
                     let json_value = serde_json::to_value(&value).unwrap_or(Value::Null);
                     let converted = convert_bytes_to_hex(json_value);
-                    let transformed = transform_args(converted);
+                    let transformed = transform_args(converted, state.chain_info.ss58_prefix);
                     args_map.insert(camel_field_name, transformed);
                 }
                 Err(e) => {
@@ -1101,8 +1111,8 @@ async fn extract_extrinsics(
 
             // Decode signer address to SS58
             let signer_hex = format!("0x{}", hex::encode(addr_bytes));
-            let signer_ss58 =
-                decode_address_to_ss58(&signer_hex).unwrap_or_else(|| signer_hex.clone());
+            let signer_ss58 = decode_address_to_ss58(&signer_hex, state.chain_info.ss58_prefix)
+                .unwrap_or_else(|| signer_hex.clone());
 
             (
                 Some(SignatureInfo {
