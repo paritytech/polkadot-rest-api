@@ -1,7 +1,7 @@
-use crate::state::AppState;
-use crate::utils::{self, EraInfo};
 use super::util::event_account_fields::get_account_field_positions;
 use super::util::extrinsic_account_fields::is_account_field;
+use crate::state::AppState;
+use crate::utils::{self, EraInfo};
 use axum::{
     Json,
     extract::{Path, State},
@@ -1007,8 +1007,7 @@ async fn extract_extrinsics(
                     decoded_account = true;
                 } else if let Ok(accounts) = field.decode::<Vec<[u8; 32]>>() {
                     // Try Vec<[u8; 32]>
-                    let ss58_addresses: Vec<String> =
-                        accounts.iter().map(&bytes_to_ss58).collect();
+                    let ss58_addresses: Vec<String> = accounts.iter().map(&bytes_to_ss58).collect();
                     args_map.insert(camel_field_name.clone(), json!(ss58_addresses));
                     decoded_account = true;
                 } else if let Ok(multi_addr) = field.decode::<MultiAddress>() {
