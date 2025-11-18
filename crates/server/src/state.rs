@@ -73,8 +73,10 @@ impl AppState {
                 SubstrateConfig::new()
                     .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
             }
-            Some(KnownRelayChain::Kusama) | Some(KnownRelayChain::Westend) |
-            Some(KnownRelayChain::Rococo) | Some(KnownRelayChain::Paseo) => {
+            Some(KnownRelayChain::Kusama)
+            | Some(KnownRelayChain::Westend)
+            | Some(KnownRelayChain::Rococo)
+            | Some(KnownRelayChain::Paseo) => {
                 // For other known relay chains, use Polkadot types as fallback
                 // TODO: Add chain-specific legacy types when available
                 SubstrateConfig::new()

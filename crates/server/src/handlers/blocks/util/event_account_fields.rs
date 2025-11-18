@@ -439,6 +439,9 @@ pub fn get_account_field_positions(pallet: &str, event: &str) -> Vec<usize> {
         ("parachainsystem", "DownwardMessagesProcessed") => vec![], // weight_used, dmq_head only
         ("parachainsystem", "UpwardMessageSent") => vec![],        // message_hash only
 
+        // System events
+        ("system", "NewAccount") => vec![0], // who
+
         // DmpQueue events (Downward Message Passing)
         ("dmpqueue", "InvalidFormat") => vec![], // message_id only
         ("dmpqueue", "UnsupportedVersion") => vec![], // message_id only
