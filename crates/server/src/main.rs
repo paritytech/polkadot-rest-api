@@ -35,6 +35,11 @@ async fn main() -> Result<(), MainError> {
     let substrate_url = state.config.substrate.url.clone();
     let multi_chain_urls = state.config.substrate.multi_chain_urls.clone();
     let chain_info = state.chain_info.clone();
+    let metrics_enabled = state.config.metrics.enabled;
+    let metrics_host = state.config.metrics.prom_host.clone();
+    let metrics_port = state.config.metrics.prom_port;
+    let metrics_prefix = state.config.metrics.prometheus_prefix.clone();
+
     logging::init(
         &log_level,
         log_json,
@@ -58,6 +63,22 @@ async fn main() -> Result<(), MainError> {
 
     let app = app::create_app(state);
     let addr = SocketAddr::new(ip, port);
+    // Initialize metrics if enabled
+    if metrics_enabled {
+        server::metrics::init(&metrics_prefix);
+        tracing::info!(
+            "Prometheus metrics enabled at http://{}:{}/metrics (prefix: {})",
+            metrics_host,
+            metrics_port,
+            metrics_prefix
+        );
+        tracing::info!(
+            "Prometheus metrics (JSON) enabled at http://{}:{}/metrics.json",
+            metrics_host,
+            metrics_port
+        );
+    }
+
     tracing::info!("Starting server on {}", addr);
     tracing::info!("Log level: {}", log_level);
     if log_write {

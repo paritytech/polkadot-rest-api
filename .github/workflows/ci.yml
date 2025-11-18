@@ -95,7 +95,269 @@ jobs:
             ${{ runner.os }}-target-
 
       - name: Run tests
-        run: cargo test --workspace --all-features
+        run: cargo test --workspace --all-features --exclude integration_tests
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-index-
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-target-integration-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-target-integration-test-
+            ${{ runner.os }}-target-
+
+      - name: Build server
+        run: cargo build --release --package server
+
+      # ========================================
+      # Polkadot Tests
+      # ========================================
+      
+      - name: Start Polkadot server
+        run: |
+          RUST_LOG=info ./target/release/polkadot-rest-api > polkadot-server.log 2>&1 &
+          echo $! > polkadot-server.pid
+        env:
+          SAS_SUBSTRATE_URL: wss://rpc.polkadot.io
+      
+      - name: Wait for Polkadot server to be ready
+        run: |
+          echo "Waiting for Polkadot API to be ready..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/v1/health > /dev/null 2>&1; then
+              echo "✓ Polkadot API is ready"
+              exit 0
+            fi
+            echo "  Attempt $i/30: API not ready yet, retrying in 1s..."
+            sleep 1
+          done
+          echo "✗ Polkadot API did not become ready after 30 seconds"
+          cat polkadot-server.log
+          exit 1
+
+      - name: Run basic integration tests (Polkadot)
+        run: cargo test --package integration_tests --test basic
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 10
+
+      - name: Run latest integration tests (Polkadot)
+        run: cargo test --package integration_tests --test latest
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 20
+
+      - name: Run historical integration tests (Polkadot)
+        run: cargo test --package integration_tests test_historical_polkadot
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 15
+
+      - name: Stop Polkadot server
+        if: always()
+        run: |
+          if [ -f polkadot-server.pid ]; then
+            kill $(cat polkadot-server.pid) || true
+            rm polkadot-server.pid
+          fi
+
+      # ========================================
+      # Kusama Tests
+      # ========================================
+      
+      - name: Start Kusama server
+        run: |
+          RUST_LOG=info ./target/release/polkadot-rest-api > kusama-server.log 2>&1 &
+          echo $! > kusama-server.pid
+        env:
+          SAS_SUBSTRATE_URL: wss://kusama-rpc.polkadot.io
+      
+      - name: Wait for Kusama server to be ready
+        run: |
+          echo "Waiting for Kusama API to be ready..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/v1/health > /dev/null 2>&1; then
+              echo "✓ Kusama API is ready"
+              exit 0
+            fi
+            echo "  Attempt $i/30: API not ready yet, retrying in 1s..."
+            sleep 1
+          done
+          echo "✗ Kusama API did not become ready after 30 seconds"
+          cat kusama-server.log
+          exit 1
+
+      - name: Run historical integration tests (Kusama)
+        run: cargo test --package integration_tests test_historical_kusama
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 15
+
+      - name: Stop Kusama server
+        if: always()
+        run: |
+          if [ -f kusama-server.pid ]; then
+            kill $(cat kusama-server.pid) || true
+            rm kusama-server.pid
+          fi
+
+      # ========================================
+      # Asset Hub Polkadot Tests
+      # ========================================
+      
+      - name: Start Asset Hub Polkadot server
+        run: |
+          RUST_LOG=info ./target/release/polkadot-rest-api > asset-hub-polkadot-server.log 2>&1 &
+          echo $! > asset-hub-polkadot-server.pid
+        env:
+          SAS_SUBSTRATE_URL: wss://polkadot-asset-hub-rpc.polkadot.io
+      
+      - name: Wait for Asset Hub Polkadot server to be ready
+        run: |
+          echo "Waiting for Asset Hub Polkadot API to be ready..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/v1/health > /dev/null 2>&1; then
+              echo "✓ Asset Hub Polkadot API is ready"
+              exit 0
+            fi
+            echo "  Attempt $i/30: API not ready yet, retrying in 1s..."
+            sleep 1
+          done
+          echo "✗ Asset Hub Polkadot API did not become ready after 30 seconds"
+          cat asset-hub-polkadot-server.log
+          exit 1
+
+      - name: Run latest integration tests (Asset Hub Polkadot)
+        run: cargo test --package integration_tests test_latest_asset_hub_polkadot
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 20
+
+      - name: Run historical integration tests (Asset Hub Polkadot)
+        run: cargo test --package integration_tests test_historical_asset_hub_polkadot
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 15
+
+      - name: Stop Asset Hub Polkadot server
+        if: always()
+        run: |
+          if [ -f asset-hub-polkadot-server.pid ]; then
+            kill $(cat asset-hub-polkadot-server.pid) || true
+            rm asset-hub-polkadot-server.pid
+          fi
+
+      # ========================================
+      # Asset Hub Kusama Tests
+      # ========================================
+      
+      - name: Start Asset Hub Kusama server
+        run: |
+          RUST_LOG=info ./target/release/polkadot-rest-api > asset-hub-kusama-server.log 2>&1 &
+          echo $! > asset-hub-kusama-server.pid
+        env:
+          SAS_SUBSTRATE_URL: wss://kusama-asset-hub-rpc.polkadot.io
+      
+      - name: Wait for Asset Hub Kusama server to be ready
+        run: |
+          echo "Waiting for Asset Hub Kusama API to be ready..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/v1/health > /dev/null 2>&1; then
+              echo "✓ Asset Hub Kusama API is ready"
+              exit 0
+            fi
+            echo "  Attempt $i/30: API not ready yet, retrying in 1s..."
+            sleep 1
+          done
+          echo "✗ Asset Hub Kusama API did not become ready after 30 seconds"
+          cat asset-hub-kusama-server.log
+          exit 1
+
+      - name: Run latest integration tests (Asset Hub Kusama)
+        run: cargo test --package integration_tests test_latest_asset_hub_kusama
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 20
+
+      - name: Run historical integration tests (Asset Hub Kusama)
+        run: cargo test --package integration_tests test_historical_asset_hub_kusama
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 15
+
+      - name: Stop Asset Hub Kusama server
+        if: always()
+        run: |
+          if [ -f asset-hub-kusama-server.pid ]; then
+            kill $(cat asset-hub-kusama-server.pid) || true
+            rm asset-hub-kusama-server.pid
+          fi
+
+      # ========================================
+      # Upload Logs on Failure
+      # ========================================
+
+      - name: Upload Polkadot server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: polkadot-server-logs
+          path: polkadot-server.log
+
+      - name: Upload Kusama server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kusama-server-logs
+          path: kusama-server.log
+
+      - name: Upload Asset Hub Polkadot server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asset-hub-polkadot-server-logs
+          path: asset-hub-polkadot-server.log
+
+      - name: Upload Asset Hub Kusama server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asset-hub-kusama-server-logs
+          path: asset-hub-kusama-server.log
 
   clippy:
     name: Clippy

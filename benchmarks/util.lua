@@ -15,10 +15,21 @@ function util.delay()
     end
 end
 
--- Signal that setup is complete
+-- Signal that setup is complete and print statistics
 function util.done()
-    return function()
-        -- Setup complete
+    return function(summary, latency, requests)
+        local bytes = summary.bytes
+        local errors = summary.errors.status -- http status is not at the beginning of 200,300
+        local total_requests = summary.requests -- total requests
+
+        print("--------------------------")
+        print("Total completed requests:       ", summary.requests)
+        print("Failed requests:                ", summary.errors.status)
+        print("Timeouts:                       ", summary.errors.connect or 0)
+        print("Avg RequestTime(Latency):          "..string.format("%.2f",latency.mean / 1000).."ms")
+        print("Max RequestTime(Latency):          "..(latency.max / 1000).."ms")
+        print("Min RequestTime(Latency):          "..(latency.min / 1000).."ms")
+        print("Benchmark finished.")
     end
 end
 
