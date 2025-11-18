@@ -10,6 +10,11 @@ pub enum MetricsError {
 
     #[error("Port must be between 1 and 65535, got {0}")]
     InvalidPort(u16),
+
+    #[error(
+        "Invalid Prometheus prefix '{0}': must start with [a-zA-Z_:] and contain only [a-zA-Z0-9_:]"
+    )]
+    InvalidPrometheusPrefix(String),
 }
 
 /// Configuration for Prometheus metrics
@@ -53,6 +58,26 @@ impl MetricsConfig {
         // Validate port is in valid range
         if self.prom_port == 0 {
             return Err(MetricsError::InvalidPort(self.prom_port));
+        }
+
+        // Validate prometheus_prefix follows Prometheus naming conventions
+        // Must match regex: [a-zA-Z_:][a-zA-Z0-9_:]*
+        // This ensures metrics won't be silently rejected by Prometheus
+        if !self.prometheus_prefix.is_empty() {
+            let first_char = self.prometheus_prefix.chars().next().unwrap();
+            if !first_char.is_ascii_alphabetic() && first_char != '_' && first_char != ':' {
+                return Err(MetricsError::InvalidPrometheusPrefix(
+                    self.prometheus_prefix.clone(),
+                ));
+            }
+
+            for ch in self.prometheus_prefix.chars() {
+                if !ch.is_ascii_alphanumeric() && ch != '_' && ch != ':' {
+                    return Err(MetricsError::InvalidPrometheusPrefix(
+                        self.prometheus_prefix.clone(),
+                    ));
+                }
+            }
         }
 
         Ok(())
@@ -105,6 +130,78 @@ mod tests {
             prom_host: "127.0.0.1".to_string(),
             prom_port: 0,
             prometheus_prefix: "test".to_string(),
+            include_queryparams: false,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_valid_prometheus_prefix_with_underscore() {
+        let config = MetricsConfig {
+            enabled: true,
+            prom_host: "127.0.0.1".to_string(),
+            prom_port: 9100,
+            prometheus_prefix: "my_app_metrics".to_string(),
+            include_queryparams: false,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_valid_prometheus_prefix_with_colon() {
+        let config = MetricsConfig {
+            enabled: true,
+            prom_host: "127.0.0.1".to_string(),
+            prom_port: 9100,
+            prometheus_prefix: "app:metrics".to_string(),
+            include_queryparams: false,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_valid_prometheus_prefix_starting_with_underscore() {
+        let config = MetricsConfig {
+            enabled: true,
+            prom_host: "127.0.0.1".to_string(),
+            prom_port: 9100,
+            prometheus_prefix: "_metrics".to_string(),
+            include_queryparams: false,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_invalid_prometheus_prefix_starting_with_number() {
+        let config = MetricsConfig {
+            enabled: true,
+            prom_host: "127.0.0.1".to_string(),
+            prom_port: 9100,
+            prometheus_prefix: "123metrics".to_string(),
+            include_queryparams: false,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_invalid_prometheus_prefix_with_hyphen() {
+        let config = MetricsConfig {
+            enabled: true,
+            prom_host: "127.0.0.1".to_string(),
+            prom_port: 9100,
+            prometheus_prefix: "my-metrics".to_string(),
+            include_queryparams: false,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_invalid_prometheus_prefix_with_special_chars() {
+        let config = MetricsConfig {
+            enabled: true,
+            prom_host: "127.0.0.1".to_string(),
+            prom_port: 9100,
+            prometheus_prefix: "my.metrics".to_string(),
             include_queryparams: false,
         };
         assert!(config.validate().is_err());
