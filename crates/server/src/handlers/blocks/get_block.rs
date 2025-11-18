@@ -16,6 +16,17 @@ use sp_runtime::traits::Hash as HashT;
 use subxt_historic::error::{OnlineClientAtBlockError, StorageEntryIsNotAPlainValue, StorageError};
 use thiserror::Error;
 
+// ================================================================================================
+// Constants
+// ================================================================================================
+
+/// Length of consensus engine ID in digest items (e.g., "BABE", "aura", "pow_")
+const CONSENSUS_ENGINE_ID_LEN: usize = 4;
+
+// ================================================================================================
+// Error Types
+// ================================================================================================
+
 #[derive(Debug, Error)]
 pub enum GetBlockError {
     #[error("Invalid block parameter")]
@@ -55,23 +66,6 @@ pub enum GetBlockError {
     ExtrinsicDecodeFailed(String),
 }
 
-/// MultiAddress type for decoding Substrate address variants
-/// This represents the different ways an address can be encoded in Substrate
-#[derive(scale_decode::DecodeAsType)]
-#[allow(dead_code)]
-enum MultiAddress {
-    /// An AccountId32 (32 bytes)
-    Id([u8; 32]),
-    /// An account index
-    Index(u32),
-    /// Raw bytes
-    Raw(Vec<u8>),
-    /// A 32-byte address
-    Address32([u8; 32]),
-    /// A 20-byte address (Ethereum-style)
-    Address20([u8; 20]),
-}
-
 impl IntoResponse for GetBlockError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
@@ -99,6 +93,10 @@ impl IntoResponse for GetBlockError {
         (status, body).into_response()
     }
 }
+
+// ================================================================================================
+// Enums
+// ================================================================================================
 
 /// SCALE encoding discriminants for the DigestItem enum from sp_runtime::generic
 ///
@@ -144,6 +142,38 @@ impl DigestItemDiscriminant {
     }
 }
 
+/// MultiAddress type for decoding Substrate address variants
+/// This represents the different ways an address can be encoded in Substrate
+#[derive(scale_decode::DecodeAsType)]
+#[allow(dead_code)]
+enum MultiAddress {
+    /// An AccountId32 (32 bytes)
+    Id([u8; 32]),
+    /// An account index
+    Index(u32),
+    /// Raw bytes
+    Raw(Vec<u8>),
+    /// A 32-byte address
+    Address32([u8; 32]),
+    /// A 20-byte address (Ethereum-style)
+    Address20([u8; 20]),
+}
+
+/// Event phase - when during block execution the event was emitted
+#[derive(Debug, Clone)]
+enum EventPhase {
+    /// During block initialization
+    Initialization,
+    /// During extrinsic application (contains extrinsic index)
+    ApplyExtrinsic(u32),
+    /// During block finalization
+    Finalization,
+}
+
+// ================================================================================================
+// Structs
+// ================================================================================================
+
 /// Represents a decoded digest log entry
 #[derive(Debug, Serialize)]
 pub struct DigestLog {
@@ -151,6 +181,419 @@ pub struct DigestLog {
     pub log_type: String,
     pub index: u32,
     pub value: Value,
+}
+
+/// Method information for extrinsic calls
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MethodInfo {
+    pub pallet: String,
+    pub method: String,
+}
+
+/// Event information in block response
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Event {
+    pub method: MethodInfo,
+    pub data: Vec<Value>,
+}
+
+/// Events that occurred during block initialization
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnInitialize {
+    pub events: Vec<Event>,
+}
+
+/// Events that occurred during block finalization
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnFinalize {
+    pub events: Vec<Event>,
+}
+
+/// Signer ID wrapper matching sidecar format
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignerId {
+    pub id: String,
+}
+
+/// Signature information for signed extrinsics
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureInfo {
+    pub signature: String,
+    pub signer: SignerId,
+}
+
+/// Extrinsic information matching sidecar format
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtrinsicInfo {
+    pub method: MethodInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<SignatureInfo>,
+    /// Nonce - shown as null when extraction fails (matching sidecar behavior)
+    pub nonce: Option<String>,
+    /// Args as a JSON object where bytes are hex-encoded and large numbers are strings
+    pub args: serde_json::Map<String, Value>,
+    /// Tip - shown as null when extraction fails (matching sidecar behavior)
+    pub tip: Option<String>,
+    pub hash: String,
+    /// Runtime dispatch info (empty for now, populated later with proper weight and fees)
+    pub info: serde_json::Map<String, Value>,
+    /// Transaction era/mortality information
+    pub era: EraInfo,
+    /// Events emitted by this extrinsic
+    pub events: Vec<Event>,
+    // TODO: Add more fields (success, paysFee)
+}
+
+/// Basic block information
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockResponse {
+    pub number: String,
+    pub hash: String,
+    pub parent_hash: String,
+    pub state_root: String,
+    pub extrinsics_root: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author_id: Option<String>,
+    pub logs: Vec<DigestLog>,
+    pub on_initialize: OnInitialize,
+    pub extrinsics: Vec<ExtrinsicInfo>,
+    pub on_finalize: OnFinalize,
+}
+
+/// A parsed event with its phase information
+#[derive(Debug)]
+struct ParsedEvent {
+    /// When in the block this event occurred
+    phase: EventPhase,
+    /// Event pallet name
+    pallet_name: String,
+    /// Event variant name
+    event_name: String,
+    /// Event data as JSON
+    event_data: Vec<Value>,
+}
+
+// ================================================================================================
+// Helper Functions - Conversion & Formatting
+// ================================================================================================
+
+/// Format bytes as hex string with "0x" prefix
+fn hex_with_prefix(data: &[u8]) -> String {
+    format!("0x{}", hex::encode(data))
+}
+
+/// Convert snake_case to camelCase
+fn snake_to_camel(s: &str) -> String {
+    let mut result = String::new();
+    let mut capitalize_next = false;
+
+    for ch in s.chars() {
+        if ch == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(ch.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
+}
+
+/// Extract a numeric value from a JSON value as a string
+/// Handles direct numbers, nested objects, or string representations
+///
+/// Returns None if the value cannot be extracted, which will serialize as null
+/// in the JSON response (matching sidecar's behavior for missing/unextractable values)
+fn extract_numeric_string(value: &Value) -> Option<String> {
+    match value {
+        // Direct number
+        Value::Number(n) => Some(n.to_string()),
+        // Direct string
+        Value::String(s) => {
+            // Remove parentheses if present: "(23)" -> "23"
+            // This was present with Nonce values
+            Some(s.trim_matches(|c| c == '(' || c == ')').to_string())
+        }
+        // Object - might be {"primitive": 23} or similar
+        Value::Object(map) => {
+            // Try to find a numeric field
+            if let Some(val) = map.get("primitive") {
+                return extract_numeric_string(val);
+            }
+            // Try other common field names
+            for key in ["value", "0"] {
+                if let Some(val) = map.get(key) {
+                    return extract_numeric_string(val);
+                }
+            }
+            // Could not find expected numeric field
+            tracing::warn!(
+                "Could not extract numeric value from object with keys: {:?}",
+                map.keys().collect::<Vec<_>>()
+            );
+            None
+        }
+        // Array - take first element
+        Value::Array(arr) => {
+            if let Some(first) = arr.first() {
+                extract_numeric_string(first)
+            } else {
+                tracing::warn!("Cannot extract numeric value from empty array");
+                None
+            }
+        }
+        _ => {
+            tracing::warn!("Unexpected JSON type for numeric extraction: {:?}", value);
+            None
+        }
+    }
+}
+
+/// Decode account address bytes to SS58 format
+/// Tries to decode:
+/// 1. MultiAddress::Id variant (0x00 + 32 bytes)
+/// 2. Raw 32-byte AccountId32 (0x + 32 bytes)
+fn decode_address_to_ss58(hex_str: &str) -> Option<String> {
+    if !hex_str.starts_with("0x") {
+        return None;
+    }
+
+    let account_bytes = if hex_str.starts_with("0x00") && hex_str.len() == 68 {
+        // MultiAddress::Id: skip "0x00" variant prefix
+        hex::decode(&hex_str[4..]).ok()?
+    } else if hex_str.len() == 66 {
+        // Raw AccountId32: skip "0x" prefix
+        hex::decode(&hex_str[2..]).ok()?
+    } else {
+        return None;
+    };
+
+    // Must be exactly 32 bytes
+    if account_bytes.len() != 32 {
+        return None;
+    }
+
+    // Convert to AccountId32
+    let account_id = sp_core::crypto::AccountId32::try_from(account_bytes.as_slice()).ok()?;
+
+    // Encode to SS58 with Polkadot prefix (0)
+    // TODO make this flexible depending on network
+    Some(account_id.to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(0)))
+}
+
+/// Convert JSON value, replacing byte arrays with hex strings and all numbers with strings recursively
+///
+/// This matches substrate-api-sidecar's behavior of returning all numeric values as strings
+/// for consistency across the API.
+fn convert_bytes_to_hex(value: Value) -> Value {
+    match value {
+        Value::Number(n) => {
+            // Convert all numbers to strings to match substrate-api-sidecar behavior
+            Value::String(n.to_string())
+        }
+        Value::Array(arr) => {
+            // Check if this is a byte array (all elements are numbers 0-255)
+            if arr
+                .iter()
+                .all(|v| matches!(v, Value::Number(n) if n.is_u64() && n.as_u64().unwrap() <= 255))
+            {
+                // Convert to hex string
+                let bytes: Vec<u8> = arr
+                    .iter()
+                    .filter_map(|v| v.as_u64().map(|n| n as u8))
+                    .collect();
+                Value::String(format!("0x{}", hex::encode(&bytes)))
+            } else {
+                // Recurse into array elements
+                let converted: Vec<Value> = arr.into_iter().map(convert_bytes_to_hex).collect();
+
+                // If array has single element, unwrap it (this handles cases like ["0x..."] -> "0x...")
+                // This is specific to how the data is formatted in substrate-api-sidecar
+                if converted.len() == 1 {
+                    converted.into_iter().next().unwrap()
+                } else {
+                    Value::Array(converted)
+                }
+            }
+        }
+        Value::Object(mut map) => {
+            // Check if this is a bitvec object (scale-value represents bitvecs specially)
+            if let Some(Value::Array(bits)) = map.get("__bitvec__values__") {
+                // Convert boolean array to bytes, then to hex
+                // BitVec uses LSB0 ordering (least significant bit first within each byte)
+                let mut bytes = Vec::new();
+                let mut current_byte = 0u8;
+
+                for (i, bit) in bits.iter().enumerate() {
+                    if let Some(true) = bit.as_bool() {
+                        current_byte |= 1 << (i % 8);
+                    }
+
+                    // Every 8 bits, push the byte and reset
+                    if (i + 1) % 8 == 0 {
+                        bytes.push(current_byte);
+                        current_byte = 0;
+                    }
+                }
+
+                // Push any remaining bits
+                if bits.len() % 8 != 0 {
+                    bytes.push(current_byte);
+                }
+
+                return Value::String(format!("0x{}", hex::encode(&bytes)));
+            }
+
+            // Recurse into object values
+            for (_, v) in map.iter_mut() {
+                *v = convert_bytes_to_hex(v.clone());
+            }
+            Value::Object(map)
+        }
+        other => other,
+    }
+}
+
+/// Transform args to match sidecar format
+/// Generic transformation for SCALE enum variants:
+/// - {"name": "X", "values": Y} -> {"x": Y} (lowercase name as key)
+/// - {"name": "X", "values": "0x"} -> "X" (empty enum variant becomes string)
+/// - Decodes MultiAddress account IDs to SS58 format
+/// - Converts snake_case to camelCase for field names
+fn transform_args(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            // Check if this is a SCALE enum variant: {"name": "X", "values": Y}
+            if map.len() == 2
+                && let (Some(Value::String(name)), Some(values)) =
+                    (map.get("name"), map.get("values"))
+            {
+                // If values is "0x" (empty), return just the name as string
+                if let Value::String(v) = values
+                    && v == "0x"
+                {
+                    return Value::String(name.clone());
+                }
+
+                // Otherwise, transform to {"<lowercase_name>": <transformed_values>}
+                let key = name.to_lowercase();
+                let transformed_value = transform_args(values.clone());
+
+                let mut result = serde_json::Map::new();
+                result.insert(key, transformed_value);
+                return Value::Object(result);
+            }
+
+            // Regular object: transform keys from snake_case to camelCase and recurse
+            let transformed: serde_json::Map<String, Value> = map
+                .into_iter()
+                .map(|(key, val)| {
+                    let camel_key = snake_to_camel(&key);
+                    (camel_key, transform_args(val))
+                })
+                .collect();
+            Value::Object(transformed)
+        }
+        Value::String(s) => {
+            // Try to decode as SS58 address if it looks like an account ID
+            // (either MultiAddress::Id with 0x00 prefix or raw AccountId32)
+            if s.starts_with("0x")
+                && (s.len() == 66 || s.len() == 68)
+                && let Some(ss58_addr) = decode_address_to_ss58(&s)
+            {
+                return Value::String(ss58_addr);
+            }
+            Value::String(s)
+        }
+        Value::Array(arr) => Value::Array(arr.into_iter().map(transform_args).collect()),
+        other => other,
+    }
+}
+
+// ================================================================================================
+// Helper Functions - Digest & Header Processing
+// ================================================================================================
+
+/// Decode a consensus digest item (PreRuntime, Consensus, or Seal)
+/// Format: [consensus_engine_id (4 bytes), payload_data]
+fn decode_consensus_digest(data: &[u8]) -> Option<Value> {
+    if data.len() < CONSENSUS_ENGINE_ID_LEN {
+        return None;
+    }
+
+    let engine_id = String::from_utf8_lossy(&data[0..CONSENSUS_ENGINE_ID_LEN]).to_string();
+    let payload = hex_with_prefix(&data[CONSENSUS_ENGINE_ID_LEN..]);
+    Some(json!([engine_id, payload]))
+}
+
+/// Decode digest logs from hex-encoded strings in the JSON response
+/// Each hex string is a SCALE-encoded DigestItem
+fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
+    let logs = match header_json
+        .get("digest")
+        .and_then(|d| d.get("logs"))
+        .and_then(|l| l.as_array())
+    {
+        Some(logs) => logs,
+        None => return Vec::new(),
+    };
+
+    logs.iter()
+        .enumerate()
+        .filter_map(|(index, log_hex)| {
+            let hex_str = log_hex.as_str()?;
+            let hex_data = hex_str.strip_prefix("0x")?;
+            let bytes = hex::decode(hex_data).ok()?;
+
+            if bytes.is_empty() {
+                return None;
+            }
+
+            // The first byte is the digest item type discriminant
+            let discriminant_byte = bytes[0];
+            let data = &bytes[1..];
+
+            // Try to parse the discriminant into a known type
+            let discriminant = DigestItemDiscriminant::try_from(discriminant_byte)
+                .unwrap_or(DigestItemDiscriminant::Other);
+
+            let (log_type, value) = match discriminant {
+                // Consensus-related digests: PreRuntime, Consensus, Seal
+                // All have format: [consensus_engine_id (4 bytes), payload_data]
+                DigestItemDiscriminant::PreRuntime
+                | DigestItemDiscriminant::Consensus
+                | DigestItemDiscriminant::Seal => match decode_consensus_digest(data) {
+                    Some(val) => (discriminant.as_str().to_string(), val),
+                    None => ("Other".to_string(), json!(hex_with_prefix(&bytes))),
+                },
+                // RuntimeEnvironmentUpdated has no associated data
+                DigestItemDiscriminant::RuntimeEnvironmentUpdated => {
+                    (discriminant.as_str().to_string(), Value::Null)
+                }
+                // Other (includes unknown discriminants that were converted to Other)
+                DigestItemDiscriminant::Other => (
+                    discriminant.as_str().to_string(),
+                    json!(hex_with_prefix(data)),
+                ),
+            };
+
+            Some(DigestLog {
+                log_type,
+                index: index as u32,
+                value,
+            })
+        })
+        .collect()
 }
 
 /// Fetch validator set from chain state at a specific block
@@ -263,316 +706,97 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
     None
 }
 
-/// Length of consensus engine ID in digest items (e.g., "BABE", "aura", "pow_")
-const CONSENSUS_ENGINE_ID_LEN: usize = 4;
+// ================================================================================================
+// Helper Functions - Event Processing
+// ================================================================================================
 
-/// Format bytes as hex string with "0x" prefix
-fn hex_with_prefix(data: &[u8]) -> String {
-    format!("0x{}", hex::encode(data))
-}
-
-/// Decode a consensus digest item (PreRuntime, Consensus, or Seal)
-/// Format: [consensus_engine_id (4 bytes), payload_data]
-fn decode_consensus_digest(data: &[u8]) -> Option<Value> {
-    if data.len() < CONSENSUS_ENGINE_ID_LEN {
-        return None;
-    }
-
-    let engine_id = String::from_utf8_lossy(&data[0..CONSENSUS_ENGINE_ID_LEN]).to_string();
-    let payload = hex_with_prefix(&data[CONSENSUS_ENGINE_ID_LEN..]);
-    Some(json!([engine_id, payload]))
-}
-
-/// Decode digest logs from hex-encoded strings in the JSON response
-/// Each hex string is a SCALE-encoded DigestItem
-fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
-    let logs = match header_json
-        .get("digest")
-        .and_then(|d| d.get("logs"))
-        .and_then(|l| l.as_array())
-    {
-        Some(logs) => logs,
-        None => return Vec::new(),
-    };
-
-    logs.iter()
-        .enumerate()
-        .filter_map(|(index, log_hex)| {
-            let hex_str = log_hex.as_str()?;
-            let hex_data = hex_str.strip_prefix("0x")?;
-            let bytes = hex::decode(hex_data).ok()?;
-
-            if bytes.is_empty() {
-                return None;
-            }
-
-            // The first byte is the digest item type discriminant
-            let discriminant_byte = bytes[0];
-            let data = &bytes[1..];
-
-            // Try to parse the discriminant into a known type
-            let discriminant = DigestItemDiscriminant::try_from(discriminant_byte)
-                .unwrap_or(DigestItemDiscriminant::Other);
-
-            let (log_type, value) = match discriminant {
-                // Consensus-related digests: PreRuntime, Consensus, Seal
-                // All have format: [consensus_engine_id (4 bytes), payload_data]
-                DigestItemDiscriminant::PreRuntime
-                | DigestItemDiscriminant::Consensus
-                | DigestItemDiscriminant::Seal => match decode_consensus_digest(data) {
-                    Some(val) => (discriminant.as_str().to_string(), val),
-                    None => ("Other".to_string(), json!(hex_with_prefix(&bytes))),
-                },
-                // RuntimeEnvironmentUpdated has no associated data
-                DigestItemDiscriminant::RuntimeEnvironmentUpdated => {
-                    (discriminant.as_str().to_string(), Value::Null)
-                }
-                // Other (includes unknown discriminants that were converted to Other)
-                DigestItemDiscriminant::Other => (
-                    discriminant.as_str().to_string(),
-                    json!(hex_with_prefix(data)),
-                ),
-            };
-
-            Some(DigestLog {
-                log_type,
-                index: index as u32,
-                value,
-            })
-        })
-        .collect()
-}
-
-/// Method information for extrinsic calls
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct MethodInfo {
-    pub pallet: String,
-    pub method: String,
-}
-
-/// Event information in block response
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct Event {
-    pub method: MethodInfo,
-    pub data: Vec<Value>,
-}
-
-/// Events that occurred during block initialization
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OnInitialize {
-    pub events: Vec<Event>,
-}
-
-/// Events that occurred during block finalization
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OnFinalize {
-    pub events: Vec<Event>,
-}
-
-/// Signer ID wrapper matching sidecar format
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SignerId {
-    pub id: String,
-}
-
-/// Signature information for signed extrinsics
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SignatureInfo {
-    pub signature: String,
-    pub signer: SignerId,
-}
-
-/// Extrinsic information matching sidecar format
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExtrinsicInfo {
-    pub method: MethodInfo,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signature: Option<SignatureInfo>,
-    /// Nonce - shown as null when extraction fails (matching sidecar behavior)
-    pub nonce: Option<String>,
-    /// Args as a JSON object where bytes are hex-encoded and large numbers are strings
-    pub args: serde_json::Map<String, Value>,
-    /// Tip - shown as null when extraction fails (matching sidecar behavior)
-    pub tip: Option<String>,
-    pub hash: String,
-    /// Runtime dispatch info (empty for now, populated later with proper weight and fees)
-    pub info: serde_json::Map<String, Value>,
-    /// Transaction era/mortality information
-    pub era: EraInfo,
-    /// Events emitted by this extrinsic
-    pub events: Vec<Event>,
-    // TODO: Add more fields (success, paysFee)
-}
-
-/// Basic block information
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BlockResponse {
-    pub number: String,
-    pub hash: String,
-    pub parent_hash: String,
-    pub state_root: String,
-    pub extrinsics_root: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub author_id: Option<String>,
-    pub logs: Vec<DigestLog>,
-    pub on_initialize: OnInitialize,
-    pub extrinsics: Vec<ExtrinsicInfo>,
-    pub on_finalize: OnFinalize,
-}
-
-/// Extract a numeric value from a JSON value as a string
-/// Handles direct numbers, nested objects, or string representations
-///
-/// Returns None if the value cannot be extracted, which will serialize as null
-/// in the JSON response (matching sidecar's behavior for missing/unextractable values)
-fn extract_numeric_string(value: &Value) -> Option<String> {
+/// Try to convert an event field value to SS58 format if it's a valid AccountId32
+/// Handles hex strings of 32 bytes (0x + 64 chars)
+fn try_convert_to_ss58_event_field(value: &Value) -> Option<Value> {
     match value {
-        // Direct number
-        Value::Number(n) => Some(n.to_string()),
-        // Direct string
-        Value::String(s) => {
-            // Remove parentheses if present: "(23)" -> "23"
-            // This was present with Nonce values
-            Some(s.trim_matches(|c| c == '(' || c == ')').to_string())
-        }
-        // Object - might be {"primitive": 23} or similar
-        Value::Object(map) => {
-            // Try to find a numeric field
-            if let Some(val) = map.get("primitive") {
-                return extract_numeric_string(val);
-            }
-            // Try other common field names
-            for key in ["value", "0"] {
-                if let Some(val) = map.get(key) {
-                    return extract_numeric_string(val);
-                }
-            }
-            // Could not find expected numeric field
-            tracing::warn!(
-                "Could not extract numeric value from object with keys: {:?}",
-                map.keys().collect::<Vec<_>>()
-            );
-            None
-        }
-        // Array - take first element
-        Value::Array(arr) => {
-            if let Some(first) = arr.first() {
-                extract_numeric_string(first)
-            } else {
-                tracing::warn!("Cannot extract numeric value from empty array");
-                None
-            }
-        }
-        _ => {
-            tracing::warn!("Unexpected JSON type for numeric extraction: {:?}", value);
-            None
-        }
-    }
-}
-
-/// Convert JSON value, replacing byte arrays with hex strings and all numbers with strings recursively
-///
-/// This matches substrate-api-sidecar's behavior of returning all numeric values as strings
-/// for consistency across the API.
-fn convert_bytes_to_hex(value: Value) -> Value {
-    match value {
-        Value::Number(n) => {
-            // Convert all numbers to strings to match substrate-api-sidecar behavior
-            Value::String(n.to_string())
-        }
-        Value::Array(arr) => {
-            // Check if this is a byte array (all elements are numbers 0-255)
-            if arr
-                .iter()
-                .all(|v| matches!(v, Value::Number(n) if n.is_u64() && n.as_u64().unwrap() <= 255))
+        Value::String(hex_str) if hex_str.starts_with("0x") && hex_str.len() == 66 => {
+            // Try to decode as 32-byte AccountId32
+            if let Ok(bytes) = hex::decode(&hex_str[2..])
+                && bytes.len() == 32
             {
-                // Convert to hex string
-                let bytes: Vec<u8> = arr
-                    .iter()
-                    .filter_map(|v| v.as_u64().map(|n| n as u8))
-                    .collect();
-                Value::String(format!("0x{}", hex::encode(&bytes)))
-            } else {
-                // Recurse into array elements
-                let converted: Vec<Value> = arr.into_iter().map(convert_bytes_to_hex).collect();
-
-                // If array has single element, unwrap it (this handles cases like ["0x..."] -> "0x...")
-                // This is specific to how the data is formatted in substrate-api-sidecar
-                if converted.len() == 1 {
-                    converted.into_iter().next().unwrap()
-                } else {
-                    Value::Array(converted)
-                }
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&bytes);
+                let account_id = AccountId32::from(arr);
+                let ss58 = account_id.to_ss58check_with_version(0u16.into());
+                return Some(Value::String(ss58));
             }
+            None
         }
-        Value::Object(mut map) => {
-            // Check if this is a bitvec object (scale-value represents bitvecs specially)
-            if let Some(Value::Array(bits)) = map.get("__bitvec__values__") {
-                // Convert boolean array to bytes, then to hex
-                // BitVec uses LSB0 ordering (least significant bit first within each byte)
-                let mut bytes = Vec::new();
-                let mut current_byte = 0u8;
+        _ => None,
+    }
+}
 
-                for (i, bit) in bits.iter().enumerate() {
-                    if let Some(true) = bit.as_bool() {
-                        current_byte |= 1 << (i % 8);
+/// Transform event data to match sidecar format
+/// - Converts snake_case to camelCase
+/// - Simplifies enum variants from {"name": "X", "values": ...} to just "X" (for empty values)
+/// - Converts byte arrays to hex strings
+fn transform_event_data(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            // Check if this is an enum variant object with "name" and "values" fields
+            // If values is "0x" (empty), just return the name as a string
+            if map.len() == 2 {
+                match (map.get("name"), map.get("values")) {
+                    (Some(Value::String(name)), Some(Value::String(values))) if values == "0x" => {
+                        return Value::String(name.clone());
                     }
-
-                    // Every 8 bits, push the byte and reset
-                    if (i + 1) % 8 == 0 {
-                        bytes.push(current_byte);
-                        current_byte = 0;
-                    }
+                    _ => {}
                 }
-
-                // Push any remaining bits
-                if bits.len() % 8 != 0 {
-                    bytes.push(current_byte);
-                }
-
-                return Value::String(format!("0x{}", hex::encode(&bytes)));
             }
 
-            // Recurse into object values
-            for (_, v) in map.iter_mut() {
-                *v = convert_bytes_to_hex(v.clone());
-            }
-            Value::Object(map)
+            // Otherwise, transform object keys from snake_case to camelCase
+            let transformed: serde_json::Map<String, Value> = map
+                .into_iter()
+                .map(|(key, val)| {
+                    let camel_key = snake_to_camel(&key);
+                    (camel_key, transform_event_data(val))
+                })
+                .collect();
+            Value::Object(transformed)
         }
+        Value::Array(arr) => Value::Array(arr.into_iter().map(transform_event_data).collect()),
         other => other,
     }
 }
 
-/// Event phase - when during block execution the event was emitted
-#[derive(Debug, Clone)]
-enum EventPhase {
-    /// During block initialization
-    Initialization,
-    /// During extrinsic application (contains extrinsic index)
-    ApplyExtrinsic(u32),
-    /// During block finalization
-    Finalization,
-}
-
-/// A parsed event with its phase information
-#[derive(Debug)]
-struct ParsedEvent {
-    /// When in the block this event occurred
-    phase: EventPhase,
-    /// Event pallet name
-    pallet_name: String,
-    /// Event variant name
-    event_name: String,
-    /// Event data as JSON
-    event_data: Vec<Value>,
+/// Parse event phase from scale_value
+fn parse_event_phase(phase_value: &scale_value::ValueDef<()>) -> Result<EventPhase, GetBlockError> {
+    if let scale_value::ValueDef::Variant(variant) = phase_value {
+        match variant.name.as_str() {
+            "Initialization" => Ok(EventPhase::Initialization),
+            "ApplyExtrinsic" => {
+                // Extract the extrinsic index (stored as u128)
+                let index_fields: Vec<&scale_value::Value<()>> = variant.values.values().collect();
+                if let Some(index_field) = index_fields.first() {
+                    // Try to extract as u128
+                    if let scale_value::ValueDef::Primitive(scale_value::Primitive::U128(index)) =
+                        &index_field.value
+                    {
+                        return Ok(EventPhase::ApplyExtrinsic(*index as u32));
+                    }
+                    // Try helper method
+                    if let Some(index_u128) = index_field.as_u128() {
+                        return Ok(EventPhase::ApplyExtrinsic(index_u128 as u32));
+                    }
+                }
+                tracing::warn!("ApplyExtrinsic phase missing or invalid index");
+                Ok(EventPhase::ApplyExtrinsic(0))
+            }
+            "Finalization" => Ok(EventPhase::Finalization),
+            other => {
+                tracing::warn!("Unknown event phase: {}", other);
+                Ok(EventPhase::Initialization)
+            }
+        }
+    } else {
+        tracing::warn!("Event phase is not a variant");
+        Ok(EventPhase::Initialization)
+    }
 }
 
 /// Fetch and parse all events for a block
@@ -689,202 +913,6 @@ async fn fetch_block_events(
     Ok(parsed_events)
 }
 
-/// Try to convert an event field value to SS58 format if it's a valid AccountId32
-/// Handles hex strings of 32 bytes (0x + 64 chars)
-fn try_convert_to_ss58_event_field(value: &Value) -> Option<Value> {
-    match value {
-        Value::String(hex_str) if hex_str.starts_with("0x") && hex_str.len() == 66 => {
-            // Try to decode as 32-byte AccountId32
-            if let Ok(bytes) = hex::decode(&hex_str[2..])
-                && bytes.len() == 32
-            {
-                let mut arr = [0u8; 32];
-                arr.copy_from_slice(&bytes);
-                let account_id = AccountId32::from(arr);
-                let ss58 = account_id.to_ss58check_with_version(0u16.into());
-                return Some(Value::String(ss58));
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-/// Transform event data to match sidecar format
-/// - Converts snake_case to camelCase
-/// - Simplifies enum variants from {"name": "X", "values": ...} to just "X" (for empty values)
-/// - Converts byte arrays to hex strings
-fn transform_event_data(value: Value) -> Value {
-    match value {
-        Value::Object(map) => {
-            // Check if this is an enum variant object with "name" and "values" fields
-            // If values is "0x" (empty), just return the name as a string
-            if map.len() == 2 {
-                match (map.get("name"), map.get("values")) {
-                    (Some(Value::String(name)), Some(Value::String(values))) if values == "0x" => {
-                        return Value::String(name.clone());
-                    }
-                    _ => {}
-                }
-            }
-
-            // Otherwise, transform object keys from snake_case to camelCase
-            let transformed: serde_json::Map<String, Value> = map
-                .into_iter()
-                .map(|(key, val)| {
-                    let camel_key = snake_to_camel(&key);
-                    (camel_key, transform_event_data(val))
-                })
-                .collect();
-            Value::Object(transformed)
-        }
-        Value::Array(arr) => Value::Array(arr.into_iter().map(transform_event_data).collect()),
-        other => other,
-    }
-}
-
-/// Convert snake_case to camelCase
-fn snake_to_camel(s: &str) -> String {
-    let mut result = String::new();
-    let mut capitalize_next = false;
-
-    for ch in s.chars() {
-        if ch == '_' {
-            capitalize_next = true;
-        } else if capitalize_next {
-            result.push(ch.to_ascii_uppercase());
-            capitalize_next = false;
-        } else {
-            result.push(ch);
-        }
-    }
-
-    result
-}
-
-/// Decode account address bytes to SS58 format
-/// Tries to decode:
-/// 1. MultiAddress::Id variant (0x00 + 32 bytes)
-/// 2. Raw 32-byte AccountId32 (0x + 32 bytes)
-fn decode_address_to_ss58(hex_str: &str) -> Option<String> {
-    if !hex_str.starts_with("0x") {
-        return None;
-    }
-
-    let account_bytes = if hex_str.starts_with("0x00") && hex_str.len() == 68 {
-        // MultiAddress::Id: skip "0x00" variant prefix
-        hex::decode(&hex_str[4..]).ok()?
-    } else if hex_str.len() == 66 {
-        // Raw AccountId32: skip "0x" prefix
-        hex::decode(&hex_str[2..]).ok()?
-    } else {
-        return None;
-    };
-
-    // Must be exactly 32 bytes
-    if account_bytes.len() != 32 {
-        return None;
-    }
-
-    // Convert to AccountId32
-    let account_id = sp_core::crypto::AccountId32::try_from(account_bytes.as_slice()).ok()?;
-
-    // Encode to SS58 with Polkadot prefix (0)
-    // TODO make this flexible depending on network
-    Some(account_id.to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(0)))
-}
-
-/// Transform args to match sidecar format
-/// Generic transformation for SCALE enum variants:
-/// - {"name": "X", "values": Y} -> {"x": Y} (lowercase name as key)
-/// - {"name": "X", "values": "0x"} -> "X" (empty enum variant becomes string)
-/// - Decodes MultiAddress account IDs to SS58 format
-/// - Converts snake_case to camelCase for field names
-fn transform_args(value: Value) -> Value {
-    match value {
-        Value::Object(map) => {
-            // Check if this is a SCALE enum variant: {"name": "X", "values": Y}
-            if map.len() == 2
-                && let (Some(Value::String(name)), Some(values)) =
-                    (map.get("name"), map.get("values"))
-            {
-                // If values is "0x" (empty), return just the name as string
-                if let Value::String(v) = values
-                    && v == "0x"
-                {
-                    return Value::String(name.clone());
-                }
-
-                // Otherwise, transform to {"<lowercase_name>": <transformed_values>}
-                let key = name.to_lowercase();
-                let transformed_value = transform_args(values.clone());
-
-                let mut result = serde_json::Map::new();
-                result.insert(key, transformed_value);
-                return Value::Object(result);
-            }
-
-            // Regular object: transform keys from snake_case to camelCase and recurse
-            let transformed: serde_json::Map<String, Value> = map
-                .into_iter()
-                .map(|(key, val)| {
-                    let camel_key = snake_to_camel(&key);
-                    (camel_key, transform_args(val))
-                })
-                .collect();
-            Value::Object(transformed)
-        }
-        Value::String(s) => {
-            // Try to decode as SS58 address if it looks like an account ID
-            // (either MultiAddress::Id with 0x00 prefix or raw AccountId32)
-            if s.starts_with("0x")
-                && (s.len() == 66 || s.len() == 68)
-                && let Some(ss58_addr) = decode_address_to_ss58(&s)
-            {
-                return Value::String(ss58_addr);
-            }
-            Value::String(s)
-        }
-        Value::Array(arr) => Value::Array(arr.into_iter().map(transform_args).collect()),
-        other => other,
-    }
-}
-
-/// Parse event phase from scale_value
-fn parse_event_phase(phase_value: &scale_value::ValueDef<()>) -> Result<EventPhase, GetBlockError> {
-    if let scale_value::ValueDef::Variant(variant) = phase_value {
-        match variant.name.as_str() {
-            "Initialization" => Ok(EventPhase::Initialization),
-            "ApplyExtrinsic" => {
-                // Extract the extrinsic index (stored as u128)
-                let index_fields: Vec<&scale_value::Value<()>> = variant.values.values().collect();
-                if let Some(index_field) = index_fields.first() {
-                    // Try to extract as u128
-                    if let scale_value::ValueDef::Primitive(scale_value::Primitive::U128(index)) =
-                        &index_field.value
-                    {
-                        return Ok(EventPhase::ApplyExtrinsic(*index as u32));
-                    }
-                    // Try helper method
-                    if let Some(index_u128) = index_field.as_u128() {
-                        return Ok(EventPhase::ApplyExtrinsic(index_u128 as u32));
-                    }
-                }
-                tracing::warn!("ApplyExtrinsic phase missing or invalid index");
-                Ok(EventPhase::ApplyExtrinsic(0))
-            }
-            "Finalization" => Ok(EventPhase::Finalization),
-            other => {
-                tracing::warn!("Unknown event phase: {}", other);
-                Ok(EventPhase::Initialization)
-            }
-        }
-    } else {
-        tracing::warn!("Event phase is not a variant");
-        Ok(EventPhase::Initialization)
-    }
-}
-
 /// Categorize parsed events into onInitialize, per-extrinsic, and onFinalize arrays
 fn categorize_events(
     parsed_events: Vec<ParsedEvent>,
@@ -938,6 +966,10 @@ fn categorize_events(
         },
     )
 }
+
+// ================================================================================================
+// Helper Functions - Extrinsic Processing
+// ================================================================================================
 
 /// Extract extrinsics from a block using subxt-historic
 async fn extract_extrinsics(
@@ -1217,6 +1249,10 @@ async fn extract_extrinsics(
     Ok(result)
 }
 
+// ================================================================================================
+// Main Handler
+// ================================================================================================
+
 /// Handler for GET /blocks/{blockId}
 ///
 /// Returns block information for a given block identifier (hash or number)
@@ -1295,6 +1331,10 @@ pub async fn get_block(
 
     Ok(Json(response))
 }
+
+// ================================================================================================
+// Tests
+// ================================================================================================
 
 #[cfg(test)]
 mod tests {
