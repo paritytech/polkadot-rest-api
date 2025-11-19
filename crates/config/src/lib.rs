@@ -69,6 +69,12 @@ struct EnvConfig {
     #[serde(default = "default_metrics_prometheus_prefix")]
     metrics_prometheus_prefix: String,
 
+    #[serde(default = "default_metrics_loki_host")]
+    metrics_loki_host: String,
+
+    #[serde(default = "default_metrics_loki_port")]
+    metrics_loki_port: u16,
+
     #[serde(default = "default_metrics_include_queryparams")]
     metrics_include_queryparams: bool,
 }
@@ -141,6 +147,14 @@ fn default_metrics_prometheus_prefix() -> String {
     "polkadot_rest_api".to_string()
 }
 
+fn default_metrics_loki_host() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_metrics_loki_port() -> u16 {
+    3100
+}
+
 fn default_metrics_include_queryparams() -> bool {
     false
 }
@@ -175,6 +189,8 @@ impl SidecarConfig {
     /// - SAS_METRICS_PROM_HOST
     /// - SAS_METRICS_PROM_PORT
     /// - SAS_METRICS_PROMETHEUS_PREFIX
+    /// - SAS_METRICS_LOKI_HOST
+    /// - SAS_METRICS_LOKI_PORT
     /// - SAS_METRICS_INCLUDE_QUERYPARAMS
     pub fn from_env() -> Result<Self, ConfigError> {
         // Load flat env config
@@ -213,6 +229,8 @@ impl SidecarConfig {
                 prom_host: env_config.metrics_prom_host,
                 prom_port: env_config.metrics_prom_port,
                 prometheus_prefix: env_config.metrics_prometheus_prefix,
+                loki_host: env_config.metrics_loki_host,
+                loki_port: env_config.metrics_loki_port,
                 include_queryparams: env_config.metrics_include_queryparams,
             },
         };
