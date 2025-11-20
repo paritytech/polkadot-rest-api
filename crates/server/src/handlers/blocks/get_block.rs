@@ -1,6 +1,8 @@
 use super::util::event_account_fields::get_account_field_positions;
-use super::util::extrinsic_account_fields::is_account_field;
 use crate::state::AppState;
+
+// Type visitor for extracting type names from extrinsic fields
+use super::type_name_visitor::GetTypeName;
 use crate::utils::{self, EraInfo};
 use axum::{
     Json,
@@ -647,8 +649,7 @@ async fn get_validators_at_block(
 
     let client_at_block = state.client.at(block_number).await?;
     let storage_entry = client_at_block.storage().entry("Session", "Validators")?;
-    let plain_entry = storage_entry.into_plain()?;
-    let validators_value = plain_entry.fetch().await?.ok_or_else(|| {
+    let validators_value = storage_entry.fetch(()).await?.ok_or_else(|| {
         // Use the parity_scale_codec::Error for missing validators which will be converted to StorageDecodeFailed
         parity_scale_codec::Error::from("validators storage not found")
     })?;
@@ -860,8 +861,7 @@ async fn fetch_block_events(
     // Fetch System.Events storage
     // This contains all events that occurred during block execution
     let storage_entry = client_at_block.storage().entry("System", "Events")?;
-    let plain_entry = storage_entry.into_plain()?;
-    let events_value = plain_entry.fetch().await?.ok_or_else(|| {
+    let events_value = storage_entry.fetch(()).await?.ok_or_else(|| {
         tracing::warn!("No events storage found for block {}", block_number);
         parity_scale_codec::Error::from("Events storage not found")
     })?;
@@ -869,7 +869,7 @@ async fn fetch_block_events(
     // Decode events as Vec<EventRecord>
     // EventRecord is a struct with fields: phase, event, topics
     let events_vec = events_value
-        .decode::<Vec<scale_value::Value<()>>>()
+        .decode_as::<Vec<scale_value::Value<()>>>()
         .map_err(|e| {
             tracing::warn!(
                 "Failed to decode events for block {}: {:?}",
@@ -1075,8 +1075,27 @@ async fn extract_extrinsics(
             let field_name = field.name();
             let camel_field_name = snake_to_camel(field_name);
 
-            // Try to decode as AccountId32-related types for known fields
-            if is_account_field(field_name) {
+            // Use the visitor pattern to get type information
+            // This definitively detects AccountId32 fields by their actual type!
+            let type_name = field.visit(GetTypeName::new()).ok().flatten();
+
+            // Log the type name for demonstration
+            if let Some(tn) = type_name {
+                tracing::debug!(
+                    "Field '{}' in {}.{} has type: {}",
+                    field_name,
+                    pallet_name,
+                    method_name,
+                    tn
+                );
+            }
+
+            // Try to decode as AccountId32-related types based on the detected type name
+            let is_account_type = type_name == Some("AccountId32")
+                || type_name == Some("MultiAddress")
+                || type_name == Some("AccountId");
+
+            if is_account_type {
                 let mut decoded_account = false;
 
                 // Helper to convert bytes to SS58 with chain-specific prefix
@@ -1087,16 +1106,16 @@ async fn extract_extrinsics(
                 };
 
                 // Try decoding as [u8; 32]
-                if let Ok(account_bytes) = field.decode::<[u8; 32]>() {
+                if let Ok(account_bytes) = field.decode_as::<[u8; 32]>() {
                     let ss58 = bytes_to_ss58(&account_bytes);
                     args_map.insert(camel_field_name.clone(), json!(ss58));
                     decoded_account = true;
-                } else if let Ok(accounts) = field.decode::<Vec<[u8; 32]>>() {
+                } else if let Ok(accounts) = field.decode_as::<Vec<[u8; 32]>>() {
                     // Try Vec<[u8; 32]>
                     let ss58_addresses: Vec<String> = accounts.iter().map(&bytes_to_ss58).collect();
                     args_map.insert(camel_field_name.clone(), json!(ss58_addresses));
                     decoded_account = true;
-                } else if let Ok(multi_addr) = field.decode::<MultiAddress>() {
+                } else if let Ok(multi_addr) = field.decode_as::<MultiAddress>() {
                     // Try MultiAddress enum
                     let value = match multi_addr {
                         MultiAddress::Id(bytes) | MultiAddress::Address32(bytes) => {
@@ -1121,7 +1140,7 @@ async fn extract_extrinsics(
             }
 
             // For non-account fields (or account fields that failed to decode), use Value<()>
-            match field.decode::<scale_value::Value<()>>() {
+            match field.decode_as::<scale_value::Value<()>>() {
                 Ok(value) => {
                     let json_value = serde_json::to_value(&value).unwrap_or(Value::Null);
                     let converted = convert_bytes_to_hex(json_value);
@@ -1188,7 +1207,7 @@ async fn extract_extrinsics(
                 match ext_name {
                     "CheckNonce" => {
                         // Decode as a u64/u32 compact value, then serialize to JSON
-                        if let Ok(n) = ext.decode::<scale_value::Value>()
+                        if let Ok(n) = ext.decode_as::<scale_value::Value>()
                             && let Ok(json_val) = serde_json::to_value(&n)
                         {
                             // The value might be nested in an object, so we need to extract it
@@ -1198,7 +1217,7 @@ async fn extract_extrinsics(
                     }
                     "ChargeTransactionPayment" | "ChargeAssetTxPayment" => {
                         // The tip is typically a Compact<u128>
-                        if let Ok(t) = ext.decode::<scale_value::Value>()
+                        if let Ok(t) = ext.decode_as::<scale_value::Value>()
                             && let Ok(json_val) = serde_json::to_value(&t)
                         {
                             // If extraction fails, tip_value remains None (serialized as null)

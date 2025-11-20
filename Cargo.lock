@@ -1364,9 +1364,9 @@ dependencies = [
 
 [[package]]
 name = "frame-decode"
-version = "0.10.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "641e3739fa708a278d35b008a05244008c221240abc3e1c27138466c13e999ed"
+checksum = "0fb3bfa2988ef40247e0e0eecfb171a01ad6f4e399485503aad4c413a5f236f3"
 dependencies = [
  "frame-metadata 23.0.0",
  "parity-scale-codec",
@@ -3309,9 +3309,9 @@ dependencies = [
 
 [[package]]
 name = "scale-decode"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d78196772d25b90a98046794ce0fe2588b39ebdfbdc1e45b4c6c85dd43bebad"
+checksum = "e60e74b30ef53a3b17a126cf9d5cc81333f301c487cbbff3bc285bf094a14dea"
 dependencies = [
  "parity-scale-codec",
  "primitive-types 0.13.1",
@@ -3324,9 +3324,9 @@ dependencies = [
 
 [[package]]
 name = "scale-decode-derive"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f4b54a1211260718b92832b661025d1f1a4b6930fbadd6908e00edd265fa5f7"
+checksum = "c11c7ba143dc8ac146c78e215f3045ac4bc3bb3733fcac6996055a211ac222c7"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -3375,9 +3375,9 @@ dependencies = [
 
 [[package]]
 name = "scale-info-legacy"
-version = "0.2.4"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd183213b6831b6bc08fda67a310bf9299889d669e264a2a2168679079a0c522"
+checksum = "2500adfb429a0ffda37919df92c05d0c1359c10e0444c17253c84b84dfce542f"
 dependencies = [
  "hashbrown 0.15.5",
  "scale-type-resolver",
@@ -3670,6 +3670,8 @@ dependencies = [
  "rolling-file",
  "rustc-hex",
  "scale-decode",
+ "scale-info-legacy",
+ "scale-type-resolver",
  "scale-value",
  "serde",
  "serde_json",
@@ -3821,9 +3823,9 @@ dependencies = [
 
 [[package]]
 name = "smoldot"
-version = "0.19.4"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e16e5723359f0048bf64bfdfba64e5732a56847d42c4fd3fe56f18280c813413"
+checksum = "724ab10d6485cccb4bab080ce436c0b361295274aec7847d7ba84ab1a79a5132"
 dependencies = [
  "arrayvec 0.7.6",
  "async-lock",
@@ -3875,9 +3877,9 @@ dependencies = [
 
 [[package]]
 name = "smoldot-light"
-version = "0.17.2"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1bba9e591716567d704a8252feeb2f1261a286e1e2cbdd4e49e9197c34a14e2"
+checksum = "e8b4d4971f06f2471f4e57a662dbe8047fa0cc020957764a6211f3fad371f7bd"
 dependencies = [
  "async-channel",
  "async-lock",
@@ -4483,8 +4485,6 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "subxt-historic"
 version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8b2a5308a47f317334483651203c6046de5a30b2ff362e88387637884977b91"
 dependencies = [
  "frame-decode",
  "frame-metadata 23.0.0",
@@ -4504,8 +4504,6 @@ dependencies = [
 [[package]]
 name = "subxt-lightclient"
 version = "0.44.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64e02732a6c9ae46bc282c1a741b3d3e494021b3e87e7e92cfb3620116d92911"
 dependencies = [
  "futures",
  "futures-util",
@@ -4521,8 +4519,6 @@ dependencies = [
 [[package]]
 name = "subxt-rpcs"
 version = "0.44.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab68a9c20ecedb0cb7d62d64f884e6add91bb70485783bf40aa8eac5c389c6e0"
 dependencies = [
  "derive-where",
  "frame-metadata 23.0.0",

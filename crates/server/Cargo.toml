@@ -21,8 +21,9 @@ tower = "0.5"
 tower-http = { version = "0.6.6", features = ["trace", "cors", "limit"] }
 socket2 = "0.6"
 config = { path = "../config" }
-subxt-historic = { version = "0.0.4" }
-subxt-rpcs = { version = "0.44.0" }
+# Using local subxt branch with visitor functionality
+subxt-historic = { path = "/Users/tarikgul/Desktop/parity/tools-team/secondary/subxt/historic" }
+subxt-rpcs = { path = "/Users/tarikgul/Desktop/parity/tools-team/secondary/subxt/rpcs" }
 primitive-types = "0.13"
 rustc-hex = "2.1"
 hex = "0.4"
@@ -32,6 +33,8 @@ sp-runtime = "39"
 sp-consensus-babe = "0.40"
 scale-value = "0.18"
 scale-decode = { version = "0.16", features = ["derive"] }
+scale-type-resolver = "0.2.0"
+scale-info-legacy = "0.4.0"
 prometheus = "0.13"
 lazy_static = "1.4"
 regex = "1.10"
@@ -41,4 +44,4 @@ url = "2.5"
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
-subxt-rpcs = { version = "0.44.0", features = ["mock-rpc-client"] }
+subxt-rpcs = { path = "/Users/tarikgul/Desktop/parity/tools-team/secondary/subxt/rpcs", features = ["mock-rpc-client"] }
