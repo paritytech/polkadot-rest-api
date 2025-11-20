@@ -370,21 +370,56 @@ fn decode_address_to_ss58(hex_str: &str, ss58_prefix: u16) -> Option<String> {
 
     let account_bytes = if hex_str.starts_with("0x00") && hex_str.len() == 68 {
         // MultiAddress::Id: skip "0x00" variant prefix
-        hex::decode(&hex_str[4..]).ok()?
+        match hex::decode(&hex_str[4..]) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                tracing::warn!(
+                    hex_str = %hex_str,
+                    error = %e,
+                    "Failed to hex decode MultiAddress::Id field"
+                );
+                return None;
+            }
+        }
     } else if hex_str.len() == 66 {
         // Raw AccountId32: skip "0x" prefix
-        hex::decode(&hex_str[2..]).ok()?
+        match hex::decode(&hex_str[2..]) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                tracing::warn!(
+                    hex_str = %hex_str,
+                    error = %e,
+                    "Failed to hex decode raw AccountId32 field"
+                );
+                return None;
+            }
+        }
     } else {
         return None;
     };
 
     // Must be exactly 32 bytes
     if account_bytes.len() != 32 {
+        tracing::debug!(
+            hex_str = %hex_str,
+            byte_len = account_bytes.len(),
+            "Decoded bytes are not 32 bytes, skipping SS58 conversion"
+        );
         return None;
     }
 
     // Convert to AccountId32
-    let account_id = sp_core::crypto::AccountId32::try_from(account_bytes.as_slice()).ok()?;
+    let account_id = match sp_core::crypto::AccountId32::try_from(account_bytes.as_slice()) {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::warn!(
+                hex_str = %hex_str,
+                error = ?e,
+                "Failed to convert bytes to AccountId32"
+            );
+            return None;
+        }
+    };
 
     // Encode to SS58 with chain-specific prefix
     Some(
@@ -721,17 +756,25 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
 fn try_convert_to_ss58_event_field(value: &Value, ss58_prefix: u16) -> Option<Value> {
     match value {
         Value::String(hex_str) if hex_str.starts_with("0x") && hex_str.len() == 66 => {
-            // Try to decode as 32-byte AccountId32
-            if let Ok(bytes) = hex::decode(&hex_str[2..])
-                && bytes.len() == 32
-            {
-                let mut arr = [0u8; 32];
-                arr.copy_from_slice(&bytes);
-                let account_id = AccountId32::from(arr);
-                let ss58 = account_id.to_ss58check_with_version(ss58_prefix.into());
-                return Some(Value::String(ss58));
+            // Try to decode as 32-byte AccountId32 (64 hex chars = 32 bytes)
+            match hex::decode(&hex_str[2..]) {
+                Ok(bytes) => {
+                    // 64 hex characters always decode to exactly 32 bytes
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&bytes);
+                    let account_id = AccountId32::from(arr);
+                    let ss58 = account_id.to_ss58check_with_version(ss58_prefix.into());
+                    Some(Value::String(ss58))
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        hex_str = %hex_str,
+                        error = %e,
+                        "Failed to hex decode potential AccountId32 field"
+                    );
+                    None
+                }
             }
-            None
         }
         _ => None,
     }
