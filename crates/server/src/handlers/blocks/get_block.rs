@@ -1,4 +1,3 @@
-use super::util::event_account_fields::get_account_field_positions;
 use crate::state::AppState;
 
 // Type visitor for extracting type names from extrinsic fields
@@ -815,46 +814,13 @@ fn transform_event_data(value: Value) -> Value {
     }
 }
 
-/// Parse event phase from scale_value
-fn parse_event_phase(phase_value: &scale_value::ValueDef<()>) -> Result<EventPhase, GetBlockError> {
-    if let scale_value::ValueDef::Variant(variant) = phase_value {
-        match variant.name.as_str() {
-            "Initialization" => Ok(EventPhase::Initialization),
-            "ApplyExtrinsic" => {
-                // Extract the extrinsic index (stored as u128)
-                let index_fields: Vec<&scale_value::Value<()>> = variant.values.values().collect();
-                if let Some(index_field) = index_fields.first() {
-                    // Try to extract as u128
-                    if let scale_value::ValueDef::Primitive(scale_value::Primitive::U128(index)) =
-                        &index_field.value
-                    {
-                        return Ok(EventPhase::ApplyExtrinsic(*index as u32));
-                    }
-                    // Try helper method
-                    if let Some(index_u128) = index_field.as_u128() {
-                        return Ok(EventPhase::ApplyExtrinsic(index_u128 as u32));
-                    }
-                }
-                tracing::warn!("ApplyExtrinsic phase missing or invalid index");
-                Ok(EventPhase::ApplyExtrinsic(0))
-            }
-            "Finalization" => Ok(EventPhase::Finalization),
-            other => {
-                tracing::warn!("Unknown event phase: {}", other);
-                Ok(EventPhase::Initialization)
-            }
-        }
-    } else {
-        tracing::warn!("Event phase is not a variant");
-        Ok(EventPhase::Initialization)
-    }
-}
-
 /// Fetch and parse all events for a block
 async fn fetch_block_events(
     state: &AppState,
     block_number: u64,
 ) -> Result<Vec<ParsedEvent>, GetBlockError> {
+    use crate::handlers::blocks::events_visitor::{EventPhase as VisitorEventPhase, EventsVisitor};
+
     // Get client at block
     let client_at_block = state.client.at(block_number).await?;
 
@@ -866,10 +832,9 @@ async fn fetch_block_events(
         parity_scale_codec::Error::from("Events storage not found")
     })?;
 
-    // Decode events as Vec<EventRecord>
-    // EventRecord is a struct with fields: phase, event, topics
-    let events_vec = events_value
-        .decode_as::<Vec<scale_value::Value<()>>>()
+    // Use the visitor pattern to decode events with type information
+    let events_info = events_value
+        .visit(EventsVisitor::new())
         .map_err(|e| {
             tracing::warn!(
                 "Failed to decode events for block {}: {:?}",
@@ -881,86 +846,47 @@ async fn fetch_block_events(
             ))
         })?;
 
+    // Convert visitor EventInfo to ParsedEvent
     let mut parsed_events = Vec::new();
 
-    for event_record in events_vec {
-        // EventRecord structure: { phase, event, topics }
-        // Each event_record is a Value with Composite inside
-        let event_composite = match &event_record.value {
-            scale_value::ValueDef::Composite(comp) => comp,
-            _ => {
-                tracing::warn!("Event record is not a composite");
-                continue;
-            }
+    for event_info in events_info {
+        // Convert phase from visitor format to our format
+        let phase = match event_info.phase {
+            VisitorEventPhase::Initialization => EventPhase::Initialization,
+            VisitorEventPhase::ApplyExtrinsic(idx) => EventPhase::ApplyExtrinsic(idx),
+            VisitorEventPhase::Finalization => EventPhase::Finalization,
         };
 
-        // Get the fields - for Named composites, we have (name, value) pairs
-        let fields: Vec<&scale_value::Value<()>> = event_composite.values().collect();
+        // Process event fields with type-based AccountId32 detection
+        let event_data: Vec<Value> = event_info
+            .fields
+            .into_iter()
+            .map(|field| {
+                let with_hex = convert_bytes_to_hex(field.value);
 
-        // EventRecord has 3 fields in order: phase, event, topics
-        if fields.len() < 2 {
-            tracing::warn!("Event record has insufficient fields");
-            continue;
-        }
-
-        // Parse phase (field 0)
-        let phase = parse_event_phase(&fields[0].value)?;
-
-        // Parse event (field 1)
-        // Event structure: Variant(Pallet) { values: Variant(Event) { values: event_data } }
-        if let scale_value::ValueDef::Variant(pallet_variant) = &fields[1].value {
-            // Convert pallet name to lowercase to match sidecar format
-            let pallet_name = pallet_variant.name.to_lowercase();
-
-            // The pallet variant contains a single inner variant which is the actual event
-            let inner_values: Vec<&scale_value::Value<()>> =
-                pallet_variant.values.values().collect();
-
-            if let Some(inner_value) = inner_values.first() {
-                if let scale_value::ValueDef::Variant(event_variant) = &inner_value.value {
-                    let event_name = event_variant.name.clone();
-
-                    // Get the positions of AccountId32 fields for this event type
-                    let account_positions = get_account_field_positions(&pallet_name, &event_name);
-
-                    // Decode event fields to JSON, then transform to match sidecar format
-                    let event_data: Vec<Value> = event_variant
-                        .values
-                        .values()
-                        .enumerate()
-                        .filter_map(|(idx, field)| {
-                            // Convert to JSON
-                            let json_value = serde_json::to_value(&field.value).ok()?;
-                            let with_hex = convert_bytes_to_hex(json_value);
-
-                            // If this field position should contain an AccountId32, try to convert it
-                            if account_positions.contains(&idx)
-                                && let Some(ss58_value) = try_convert_to_ss58_event_field(
-                                    &with_hex,
-                                    state.chain_info.ss58_prefix,
-                                )
-                            {
-                                return Some(ss58_value);
-                            }
-
-                            // Otherwise, apply standard transformation
-                            Some(transform_event_data(with_hex))
-                        })
-                        .collect();
-
-                    parsed_events.push(ParsedEvent {
-                        phase,
-                        pallet_name: pallet_name.clone(),
-                        event_name,
-                        event_data,
-                    });
-                } else {
-                    tracing::warn!("Inner event value is not a variant");
+                // Type-based AccountId32 detection - NO HEURISTICS
+                if let Some(ref type_name) = field.type_name {
+                    if type_name == "AccountId32" || type_name == "MultiAddress" || type_name == "AccountId" {
+                        if let Some(ss58_value) = try_convert_to_ss58_event_field(
+                            &with_hex,
+                            state.chain_info.ss58_prefix,
+                        ) {
+                            return ss58_value;
+                        }
+                    }
                 }
-            } else {
-                tracing::warn!("Pallet variant has no inner values");
-            }
-        }
+
+                // Otherwise, apply standard transformation
+                transform_event_data(with_hex)
+            })
+            .collect();
+
+        parsed_events.push(ParsedEvent {
+            phase,
+            pallet_name: event_info.pallet_name,
+            event_name: event_info.event_name,
+            event_data,
+        });
     }
 
     Ok(parsed_events)
