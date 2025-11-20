@@ -440,10 +440,12 @@ fn convert_bytes_to_hex(value: Value) -> Value {
         }
         Value::Array(arr) => {
             // Check if this is a byte array (all elements are numbers 0-255)
-            if arr
-                .iter()
-                .all(|v| matches!(v, Value::Number(n) if n.is_u64() && n.as_u64().unwrap() <= 255))
-            {
+            let is_byte_array = arr.iter().all(|v| match v {
+                Value::Number(n) => n.as_u64().is_some_and(|val| val <= 255),
+                _ => false,
+            });
+
+            if is_byte_array {
                 // Convert to hex string
                 let bytes: Vec<u8> = arr
                     .iter()
