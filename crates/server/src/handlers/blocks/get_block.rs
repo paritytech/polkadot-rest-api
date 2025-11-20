@@ -458,10 +458,9 @@ fn convert_bytes_to_hex(value: Value) -> Value {
 
                 // If array has single element, unwrap it (this handles cases like ["0x..."] -> "0x...")
                 // This is specific to how the data is formatted in substrate-api-sidecar
-                if converted.len() == 1 {
-                    converted.into_iter().next().unwrap()
-                } else {
-                    Value::Array(converted)
+                match converted.len() {
+                    1 => converted.into_iter().next().unwrap(),
+                    _ => Value::Array(converted),
                 }
             }
         }
@@ -1410,6 +1409,7 @@ mod tests {
             chain_type: config::ChainType::Relay,
             spec_name: "test".to_string(),
             spec_version: 1,
+            ss58_prefix: 42,
         };
 
         AppState {
