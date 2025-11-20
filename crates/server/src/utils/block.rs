@@ -299,6 +299,7 @@ mod tests {
             chain_type: config::ChainType::Relay,
             spec_name: "test".to_string(),
             spec_version: 1,
+            ss58_prefix: 42,
         };
 
         AppState {

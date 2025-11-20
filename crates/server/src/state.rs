@@ -1,4 +1,4 @@
-use config::{ChainType, SidecarConfig};
+use config::{ChainType, KnownRelayChain, SidecarConfig};
 use serde_json::Value;
 use std::sync::Arc;
 use subxt_historic::{OnlineClient, SubstrateConfig};
@@ -33,6 +33,8 @@ pub struct ChainInfo {
     pub spec_name: String,
     /// Current runtime spec version
     pub spec_version: u32,
+    /// SS58 address format prefix for this chain
+    pub ss58_prefix: u16,
 }
 
 #[derive(Clone)]
@@ -62,9 +64,33 @@ impl AppState {
             })?;
 
         let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
-        let subxt_config = SubstrateConfig::new();
-        let client = OnlineClient::from_rpc_client(subxt_config, rpc_client.clone());
+
+        // Get chain info first to determine which legacy types to load
         let chain_info = get_chain_info(&legacy_rpc).await?;
+
+        // Configure SubstrateConfig with appropriate legacy types based on chain
+        let subxt_config = match chain_info.chain_type.as_relay_chain(&chain_info.spec_name) {
+            Some(KnownRelayChain::Polkadot) => {
+                // Load Polkadot-specific legacy types for historic block support
+                SubstrateConfig::new()
+                    .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
+            }
+            Some(KnownRelayChain::Kusama)
+            | Some(KnownRelayChain::Westend)
+            | Some(KnownRelayChain::Rococo)
+            | Some(KnownRelayChain::Paseo) => {
+                // For other known relay chains, use Polkadot types as fallback
+                // TODO: Add chain-specific legacy types when available
+                SubstrateConfig::new()
+                    .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
+            }
+            None => {
+                // For parachains and unknown chains, use empty legacy types
+                SubstrateConfig::new()
+            }
+        };
+
+        let client = OnlineClient::from_rpc_client(subxt_config, rpc_client.clone());
 
         Ok(Self {
             config,
@@ -106,6 +132,34 @@ impl AppState {
     }
 }
 
+/// Determine SS58 address format prefix based on chain type and spec name
+fn get_ss58_prefix(chain_type: &ChainType, spec_name: &str) -> u16 {
+    use config::{KnownAssetHub, KnownRelayChain};
+
+    match chain_type {
+        ChainType::Relay => {
+            match KnownRelayChain::from_spec_name(spec_name) {
+                Some(KnownRelayChain::Polkadot) => 0,
+                Some(KnownRelayChain::Kusama) => 2,
+                Some(KnownRelayChain::Westend) => 42,
+                Some(KnownRelayChain::Rococo) => 42,
+                Some(KnownRelayChain::Paseo) => 42,
+                None => 42, // Default to generic substrate
+            }
+        }
+        ChainType::AssetHub => {
+            match KnownAssetHub::from_spec_name(spec_name) {
+                Some(KnownAssetHub::Polkadot) => 0, // Uses Polkadot's prefix
+                Some(KnownAssetHub::Kusama) => 2,   // Uses Kusama's prefix
+                Some(KnownAssetHub::Westend) => 42, // Uses Westend's prefix
+                Some(KnownAssetHub::Paseo) => 42,   // Uses Paseo's prefix
+                None => 42,
+            }
+        }
+        ChainType::Parachain => 42, // Generic substrate for unknown parachains
+    }
+}
+
 /// Query the chain to get runtime information via RPC
 async fn get_chain_info(
     legacy_rpc: &LegacyRpcMethods<SubstrateConfig>,
@@ -126,9 +180,23 @@ async fn get_chain_info(
     // Determine chain type from spec_name
     let chain_type = ChainType::from_spec_name(&spec_name);
 
+    // Try to get SS58 prefix from system properties first, fall back to hardcoded values
+    let ss58_prefix = if let Ok(props) = legacy_rpc.system_properties().await {
+        // Try to extract ss58Format from the properties map
+        props
+            .get("ss58Format")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u16)
+            .unwrap_or_else(|| get_ss58_prefix(&chain_type, &spec_name))
+    } else {
+        // If system_properties call fails, use hardcoded mappings
+        get_ss58_prefix(&chain_type, &spec_name)
+    };
+
     Ok(ChainInfo {
         chain_type,
         spec_name,
         spec_version: runtime_version.spec_version,
+        ss58_prefix,
     })
 }
