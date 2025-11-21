@@ -856,51 +856,48 @@ async fn fetch_block_events(
             let inner_values: Vec<&scale_value::Value<()>> =
                 pallet_variant.values.values().collect();
 
-            if let Some(inner_value) = inner_values.first() {
-                if let scale_value::ValueDef::Variant(event_variant) = &inner_value.value {
-                    // Get field values with type information
-                    let field_values: Vec<&scale_value::Value<()>> =
-                        event_variant.values.values().collect();
+            if let Some(inner_value) = inner_values.first()
+                && let scale_value::ValueDef::Variant(event_variant) = &inner_value.value
+            {
+                // Get field values with type information
+                let field_values: Vec<&scale_value::Value<()>> =
+                    event_variant.values.values().collect();
 
-                    let event_data: Vec<Value> = field_values
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(idx, field)| {
-                            // Convert to JSON
-                            let json_value = serde_json::to_value(&field.value).ok()?;
-                            let with_hex = convert_bytes_to_hex(json_value);
+                let event_data: Vec<Value> = field_values
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, field)| {
+                        // Convert to JSON
+                        let json_value = serde_json::to_value(&field.value).ok()?;
+                        let with_hex = convert_bytes_to_hex(json_value);
 
-                            // Type-based AccountId32 detection using type info from visitor
-                            if let Some(type_name) = event_info
-                                .fields
-                                .get(idx)
-                                .and_then(|f| f.type_name.as_ref())
-                            {
-                                if type_name == "AccountId32"
-                                    || type_name == "MultiAddress"
-                                    || type_name == "AccountId"
-                                {
-                                    if let Some(ss58_value) = try_convert_accountid_to_ss58(
-                                        &with_hex,
-                                        state.chain_info.ss58_prefix,
-                                    ) {
-                                        return Some(ss58_value);
-                                    }
-                                }
-                            }
+                        // Type-based AccountId32 detection using type info from visitor
+                        if let Some(type_name) = event_info
+                            .fields
+                            .get(idx)
+                            .and_then(|f| f.type_name.as_ref())
+                            && (type_name == "AccountId32"
+                                || type_name == "MultiAddress"
+                                || type_name == "AccountId")
+                            && let Some(ss58_value) = try_convert_accountid_to_ss58(
+                                &with_hex,
+                                state.chain_info.ss58_prefix,
+                            )
+                        {
+                            return Some(ss58_value);
+                        }
 
-                            // Otherwise, apply standard transformation
-                            Some(transform_event_data(with_hex))
-                        })
-                        .collect();
+                        // Otherwise, apply standard transformation
+                        Some(transform_event_data(with_hex))
+                    })
+                    .collect();
 
-                    parsed_events.push(ParsedEvent {
-                        phase,
-                        pallet_name: event_info.pallet_name.clone(),
-                        event_name: event_info.event_name.clone(),
-                        event_data,
-                    });
-                }
+                parsed_events.push(ParsedEvent {
+                    phase,
+                    pallet_name: event_info.pallet_name.clone(),
+                    event_name: event_info.event_name.clone(),
+                    event_data,
+                });
             }
         }
     }
@@ -911,36 +908,37 @@ async fn fetch_block_events(
 /// Convert AccountId32 (as hex or array) to SS58 format
 fn try_convert_accountid_to_ss58(value: &Value, ss58_prefix: u16) -> Option<Value> {
     // Try hex string format
-    if let Some(hex_str) = value.as_str() {
-        if hex_str.starts_with("0x") && hex_str.len() == 66 {
-            match hex::decode(&hex_str[2..]) {
-                Ok(bytes) if bytes.len() == 32 => {
-                    let mut arr = [0u8; 32];
-                    arr.copy_from_slice(&bytes);
-                    let account_id = AccountId32::from(arr);
-                    let ss58 = account_id.to_ss58check_with_version(ss58_prefix.into());
-                    return Some(Value::String(ss58));
-                }
-                _ => {}
+    if let Some(hex_str) = value.as_str()
+        && hex_str.starts_with("0x")
+        && hex_str.len() == 66
+    {
+        match hex::decode(&hex_str[2..]) {
+            Ok(bytes) if bytes.len() == 32 => {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&bytes);
+                let account_id = AccountId32::from(arr);
+                let ss58 = account_id.to_ss58check_with_version(ss58_prefix.into());
+                return Some(Value::String(ss58));
             }
+            _ => {}
         }
     }
 
     // Try array format (32 bytes)
-    if let Some(arr) = value.as_array() {
-        if arr.len() == 32 {
-            let mut bytes = [0u8; 32];
-            for (i, val) in arr.iter().enumerate() {
-                if let Some(byte) = val.as_u64() {
-                    bytes[i] = byte as u8;
-                } else {
-                    return None;
-                }
+    if let Some(arr) = value.as_array()
+        && arr.len() == 32
+    {
+        let mut bytes = [0u8; 32];
+        for (i, val) in arr.iter().enumerate() {
+            if let Some(byte) = val.as_u64() {
+                bytes[i] = byte as u8;
+            } else {
+                return None;
             }
-            let account_id = AccountId32::from(bytes);
-            let ss58 = account_id.to_ss58check_with_version(ss58_prefix.into());
-            return Some(Value::String(ss58));
         }
+        let account_id = AccountId32::from(bytes);
+        let ss58 = account_id.to_ss58check_with_version(ss58_prefix.into());
+        return Some(Value::String(ss58));
     }
 
     None

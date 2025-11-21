@@ -38,6 +38,12 @@ pub struct EventsVisitor<R> {
     _marker: core::marker::PhantomData<R>,
 }
 
+impl<R> Default for EventsVisitor<R> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<R> EventsVisitor<R> {
     pub fn new() -> Self {
         Self {
@@ -383,7 +389,7 @@ where
         {
             let bytes = value.bytes_from_start();
             if bytes.len() == 32 {
-                let hex_string = format!("0x{}", hex::encode(&bytes[..]));
+                let hex_string = format!("0x{}", hex::encode(bytes));
                 return Ok((type_name, JsonValue::String(hex_string)));
             }
         }
