@@ -708,7 +708,9 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
 
                     // Convert to SS58 format
                     return Some(
-                        author.clone().to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
+                        author
+                            .clone()
+                            .to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
                     );
                 }
                 AURA_ENGINE => {
@@ -724,7 +726,8 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
 
                         // Convert to SS58 format
                         return Some(
-                            author.clone()
+                            author
+                                .clone()
                                 .to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
                         );
                     }
