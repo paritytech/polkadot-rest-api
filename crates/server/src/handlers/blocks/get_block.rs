@@ -512,66 +512,6 @@ fn convert_bytes_to_hex(value: Value) -> Value {
     }
 }
 
-/// Transform args to match sidecar format
-/// Generic transformation for SCALE enum variants:
-/// - {"name": "X", "values": Y} -> {"x": Y} (lowercase name as key)
-/// - {"name": "X", "values": "0x"} -> "X" (empty enum variant becomes string)
-/// - Decodes MultiAddress account IDs to SS58 format
-/// - Converts snake_case to camelCase for field names
-fn transform_args(value: Value, ss58_prefix: u16) -> Value {
-    match value {
-        Value::Object(map) => {
-            // Check if this is a SCALE enum variant: {"name": "X", "values": Y}
-            if map.len() == 2
-                && let (Some(Value::String(name)), Some(values)) =
-                    (map.get("name"), map.get("values"))
-            {
-                // If values is "0x" (empty), return just the name as string
-                if let Value::String(v) = values
-                    && v == "0x"
-                {
-                    return Value::String(name.clone());
-                }
-
-                // Otherwise, transform to {"<lowercase_name>": <transformed_values>}
-                let key = name.to_lowercase();
-                let transformed_value = transform_args(values.clone(), ss58_prefix);
-
-                let mut result = serde_json::Map::new();
-                result.insert(key, transformed_value);
-                return Value::Object(result);
-            }
-
-            // Regular object: transform keys from snake_case to camelCase and recurse
-            let transformed: serde_json::Map<String, Value> = map
-                .into_iter()
-                .map(|(key, val)| {
-                    let camel_key = snake_to_camel(&key).into_owned();
-                    (camel_key, transform_args(val, ss58_prefix))
-                })
-                .collect();
-            Value::Object(transformed)
-        }
-        Value::String(s) => {
-            // Try to decode as SS58 address if it looks like an account ID
-            // (either MultiAddress::Id with 0x00 prefix or raw AccountId32)
-            if s.starts_with("0x")
-                && (s.len() == 66 || s.len() == 68)
-                && let Some(ss58_addr) = decode_address_to_ss58(&s, ss58_prefix)
-            {
-                return Value::String(ss58_addr);
-            }
-            Value::String(s)
-        }
-        Value::Array(arr) => Value::Array(
-            arr.into_iter()
-                .map(|v| transform_args(v, ss58_prefix))
-                .collect(),
-        ),
-        other => other,
-    }
-}
-
 // ================================================================================================
 // Helper Functions - Digest & Header Processing
 // ================================================================================================
@@ -783,37 +723,123 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
 // Helper Functions - Event Processing
 // ================================================================================================
 
-/// Transform event data to match sidecar format
-/// - Converts snake_case to camelCase
-/// - Simplifies enum variants from {"name": "X", "values": ...} to just "X" (for empty values)
+/// Unified transformation function that combines byte-to-hex conversion and structural transformations
+/// in a single pass through the JSON tree.
+///
+/// This performs all of the following transformations in one traversal:
 /// - Converts byte arrays to hex strings
-fn transform_event_data(value: Value) -> Value {
+/// - Converts numbers to strings
+/// - Handles bitvec special encoding
+/// - Transforms snake_case keys to camelCase
+/// - Simplifies SCALE enum variants
+/// - Optionally decodes AccountId32 to SS58 format
+/// - Unwraps single-element arrays
+fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
     match value {
-        Value::Object(map) => {
-            // Check if this is an enum variant object with "name" and "values" fields
-            // If values is "0x" (empty), just return the name as a string
-            if map.len() == 2 {
-                match (map.get("name"), map.get("values")) {
-                    (Some(Value::String(name)), Some(Value::String(values))) if values == "0x" => {
-                        return Value::String(name.clone());
-                    }
-                    _ => {}
+        Value::Number(n) => {
+            // Convert all numbers to strings to match substrate-api-sidecar behavior
+            Value::String(n.to_string())
+        }
+        Value::Array(arr) => {
+            // Check if this is a byte array (all elements are numbers 0-255)
+            let is_byte_array = !arr.is_empty()
+                && arr.iter().all(|v| match v {
+                    Value::Number(n) => n.as_u64().is_some_and(|val| val <= 255),
+                    _ => false,
+                });
+
+            if is_byte_array {
+                // Convert to hex string
+                let bytes: Vec<u8> = arr
+                    .iter()
+                    .filter_map(|v| v.as_u64().map(|n| n as u8))
+                    .collect();
+                Value::String(format!("0x{}", hex::encode(&bytes)))
+            } else {
+                // Recurse into array elements
+                let converted: Vec<Value> = arr
+                    .into_iter()
+                    .map(|v| transform_json_unified(v, ss58_prefix))
+                    .collect();
+
+                // If array has single element, unwrap it
+                match converted.len() {
+                    1 => converted.into_iter().next().unwrap(),
+                    _ => Value::Array(converted),
                 }
             }
+        }
+        Value::Object(map) => {
+            // Check if this is a bitvec object (scale-value represents bitvecs specially)
+            if let Some(Value::Array(bits)) = map.get("__bitvec__values__") {
+                // Convert boolean array to bytes, then to hex
+                let mut bytes = Vec::new();
+                let mut current_byte = 0u8;
 
-            // Otherwise, transform object keys from snake_case to camelCase
+                for (i, bit) in bits.iter().enumerate() {
+                    if let Some(true) = bit.as_bool() {
+                        current_byte |= 1 << (i % 8);
+                    }
+
+                    if (i + 1) % 8 == 0 {
+                        bytes.push(current_byte);
+                        current_byte = 0;
+                    }
+                }
+
+                if bits.len() % 8 != 0 {
+                    bytes.push(current_byte);
+                }
+
+                return Value::String(format!("0x{}", hex::encode(&bytes)));
+            }
+
+            // Check if this is a SCALE enum variant: {"name": "X", "values": Y}
+            if map.len() == 2
+                && let (Some(Value::String(name)), Some(values)) =
+                    (map.get("name"), map.get("values"))
+            {
+                // If values is "0x" (empty), return just the name as string
+                if let Value::String(v) = values
+                    && v == "0x"
+                {
+                    return Value::String(name.clone());
+                }
+
+                // For args (when ss58_prefix is Some), transform to {"<lowercase_name>": <transformed_values>}
+                if ss58_prefix.is_some() {
+                    let key = name.to_lowercase();
+                    let transformed_value = transform_json_unified(values.clone(), ss58_prefix);
+
+                    let mut result = serde_json::Map::new();
+                    result.insert(key, transformed_value);
+                    return Value::Object(result);
+                }
+                // For events (when ss58_prefix is None), we don't transform the enum further
+                // Fall through to regular object handling
+            }
+
+            // Regular object: transform keys from snake_case to camelCase and recurse
             let transformed: serde_json::Map<String, Value> = map
                 .into_iter()
                 .map(|(key, val)| {
                     let camel_key = snake_to_camel(&key).into_owned();
-                    (camel_key, transform_event_data(val))
+                    (camel_key, transform_json_unified(val, ss58_prefix))
                 })
                 .collect();
             Value::Object(transformed)
         }
-        Value::Array(arr) => Value::Array(arr.into_iter().map(transform_event_data).collect()),
-        // Convert numbers to strings to match sidecar behavior
-        Value::Number(n) => Value::String(n.to_string()),
+        Value::String(s) => {
+            // Try to decode as SS58 address if ss58_prefix is provided
+            if let Some(prefix) = ss58_prefix
+                && s.starts_with("0x")
+                && (s.len() == 66 || s.len() == 68)
+                && let Some(ss58_addr) = decode_address_to_ss58(&s, prefix)
+            {
+                return Value::String(ss58_addr);
+            }
+            Value::String(s)
+        }
         other => other,
     }
 }
@@ -894,8 +920,8 @@ async fn fetch_block_events(
                     .enumerate()
                     .filter_map(|(idx, field)| {
                         let json_value = serde_json::to_value(&field.value).ok()?;
-                        let with_hex = convert_bytes_to_hex(json_value);
 
+                        // Type-based AccountId32 detection using type info from visitor
                         if let Some(type_name) = event_info
                             .fields
                             .get(idx)
@@ -903,15 +929,20 @@ async fn fetch_block_events(
                             && (type_name == "AccountId32"
                                 || type_name == "MultiAddress"
                                 || type_name == "AccountId")
-                            && let Some(ss58_value) = try_convert_accountid_to_ss58(
+                        {
+                            // For AccountId fields, we need hex conversion first, then SS58 conversion
+                            let with_hex = convert_bytes_to_hex(json_value.clone());
+                            if let Some(ss58_value) = try_convert_accountid_to_ss58(
                                 &with_hex,
                                 state.chain_info.ss58_prefix,
-                            )
-                        {
-                            return Some(ss58_value);
+                            ) {
+                                return Some(ss58_value);
+                            }
+                            // If SS58 conversion failed, fall through to unified transformation
                         }
 
-                        Some(transform_event_data(with_hex))
+                        // Single-pass transformation for non-AccountId fields (or AccountId fields where conversion failed)
+                        Some(transform_json_unified(json_value, None))
                     })
                     .collect();
 
@@ -1133,8 +1164,9 @@ async fn extract_extrinsics(
             match field.decode_as::<scale_value::Value<()>>() {
                 Ok(value) => {
                     let json_value = serde_json::to_value(&value).unwrap_or(Value::Null);
-                    let converted = convert_bytes_to_hex(json_value);
-                    let transformed = transform_args(converted, state.chain_info.ss58_prefix);
+                    // Single-pass transformation: combines byte-to-hex, snake_case, enum simplification, and SS58 decoding
+                    let transformed =
+                        transform_json_unified(json_value, Some(state.chain_info.ss58_prefix));
                     args_map.insert(camel_field_name, transformed);
                 }
                 Err(e) => {
