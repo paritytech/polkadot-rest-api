@@ -1,7 +1,10 @@
 /// Custom visitor for extracting event information with type names from System.Events storage
 use scale_decode::{
-    visitor::{types::{Composite, Sequence, Variant}, TypeIdFor, Unexpected},
     Visitor,
+    visitor::{
+        TypeIdFor, Unexpected,
+        types::{Composite, Sequence, Variant},
+    },
 };
 use scale_type_resolver::TypeResolver;
 use serde_json::Value as JsonValue;
@@ -315,8 +318,7 @@ where
         let fields_composite = value.fields();
 
         // Decode each field and extract both type name and value
-        while let Some(field_result) = fields_composite.decode_item(FieldWithTypeExtractor::new())
-        {
+        while let Some(field_result) = fields_composite.decode_item(FieldWithTypeExtractor::new()) {
             match field_result {
                 Ok((type_name, json_value)) => {
                     event_fields.push(EventField {
@@ -375,6 +377,17 @@ where
         // Get type name from path
         let type_name = value.path().last().map(|s| s.to_string());
 
+        // Special handling for AccountId32 - return as hex string instead of decoding fields
+        // Only do this if the bytes are EXACTLY 32 (a raw AccountId32), not larger composite structures
+        if type_name.as_deref() == Some("AccountId32") || type_name.as_deref() == Some("AccountId")
+        {
+            let bytes = value.bytes_from_start();
+            if bytes.len() == 32 {
+                let hex_string = format!("0x{}", hex::encode(&bytes[..]));
+                return Ok((type_name, JsonValue::String(hex_string)));
+            }
+        }
+
         // Decode all fields recursively into a JSON object
         let mut fields = Vec::new();
         while let Some(field_result) = value.decode_item(ValueExtractor::new()) {
@@ -406,6 +419,16 @@ where
         // Get type name from path
         let type_name = value.path().last().map(|s| s.to_string());
         let variant_name = value.name();
+
+        // Special handling for MultiAddress::Id variant - extract AccountId32 as hex
+        if type_name.as_deref() == Some("MultiAddress") && variant_name == "Id" {
+            let bytes = value.bytes_from_start();
+            // Skip the variant index byte, then read 32 bytes for AccountId32
+            if bytes.len() >= 33 {
+                let hex_string = format!("0x{}", hex::encode(&bytes[1..33]));
+                return Ok((type_name, JsonValue::String(hex_string)));
+            }
+        }
 
         // Decode variant fields
         let mut fields = Vec::new();
