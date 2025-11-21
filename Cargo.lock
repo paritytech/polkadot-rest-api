@@ -3823,9 +3823,9 @@ dependencies = [
 
 [[package]]
 name = "smoldot"
-version = "0.20.0"
+version = "0.19.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "724ab10d6485cccb4bab080ce436c0b361295274aec7847d7ba84ab1a79a5132"
+checksum = "e16e5723359f0048bf64bfdfba64e5732a56847d42c4fd3fe56f18280c813413"
 dependencies = [
  "arrayvec 0.7.6",
  "async-lock",
@@ -3877,9 +3877,9 @@ dependencies = [
 
 [[package]]
 name = "smoldot-light"
-version = "0.18.0"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8b4d4971f06f2471f4e57a662dbe8047fa0cc020957764a6211f3fad371f7bd"
+checksum = "f1bba9e591716567d704a8252feeb2f1261a286e1e2cbdd4e49e9197c34a14e2"
 dependencies = [
  "async-channel",
  "async-lock",
@@ -4484,7 +4484,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "subxt-historic"
-version = "0.0.4"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c2ad5b185400c9c0d02369f6ecbd4907cb373f8f0943516216fec5b0a7a6db7"
 dependencies = [
  "frame-decode",
  "frame-metadata 23.0.0",
@@ -4504,6 +4506,8 @@ dependencies = [
 [[package]]
 name = "subxt-lightclient"
 version = "0.44.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64e02732a6c9ae46bc282c1a741b3d3e494021b3e87e7e92cfb3620116d92911"
 dependencies = [
  "futures",
  "futures-util",
@@ -4519,6 +4523,8 @@ dependencies = [
 [[package]]
 name = "subxt-rpcs"
 version = "0.44.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab68a9c20ecedb0cb7d62d64f884e6add91bb70485783bf40aa8eac5c389c6e0"
 dependencies = [
  "derive-where",
  "frame-metadata 23.0.0",
