@@ -1335,19 +1335,13 @@ pub async fn get_block(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
 ) -> Result<Json<BlockResponse>, GetBlockError> {
-    // Parse the block identifier
     let block_id = block_id.parse::<utils::BlockId>()?;
-
-    // Resolve the block
     let resolved_block = utils::resolve_block(&state, Some(block_id)).await?;
-
-    // Fetch the header JSON
     let header_json = state
         .get_header_json(&resolved_block.hash)
         .await
         .map_err(GetBlockError::HeaderFetchFailed)?;
 
-    // Extract header fields
     let parent_hash = header_json
         .get("parentHash")
         .and_then(|v| v.as_str())
@@ -1366,17 +1360,16 @@ pub async fn get_block(
         .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
         .to_string();
 
-    // Decode digest logs from hex strings into structured format
+
     let logs = decode_digest_logs(&header_json);
+    let (author_id, extrinsics_result, events_result) = tokio::join!(
+        extract_author(&state, resolved_block.number, &logs),
+        extract_extrinsics(&state, resolved_block.number),
+        fetch_block_events(&state, resolved_block.number)
+    );
 
-    // Extract author from digest logs by mapping authority index to validator
-    let author_id = extract_author(&state, resolved_block.number, &logs).await;
-
-    // Extract extrinsics using subxt-historic for historical integrity
-    let extrinsics = extract_extrinsics(&state, resolved_block.number).await?;
-
-    // Fetch all block events
-    let block_events = fetch_block_events(&state, resolved_block.number).await?;
+    let extrinsics = extrinsics_result?;
+    let block_events = events_result?;
 
     // Categorize events by phase
     let (on_initialize, per_extrinsic_events, on_finalize) =
