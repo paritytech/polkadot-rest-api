@@ -749,13 +749,18 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
             if engine_id.as_bytes() == POW_ENGINE {
                 // PoW: author is directly in payload (32-byte AccountId)
                 let payload = hex::decode(payload_hex.strip_prefix("0x")?).ok()?;
-                if payload.len() >= 32 {
-                    // Convert to SS58 format
+                if payload.len() == 32 {
+                    // Payload is exactly 32 bytes, convert directly to AccountId32
                     let mut arr = [0u8; 32];
-                    arr.copy_from_slice(&payload[..32]);
+                    arr.copy_from_slice(&payload);
                     let account_id = AccountId32::from(arr);
                     return Some(
                         account_id.to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
+                    );
+                } else {
+                    tracing::debug!(
+                        "PoW payload has unexpected length: {} bytes (expected 32)",
+                        payload.len()
                     );
                 }
             }
