@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash as HashT;
+use std::borrow::Cow;
 use subxt_historic::error::{OnlineClientAtBlockError, StorageEntryIsNotAPlainValue, StorageError};
 use thiserror::Error;
 
@@ -292,8 +293,16 @@ fn hex_with_prefix(data: &[u8]) -> String {
 }
 
 /// Convert snake_case to camelCase
-fn snake_to_camel(s: &str) -> String {
-    let mut result = String::new();
+/// Returns `Cow::Borrowed` if the string contains no underscores (no transformation needed),
+/// otherwise allocates a new String with the transformation applied.
+fn snake_to_camel(s: &str) -> Cow<'_, str> {
+    // Fast path: if no underscores, return borrowed string (no allocation!)
+    if !s.contains('_') {
+        return Cow::Borrowed(s);
+    }
+
+    // Slow path: need to transform
+    let mut result = String::with_capacity(s.len());
     let mut capitalize_next = false;
 
     for ch in s.chars() {
@@ -307,7 +316,7 @@ fn snake_to_camel(s: &str) -> String {
         }
     }
 
-    result
+    Cow::Owned(result)
 }
 
 /// Extract a numeric value from a JSON value as a string
@@ -537,7 +546,7 @@ fn transform_args(value: Value, ss58_prefix: u16) -> Value {
             let transformed: serde_json::Map<String, Value> = map
                 .into_iter()
                 .map(|(key, val)| {
-                    let camel_key = snake_to_camel(&key);
+                    let camel_key = snake_to_camel(&key).into_owned();
                     (camel_key, transform_args(val, ss58_prefix))
                 })
                 .collect();
@@ -796,7 +805,7 @@ fn transform_event_data(value: Value) -> Value {
             let transformed: serde_json::Map<String, Value> = map
                 .into_iter()
                 .map(|(key, val)| {
-                    let camel_key = snake_to_camel(&key);
+                    let camel_key = snake_to_camel(&key).into_owned();
                     (camel_key, transform_event_data(val))
                 })
                 .collect();
@@ -1059,7 +1068,7 @@ async fn extract_extrinsics(
 
         for field in fields.iter() {
             let field_name = field.name();
-            let camel_field_name = snake_to_camel(field_name);
+            let camel_field_name = snake_to_camel(field_name).into_owned();
 
             // Use the visitor pattern to get type information
             // This definitively detects AccountId32 fields by their actual type!
