@@ -781,6 +781,8 @@ fn transform_event_data(value: Value) -> Value {
             Value::Object(transformed)
         }
         Value::Array(arr) => Value::Array(arr.into_iter().map(transform_event_data).collect()),
+        // Convert numbers to strings to match sidecar behavior
+        Value::Number(n) => Value::String(n.to_string()),
         other => other,
     }
 }
