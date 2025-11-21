@@ -816,11 +816,7 @@ async fn fetch_block_events(
 ) -> Result<Vec<ParsedEvent>, GetBlockError> {
     use crate::handlers::blocks::events_visitor::{EventPhase as VisitorEventPhase, EventsVisitor};
 
-    // Get client at block
     let client_at_block = state.client.at(block_number).await?;
-
-    // Fetch System.Events storage
-    // This contains all events that occurred during block execution
     let storage_entry = client_at_block.storage().entry("System", "Events")?;
     let events_value = storage_entry.fetch(()).await?.ok_or_else(|| {
         tracing::warn!("No events storage found for block {}", block_number);
@@ -857,7 +853,6 @@ async fn fetch_block_events(
 
     // Process each event, combining type info from visitor with structure from scale_value
     for (event_info, event_record) in events_with_types.iter().zip(events_vec.iter()) {
-        // Convert phase
         let phase = match event_info.phase {
             VisitorEventPhase::Initialization => EventPhase::Initialization,
             VisitorEventPhase::ApplyExtrinsic(idx) => EventPhase::ApplyExtrinsic(idx),
@@ -875,7 +870,6 @@ async fn fetch_block_events(
             continue;
         }
 
-        // Parse event (field 1)
         if let scale_value::ValueDef::Variant(pallet_variant) = &fields[1].value {
             let inner_values: Vec<&scale_value::Value<()>> =
                 pallet_variant.values.values().collect();
@@ -883,7 +877,6 @@ async fn fetch_block_events(
             if let Some(inner_value) = inner_values.first()
                 && let scale_value::ValueDef::Variant(event_variant) = &inner_value.value
             {
-                // Get field values with type information
                 let field_values: Vec<&scale_value::Value<()>> =
                     event_variant.values.values().collect();
 
@@ -891,11 +884,9 @@ async fn fetch_block_events(
                     .iter()
                     .enumerate()
                     .filter_map(|(idx, field)| {
-                        // Convert to JSON
                         let json_value = serde_json::to_value(&field.value).ok()?;
                         let with_hex = convert_bytes_to_hex(json_value);
 
-                        // Type-based AccountId32 detection using type info from visitor
                         if let Some(type_name) = event_info
                             .fields
                             .get(idx)
@@ -911,7 +902,6 @@ async fn fetch_block_events(
                             return Some(ss58_value);
                         }
 
-                        // Otherwise, apply standard transformation
                         Some(transform_event_data(with_hex))
                     })
                     .collect();
@@ -931,7 +921,6 @@ async fn fetch_block_events(
 
 /// Convert AccountId32 (as hex or array) to SS58 format
 fn try_convert_accountid_to_ss58(value: &Value, ss58_prefix: u16) -> Option<Value> {
-    // Try hex string format
     if let Some(hex_str) = value.as_str()
         && hex_str.starts_with("0x")
         && hex_str.len() == 66
@@ -948,7 +937,6 @@ fn try_convert_accountid_to_ss58(value: &Value, ss58_prefix: u16) -> Option<Valu
         }
     }
 
-    // Try array format (32 bytes)
     if let Some(arr) = value.as_array()
         && arr.len() == 32
     {
@@ -979,7 +967,6 @@ fn categorize_events(
     let mut per_extrinsic_events: Vec<Vec<Event>> = vec![Vec::new(); num_extrinsics];
 
     for parsed_event in parsed_events {
-        // Convert ParsedEvent to Event
         let event = Event {
             method: MethodInfo {
                 pallet: parsed_event.pallet_name,
@@ -988,13 +975,11 @@ fn categorize_events(
             data: parsed_event.event_data,
         };
 
-        // Categorize by phase
         match parsed_event.phase {
             EventPhase::Initialization => {
                 on_initialize_events.push(event);
             }
             EventPhase::ApplyExtrinsic(index) => {
-                // Add to the corresponding extrinsic's event list
                 if let Some(extrinsic_events) = per_extrinsic_events.get_mut(index as usize) {
                     extrinsic_events.push(event);
                 } else {
@@ -1048,7 +1033,6 @@ async fn extract_extrinsics(
         }
     };
 
-    // Fetch extrinsics for this block
     let extrinsics = match client_at_block.extrinsics().fetch().await {
         Ok(exts) => exts,
         Err(e) => {
@@ -1099,26 +1083,21 @@ async fn extract_extrinsics(
 
             if is_account_type {
                 let mut decoded_account = false;
-
-                // Helper to convert bytes to SS58 with chain-specific prefix
                 let ss58_prefix = state.chain_info.ss58_prefix;
                 let bytes_to_ss58 = |bytes: &[u8; 32]| {
                     let account_id = AccountId32::from(*bytes);
                     account_id.to_ss58check_with_version(ss58_prefix.into())
                 };
 
-                // Try decoding as [u8; 32]
                 if let Ok(account_bytes) = field.decode_as::<[u8; 32]>() {
                     let ss58 = bytes_to_ss58(&account_bytes);
                     args_map.insert(camel_field_name.clone(), json!(ss58));
                     decoded_account = true;
                 } else if let Ok(accounts) = field.decode_as::<Vec<[u8; 32]>>() {
-                    // Try Vec<[u8; 32]>
                     let ss58_addresses: Vec<String> = accounts.iter().map(&bytes_to_ss58).collect();
                     args_map.insert(camel_field_name.clone(), json!(ss58_addresses));
                     decoded_account = true;
                 } else if let Ok(multi_addr) = field.decode_as::<MultiAddress>() {
-                    // Try MultiAddress enum
                     let value = match multi_addr {
                         MultiAddress::Id(bytes) | MultiAddress::Address32(bytes) => {
                             json!(bytes_to_ss58(&bytes))
@@ -1174,7 +1153,6 @@ async fn extract_extrinsics(
             // Era comes right after address and signature in the SignedExtra/TransactionExtension
             let era_info = utils::extract_era_from_extrinsic_bytes(extrinsic.bytes());
 
-            // Decode signer address to SS58
             let signer_hex = format!("0x{}", hex::encode(addr_bytes));
             let signer_ss58 = decode_address_to_ss58(&signer_hex, state.chain_info.ss58_prefix)
                 .unwrap_or_else(|| signer_hex.clone());
@@ -1301,7 +1279,6 @@ async fn extract_extrinsics(
             )
         };
 
-        // Compute extrinsic hash: Blake2-256 of raw bytes
         let hash_bytes = BlakeTwo256::hash(extrinsic.bytes());
         let hash = format!("0x{}", hex::encode(hash_bytes.as_ref()));
 
@@ -1360,7 +1337,6 @@ pub async fn get_block(
         .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
         .to_string();
 
-
     let logs = decode_digest_logs(&header_json);
     let (author_id, extrinsics_result, events_result) = tokio::join!(
         extract_author(&state, resolved_block.number, &logs),
@@ -1383,7 +1359,6 @@ pub async fn get_block(
         }
     }
 
-    // Build response
     let response = BlockResponse {
         number: resolved_block.number.to_string(),
         hash: resolved_block.hash,
