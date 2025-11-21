@@ -706,7 +706,12 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
                     let authority_index = pre_digest.authority_index() as usize;
                     let author = validators.get(authority_index)?;
 
-                    return Some(hex_with_prefix(author.as_ref() as &[u8]));
+                    // Convert to SS58 format
+                    return Some(
+                        author
+                            .clone()
+                            .to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
+                    );
                 }
                 AURA_ENGINE => {
                     // Aura: slot_number (u64 LE), calculate index = slot % validator_count
@@ -718,7 +723,13 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
 
                         let index = slot % validators.len();
                         let author = validators.get(index)?;
-                        return Some(hex_with_prefix(author.as_ref() as &[u8]));
+
+                        // Convert to SS58 format
+                        return Some(
+                            author
+                                .clone()
+                                .to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
+                        );
                     }
                 }
                 _ => continue,
@@ -738,8 +749,19 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
             if engine_id.as_bytes() == POW_ENGINE {
                 // PoW: author is directly in payload (32-byte AccountId)
                 let payload = hex::decode(payload_hex.strip_prefix("0x")?).ok()?;
-                if payload.len() >= 32 {
-                    return Some(hex_with_prefix(&payload[..32]));
+                if payload.len() == 32 {
+                    // Payload is exactly 32 bytes, convert directly to AccountId32
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&payload);
+                    let account_id = AccountId32::from(arr);
+                    return Some(
+                        account_id.to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
+                    );
+                } else {
+                    tracing::debug!(
+                        "PoW payload has unexpected length: {} bytes (expected 32)",
+                        payload.len()
+                    );
                 }
             }
         }
