@@ -319,6 +319,20 @@ fn snake_to_camel(s: &str) -> Cow<'_, str> {
     Cow::Owned(result)
 }
 
+/// Convert to camelCase with lowercase first character
+/// Handles both PascalCase (e.g., "Balances" -> "balances") and snake_case (e.g., "set_code" -> "setCode")
+fn to_lower_camel_case(s: &str) -> String {
+    // First convert snake_case to camelCase
+    let camel = snake_to_camel(s);
+
+    // Then lowercase the first character
+    let mut chars = camel.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+    }
+}
+
 /// Extract a numeric value from a JSON value as a string
 /// Handles direct numbers, nested objects, or string representations
 ///
@@ -1089,9 +1103,9 @@ async fn extract_extrinsics(
     let mut result = Vec::new();
 
     for extrinsic in extrinsics.iter() {
-        // Extract pallet and method name from the call
-        let pallet_name = extrinsic.call().pallet_name().to_string();
-        let method_name = extrinsic.call().name().to_string();
+        // Extract pallet and method name from the call, converting to lowerCamelCase
+        let pallet_name = to_lower_camel_case(extrinsic.call().pallet_name());
+        let method_name = to_lower_camel_case(extrinsic.call().name());
 
         // Extract call arguments with field-name-based AccountId32 detection
         let fields = extrinsic.call().fields();
