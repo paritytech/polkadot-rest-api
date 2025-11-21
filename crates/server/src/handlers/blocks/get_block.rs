@@ -813,10 +813,15 @@ fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
                 && let (Some(Value::String(name)), Some(values)) =
                     (map.get("name"), map.get("values"))
             {
-                // If values is "0x" (empty), return just the name as string
-                if let Value::String(v) = values
-                    && v == "0x"
-                {
+                // If values is "0x" (empty string) or [] (empty array), return just the name as string
+                // This is evident in class, and paysFee
+                let is_empty = match values {
+                    Value::String(v) => v == "0x",
+                    Value::Array(arr) => arr.is_empty(),
+                    _ => false,
+                };
+
+                if is_empty {
                     return Value::String(name.clone());
                 }
 
