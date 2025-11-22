@@ -15,10 +15,6 @@ path = "tests/latest.rs"
 name = "basic"
 path = "tests/basic.rs"
 
-[[test]]
-name = "demo_diff"
-path = "tests/demo_diff.rs"
-
 [[bin]]
 name = "update_fixtures"
 path = "src/bin/update_fixtures.rs"

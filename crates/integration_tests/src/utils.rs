@@ -570,3 +570,382 @@ pub fn build_query_string(params: &std::collections::HashMap<String, String>) ->
             .unwrap_or_else(|_| String::new())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_compare_json_exact_match() {
+        let json1 = json!({
+            "name": "test",
+            "value": 123,
+            "nested": {
+                "field": "data"
+            }
+        });
+        let json2 = json1.clone();
+
+        let result = compare_json(&json1, &json2, &[]).unwrap();
+        assert!(result.is_match());
+        assert_eq!(result.differences().len(), 0);
+    }
+
+    #[test]
+    fn test_compare_json_simple_value_mismatch() {
+        let expected = json!({"value": 100});
+        let actual = json!({"value": 200});
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+        assert_eq!(result.differences().len(), 1);
+
+        match &result.differences()[0] {
+            Difference::ValueMismatch { path, expected: exp, actual: act } => {
+                assert_eq!(path, "value");
+                assert_eq!(exp, &json!(100));
+                assert_eq!(act, &json!(200));
+            }
+            _ => panic!("Expected ValueMismatch"),
+        }
+    }
+
+    #[test]
+    fn test_compare_json_missing_field() {
+        let expected = json!({
+            "field1": "value1",
+            "field2": "value2"
+        });
+        let actual = json!({
+            "field1": "value1"
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+        assert_eq!(result.differences().len(), 1);
+
+        match &result.differences()[0] {
+            Difference::MissingField { path } => {
+                assert_eq!(path, "field2");
+            }
+            _ => panic!("Expected MissingField"),
+        }
+    }
+
+    #[test]
+    fn test_compare_json_extra_field() {
+        let expected = json!({
+            "field1": "value1"
+        });
+        let actual = json!({
+            "field1": "value1",
+            "field2": "value2"
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+        assert_eq!(result.differences().len(), 1);
+
+        match &result.differences()[0] {
+            Difference::ExtraField { path } => {
+                assert_eq!(path, "field2");
+            }
+            _ => panic!("Expected ExtraField"),
+        }
+    }
+
+    #[test]
+    fn test_compare_json_nested_value_mismatch() {
+        let expected = json!({
+            "outer": {
+                "inner": {
+                    "value": 100
+                }
+            }
+        });
+        let actual = json!({
+            "outer": {
+                "inner": {
+                    "value": 200
+                }
+            }
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+        assert_eq!(result.differences().len(), 1);
+
+        match &result.differences()[0] {
+            Difference::ValueMismatch { path, .. } => {
+                assert_eq!(path, "outer.inner.value");
+            }
+            _ => panic!("Expected ValueMismatch"),
+        }
+    }
+
+    #[test]
+    fn test_compare_json_array_length_mismatch() {
+        let expected = json!({
+            "items": [1, 2, 3]
+        });
+        let actual = json!({
+            "items": [1, 2]
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+
+        // Should have ArrayLengthMismatch and MissingField for items[2]
+        let has_length_mismatch = result.differences().iter().any(|d| {
+            matches!(d, Difference::ArrayLengthMismatch { path, expected_len, actual_len }
+                if path == "items" && *expected_len == 3 && *actual_len == 2)
+        });
+        assert!(has_length_mismatch);
+
+        let has_missing_element = result.differences().iter().any(|d| {
+            matches!(d, Difference::MissingField { path } if path == "items[2]")
+        });
+        assert!(has_missing_element);
+    }
+
+    #[test]
+    fn test_compare_json_array_extra_element() {
+        let expected = json!({
+            "items": [1, 2]
+        });
+        let actual = json!({
+            "items": [1, 2, 3]
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+
+        // Should have ArrayLengthMismatch and ExtraField for items[2]
+        let has_length_mismatch = result.differences().iter().any(|d| {
+            matches!(d, Difference::ArrayLengthMismatch { path, expected_len, actual_len }
+                if path == "items" && *expected_len == 2 && *actual_len == 3)
+        });
+        assert!(has_length_mismatch);
+
+        let has_extra_element = result.differences().iter().any(|d| {
+            matches!(d, Difference::ExtraField { path } if path == "items[2]")
+        });
+        assert!(has_extra_element);
+    }
+
+    #[test]
+    fn test_compare_json_array_value_mismatch() {
+        let expected = json!({
+            "items": [1, 2, 3]
+        });
+        let actual = json!({
+            "items": [1, 99, 3]
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+        assert_eq!(result.differences().len(), 1);
+
+        match &result.differences()[0] {
+            Difference::ValueMismatch { path, .. } => {
+                assert_eq!(path, "items[1]");
+            }
+            _ => panic!("Expected ValueMismatch"),
+        }
+    }
+
+    #[test]
+    fn test_compare_json_ignore_fields() {
+        let expected = json!({
+            "timestamp": "2024-01-01T00:00:00Z",
+            "blockHash": "0xabc",
+            "value": 100
+        });
+        let actual = json!({
+            "timestamp": "2024-12-31T23:59:59Z",
+            "blockHash": "0xdef",
+            "value": 100
+        });
+
+        // Without ignoring fields, should have differences
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+        assert_eq!(result.differences().len(), 2);
+
+        // With ignoring fields, should match
+        let result = compare_json(&actual, &expected, &["timestamp", "blockHash"]).unwrap();
+        assert!(result.is_match());
+        assert_eq!(result.differences().len(), 0);
+    }
+
+    #[test]
+    fn test_compare_json_ignore_nested_fields() {
+        let expected = json!({
+            "data": {
+                "timestamp": "2024-01-01T00:00:00Z",
+                "value": 100
+            }
+        });
+        let actual = json!({
+            "data": {
+                "timestamp": "2024-12-31T23:59:59Z",
+                "value": 100
+            }
+        });
+
+        let result = compare_json(&actual, &expected, &["timestamp"]).unwrap();
+        assert!(result.is_match());
+        assert_eq!(result.differences().len(), 0);
+    }
+
+    #[test]
+    fn test_compare_json_key_ordering() {
+        // Same data, different key order
+        let json1 = json!({
+            "z": 1,
+            "a": 2,
+            "m": 3
+        });
+        let json2 = json!({
+            "a": 2,
+            "m": 3,
+            "z": 1
+        });
+
+        let result = compare_json(&json1, &json2, &[]).unwrap();
+        assert!(result.is_match());
+    }
+
+    #[test]
+    fn test_compare_json_complex_nested() {
+        let expected = json!({
+            "modules": [
+                {
+                    "name": "System",
+                    "calls": ["remark", "set_code"],
+                    "events": 5
+                },
+                {
+                    "name": "Balances",
+                    "calls": ["transfer"],
+                    "events": 10
+                }
+            ]
+        });
+        let actual = json!({
+            "modules": [
+                {
+                    "name": "System",
+                    "calls": ["remark", "set_code"],
+                    "events": 5
+                },
+                {
+                    "name": "Balances",
+                    "calls": ["transfer", "transfer_keep_alive"],
+                    "events": 12
+                }
+            ]
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+
+        // Should have differences for array length and events value
+        let has_array_length = result.differences().iter().any(|d| {
+            matches!(d, Difference::ArrayLengthMismatch { path, .. }
+                if path == "modules[1].calls")
+        });
+        assert!(has_array_length);
+
+        let has_events_mismatch = result.differences().iter().any(|d| {
+            matches!(d, Difference::ValueMismatch { path, .. }
+                if path == "modules[1].events")
+        });
+        assert!(has_events_mismatch);
+    }
+
+    #[test]
+    fn test_sort_json_keys() {
+        let unsorted = json!({
+            "z": 1,
+            "a": {
+                "y": 2,
+                "b": 3
+            },
+            "m": [1, 2, 3]
+        });
+
+        let sorted = ComparisonResult::sort_json_keys(&unsorted);
+
+        // Keys should be alphabetically sorted
+        if let Value::Object(map) = &sorted {
+            let keys: Vec<_> = map.keys().collect();
+            assert_eq!(keys, vec!["a", "m", "z"]);
+
+            // Nested object keys should also be sorted
+            if let Some(Value::Object(nested)) = map.get("a") {
+                let nested_keys: Vec<_> = nested.keys().collect();
+                assert_eq!(nested_keys, vec!["b", "y"]);
+            }
+        } else {
+            panic!("Expected Object");
+        }
+    }
+
+    #[test]
+    fn test_format_diff_creates_output() {
+        let expected = json!({"value": 100});
+        let actual = json!({"value": 200});
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        let diff_output = result.format_diff(&expected, &actual);
+
+        // Should contain the formatted diff
+        assert!(diff_output.contains("RESPONSE MISMATCH"));
+        assert!(diff_output.contains("Total differences:"));
+        assert!(diff_output.contains("value"));
+    }
+
+    #[test]
+    fn test_format_diff_no_output_on_match() {
+        let json1 = json!({"value": 100});
+        let json2 = json1.clone();
+
+        let result = compare_json(&json1, &json2, &[]).unwrap();
+        let diff_output = result.format_diff(&json1, &json2);
+
+        // Should be empty for matching JSON
+        assert_eq!(diff_output, "");
+    }
+
+    #[test]
+    fn test_replace_placeholders() {
+        let template = "path/{blockId}/account/{accountId}";
+        let mut replacements = HashMap::new();
+        replacements.insert("blockId".to_string(), "12345".to_string());
+        replacements.insert("accountId".to_string(), "abc".to_string());
+
+        let result = replace_placeholders(template, &replacements);
+        assert_eq!(result, "path/12345/account/abc");
+    }
+
+    #[test]
+    fn test_build_query_string_empty() {
+        let params = HashMap::new();
+        let result = build_query_string(&params);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_build_query_string_with_params() {
+        let mut params = HashMap::new();
+        params.insert("at".to_string(), "12345".to_string());
+        params.insert("verbose".to_string(), "true".to_string());
+
+        let result = build_query_string(&params);
+        assert!(result.starts_with('?'));
+        assert!(result.contains("at=12345"));
+        assert!(result.contains("verbose=true"));
+    }
+}
