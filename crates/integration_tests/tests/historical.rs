@@ -129,10 +129,8 @@ impl HistoricalTestRunner {
 
         if !comparison.is_match() {
             anyhow::bail!(
-                "Response mismatch:\nDifferences:\n{}\n\nActual:\n{}\n\nExpected:\n{}",
-                comparison.differences().join("\n"),
-                serde_json::to_string_pretty(&actual_json)?,
-                serde_json::to_string_pretty(&expected_json)?
+                "Response mismatch:{}",
+                comparison.format_diff(&expected_json, &actual_json)
             );
         }
 

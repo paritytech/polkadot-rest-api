@@ -15,6 +15,10 @@ path = "tests/latest.rs"
 name = "basic"
 path = "tests/basic.rs"
 
+[[test]]
+name = "demo_diff"
+path = "tests/demo_diff.rs"
+
 [[bin]]
 name = "update_fixtures"
 path = "src/bin/update_fixtures.rs"
@@ -31,6 +35,7 @@ config = { path = "../config" }
 serde_urlencoded = "0.7"
 futures = "0.3"
 jsonrpsee = { version = "0.24.10", features = ["ws-client"] }
+colored = "2.1"
 
 [dev-dependencies]
 tempfile = "3.10"
