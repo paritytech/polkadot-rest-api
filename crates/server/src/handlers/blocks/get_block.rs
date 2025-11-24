@@ -463,11 +463,13 @@ fn convert_bytes_to_hex(value: Value) -> Value {
             Value::String(n.to_string())
         }
         Value::Array(arr) => {
-            // Check if this is a byte array (all elements are numbers 0-255)
-            let is_byte_array = arr.iter().all(|v| match v {
-                Value::Number(n) => n.as_u64().is_some_and(|val| val <= 255),
-                _ => false,
-            });
+            // Check if this is a byte array (non-empty and all elements are numbers 0-255)
+            // We must check !arr.is_empty() to avoid converting empty arrays to "0x"
+            let is_byte_array = !arr.is_empty()
+                && arr.iter().all(|v| match v {
+                    Value::Number(n) => n.as_u64().is_some_and(|val| val <= 255),
+                    _ => false,
+                });
 
             if is_byte_array {
                 // Convert to hex string
