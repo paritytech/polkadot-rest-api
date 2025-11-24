@@ -1562,10 +1562,10 @@ mod tests {
         // Verify logs are decoded
         assert_eq!(response.logs.len(), 1);
         assert_eq!(response.logs[0].log_type, "PreRuntime");
-        assert_eq!(response.logs[0].index, 0);
-        // Verify the engine ID is "BABE" and payload is present
+        assert_eq!(response.logs[0].index, "6"); // PreRuntime discriminant
+        // Verify the engine ID is hex-encoded and payload is present
         if let Some(arr) = response.logs[0].value.as_array() {
-            assert_eq!(arr[0].as_str(), Some("BABE"));
+            assert_eq!(arr[0].as_str(), Some("0x42414245")); // "BABE" in hex
             assert!(arr[1].as_str().unwrap().starts_with("0x"));
         } else {
             panic!("Expected PreRuntime log value to be an array");
