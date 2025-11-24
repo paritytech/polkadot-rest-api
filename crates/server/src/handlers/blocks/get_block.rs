@@ -638,7 +638,7 @@ async fn get_validators_at_block(
 
 /// Extract author ID from block header digest logs by mapping authority index to validator
 async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog]) -> Option<String> {
-    use parity_scale_codec::{Compact, Decode};
+    use parity_scale_codec::Decode;
     use sp_consensus_babe::digests::PreDigest;
 
     const BABE_ENGINE: &[u8] = b"BABE";
@@ -660,21 +660,22 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
             && let Some(arr) = log.value.as_array()
             && arr.len() >= 2
         {
-            let engine_id = arr[0].as_str()?;
+            let engine_id_hex = arr[0].as_str()?;
             let payload_hex = arr[1].as_str()?;
             let payload = hex::decode(payload_hex.strip_prefix("0x")?).ok()?;
 
-            match engine_id.as_bytes() {
+            // Decode hex-encoded engine ID to bytes for comparison
+            let engine_id_bytes = hex::decode(engine_id_hex.strip_prefix("0x")?).ok()?;
+
+            match engine_id_bytes.as_slice() {
                 BABE_ENGINE => {
                     if payload.is_empty() {
                         continue;
                     }
 
-                    // The payload is wrapped in a compact-encoded Vec<u8>, so we need to skip the length prefix
+                    // The payload has already been decoded from SCALE in decode_consensus_digest
+                    // So we can decode the PreDigest directly without skipping compact length
                     let mut cursor = &payload[..];
-                    // Decode and skip the length prefix
-                    let _length = Compact::<u32>::decode(&mut cursor).ok()?;
-                    // Now decode the PreDigest from the remaining bytes
                     let pre_digest = PreDigest::decode(&mut cursor).ok()?;
                     let authority_index = pre_digest.authority_index() as usize;
                     let author = validators.get(authority_index)?;
@@ -716,10 +717,13 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
             && let Some(arr) = log.value.as_array()
             && arr.len() >= 2
         {
-            let engine_id = arr[0].as_str()?;
+            let engine_id_hex = arr[0].as_str()?;
             let payload_hex = arr[1].as_str()?;
 
-            if engine_id.as_bytes() == POW_ENGINE {
+            // Decode hex-encoded engine ID to bytes for comparison
+            let engine_id_bytes = hex::decode(engine_id_hex.strip_prefix("0x")?).ok()?;
+
+            if engine_id_bytes.as_slice() == POW_ENGINE {
                 // PoW: author is directly in payload (32-byte AccountId)
                 let payload = hex::decode(payload_hex.strip_prefix("0x")?).ok()?;
                 if payload.len() == 32 {
