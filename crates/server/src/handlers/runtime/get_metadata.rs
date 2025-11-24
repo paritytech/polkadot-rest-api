@@ -55,6 +55,8 @@ pub struct BlockInfo {
 #[derive(Debug, Serialize)]
 pub struct MetadataResponse {
     pub at: BlockInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub magic_number: Option<String>,
     pub metadata: Value,
 }
 
@@ -75,11 +77,14 @@ pub async fn runtime_metadata(
         .await
         .map_err(GetMetadataError::MetadataFailed)?;
 
+    let magic_number = extract_magic_number(&metadata_hex);
+
     Ok(Json(MetadataResponse {
         at: BlockInfo {
             hash: resolved_block.hash,
             height: resolved_block.number.to_string(),
         },
+        magic_number,
         metadata: serde_json::json!(metadata_hex),
     }))
 }
@@ -111,13 +116,30 @@ pub async fn runtime_metadata_versioned(
         .await
         .map_err(GetMetadataError::MetadataFailed)?;
 
+    let magic_number = extract_magic_number(&metadata_hex);
+
     Ok(Json(MetadataResponse {
         at: BlockInfo {
             hash: resolved_block.hash,
             height: resolved_block.number.to_string(),
         },
+        magic_number,
         metadata: serde_json::json!(metadata_hex),
     }))
+}
+
+fn extract_magic_number(metadata_hex: &str) -> Option<String> {
+    let trimmed = metadata_hex.trim_start_matches("0x");
+    if trimmed.len() < 8 {
+        return None;
+    }
+    
+    let magic_bytes = &trimmed[0..8];
+    if let Ok(magic_value) = u32::from_str_radix(magic_bytes, 16) {
+        Some(magic_value.to_string())
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

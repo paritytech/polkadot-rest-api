@@ -49,7 +49,7 @@ pub struct BlockInfo {
 #[derive(Debug, Serialize)]
 pub struct MetadataVersionsResponse {
     pub at: BlockInfo,
-    pub versions: Vec<u32>,
+    pub versions: Vec<String>,
 }
 
 pub async fn runtime_metadata_versions(
@@ -78,7 +78,7 @@ pub async fn runtime_metadata_versions(
     for chunk in versions_bytes.chunks(4) {
         if chunk.len() == 4 {
             let version = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-            versions.push(version);
+            versions.push(format!("v{}", version));
         }
     }
 
@@ -152,7 +152,7 @@ mod tests {
         let response = result.unwrap().0;
 
         assert_eq!(response.at.height, "42");
-        assert_eq!(response.versions, vec![14u32, 15u32]);
+        assert_eq!(response.versions, vec!["v14".to_string(), "v15".to_string()]);
     }
 
     #[tokio::test]
