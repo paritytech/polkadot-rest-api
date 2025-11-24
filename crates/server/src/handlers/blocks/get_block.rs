@@ -181,7 +181,7 @@ enum EventPhase {
 pub struct DigestLog {
     #[serde(rename = "type")]
     pub log_type: String,
-    pub index: u32,
+    pub index: String,
     pub value: Value,
 }
 
@@ -533,14 +533,23 @@ fn convert_bytes_to_hex(value: Value) -> Value {
 // ================================================================================================
 
 /// Decode a consensus digest item (PreRuntime, Consensus, or Seal)
-/// Format: [consensus_engine_id (4 bytes), payload_data]
+/// The data here is SCALE-encoded as: (ConsensusEngineId, Vec<u8>)
+/// where ConsensusEngineId is 4 raw bytes, and Vec<u8> is compact_length + bytes
 fn decode_consensus_digest(data: &[u8]) -> Option<Value> {
+    use parity_scale_codec::Decode;
+
+    // First 4 bytes are the consensus engine ID (not length-prefixed)
     if data.len() < CONSENSUS_ENGINE_ID_LEN {
         return None;
     }
 
-    let engine_id = String::from_utf8_lossy(&data[0..CONSENSUS_ENGINE_ID_LEN]).to_string();
-    let payload = hex_with_prefix(&data[CONSENSUS_ENGINE_ID_LEN..]);
+    let engine_id = hex_with_prefix(&data[0..CONSENSUS_ENGINE_ID_LEN]);
+
+    // The rest is a SCALE-encoded Vec<u8> (compact length + payload bytes)
+    let mut remaining = &data[CONSENSUS_ENGINE_ID_LEN..];
+    let payload_bytes = Vec::<u8>::decode(&mut remaining).ok()?;
+    let payload = hex_with_prefix(&payload_bytes);
+
     Some(json!([engine_id, payload]))
 }
 
@@ -557,8 +566,7 @@ fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
     };
 
     logs.iter()
-        .enumerate()
-        .filter_map(|(index, log_hex)| {
+        .filter_map(|log_hex| {
             let hex_str = log_hex.as_str()?;
             let hex_data = hex_str.strip_prefix("0x")?;
             let bytes = hex::decode(hex_data).ok()?;
@@ -597,7 +605,7 @@ fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
 
             Some(DigestLog {
                 log_type,
-                index: index as u32,
+                index: discriminant_byte.to_string(),
                 value,
             })
         })
