@@ -66,7 +66,10 @@ pub async fn runtime_code(
 
     let code: Option<String> = state
         .rpc_client
-        .request("state_getStorage", subxt_rpcs::rpc_params![CODE_STORAGE_KEY, &resolved_block.hash])
+        .request(
+            "state_getStorage",
+            subxt_rpcs::rpc_params![CODE_STORAGE_KEY, &resolved_block.hash],
+        )
         .await
         .map_err(GetCodeError::CodeFailed)?;
 
@@ -161,14 +164,19 @@ mod tests {
         let state = create_test_state_with_mock(mock_client);
 
         let params = AtBlockParam {
-            at: Some("0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string()),
+            at: Some(
+                "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string(),
+            ),
         };
         let result = runtime_code(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
 
-        assert_eq!(response.at.hash, "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789");
+        assert_eq!(
+            response.at.hash,
+            "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        );
         assert_eq!(response.at.height, "100");
     }
 

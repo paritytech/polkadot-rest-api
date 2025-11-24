@@ -1,10 +1,10 @@
 use crate::state::AppState;
 use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
+use hex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
-use hex;
 
 #[derive(Debug, Error)]
 pub enum GetMetadataVersionsError {
@@ -21,7 +21,8 @@ pub enum GetMetadataVersionsError {
 impl IntoResponse for GetMetadataVersionsError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
-            GetMetadataVersionsError::InvalidBlockParam(_) | GetMetadataVersionsError::BlockResolveFailed(_) => {
+            GetMetadataVersionsError::InvalidBlockParam(_)
+            | GetMetadataVersionsError::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
@@ -65,14 +66,18 @@ pub async fn runtime_metadata_versions(
 
     let versions_hex: String = state
         .rpc_client
-        .request("state_call", subxt_rpcs::rpc_params!["Metadata_metadata_versions", "0x", &resolved_block.hash])
+        .request(
+            "state_call",
+            subxt_rpcs::rpc_params!["Metadata_metadata_versions", "0x", &resolved_block.hash],
+        )
         .await
         .map_err(GetMetadataVersionsError::MetadataVersionsFailed)?;
 
-    let versions_bytes = hex::decode(versions_hex.trim_start_matches("0x"))
-        .map_err(|_| GetMetadataVersionsError::MetadataVersionsFailed(
-            subxt_rpcs::Error::Client("Failed to decode versions hex".into())
-        ))?;
+    let versions_bytes = hex::decode(versions_hex.trim_start_matches("0x")).map_err(|_| {
+        GetMetadataVersionsError::MetadataVersionsFailed(subxt_rpcs::Error::Client(
+            "Failed to decode versions hex".into(),
+        ))
+    })?;
 
     let mut versions = Vec::new();
     for chunk in versions_bytes.chunks(4) {
@@ -152,7 +157,10 @@ mod tests {
         let response = result.unwrap().0;
 
         assert_eq!(response.at.height, "42");
-        assert_eq!(response.versions, vec!["v14".to_string(), "v15".to_string()]);
+        assert_eq!(
+            response.versions,
+            vec!["v14".to_string(), "v15".to_string()]
+        );
     }
 
     #[tokio::test]
@@ -175,14 +183,19 @@ mod tests {
         let state = create_test_state_with_mock(mock_client);
 
         let params = AtBlockParam {
-            at: Some("0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string()),
+            at: Some(
+                "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string(),
+            ),
         };
         let result = runtime_metadata_versions(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
 
-        assert_eq!(response.at.hash, "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789");
+        assert_eq!(
+            response.at.hash,
+            "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        );
         assert_eq!(response.at.height, "100");
     }
 

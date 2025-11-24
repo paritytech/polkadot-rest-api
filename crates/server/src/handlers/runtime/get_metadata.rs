@@ -1,6 +1,11 @@
 use crate::state::AppState;
 use crate::utils;
-use axum::{Json, extract::{State, Path}, http::StatusCode, response::IntoResponse};
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -16,7 +21,9 @@ pub enum GetMetadataError {
     #[error("Failed to get metadata")]
     MetadataFailed(#[source] subxt_rpcs::Error),
 
-    #[error("Invalid metadata version format. Expected format: vX where X is a number (e.g., v14, v15)")]
+    #[error(
+        "Invalid metadata version format. Expected format: vX where X is a number (e.g., v14, v15)"
+    )]
     InvalidMetadataVersion,
 
     #[error("Metadata version not available")]
@@ -28,8 +35,12 @@ impl IntoResponse for GetMetadataError {
         let (status, message) = match self {
             GetMetadataError::InvalidBlockParam(_)
             | GetMetadataError::BlockResolveFailed(_)
-            | GetMetadataError::InvalidMetadataVersion => (StatusCode::BAD_REQUEST, self.to_string()),
-            GetMetadataError::MetadataVersionNotAvailable => (StatusCode::NOT_FOUND, self.to_string()),
+            | GetMetadataError::InvalidMetadataVersion => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetMetadataError::MetadataVersionNotAvailable => {
+                (StatusCode::NOT_FOUND, self.to_string())
+            }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
@@ -73,7 +84,10 @@ pub async fn runtime_metadata(
 
     let metadata_hex: String = state
         .rpc_client
-        .request("state_getMetadata", subxt_rpcs::rpc_params![&resolved_block.hash])
+        .request(
+            "state_getMetadata",
+            subxt_rpcs::rpc_params![&resolved_block.hash],
+        )
         .await
         .map_err(GetMetadataError::MetadataFailed)?;
 
@@ -97,7 +111,7 @@ pub async fn runtime_metadata_versioned(
     if !metadata_version.starts_with('v') && !metadata_version.starts_with('V') {
         return Err(GetMetadataError::InvalidMetadataVersion);
     }
-    
+
     let version_str = &metadata_version[1..];
     let _version_number: u32 = version_str
         .parse()
@@ -112,7 +126,10 @@ pub async fn runtime_metadata_versioned(
 
     let metadata_hex: String = state
         .rpc_client
-        .request("state_getMetadata", subxt_rpcs::rpc_params![&resolved_block.hash])
+        .request(
+            "state_getMetadata",
+            subxt_rpcs::rpc_params![&resolved_block.hash],
+        )
         .await
         .map_err(GetMetadataError::MetadataFailed)?;
 
@@ -133,7 +150,7 @@ fn extract_magic_number(metadata_hex: &str) -> Option<String> {
     if trimmed.len() < 8 {
         return None;
     }
-    
+
     let magic_bytes = &trimmed[0..8];
     if let Ok(magic_value) = u32::from_str_radix(magic_bytes, 16) {
         Some(magic_value.to_string())
@@ -202,7 +219,10 @@ mod tests {
         let response = result.unwrap().0;
 
         assert_eq!(response.at.height, "42");
-        assert_eq!(response.metadata, serde_json::json!("0x6d657461646174610a0000"));
+        assert_eq!(
+            response.metadata,
+            serde_json::json!("0x6d657461646174610a0000")
+        );
     }
 
     #[tokio::test]
@@ -224,14 +244,19 @@ mod tests {
         let state = create_test_state_with_mock(mock_client);
 
         let params = AtBlockParam {
-            at: Some("0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string()),
+            at: Some(
+                "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string(),
+            ),
         };
         let result = runtime_metadata(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
 
-        assert_eq!(response.at.hash, "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789");
+        assert_eq!(
+            response.at.hash,
+            "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        );
         assert_eq!(response.at.height, "100");
     }
 
@@ -267,7 +292,9 @@ mod tests {
         let state = create_test_state_with_mock(mock_client);
 
         let params = AtBlockParam {
-            at: Some("0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string()),
+            at: Some(
+                "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string(),
+            ),
         };
         let result = runtime_metadata_versioned(
             State(state),
