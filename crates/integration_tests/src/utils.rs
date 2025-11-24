@@ -3,6 +3,29 @@ use colored::Colorize;
 use serde_json::Value;
 use std::collections::HashMap;
 
+/// Compare two JSON values and return detailed differences.
+///
+/// # Arguments
+/// * `actual` - The actual JSON value received (e.g., from API response)
+/// * `expected` - The expected JSON value to compare against
+/// * `ignore_fields` - List of field names to ignore during comparison (e.g., "timestamp", "blockHash")
+///
+/// # Returns
+/// * `Ok(ComparisonResult::Match)` if values match (ignoring specified fields)
+/// * `Ok(ComparisonResult::Mismatch)` with detailed differences if values don't match
+///
+/// # Example
+/// ```
+/// use serde_json::json;
+/// use integration_tests::utils::compare_json;
+///
+/// let expected = json!({"name": "test", "timestamp": "2024-01-01"});
+/// let actual = json!({"name": "test", "timestamp": "2024-12-31"});
+///
+/// // Ignoring timestamp field, this will match
+/// let result = compare_json(&actual, &expected, &["timestamp"]).unwrap();
+/// assert!(result.is_match());
+/// ```
 pub fn compare_json(
     actual: &Value,
     expected: &Value,
@@ -72,9 +95,7 @@ fn compare_json_recursive(
                         differences,
                     );
                 } else {
-                    differences.push(Difference::MissingField {
-                        path: current_path,
-                    });
+                    differences.push(Difference::MissingField { path: current_path });
                 }
             }
 
@@ -87,9 +108,7 @@ fn compare_json_recursive(
                         format!("{}.{}", path, key)
                     };
                     // Only warn about extra fields, don't fail
-                    differences.push(Difference::ExtraField {
-                        path: current_path,
-                    });
+                    differences.push(Difference::ExtraField { path: current_path });
                 }
             }
         }
@@ -105,9 +124,7 @@ fn compare_json_recursive(
                 if actual_arr.len() > expected_arr.len() {
                     for i in expected_arr.len()..actual_arr.len() {
                         let current_path = format!("{}[{}]", path, i);
-                        differences.push(Difference::ExtraField {
-                            path: current_path,
-                        });
+                        differences.push(Difference::ExtraField { path: current_path });
                     }
                 }
 
@@ -115,9 +132,7 @@ fn compare_json_recursive(
                 if expected_arr.len() > actual_arr.len() {
                     for i in actual_arr.len()..expected_arr.len() {
                         let current_path = format!("{}[{}]", path, i);
-                        differences.push(Difference::MissingField {
-                            path: current_path,
-                        });
+                        differences.push(Difference::MissingField { path: current_path });
                     }
                 }
             }
@@ -181,9 +196,7 @@ impl ComparisonResult {
                 }
                 Value::Object(sorted_map)
             }
-            Value::Array(arr) => {
-                Value::Array(arr.iter().map(Self::sort_json_keys).collect())
-            }
+            Value::Array(arr) => Value::Array(arr.iter().map(Self::sort_json_keys).collect()),
             other => other.clone(),
         }
     }
@@ -209,7 +222,8 @@ impl ComparisonResult {
                 let diff_map = Self::create_diff_map(differences);
 
                 // Generate the unified JSON with inline diffs
-                let unified = Self::format_unified_json(&sorted_expected, &sorted_actual, "", &diff_map, 0);
+                let unified =
+                    Self::format_unified_json(&sorted_expected, &sorted_actual, "", &diff_map, 0);
                 output.push(unified);
 
                 output.push(String::new());
@@ -226,7 +240,9 @@ impl ComparisonResult {
     }
 
     /// Create a map of paths to differences for quick lookup
-    fn create_diff_map(differences: &[Difference]) -> std::collections::HashMap<String, &Difference> {
+    fn create_diff_map(
+        differences: &[Difference],
+    ) -> std::collections::HashMap<String, &Difference> {
         let mut map = std::collections::HashMap::new();
         for diff in differences {
             let path = match diff {
@@ -281,8 +297,12 @@ impl ComparisonResult {
                                         let val_str = Self::format_value_with_indent(e, indent + 1);
                                         let lines: Vec<&str> = val_str.lines().collect();
                                         // First line: key and opening brace/bracket
-                                        output.push(format!("{}  \"{}\": {}",
-                                            "  ".repeat(indent), key, lines[0]));
+                                        output.push(format!(
+                                            "{}  \"{}\": {}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            lines[0]
+                                        ));
                                         // Subsequent lines already have proper indentation from format_value_with_indent
                                         for (idx, line) in lines.iter().skip(1).enumerate() {
                                             let is_last_line = idx == lines.len() - 2;
@@ -295,18 +315,32 @@ impl ComparisonResult {
                                     }
                                     _ => {
                                         let val_str = Self::value_to_inline_string(e);
-                                        output.push(format!("{}  \"{}\": {}{}",
-                                            "  ".repeat(indent), key, val_str, comma));
+                                        output.push(format!(
+                                            "{}  \"{}\": {}{}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            val_str,
+                                            comma
+                                        ));
                                     }
                                 }
                             } else {
                                 // Different - check if it's a complex type or leaf
                                 match (e, a) {
-                                    (Value::Object(_), Value::Object(_)) | (Value::Array(_), Value::Array(_)) => {
+                                    (Value::Object(_), Value::Object(_))
+                                    | (Value::Array(_), Value::Array(_)) => {
                                         // Recurse for complex types
-                                        output.push(format!("{}  \"{}\": {}",
-                                            "  ".repeat(indent), key,
-                                            Self::format_unified_json(e, a, &field_path, _diff_map, indent + 1)
+                                        output.push(format!(
+                                            "{}  \"{}\": {}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            Self::format_unified_json(
+                                                e,
+                                                a,
+                                                &field_path,
+                                                _diff_map,
+                                                indent + 1
+                                            )
                                         ));
                                         // Add comma on a separate line if needed
                                         if !comma.is_empty() {
@@ -319,10 +353,28 @@ impl ComparisonResult {
                                         let actual_str = Self::value_to_inline_string(a);
                                         let expected_str = Self::value_to_inline_string(e);
 
-                                        output.push(format!("- {}\"{}\": {}{}",
-                                            "  ".repeat(indent), key, actual_str, comma).red().to_string());
-                                        output.push(format!("+ {}\"{}\": {}{}",
-                                            "  ".repeat(indent), key, expected_str, comma).green().to_string());
+                                        output.push(
+                                            format!(
+                                                "- {}\"{}\": {}{}",
+                                                "  ".repeat(indent),
+                                                key,
+                                                actual_str,
+                                                comma
+                                            )
+                                            .red()
+                                            .to_string(),
+                                        );
+                                        output.push(
+                                            format!(
+                                                "+ {}\"{}\": {}{}",
+                                                "  ".repeat(indent),
+                                                key,
+                                                expected_str,
+                                                comma
+                                            )
+                                            .green()
+                                            .to_string(),
+                                        );
                                     }
                                 }
                             }
@@ -334,12 +386,23 @@ impl ComparisonResult {
                                     let val_str = Self::format_value_with_indent(e, indent + 1);
                                     let lines: Vec<&str> = val_str.lines().collect();
                                     // First line: key and opening brace/bracket
-                                    output.push(format!("+ {}\"{}\": {}", "  ".repeat(indent), key, lines[0]).green().to_string());
+                                    output.push(
+                                        format!(
+                                            "+ {}\"{}\": {}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            lines[0]
+                                        )
+                                        .green()
+                                        .to_string(),
+                                    );
                                     // Subsequent lines: prefix at leftmost, line already has indentation
                                     for (idx, line) in lines.iter().skip(1).enumerate() {
                                         let is_last_line = idx == lines.len() - 2;
                                         if is_last_line {
-                                            output.push(format!("+ {}{}", line, comma).green().to_string());
+                                            output.push(
+                                                format!("+ {}{}", line, comma).green().to_string(),
+                                            );
                                         } else {
                                             output.push(format!("+ {}", line).green().to_string());
                                         }
@@ -347,8 +410,17 @@ impl ComparisonResult {
                                 }
                                 _ => {
                                     let val_str = Self::value_to_inline_string(e);
-                                    output.push(format!("+ {}\"{}\": {}{}",
-                                        "  ".repeat(indent), key, val_str, comma).green().to_string());
+                                    output.push(
+                                        format!(
+                                            "+ {}\"{}\": {}{}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            val_str,
+                                            comma
+                                        )
+                                        .green()
+                                        .to_string(),
+                                    );
                                 }
                             }
                         }
@@ -359,12 +431,23 @@ impl ComparisonResult {
                                     let val_str = Self::format_value_with_indent(a, indent + 1);
                                     let lines: Vec<&str> = val_str.lines().collect();
                                     // First line: key and opening brace/bracket
-                                    output.push(format!("- {}\"{}\": {}", "  ".repeat(indent), key, lines[0]).red().to_string());
+                                    output.push(
+                                        format!(
+                                            "- {}\"{}\": {}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            lines[0]
+                                        )
+                                        .red()
+                                        .to_string(),
+                                    );
                                     // Subsequent lines: prefix at leftmost, line already has indentation
                                     for (idx, line) in lines.iter().skip(1).enumerate() {
                                         let is_last_line = idx == lines.len() - 2;
                                         if is_last_line {
-                                            output.push(format!("- {}{}", line, comma).red().to_string());
+                                            output.push(
+                                                format!("- {}{}", line, comma).red().to_string(),
+                                            );
                                         } else {
                                             output.push(format!("- {}", line).red().to_string());
                                         }
@@ -372,8 +455,17 @@ impl ComparisonResult {
                                 }
                                 _ => {
                                     let val_str = Self::value_to_inline_string(a);
-                                    output.push(format!("- {}\"{}\": {}{}",
-                                        "  ".repeat(indent), key, val_str, comma).red().to_string());
+                                    output.push(
+                                        format!(
+                                            "- {}\"{}\": {}{}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            val_str,
+                                            comma
+                                        )
+                                        .red()
+                                        .to_string(),
+                                    );
                                 }
                             }
                         }
@@ -404,7 +496,11 @@ impl ComparisonResult {
                                         let val_str = Self::format_value_with_indent(e, indent + 1);
                                         let lines: Vec<&str> = val_str.lines().collect();
                                         // First line with indent
-                                        output.push(format!("{}  {}", "  ".repeat(indent), lines[0]));
+                                        output.push(format!(
+                                            "{}  {}",
+                                            "  ".repeat(indent),
+                                            lines[0]
+                                        ));
                                         // Subsequent lines already have proper indentation
                                         for (idx, line) in lines.iter().skip(1).enumerate() {
                                             let is_last_line = idx == lines.len() - 2;
@@ -417,28 +513,59 @@ impl ComparisonResult {
                                     }
                                     _ => {
                                         let val_str = Self::value_to_inline_string(e);
-                                        output.push(format!("{}  {}{}",
-                                            "  ".repeat(indent), val_str, comma));
+                                        output.push(format!(
+                                            "{}  {}{}",
+                                            "  ".repeat(indent),
+                                            val_str,
+                                            comma
+                                        ));
                                     }
                                 }
                             } else {
                                 // Different - check if it's a complex type or leaf
                                 match (e, a) {
-                                    (Value::Object(_), Value::Object(_)) | (Value::Array(_), Value::Array(_)) => {
+                                    (Value::Object(_), Value::Object(_))
+                                    | (Value::Array(_), Value::Array(_)) => {
                                         // Recurse for complex types
-                                        let nested_json = Self::format_unified_json(e, a, &elem_path, _diff_map, indent + 1);
-                                        output.push(format!("{}  {}{}",
-                                            "  ".repeat(indent), nested_json, comma));
+                                        let nested_json = Self::format_unified_json(
+                                            e,
+                                            a,
+                                            &elem_path,
+                                            _diff_map,
+                                            indent + 1,
+                                        );
+                                        output.push(format!(
+                                            "{}  {}{}",
+                                            "  ".repeat(indent),
+                                            nested_json,
+                                            comma
+                                        ));
                                     }
                                     _ => {
                                         // Leaf value difference - show inline
                                         let actual_str = Self::value_to_inline_string(a);
                                         let expected_str = Self::value_to_inline_string(e);
 
-                                        output.push(format!("- {}{}{}",
-                                            "  ".repeat(indent), actual_str, comma).red().to_string());
-                                        output.push(format!("+ {}{}{}",
-                                            "  ".repeat(indent), expected_str, comma).green().to_string());
+                                        output.push(
+                                            format!(
+                                                "- {}{}{}",
+                                                "  ".repeat(indent),
+                                                actual_str,
+                                                comma
+                                            )
+                                            .red()
+                                            .to_string(),
+                                        );
+                                        output.push(
+                                            format!(
+                                                "+ {}{}{}",
+                                                "  ".repeat(indent),
+                                                expected_str,
+                                                comma
+                                            )
+                                            .green()
+                                            .to_string(),
+                                        );
                                     }
                                 }
                             }
@@ -450,12 +577,18 @@ impl ComparisonResult {
                                     let val_str = Self::format_value_with_indent(e, indent);
                                     let lines: Vec<&str> = val_str.lines().collect();
                                     // First line with indent
-                                    output.push(format!("+ {}{}", "  ".repeat(indent), lines[0]).green().to_string());
+                                    output.push(
+                                        format!("+ {}{}", "  ".repeat(indent), lines[0])
+                                            .green()
+                                            .to_string(),
+                                    );
                                     // Subsequent lines: prefix at leftmost, line already has indentation
                                     for (idx, line) in lines.iter().skip(1).enumerate() {
                                         let is_last_line = idx == lines.len() - 2;
                                         if is_last_line {
-                                            output.push(format!("+ {}{}", line, comma).green().to_string());
+                                            output.push(
+                                                format!("+ {}{}", line, comma).green().to_string(),
+                                            );
                                         } else {
                                             output.push(format!("+ {}", line).green().to_string());
                                         }
@@ -463,8 +596,11 @@ impl ComparisonResult {
                                 }
                                 _ => {
                                     let val_str = Self::value_to_inline_string(e);
-                                    output.push(format!("+ {}{}{}",
-                                        "  ".repeat(indent), val_str, comma).green().to_string());
+                                    output.push(
+                                        format!("+ {}{}{}", "  ".repeat(indent), val_str, comma)
+                                            .green()
+                                            .to_string(),
+                                    );
                                 }
                             }
                         }
@@ -475,12 +611,18 @@ impl ComparisonResult {
                                     let val_str = Self::format_value_with_indent(a, indent);
                                     let lines: Vec<&str> = val_str.lines().collect();
                                     // First line with indent
-                                    output.push(format!("- {}{}", "  ".repeat(indent), lines[0]).red().to_string());
+                                    output.push(
+                                        format!("- {}{}", "  ".repeat(indent), lines[0])
+                                            .red()
+                                            .to_string(),
+                                    );
                                     // Subsequent lines: prefix at leftmost, line already has indentation
                                     for (idx, line) in lines.iter().skip(1).enumerate() {
                                         let is_last_line = idx == lines.len() - 2;
                                         if is_last_line {
-                                            output.push(format!("- {}{}", line, comma).red().to_string());
+                                            output.push(
+                                                format!("- {}{}", line, comma).red().to_string(),
+                                            );
                                         } else {
                                             output.push(format!("- {}", line).red().to_string());
                                         }
@@ -488,8 +630,11 @@ impl ComparisonResult {
                                 }
                                 _ => {
                                     let val_str = Self::value_to_inline_string(a);
-                                    output.push(format!("- {}{}{}",
-                                        "  ".repeat(indent), val_str, comma).red().to_string());
+                                    output.push(
+                                        format!("- {}{}{}", "  ".repeat(indent), val_str, comma)
+                                            .red()
+                                            .to_string(),
+                                    );
                                 }
                             }
                         }
@@ -526,8 +671,13 @@ impl ComparisonResult {
                         let is_last = i == keys.len() - 1;
                         let comma = if is_last { "" } else { "," };
                         let val_str = Self::value_to_inline_string(val);
-                        output.push(format!("{}\"{}\": {}{}",
-                            "  ".repeat(indent + 1), key, val_str, comma));
+                        output.push(format!(
+                            "{}\"{}\": {}{}",
+                            "  ".repeat(indent + 1),
+                            key,
+                            val_str,
+                            comma
+                        ));
                     }
                 }
                 output.push(format!("{}}}", indent_str));
@@ -539,13 +689,12 @@ impl ComparisonResult {
                     let is_last = i == arr.len() - 1;
                     let comma = if is_last { "" } else { "," };
                     let val_str = Self::value_to_inline_string(val);
-                    output.push(format!("{}{}{}",
-                        "  ".repeat(indent + 1), val_str, comma));
+                    output.push(format!("{}{}{}", "  ".repeat(indent + 1), val_str, comma));
                 }
                 output.push(format!("{}]", indent_str));
                 output.join("\n")
             }
-            _ => Self::value_to_inline_string(value)
+            _ => Self::value_to_inline_string(value),
         }
     }
 }
@@ -602,7 +751,11 @@ mod tests {
         assert_eq!(result.differences().len(), 1);
 
         match &result.differences()[0] {
-            Difference::ValueMismatch { path, expected: exp, actual: act } => {
+            Difference::ValueMismatch {
+                path,
+                expected: exp,
+                actual: act,
+            } => {
                 assert_eq!(path, "value");
                 assert_eq!(exp, &json!(100));
                 assert_eq!(act, &json!(200));
@@ -703,9 +856,10 @@ mod tests {
         });
         assert!(has_length_mismatch);
 
-        let has_missing_element = result.differences().iter().any(|d| {
-            matches!(d, Difference::MissingField { path } if path == "items[2]")
-        });
+        let has_missing_element = result
+            .differences()
+            .iter()
+            .any(|d| matches!(d, Difference::MissingField { path } if path == "items[2]"));
         assert!(has_missing_element);
     }
 
@@ -728,9 +882,10 @@ mod tests {
         });
         assert!(has_length_mismatch);
 
-        let has_extra_element = result.differences().iter().any(|d| {
-            matches!(d, Difference::ExtraField { path } if path == "items[2]")
-        });
+        let has_extra_element = result
+            .differences()
+            .iter()
+            .any(|d| matches!(d, Difference::ExtraField { path } if path == "items[2]"));
         assert!(has_extra_element);
     }
 
