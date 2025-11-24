@@ -55,6 +55,30 @@
       "query_params": [{}],
       "requires_block_height": false,
       "requires_account": false
+    },
+    {
+      "path": "/v1/runtime/spec",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
+    },
+    {
+      "path": "/v1/runtime/metadata",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
+    },
+    {
+      "path": "/v1/runtime/metadata/versions",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
+    },
+    {
+      "path": "/v1/runtime/code",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
     }
   ],
   "historical_tests": {

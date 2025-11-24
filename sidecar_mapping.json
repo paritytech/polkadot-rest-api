@@ -10,6 +10,21 @@
       "sidecar_endpoint": "/runtime/spec",
       "description": "Runtime specification information"
     },
+    "runtime_metadata": {
+      "local_endpoint": "/v1/runtime/metadata",
+      "sidecar_endpoint": "/runtime/metadata",
+      "description": "Runtime metadata information"
+    },
+    "runtime_metadata_versions": {
+      "local_endpoint": "/v1/runtime/metadata/versions",
+      "sidecar_endpoint": "/runtime/metadata/versions",
+      "description": "Available runtime metadata versions"
+    },
+    "runtime_code": {
+      "local_endpoint": "/v1/runtime/code",
+      "sidecar_endpoint": "/runtime/code",
+      "description": "Runtime code (Wasm blob)"
+    },
     "version": {
       "local_endpoint": "/v1/version",
       "sidecar_endpoint": "/node/version",
@@ -19,6 +34,63 @@
   "benchmarks": {
     "runtime": {
       "endpoint": "/runtime/spec",
+      "scenarios": [
+        {
+          "name": "light_load",
+          "threads": 2,
+          "connections": 10,
+          "duration": "30s",
+          "timeout": "60s"
+        },
+        {
+          "name": "medium_load",
+          "threads": 4,
+          "connections": 50,
+          "duration": "60s",
+          "timeout": "120s"
+        }
+      ]
+    },
+    "runtime_metadata": {
+      "endpoint": "/runtime/metadata",
+      "scenarios": [
+        {
+          "name": "light_load",
+          "threads": 2,
+          "connections": 10,
+          "duration": "30s",
+          "timeout": "60s"
+        },
+        {
+          "name": "medium_load",
+          "threads": 4,
+          "connections": 50,
+          "duration": "60s",
+          "timeout": "120s"
+        }
+      ]
+    },
+    "runtime_metadata_versions": {
+      "endpoint": "/runtime/metadata/versions",
+      "scenarios": [
+        {
+          "name": "light_load",
+          "threads": 2,
+          "connections": 10,
+          "duration": "30s",
+          "timeout": "60s"
+        },
+        {
+          "name": "medium_load",
+          "threads": 4,
+          "connections": 50,
+          "duration": "60s",
+          "timeout": "120s"
+        }
+      ]
+    },
+    "runtime_code": {
+      "endpoint": "/runtime/code",
       "scenarios": [
         {
           "name": "light_load",
