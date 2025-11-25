@@ -235,7 +235,7 @@ pub struct SignatureInfo {
 #[serde(rename_all = "camelCase")]
 pub struct ExtrinsicInfo {
     pub method: MethodInfo,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Signature information - null for unsigned extrinsics (inherents)
     pub signature: Option<SignatureInfo>,
     /// Nonce - shown as null when extraction fails (matching sidecar behavior)
     pub nonce: Option<String>,
