@@ -962,9 +962,17 @@ fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
                     return Value::String(name.clone());
                 }
 
-                // For args (when ss58_prefix is Some), transform to {"<lowercase_name>": <transformed_values>}
+                // For args (when ss58_prefix is Some), transform to {"<lowerCamelCase_name>": <transformed_values>}
                 if ss58_prefix.is_some() {
-                    let key = name.to_lowercase();
+                    // Convert to lowerCamelCase (only lowercase first letter)
+                    // e.g., "PreRuntime" -> "preRuntime", "Some" -> "some"
+                    let key = {
+                        let mut chars = name.chars();
+                        match chars.next() {
+                            None => String::new(),
+                            Some(first) => first.to_lowercase().chain(chars).collect(),
+                        }
+                    };
                     let transformed_value = transform_json_unified(values.clone(), ss58_prefix);
 
                     let mut result = serde_json::Map::new();
