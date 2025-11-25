@@ -73,7 +73,7 @@
         "account_id": null,
         "query_params": {},
         "fixture_path": "polkadot/blocks_10000000.json",
-        "description": "Test block endpoint at Polkadot block 1,000,000"
+        "description": "Test block endpoint at Polkadot block 10,000,000"
       }
     ],
     "kusama": [
