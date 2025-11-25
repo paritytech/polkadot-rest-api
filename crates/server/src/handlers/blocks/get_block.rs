@@ -66,6 +66,9 @@ pub enum GetBlockError {
 
     #[error("Failed to decode extrinsic field: {0}")]
     ExtrinsicDecodeFailed(String),
+
+    #[error("Failed to get finalized head")]
+    FinalizedHeadFailed(#[source] subxt_rpcs::Error),
 }
 
 impl IntoResponse for GetBlockError {
@@ -83,7 +86,8 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::ExtrinsicsFetchFailed(_)
             | GetBlockError::MissingSignatureBytes
             | GetBlockError::MissingAddressBytes
-            | GetBlockError::ExtrinsicDecodeFailed(_) => {
+            | GetBlockError::ExtrinsicDecodeFailed(_)
+            | GetBlockError::FinalizedHeadFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -273,6 +277,8 @@ pub struct BlockResponse {
     pub on_initialize: OnInitialize,
     pub extrinsics: Vec<ExtrinsicInfo>,
     pub on_finalize: OnFinalize,
+    /// Whether this block has been finalized
+    pub finalized: bool,
 }
 
 /// A parsed event with its phase information
@@ -626,6 +632,34 @@ fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
             })
         })
         .collect()
+}
+
+/// Fetch the finalized block number from the chain
+async fn get_finalized_block_number(state: &AppState) -> Result<u64, GetBlockError> {
+    // Get the finalized head hash
+    let finalized_hash = state
+        .legacy_rpc
+        .chain_get_finalized_head()
+        .await
+        .map_err(GetBlockError::FinalizedHeadFailed)?;
+
+    // Get the header for the finalized block to extract its number
+    let finalized_hash_str = format!("0x{}", hex::encode(finalized_hash.0));
+    let header_json = state
+        .get_header_json(&finalized_hash_str)
+        .await
+        .map_err(GetBlockError::HeaderFetchFailed)?;
+
+    // Extract the block number from the header
+    let number_hex = header_json
+        .get("number")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))?;
+
+    let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
+        .map_err(|_| GetBlockError::HeaderFieldMissing("number (invalid format)".to_string()))?;
+
+    Ok(number)
 }
 
 /// Fetch validator set from chain state at a specific block
@@ -1531,14 +1565,19 @@ pub async fn get_block(
         .to_string();
 
     let logs = decode_digest_logs(&header_json);
-    let (author_id, extrinsics_result, events_result) = tokio::join!(
+    let (author_id, extrinsics_result, events_result, finalized_head_result) = tokio::join!(
         extract_author(&state, resolved_block.number, &logs),
         extract_extrinsics(&state, resolved_block.number),
-        fetch_block_events(&state, resolved_block.number)
+        fetch_block_events(&state, resolved_block.number),
+        get_finalized_block_number(&state)
     );
 
     let extrinsics = extrinsics_result?;
     let block_events = events_result?;
+    let finalized_head_number = finalized_head_result?;
+
+    // A block is finalized if its number is <= the finalized head number
+    let finalized = resolved_block.number <= finalized_head_number;
 
     // Categorize events by phase and extract extrinsic outcomes (success, paysFee)
     let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
@@ -1576,6 +1615,7 @@ pub async fn get_block(
         on_initialize,
         extrinsics: extrinsics_with_events,
         on_finalize,
+        finalized,
     };
 
     Ok(Json(response))
