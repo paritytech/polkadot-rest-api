@@ -636,26 +636,20 @@ fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
 
 /// Fetch the finalized block number from the chain
 async fn get_finalized_block_number(state: &AppState) -> Result<u64, GetBlockError> {
-    // Get the finalized head hash
     let finalized_hash = state
         .legacy_rpc
         .chain_get_finalized_head()
         .await
         .map_err(GetBlockError::FinalizedHeadFailed)?;
-
-    // Get the header for the finalized block to extract its number
     let finalized_hash_str = format!("0x{}", hex::encode(finalized_hash.0));
     let header_json = state
         .get_header_json(&finalized_hash_str)
         .await
         .map_err(GetBlockError::HeaderFetchFailed)?;
-
-    // Extract the block number from the header
     let number_hex = header_json
         .get("number")
         .and_then(|v| v.as_str())
         .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))?;
-
     let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
         .map_err(|_| GetBlockError::HeaderFieldMissing("number (invalid format)".to_string()))?;
 
