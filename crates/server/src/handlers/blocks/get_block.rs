@@ -181,7 +181,7 @@ enum EventPhase {
 pub struct DigestLog {
     #[serde(rename = "type")]
     pub log_type: String,
-    pub index: u32,
+    pub index: String,
     pub value: Value,
 }
 
@@ -533,14 +533,23 @@ fn convert_bytes_to_hex(value: Value) -> Value {
 // ================================================================================================
 
 /// Decode a consensus digest item (PreRuntime, Consensus, or Seal)
-/// Format: [consensus_engine_id (4 bytes), payload_data]
+/// The data here is SCALE-encoded as: (ConsensusEngineId, Vec<u8>)
+/// where ConsensusEngineId is 4 raw bytes, and Vec<u8> is compact_length + bytes
 fn decode_consensus_digest(data: &[u8]) -> Option<Value> {
+    use parity_scale_codec::Decode;
+
+    // First 4 bytes are the consensus engine ID (not length-prefixed)
     if data.len() < CONSENSUS_ENGINE_ID_LEN {
         return None;
     }
 
-    let engine_id = String::from_utf8_lossy(&data[0..CONSENSUS_ENGINE_ID_LEN]).to_string();
-    let payload = hex_with_prefix(&data[CONSENSUS_ENGINE_ID_LEN..]);
+    let engine_id = hex_with_prefix(&data[0..CONSENSUS_ENGINE_ID_LEN]);
+
+    // The rest is a SCALE-encoded Vec<u8> (compact length + payload bytes)
+    let mut remaining = &data[CONSENSUS_ENGINE_ID_LEN..];
+    let payload_bytes = Vec::<u8>::decode(&mut remaining).ok()?;
+    let payload = hex_with_prefix(&payload_bytes);
+
     Some(json!([engine_id, payload]))
 }
 
@@ -557,8 +566,7 @@ fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
     };
 
     logs.iter()
-        .enumerate()
-        .filter_map(|(index, log_hex)| {
+        .filter_map(|log_hex| {
             let hex_str = log_hex.as_str()?;
             let hex_data = hex_str.strip_prefix("0x")?;
             let bytes = hex::decode(hex_data).ok()?;
@@ -597,7 +605,7 @@ fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
 
             Some(DigestLog {
                 log_type,
-                index: index as u32,
+                index: discriminant_byte.to_string(),
                 value,
             })
         })
@@ -630,7 +638,7 @@ async fn get_validators_at_block(
 
 /// Extract author ID from block header digest logs by mapping authority index to validator
 async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog]) -> Option<String> {
-    use parity_scale_codec::{Compact, Decode};
+    use parity_scale_codec::Decode;
     use sp_consensus_babe::digests::PreDigest;
 
     const BABE_ENGINE: &[u8] = b"BABE";
@@ -652,21 +660,22 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
             && let Some(arr) = log.value.as_array()
             && arr.len() >= 2
         {
-            let engine_id = arr[0].as_str()?;
+            let engine_id_hex = arr[0].as_str()?;
             let payload_hex = arr[1].as_str()?;
             let payload = hex::decode(payload_hex.strip_prefix("0x")?).ok()?;
 
-            match engine_id.as_bytes() {
+            // Decode hex-encoded engine ID to bytes for comparison
+            let engine_id_bytes = hex::decode(engine_id_hex.strip_prefix("0x")?).ok()?;
+
+            match engine_id_bytes.as_slice() {
                 BABE_ENGINE => {
                     if payload.is_empty() {
                         continue;
                     }
 
-                    // The payload is wrapped in a compact-encoded Vec<u8>, so we need to skip the length prefix
+                    // The payload has already been decoded from SCALE in decode_consensus_digest
+                    // So we can decode the PreDigest directly without skipping compact length
                     let mut cursor = &payload[..];
-                    // Decode and skip the length prefix
-                    let _length = Compact::<u32>::decode(&mut cursor).ok()?;
-                    // Now decode the PreDigest from the remaining bytes
                     let pre_digest = PreDigest::decode(&mut cursor).ok()?;
                     let authority_index = pre_digest.authority_index() as usize;
                     let author = validators.get(authority_index)?;
@@ -708,10 +717,13 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
             && let Some(arr) = log.value.as_array()
             && arr.len() >= 2
         {
-            let engine_id = arr[0].as_str()?;
+            let engine_id_hex = arr[0].as_str()?;
             let payload_hex = arr[1].as_str()?;
 
-            if engine_id.as_bytes() == POW_ENGINE {
+            // Decode hex-encoded engine ID to bytes for comparison
+            let engine_id_bytes = hex::decode(engine_id_hex.strip_prefix("0x")?).ok()?;
+
+            if engine_id_bytes.as_slice() == POW_ENGINE {
                 // PoW: author is directly in payload (32-byte AccountId)
                 let payload = hex::decode(payload_hex.strip_prefix("0x")?).ok()?;
                 if payload.len() == 32 {
@@ -1550,10 +1562,10 @@ mod tests {
         // Verify logs are decoded
         assert_eq!(response.logs.len(), 1);
         assert_eq!(response.logs[0].log_type, "PreRuntime");
-        assert_eq!(response.logs[0].index, 0);
-        // Verify the engine ID is "BABE" and payload is present
+        assert_eq!(response.logs[0].index, "6"); // PreRuntime discriminant
+        // Verify the engine ID is hex-encoded and payload is present
         if let Some(arr) = response.logs[0].value.as_array() {
-            assert_eq!(arr[0].as_str(), Some("BABE"));
+            assert_eq!(arr[0].as_str(), Some("0x42414245")); // "BABE" in hex
             assert!(arr[1].as_str().unwrap().starts_with("0x"));
         } else {
             panic!("Expected PreRuntime log value to be an array");
