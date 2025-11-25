@@ -887,7 +887,9 @@ fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
         }
         Value::Array(arr) => {
             // Check if this is a byte array (all elements are numbers 0-255)
-            let is_byte_array = !arr.is_empty()
+            // Require at least 2 elements - single-element arrays are typically newtype wrappers
+            // (e.g., ValidatorIndex(32) -> [32]), not actual byte data
+            let is_byte_array = arr.len() > 1
                 && arr.iter().all(|v| match v {
                     Value::Number(n) => n.as_u64().is_some_and(|val| val <= 255),
                     _ => false,
@@ -953,6 +955,10 @@ fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
                 };
 
                 if is_empty {
+                    // Special case: "None" variant should serialize as JSON null
+                    if name == "None" {
+                        return Value::Null;
+                    }
                     return Value::String(name.clone());
                 }
 
@@ -988,6 +994,7 @@ fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
             {
                 return Value::String(ss58_addr);
             }
+
             Value::String(s)
         }
         other => other,
