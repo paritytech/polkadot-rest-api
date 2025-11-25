@@ -69,6 +69,9 @@ pub enum GetBlockError {
 
     #[error("Failed to get finalized head")]
     FinalizedHeadFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Failed to get canonical block hash")]
+    CanonicalHashFailed(#[source] subxt_rpcs::Error),
 }
 
 impl IntoResponse for GetBlockError {
@@ -87,7 +90,8 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::MissingSignatureBytes
             | GetBlockError::MissingAddressBytes
             | GetBlockError::ExtrinsicDecodeFailed(_)
-            | GetBlockError::FinalizedHeadFailed(_) => {
+            | GetBlockError::FinalizedHeadFailed(_)
+            | GetBlockError::CanonicalHashFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -632,6 +636,21 @@ fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
             })
         })
         .collect()
+}
+
+/// Fetch the canonical block hash at a given block number
+/// This is used to verify that a queried block hash is on the canonical chain
+async fn get_canonical_hash_at_number(
+    state: &AppState,
+    block_number: u64,
+) -> Result<Option<String>, GetBlockError> {
+    let hash = state
+        .legacy_rpc
+        .chain_get_block_hash(Some(block_number.into()))
+        .await
+        .map_err(GetBlockError::CanonicalHashFailed)?;
+
+    Ok(hash.map(|h| format!("0x{}", hex::encode(h.0))))
 }
 
 /// Fetch the finalized block number from the chain
@@ -1534,6 +1553,8 @@ pub async fn get_block(
     Path(block_id): Path<String>,
 ) -> Result<Json<BlockResponse>, GetBlockError> {
     let block_id = block_id.parse::<utils::BlockId>()?;
+    // Track if the block was queried by hash (needed for canonical chain check)
+    let queried_by_hash = matches!(block_id, utils::BlockId::Hash(_));
     let resolved_block = utils::resolve_block(&state, Some(block_id)).await?;
     let header_json = state
         .get_header_json(&resolved_block.hash)
@@ -1559,19 +1580,44 @@ pub async fn get_block(
         .to_string();
 
     let logs = decode_digest_logs(&header_json);
-    let (author_id, extrinsics_result, events_result, finalized_head_result) = tokio::join!(
+    let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
         extract_author(&state, resolved_block.number, &logs),
         extract_extrinsics(&state, resolved_block.number),
         fetch_block_events(&state, resolved_block.number),
-        get_finalized_block_number(&state)
+        get_finalized_block_number(&state),
+        // Only fetch canonical hash if queried by hash (needed for fork detection)
+        async {
+            if queried_by_hash {
+                Some(get_canonical_hash_at_number(&state, resolved_block.number).await)
+            } else {
+                None
+            }
+        }
     );
 
     let extrinsics = extrinsics_result?;
     let block_events = events_result?;
     let finalized_head_number = finalized_head_result?;
 
-    // A block is finalized if its number is <= the finalized head number
-    let finalized = resolved_block.number <= finalized_head_number;
+    // Determine if the block is finalized:
+    // 1. Block number must be <= finalized head number
+    // 2. If queried by hash, the hash must match the canonical chain hash
+    //    (to detect blocks on forked/orphaned chains)
+    let finalized = if resolved_block.number <= finalized_head_number {
+        if let Some(canonical_result) = canonical_hash_result {
+            // Queried by hash - verify it's on the canonical chain
+            match canonical_result? {
+                Some(canonical_hash) => canonical_hash == resolved_block.hash,
+                // If canonical hash not found, block is not finalized
+                None => false,
+            }
+        } else {
+            // Queried by number - assumed to be canonical
+            true
+        }
+    } else {
+        false
+    };
 
     // Categorize events by phase and extract extrinsic outcomes (success, paysFee)
     let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
