@@ -250,7 +250,12 @@ pub struct ExtrinsicInfo {
     pub era: EraInfo,
     /// Events emitted by this extrinsic
     pub events: Vec<Event>,
-    // TODO: Add more fields (success, paysFee)
+    /// Whether the extrinsic executed successfully (determined from System.ExtrinsicSuccess event)
+    pub success: bool,
+    /// Whether the extrinsic pays a fee (None for unsigned, Some(bool) for signed)
+    /// Extracted from DispatchInfo in System.ExtrinsicSuccess/ExtrinsicFailed events
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pays_fee: Option<bool>,
 }
 
 /// Basic block information
@@ -281,6 +286,17 @@ struct ParsedEvent {
     event_name: String,
     /// Event data as JSON
     event_data: Vec<Value>,
+}
+
+/// Outcome information for an extrinsic (success and paysFee)
+/// Extracted from System.ExtrinsicSuccess or System.ExtrinsicFailed events
+#[derive(Debug, Default, Clone)]
+struct ExtrinsicOutcome {
+    /// Whether the extrinsic succeeded (true if ExtrinsicSuccess event found)
+    success: bool,
+    /// Whether the extrinsic pays a fee (extracted from DispatchInfo)
+    /// None means we couldn't determine it from events
+    pays_fee: Option<bool>,
 }
 
 // ================================================================================================
@@ -751,6 +767,60 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
 // Helper Functions - Event Processing
 // ================================================================================================
 
+/// Extract `paysFee` value from DispatchInfo in event data
+///
+/// DispatchInfo contains: { weight, class, paysFee }
+/// paysFee can be:
+/// - A boolean (true/false)
+/// - A string ("Yes"/"No")
+/// - An object with a "name" field containing "Yes"/"No"
+///
+/// For ExtrinsicSuccess: event_data = [DispatchInfo]
+/// For ExtrinsicFailed: event_data = [DispatchError, DispatchInfo]
+fn extract_pays_fee_from_event_data(event_data: &[Value], is_success: bool) -> Option<bool> {
+    // For ExtrinsicSuccess, DispatchInfo is the first element
+    // For ExtrinsicFailed, DispatchInfo is the second element (after DispatchError)
+    let dispatch_info_index = if is_success { 0 } else { 1 };
+
+    let dispatch_info = event_data.get(dispatch_info_index)?;
+
+    // DispatchInfo should be an object with paysFee field
+    let pays_fee_value = dispatch_info.get("paysFee")?;
+
+    match pays_fee_value {
+        // Direct boolean
+        Value::Bool(b) => Some(*b),
+        // String "Yes" or "No"
+        Value::String(s) => match s.as_str() {
+            "Yes" => Some(true),
+            "No" => Some(false),
+            _ => {
+                tracing::debug!("Unknown paysFee string value: {}", s);
+                None
+            }
+        },
+        // Object with "name" field (e.g., { "name": "Yes", "values": ... })
+        Value::Object(obj) => {
+            if let Some(Value::String(name)) = obj.get("name") {
+                match name.as_str() {
+                    "Yes" => Some(true),
+                    "No" => Some(false),
+                    _ => {
+                        tracing::debug!("Unknown paysFee name value: {}", name);
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        }
+        _ => {
+            tracing::debug!("Unexpected paysFee value type: {:?}", pays_fee_value);
+            None
+        }
+    }
+}
+
 /// Unified transformation function that combines byte-to-hex conversion and structural transformations
 /// in a single pass through the JSON tree.
 ///
@@ -1030,16 +1100,56 @@ fn try_convert_accountid_to_ss58(value: &Value, ss58_prefix: u16) -> Option<Valu
 }
 
 /// Categorize parsed events into onInitialize, per-extrinsic, and onFinalize arrays
+/// Also extracts extrinsic outcomes (success, paysFee) from System.ExtrinsicSuccess/ExtrinsicFailed events
 fn categorize_events(
     parsed_events: Vec<ParsedEvent>,
     num_extrinsics: usize,
-) -> (OnInitialize, Vec<Vec<Event>>, OnFinalize) {
+) -> (
+    OnInitialize,
+    Vec<Vec<Event>>,
+    OnFinalize,
+    Vec<ExtrinsicOutcome>,
+) {
     let mut on_initialize_events = Vec::new();
     let mut on_finalize_events = Vec::new();
     // Create empty event vectors for each extrinsic
     let mut per_extrinsic_events: Vec<Vec<Event>> = vec![Vec::new(); num_extrinsics];
+    // Create default outcomes for each extrinsic (success=false, pays_fee=None)
+    let mut extrinsic_outcomes: Vec<ExtrinsicOutcome> =
+        vec![ExtrinsicOutcome::default(); num_extrinsics];
 
     for parsed_event in parsed_events {
+        // Check for System.ExtrinsicSuccess or System.ExtrinsicFailed events
+        // to determine extrinsic outcomes before consuming the event data
+        // Note: pallet_name is lowercase (from events_visitor.rs which uses to_lowercase())
+        let is_system_event = parsed_event.pallet_name == "system";
+        let is_success_event = is_system_event && parsed_event.event_name == "ExtrinsicSuccess";
+        let is_failed_event = is_system_event && parsed_event.event_name == "ExtrinsicFailed";
+
+        // Extract outcome info if this is a success/failed event for an extrinsic
+        if let EventPhase::ApplyExtrinsic(index) = &parsed_event.phase {
+            let idx = *index as usize;
+            if idx < num_extrinsics {
+                if is_success_event {
+                    extrinsic_outcomes[idx].success = true;
+                    // Extract paysFee from DispatchInfo (first element in event data)
+                    if let Some(pays_fee) =
+                        extract_pays_fee_from_event_data(&parsed_event.event_data, true)
+                    {
+                        extrinsic_outcomes[idx].pays_fee = Some(pays_fee);
+                    }
+                } else if is_failed_event {
+                    // success stays false
+                    // Extract paysFee from DispatchInfo (second element in event data, after DispatchError)
+                    if let Some(pays_fee) =
+                        extract_pays_fee_from_event_data(&parsed_event.event_data, false)
+                    {
+                        extrinsic_outcomes[idx].pays_fee = Some(pays_fee);
+                    }
+                }
+            }
+        }
+
         let event = Event {
             method: MethodInfo {
                 pallet: parsed_event.pallet_name,
@@ -1077,6 +1187,7 @@ fn categorize_events(
         OnFinalize {
             events: on_finalize_events,
         },
+        extrinsic_outcomes,
     )
 }
 
@@ -1356,6 +1467,12 @@ async fn extract_extrinsics(
         let hash_bytes = BlakeTwo256::hash(extrinsic.bytes());
         let hash = format!("0x{}", hex::encode(hash_bytes.as_ref()));
 
+        // Initialize pays_fee based on whether the extrinsic is signed:
+        // - Unsigned extrinsics (inherents) never pay fees → Some(false)
+        // - Signed extrinsics: determined from DispatchInfo in events → None (will be updated later)
+        let is_signed = signature_info.is_some();
+        let pays_fee = if is_signed { None } else { Some(false) };
+
         result.push(ExtrinsicInfo {
             method: MethodInfo {
                 pallet: pallet_name,
@@ -1369,6 +1486,8 @@ async fn extract_extrinsics(
             info: serde_json::Map::new(), // Empty for now, populated with events later
             era: era_info,
             events: Vec::new(), // Will be populated with events during categorization
+            success: false,     // Will be set to true if ExtrinsicSuccess event is found
+            pays_fee,           // Will be updated from DispatchInfo for signed extrinsics
         });
     }
 
@@ -1421,15 +1540,28 @@ pub async fn get_block(
     let extrinsics = extrinsics_result?;
     let block_events = events_result?;
 
-    // Categorize events by phase
-    let (on_initialize, per_extrinsic_events, on_finalize) =
+    // Categorize events by phase and extract extrinsic outcomes (success, paysFee)
+    let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
         categorize_events(block_events, extrinsics.len());
 
-    // Populate each extrinsic with its events
+    // Populate each extrinsic with its events and outcome (success, paysFee)
     let mut extrinsics_with_events = extrinsics;
-    for (i, extrinsic_events) in per_extrinsic_events.into_iter().enumerate() {
+    for (i, (extrinsic_events, outcome)) in per_extrinsic_events
+        .into_iter()
+        .zip(extrinsic_outcomes.into_iter())
+        .enumerate()
+    {
         if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
             extrinsic.events = extrinsic_events;
+            extrinsic.success = outcome.success;
+            // Only update pays_fee from events if the extrinsic is SIGNED.
+            // Unsigned extrinsics (inherents) never pay fees, regardless of what
+            // DispatchInfo.paysFee says in the event. The event's paysFee indicates
+            // whether the call *would* pay a fee if called as a transaction, but
+            // inherents are inserted by block authors and don't actually pay fees.
+            if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
+                extrinsic.pays_fee = outcome.pays_fee;
+            }
         }
     }
 
