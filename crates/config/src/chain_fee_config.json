@@ -1,0 +1,42 @@
+{
+  "polkadot": {
+    "minCalcFeeRuntime": 0,
+    "queryFeeDetailsUnavailable": 27,
+    "queryFeeDetailsAvailable": 28
+  },
+  "kusama": {
+    "minCalcFeeRuntime": 1058,
+    "queryFeeDetailsUnavailable": 2027,
+    "queryFeeDetailsAvailable": 2028
+  },
+  "statemint": {
+    "minCalcFeeRuntime": 601,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null
+  },
+  "statemine": {
+    "minCalcFeeRuntime": 1,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null
+  },
+  "asset-hub-polkadot": {
+    "minCalcFeeRuntime": 601,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null
+  },
+  "asset-hub-kusama": {
+    "minCalcFeeRuntime": 1,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null
+  },
+  "westend": {
+    "minCalcFeeRuntime": 0,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null
+  },
+  "asset-hub-westend": {
+    "minCalcFeeRuntime": 0,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null
+  }
+}

@@ -1,3 +1,4 @@
+use crate::utils::QueryFeeDetailsCache;
 use config::{ChainType, KnownRelayChain, SidecarConfig};
 use serde_json::Value;
 use std::sync::Arc;
@@ -46,6 +47,8 @@ pub struct AppState {
     pub legacy_rpc: Arc<LegacyRpcMethods<SubstrateConfig>>,
     pub rpc_client: Arc<RpcClient>,
     pub chain_info: ChainInfo,
+    /// Cache for tracking queryFeeDetails availability per spec version
+    pub fee_details_cache: Arc<QueryFeeDetailsCache>,
 }
 
 impl AppState {
@@ -98,6 +101,7 @@ impl AppState {
             legacy_rpc: Arc::new(legacy_rpc),
             rpc_client: Arc::new(rpc_client),
             chain_info,
+            fee_details_cache: Arc::new(QueryFeeDetailsCache::new()),
         })
     }
 
@@ -128,6 +132,50 @@ impl AppState {
     ) -> Result<Value, subxt_rpcs::Error> {
         self.rpc_client
             .request("state_getRuntimeVersion", rpc_params![hash])
+            .await
+    }
+
+    /// Query fee information for an extrinsic at a specific block hash
+    ///
+    /// Uses the `payment_queryInfo` RPC method to get weight, class, and partial fee
+    /// for a given extrinsic. The block hash should typically be the parent block
+    /// of the block containing the extrinsic (pre-dispatch state).
+    ///
+    /// Returns the RuntimeDispatchInfo as JSON with fields:
+    /// - weight: { refTime, proofSize } or just a number for older runtimes
+    /// - class: "Normal", "Operational", or "Mandatory"
+    /// - partialFee: fee amount as string
+    pub async fn query_fee_info(
+        &self,
+        extrinsic_hex: &str,
+        block_hash: &str,
+    ) -> Result<Value, subxt_rpcs::Error> {
+        self.rpc_client
+            .request("payment_queryInfo", rpc_params![extrinsic_hex, block_hash])
+            .await
+    }
+
+    /// Query detailed fee breakdown for an extrinsic at a specific block hash
+    ///
+    /// Uses the `payment_queryFeeDetails` RPC method to get the fee breakdown needed
+    /// for accurate fee calculation. The block hash should typically be the parent block
+    /// of the block containing the extrinsic (pre-dispatch state).
+    ///
+    /// Returns FeeDetails as JSON with fields:
+    /// - inclusionFee: { baseFee, lenFee, adjustedWeightFee } or null
+    ///
+    /// Note: This RPC method is not available on all runtimes. Check the chain's
+    /// fee configuration to determine availability based on spec_version.
+    pub async fn query_fee_details(
+        &self,
+        extrinsic_hex: &str,
+        block_hash: &str,
+    ) -> Result<Value, subxt_rpcs::Error> {
+        self.rpc_client
+            .request(
+                "payment_queryFeeDetails",
+                rpc_params![extrinsic_hex, block_hash],
+            )
             .await
     }
 }

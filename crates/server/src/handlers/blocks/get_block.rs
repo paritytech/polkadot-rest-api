@@ -252,7 +252,7 @@ pub struct ExtrinsicInfo {
     /// Tip - shown as null when extraction fails (matching sidecar behavior)
     pub tip: Option<String>,
     pub hash: String,
-    /// Runtime dispatch info (empty for now, populated later with proper weight and fees)
+    /// Runtime dispatch info containing weight, class, and partialFee for signed extrinsics
     pub info: serde_json::Map<String, Value>,
     /// Transaction era/mortality information
     pub era: EraInfo,
@@ -264,6 +264,9 @@ pub struct ExtrinsicInfo {
     /// Extracted from DispatchInfo in System.ExtrinsicSuccess/ExtrinsicFailed events
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pays_fee: Option<bool>,
+    /// Raw extrinsic bytes as hex (used internally for fee queries, not serialized)
+    #[serde(skip)]
+    pub raw_hex: String,
 }
 
 /// Basic block information
@@ -298,6 +301,16 @@ struct ParsedEvent {
     event_data: Vec<Value>,
 }
 
+/// Weight information extracted from DispatchInfo in events
+/// Can be either a single value (legacy) or ref_time + proof_size (modern)
+#[derive(Debug, Default, Clone)]
+pub struct ActualWeight {
+    /// The ref_time component (or the single weight value for legacy format)
+    pub ref_time: Option<String>,
+    /// The proof_size component (None for legacy weight format)
+    pub proof_size: Option<String>,
+}
+
 /// Outcome information for an extrinsic (success and paysFee)
 /// Extracted from System.ExtrinsicSuccess or System.ExtrinsicFailed events
 #[derive(Debug, Default, Clone)]
@@ -307,6 +320,11 @@ struct ExtrinsicOutcome {
     /// Whether the extrinsic pays a fee (extracted from DispatchInfo)
     /// None means we couldn't determine it from events
     pays_fee: Option<bool>,
+    /// Actual weight used during extrinsic execution (from DispatchInfo)
+    /// This is needed for accurate fee calculation with calc_partial_fee
+    actual_weight: Option<ActualWeight>,
+    /// Dispatch class (Normal, Operational, or Mandatory)
+    class: Option<String>,
 }
 
 // ================================================================================================
@@ -880,6 +898,112 @@ fn extract_pays_fee_from_event_data(event_data: &[Value], is_success: bool) -> O
     }
 }
 
+/// Extract fee from TransactionFeePaid event if present
+///
+/// TransactionFeePaid event data: [who, actualFee, tip]
+/// The actualFee is the exact fee paid for the transaction
+fn extract_fee_from_transaction_paid_event(events: &[Event]) -> Option<String> {
+    for event in events {
+        // Check for System.TransactionFeePaid or TransactionPayment.TransactionFeePaid
+        // Use case-insensitive comparison since pallet names may vary in casing
+        let pallet_lower = event.method.pallet.to_lowercase();
+        let is_fee_paid = (pallet_lower == "system" || pallet_lower == "transactionpayment")
+            && event.method.method == "TransactionFeePaid";
+
+        if is_fee_paid && event.data.len() >= 2 {
+            // event.data[1] is the actualFee
+            if let Some(fee_value) = event.data.get(1) {
+                return Some(extract_number_as_string(fee_value));
+            }
+        }
+    }
+    None
+}
+
+/// Extract actual weight from DispatchInfo in event data
+///
+/// DispatchInfo contains: { weight, class, paysFee }
+/// Weight can be:
+/// - Modern format: { refTime/ref_time: "...", proofSize/proof_size: "..." }
+/// - Legacy format: a single number (just refTime)
+///
+/// For ExtrinsicSuccess: event_data = [DispatchInfo]
+/// For ExtrinsicFailed: event_data = [DispatchError, DispatchInfo]
+fn extract_weight_from_event_data(event_data: &[Value], is_success: bool) -> Option<ActualWeight> {
+    // For ExtrinsicSuccess, DispatchInfo is the first element
+    // For ExtrinsicFailed, DispatchInfo is the second element (after DispatchError)
+    let dispatch_info_index = if is_success { 0 } else { 1 };
+
+    let dispatch_info = event_data.get(dispatch_info_index)?;
+
+    // DispatchInfo should be an object with weight field
+    let weight_value = dispatch_info.get("weight")?;
+
+    match weight_value {
+        // Modern weight format: { refTime/ref_time, proofSize/proof_size }
+        Value::Object(obj) => {
+            // Try camelCase first, then snake_case
+            let ref_time = obj
+                .get("refTime")
+                .or_else(|| obj.get("ref_time"))
+                .map(|v| extract_number_as_string(v));
+            let proof_size = obj
+                .get("proofSize")
+                .or_else(|| obj.get("proof_size"))
+                .map(|v| extract_number_as_string(v));
+
+            Some(ActualWeight {
+                ref_time,
+                proof_size,
+            })
+        }
+        // Legacy weight format: single number
+        Value::Number(n) => Some(ActualWeight {
+            ref_time: Some(n.to_string()),
+            proof_size: None,
+        }),
+        Value::String(s) => {
+            // Could be a hex string or decimal string
+            let value = if s.starts_with("0x") {
+                u128::from_str_radix(s.trim_start_matches("0x"), 16)
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|_| s.clone())
+            } else {
+                s.clone()
+            };
+            Some(ActualWeight {
+                ref_time: Some(value),
+                proof_size: None,
+            })
+        }
+        _ => {
+            tracing::debug!("Unexpected weight value type: {:?}", weight_value);
+            None
+        }
+    }
+}
+
+/// Extract class from DispatchInfo in event data
+///
+/// For ExtrinsicSuccess: event_data = [DispatchInfo]
+/// For ExtrinsicFailed: event_data = [DispatchError, DispatchInfo]
+fn extract_class_from_event_data(event_data: &[Value], is_success: bool) -> Option<String> {
+    let dispatch_info_index = if is_success { 0 } else { 1 };
+    let dispatch_info = event_data.get(dispatch_info_index)?;
+    let class_value = dispatch_info.get("class")?;
+
+    match class_value {
+        Value::String(s) => Some(s.clone()),
+        Value::Object(obj) => {
+            // Might be { "name": "Normal", "values": ... } format
+            obj.get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        }
+        _ => None,
+    }
+}
+
 /// Unified transformation function that combines byte-to-hex conversion and structural transformations
 /// in a single pass through the JSON tree.
 ///
@@ -1206,6 +1330,18 @@ fn categorize_events(
                     {
                         extrinsic_outcomes[idx].pays_fee = Some(pays_fee);
                     }
+                    // Extract actual weight from DispatchInfo for fee calculation
+                    if let Some(weight) =
+                        extract_weight_from_event_data(&parsed_event.event_data, true)
+                    {
+                        extrinsic_outcomes[idx].actual_weight = Some(weight);
+                    }
+                    // Extract class from DispatchInfo
+                    if let Some(class) =
+                        extract_class_from_event_data(&parsed_event.event_data, true)
+                    {
+                        extrinsic_outcomes[idx].class = Some(class);
+                    }
                 } else if is_failed_event {
                     // success stays false
                     // Extract paysFee from DispatchInfo (second element in event data, after DispatchError)
@@ -1213,6 +1349,18 @@ fn categorize_events(
                         extract_pays_fee_from_event_data(&parsed_event.event_data, false)
                     {
                         extrinsic_outcomes[idx].pays_fee = Some(pays_fee);
+                    }
+                    // Extract actual weight from DispatchInfo for fee calculation
+                    if let Some(weight) =
+                        extract_weight_from_event_data(&parsed_event.event_data, false)
+                    {
+                        extrinsic_outcomes[idx].actual_weight = Some(weight);
+                    }
+                    // Extract class from DispatchInfo
+                    if let Some(class) =
+                        extract_class_from_event_data(&parsed_event.event_data, false)
+                    {
+                        extrinsic_outcomes[idx].class = Some(class);
                     }
                 }
             }
@@ -1257,6 +1405,91 @@ fn categorize_events(
         },
         extrinsic_outcomes,
     )
+}
+
+/// Transform fee info from payment_queryInfo RPC response into the expected format
+///
+/// The RPC returns RuntimeDispatchInfo with:
+/// - weight: either { refTime/ref_time, proofSize/proof_size } (modern) or a single number (legacy)
+/// - class: "Normal", "Operational", or "Mandatory"
+/// - partialFee: fee amount (usually as hex string from RPC)
+///
+/// We transform this to match sidecar's format with string values
+fn transform_fee_info(fee_info: Value) -> serde_json::Map<String, Value> {
+    let mut result = serde_json::Map::new();
+
+    // Extract and transform weight
+    if let Some(weight) = fee_info.get("weight") {
+        if weight.is_object() {
+            // Modern weight format: { refTime/ref_time, proofSize/proof_size }
+            // Handle both camelCase and snake_case key variants from different node versions
+            let mut weight_map = serde_json::Map::new();
+
+            // Try camelCase first, then snake_case
+            let ref_time = weight.get("refTime").or_else(|| weight.get("ref_time"));
+            let proof_size = weight.get("proofSize").or_else(|| weight.get("proof_size"));
+
+            if let Some(rt) = ref_time {
+                weight_map.insert(
+                    "refTime".to_string(),
+                    Value::String(extract_number_as_string(rt)),
+                );
+            }
+            if let Some(ps) = proof_size {
+                weight_map.insert(
+                    "proofSize".to_string(),
+                    Value::String(extract_number_as_string(ps)),
+                );
+            }
+
+            // Only insert weight if we found at least one component
+            if !weight_map.is_empty() {
+                result.insert("weight".to_string(), Value::Object(weight_map));
+            }
+        } else {
+            // Legacy weight format: single number
+            result.insert(
+                "weight".to_string(),
+                Value::String(extract_number_as_string(weight)),
+            );
+        }
+    }
+
+    // Extract class (should be a string like "Normal", "Operational", "Mandatory")
+    if let Some(class) = fee_info.get("class") {
+        result.insert("class".to_string(), class.clone());
+    }
+
+    // Extract partialFee and convert to string
+    if let Some(partial_fee) = fee_info.get("partialFee") {
+        result.insert(
+            "partialFee".to_string(),
+            Value::String(extract_number_as_string(partial_fee)),
+        );
+    }
+
+    result
+}
+
+/// Extract a number from a JSON value and return it as a string
+/// Handles: numbers, hex strings (0x...), and string numbers
+fn extract_number_as_string(value: &Value) -> String {
+    match value {
+        Value::Number(n) => n.to_string(),
+        Value::String(s) => {
+            if s.starts_with("0x") {
+                // Convert hex to decimal
+                if let Ok(n) = u128::from_str_radix(s.trim_start_matches("0x"), 16) {
+                    n.to_string()
+                } else {
+                    s.clone()
+                }
+            } else {
+                s.clone()
+            }
+        }
+        _ => "0".to_string(),
+    }
 }
 
 // ================================================================================================
@@ -1534,8 +1767,10 @@ async fn extract_extrinsics(
             )
         };
 
-        let hash_bytes = BlakeTwo256::hash(extrinsic.bytes());
+        let extrinsic_bytes = extrinsic.bytes();
+        let hash_bytes = BlakeTwo256::hash(extrinsic_bytes);
         let hash = format!("0x{}", hex::encode(hash_bytes.as_ref()));
+        let raw_hex = format!("0x{}", hex::encode(extrinsic_bytes));
 
         // Initialize pays_fee based on whether the extrinsic is signed:
         // - Unsigned extrinsics (inherents) never pay fees → Some(false)
@@ -1553,11 +1788,12 @@ async fn extract_extrinsics(
             args: args_map,
             tip,
             hash,
-            info: serde_json::Map::new(), // Empty for now, populated with events later
+            info: serde_json::Map::new(), // Empty for now, populated with fee info later
             era: era_info,
             events: Vec::new(), // Will be populated with events during categorization
             success: false,     // Will be set to true if ExtrinsicSuccess event is found
             pays_fee,           // Will be updated from DispatchInfo for signed extrinsics
+            raw_hex,            // Used for fee queries
         });
     }
 
@@ -1647,14 +1883,15 @@ pub async fn get_block(
         categorize_events(block_events, extrinsics.len());
 
     // Populate each extrinsic with its events and outcome (success, paysFee)
+    // Keep outcomes available for fee calculation
     let mut extrinsics_with_events = extrinsics;
     for (i, (extrinsic_events, outcome)) in per_extrinsic_events
-        .into_iter()
-        .zip(extrinsic_outcomes.into_iter())
+        .iter()
+        .zip(extrinsic_outcomes.iter())
         .enumerate()
     {
         if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            extrinsic.events = extrinsic_events;
+            extrinsic.events = extrinsic_events.clone();
             extrinsic.success = outcome.success;
             // Only update pays_fee from events if the extrinsic is SIGNED.
             // Unsigned extrinsics (inherents) never pay fees, regardless of what
@@ -1663,6 +1900,151 @@ pub async fn get_block(
             // inherents are inserted by block authors and don't actually pay fees.
             if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
                 extrinsic.pays_fee = outcome.pays_fee;
+            }
+        }
+    }
+
+    // Get runtime version at this block for fee calculation decisions
+    let spec_version = state
+        .get_runtime_version_at_hash(&resolved_block.hash)
+        .await
+        .ok()
+        .and_then(|v| v.get("specVersion").and_then(|sv| sv.as_u64()))
+        .map(|v| v as u32)
+        .unwrap_or(state.chain_info.spec_version);
+
+    // Query fee info for signed extrinsics that pay fees
+    // Priority: TransactionFeePaid event > queryFeeDetails + calc > queryInfo
+    // Fees are queried at the parent block hash (pre-dispatch state)
+    for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
+        // Only query fees for signed extrinsics that pay fees
+        // pays_fee is Some(true) for signed extrinsics after event processing
+        if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
+            // Priority 1: Check for TransactionFeePaid event (gives exact fee)
+            if let Some(fee_from_event) = extract_fee_from_transaction_paid_event(&extrinsic.events)
+            {
+                let mut info = serde_json::Map::new();
+
+                // Include weight from outcome (from ExtrinsicSuccess/ExtrinsicFailed event)
+                if let Some(outcome) = extrinsic_outcomes.get(i) {
+                    if let Some(ref actual_weight) = outcome.actual_weight {
+                        let mut weight_map = serde_json::Map::new();
+                        if let Some(ref ref_time) = actual_weight.ref_time {
+                            weight_map
+                                .insert("refTime".to_string(), Value::String(ref_time.clone()));
+                        }
+                        if let Some(ref proof_size) = actual_weight.proof_size {
+                            weight_map
+                                .insert("proofSize".to_string(), Value::String(proof_size.clone()));
+                        }
+                        if !weight_map.is_empty() {
+                            info.insert("weight".to_string(), Value::Object(weight_map));
+                        }
+                    }
+                    // Include class from outcome
+                    if let Some(ref class) = outcome.class {
+                        info.insert("class".to_string(), Value::String(class.clone()));
+                    }
+                }
+
+                info.insert("partialFee".to_string(), Value::String(fee_from_event));
+                info.insert("kind".to_string(), Value::String("fromEvent".to_string()));
+                extrinsic.info = info;
+                continue;
+            }
+
+            // Priority 2: Try queryFeeDetails + calc_partial_fee (most accurate)
+            let actual_weight = extrinsic_outcomes
+                .get(i)
+                .and_then(|o| o.actual_weight.as_ref())
+                .and_then(|w| w.ref_time.clone());
+
+            if let Some(actual_weight_str) = actual_weight {
+                // Check if queryFeeDetails is available for this spec version
+                let use_fee_details = state
+                    .fee_details_cache
+                    .is_available(&state.chain_info.spec_name, spec_version)
+                    .unwrap_or(true); // Default to trying if unknown
+
+                if use_fee_details {
+                    // Try queryFeeDetails
+                    match state
+                        .query_fee_details(&extrinsic.raw_hex, &parent_hash)
+                        .await
+                    {
+                        Ok(fee_details_response) => {
+                            // Mark as available in cache
+                            state.fee_details_cache.set_available(spec_version, true);
+
+                            if let Some(fee_details) =
+                                utils::parse_fee_details(&fee_details_response)
+                            {
+                                // Get estimated weight from queryInfo
+                                if let Ok(query_info) =
+                                    state.query_fee_info(&extrinsic.raw_hex, &parent_hash).await
+                                {
+                                    if let Some(estimated_weight) =
+                                        utils::extract_estimated_weight(&query_info)
+                                    {
+                                        // Calculate accurate fee
+                                        match utils::calculate_accurate_fee(
+                                            &fee_details,
+                                            &estimated_weight,
+                                            &actual_weight_str,
+                                        ) {
+                                            Ok(partial_fee) => {
+                                                let mut info = transform_fee_info(query_info);
+                                                info.insert(
+                                                    "partialFee".to_string(),
+                                                    Value::String(partial_fee),
+                                                );
+                                                info.insert(
+                                                    "kind".to_string(),
+                                                    Value::String("calculated".to_string()),
+                                                );
+                                                extrinsic.info = info;
+                                                continue;
+                                            }
+                                            Err(e) => {
+                                                tracing::debug!(
+                                                    "Failed to calculate fee for extrinsic {}: {}",
+                                                    extrinsic.hash,
+                                                    e
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            // queryFeeDetails not available - mark in cache
+                            tracing::debug!(
+                                "queryFeeDetails not available for spec {}: {}",
+                                spec_version,
+                                e
+                            );
+                            state.fee_details_cache.set_available(spec_version, false);
+                        }
+                    }
+                }
+            }
+
+            // Priority 3: Fall back to queryInfo (pre-dispatch estimation)
+            match state.query_fee_info(&extrinsic.raw_hex, &parent_hash).await {
+                Ok(fee_info) => {
+                    let mut info = transform_fee_info(fee_info);
+                    info.insert("kind".to_string(), Value::String("queryInfo".to_string()));
+                    extrinsic.info = info;
+                }
+                Err(e) => {
+                    // Log the error but don't fail the request - just leave info empty
+                    tracing::warn!(
+                        "Failed to query fee info for extrinsic {}: {}",
+                        extrinsic.hash,
+                        e
+                    );
+                }
             }
         }
     }
@@ -1719,6 +2101,7 @@ mod tests {
             legacy_rpc,
             rpc_client,
             chain_info,
+            fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
         }
     }
 
