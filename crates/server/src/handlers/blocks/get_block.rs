@@ -1645,9 +1645,16 @@ async fn extract_extrinsics(
             let signer_ss58 = decode_address_to_ss58(&signer_hex, state.chain_info.ss58_prefix)
                 .unwrap_or_else(|| signer_hex.clone());
 
+            // Strip the signature type prefix byte (0x00=Ed25519, 0x01=Sr25519, 0x02=Ecdsa)
+            let signature_without_type_prefix = if sig_bytes.len() > 1 {
+                &sig_bytes[1..]
+            } else {
+                sig_bytes
+            };
+
             (
                 Some(SignatureInfo {
-                    signature: format!("0x{}", hex::encode(sig_bytes)),
+                    signature: format!("0x{}", hex::encode(signature_without_type_prefix)),
                     signer: SignerId { id: signer_ss58 },
                 }),
                 era_info,
