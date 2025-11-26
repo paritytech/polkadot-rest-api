@@ -345,14 +345,26 @@ fn snake_to_camel(s: &str) -> Cow<'_, str> {
     Cow::Owned(result)
 }
 
-/// Convert to camelCase with lowercase first character
-/// Handles both PascalCase (e.g., "Balances" -> "balances") and snake_case (e.g., "set_code" -> "setCode")
+/// Convert to lowerCamelCase: snake_case → camelCase, then lowercase first character
+/// Used for pallet and method names (e.g., "set_validation_data" → "setValidationData")
 fn to_lower_camel_case(s: &str) -> String {
     // First convert snake_case to camelCase
     let camel = snake_to_camel(s);
 
     // Then lowercase the first character
     let mut chars = camel.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+    }
+}
+
+/// Convert to lowerCamelCase by only lowercasing the first character
+/// This preserves snake_case names (e.g., "inbound_messages_data" stays unchanged)
+/// while converting PascalCase to lowerCamelCase (e.g., "PreRuntime" → "preRuntime")
+/// Used for SCALE enum variant names which should preserve their original casing
+fn lowercase_first_char(s: &str) -> String {
+    let mut chars = s.chars();
     match chars.next() {
         None => String::new(),
         Some(first) => first.to_lowercase().chain(chars).collect(),
@@ -887,7 +899,9 @@ fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
         }
         Value::Array(arr) => {
             // Check if this is a byte array (all elements are numbers 0-255)
-            let is_byte_array = !arr.is_empty()
+            // Require at least 2 elements - single-element arrays are typically newtype wrappers
+            // (e.g., ValidatorIndex(32) -> [32]), not actual byte data
+            let is_byte_array = arr.len() > 1
                 && arr.iter().all(|v| match v {
                     Value::Number(n) => n.as_u64().is_some_and(|val| val <= 255),
                     _ => false,
@@ -953,12 +967,18 @@ fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
                 };
 
                 if is_empty {
+                    // Special case: "None" variant should serialize as JSON null
+                    if name == "None" {
+                        return Value::Null;
+                    }
                     return Value::String(name.clone());
                 }
 
-                // For args (when ss58_prefix is Some), transform to {"<lowercase_name>": <transformed_values>}
+                // For args (when ss58_prefix is Some), transform to {"<name>": <transformed_values>}
                 if ss58_prefix.is_some() {
-                    let key = name.to_lowercase();
+                    // Only lowercase the first letter for CamelCase names (e.g., "PreRuntime" -> "preRuntime")
+                    // Keep snake_case names as-is (e.g., "inbound_messages_data" stays unchanged)
+                    let key = lowercase_first_char(name);
                     let transformed_value = transform_json_unified(values.clone(), ss58_prefix);
 
                     let mut result = serde_json::Map::new();
@@ -988,6 +1008,7 @@ fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
             {
                 return Value::String(ss58_addr);
             }
+
             Value::String(s)
         }
         other => other,
@@ -1290,7 +1311,9 @@ async fn extract_extrinsics(
 
         for field in fields.iter() {
             let field_name = field.name();
-            let camel_field_name = snake_to_camel(field_name).into_owned();
+            // Keep field names as-is (snake_case from SCALE metadata)
+            // Only nested object keys are transformed to camelCase via transform_json_unified
+            let field_key = field_name.to_string();
 
             // Use the visitor pattern to get type information
             // This definitively detects AccountId32 fields by their actual type!
@@ -1322,11 +1345,11 @@ async fn extract_extrinsics(
 
                 if let Ok(account_bytes) = field.decode_as::<[u8; 32]>() {
                     let ss58 = bytes_to_ss58(&account_bytes);
-                    args_map.insert(camel_field_name.clone(), json!(ss58));
+                    args_map.insert(field_key.clone(), json!(ss58));
                     decoded_account = true;
                 } else if let Ok(accounts) = field.decode_as::<Vec<[u8; 32]>>() {
                     let ss58_addresses: Vec<String> = accounts.iter().map(&bytes_to_ss58).collect();
-                    args_map.insert(camel_field_name.clone(), json!(ss58_addresses));
+                    args_map.insert(field_key.clone(), json!(ss58_addresses));
                     decoded_account = true;
                 } else if let Ok(multi_addr) = field.decode_as::<MultiAddress>() {
                     let value = match multi_addr {
@@ -1341,7 +1364,7 @@ async fn extract_extrinsics(
                             json!({ "address20": format!("0x{}", hex::encode(bytes)) })
                         }
                     };
-                    args_map.insert(camel_field_name.clone(), value);
+                    args_map.insert(field_key.clone(), value);
                     decoded_account = true;
                 }
 
@@ -1358,7 +1381,7 @@ async fn extract_extrinsics(
                     // Single-pass transformation: combines byte-to-hex, snake_case, enum simplification, and SS58 decoding
                     let transformed =
                         transform_json_unified(json_value, Some(state.chain_info.ss58_prefix));
-                    args_map.insert(camel_field_name, transformed);
+                    args_map.insert(field_key, transformed);
                 }
                 Err(e) => {
                     tracing::warn!(
