@@ -43,6 +43,7 @@ jobs:
         run: |
           mkdir -p artifacts
           RUST_LOG=info ./target/release/polkadot-rest-api > server.log 2>&1 &
+          echo $! > server.pid
 
       - name: Wait for server to be ready
         env:
@@ -54,19 +55,24 @@ jobs:
           for attempt in $(seq 1 $MAX_RETRIES); do
             echo "Waiting for server to be ready (attempt $attempt/$MAX_RETRIES)..."
             for i in $(seq 1 $WAIT_PER_ATTEMPT); do
-              if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              if curl -sf http://localhost:8080/v1/health > /dev/null 2>&1; then
                 echo "✓ Server ready after ${i}s"
                 exit 0
               fi
-              [ $((i % 15)) -eq 0 ] && echo "  Waiting... ${i}/${WAIT_PER_ATTEMPT}s"
+              [ $((i % 15)) -eq 0 ] && echo "  Attempt $i/${WAIT_PER_ATTEMPT}: API not ready yet, retrying in 1s..."
               sleep 1
             done
             
             if [ $attempt -lt $MAX_RETRIES ]; then
               echo "✗ Server not ready after ${WAIT_PER_ATTEMPT}s, retrying..."
+              if [ -f server.pid ]; then
+                kill $(cat server.pid) 2>/dev/null || true
+                rm server.pid
+              fi
               pkill -f polkadot-rest-api || true
               sleep 2
               RUST_LOG=info ./target/release/polkadot-rest-api > server.log 2>&1 &
+              echo $! > server.pid
               sleep 5
             fi
           done
@@ -96,6 +102,10 @@ jobs:
       - name: Stop server
         if: always()
         run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) 2>/dev/null || true
+            rm server.pid
+          fi
           pkill -f polkadot-rest-api || true
 
       - name: Upload benchmark results
