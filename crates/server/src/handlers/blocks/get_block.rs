@@ -2020,24 +2020,24 @@ pub async fn get_block(
                                     }
                                 };
 
-                                if let Some((query_info, estimated_weight)) = query_info_result {
-                                    if let Ok(partial_fee) = utils::calculate_accurate_fee(
+                                if let Some((query_info, estimated_weight)) = query_info_result
+                                    && let Ok(partial_fee) = utils::calculate_accurate_fee(
                                         &fee_details,
                                         &estimated_weight,
                                         &actual_weight_str,
-                                    ) {
-                                        let mut info = transform_fee_info(query_info);
-                                        info.insert(
-                                            "partialFee".to_string(),
-                                            Value::String(partial_fee),
-                                        );
-                                        info.insert(
-                                            "kind".to_string(),
-                                            Value::String("postDispatch".to_string()),
-                                        );
-                                        extrinsic.info = info;
-                                        continue;
-                                    }
+                                    )
+                                {
+                                    let mut info = transform_fee_info(query_info);
+                                    info.insert(
+                                        "partialFee".to_string(),
+                                        Value::String(partial_fee),
+                                    );
+                                    info.insert(
+                                        "kind".to_string(),
+                                        Value::String("postDispatch".to_string()),
+                                    );
+                                    extrinsic.info = info;
+                                    continue;
                                 }
                             }
                         }
