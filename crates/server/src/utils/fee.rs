@@ -36,6 +36,84 @@ pub enum FeeServiceError {
 }
 
 // ================================================================================================
+// Runtime Dispatch Info Types
+// ================================================================================================
+
+/// Raw runtime dispatch info from TransactionPaymentApi_query_info
+///
+/// This is the decoded response from calling the `TransactionPaymentApi_query_info`
+/// runtime API via `state_call`. It contains fee estimation data for an extrinsic.
+#[derive(Debug, Clone)]
+pub struct RuntimeDispatchInfoRaw {
+    /// Weight consumed by the extrinsic
+    pub weight: WeightRaw,
+    /// Dispatch class (Normal, Operational, or Mandatory)
+    pub class: String,
+    /// Partial fee (pre-dispatch estimation)
+    pub partial_fee: u128,
+}
+
+impl RuntimeDispatchInfoRaw {
+    /// Convert to JSON Value matching the format of payment_queryInfo RPC response
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "weight": self.weight.to_json(),
+            "class": self.class,
+            "partialFee": self.partial_fee.to_string()
+        })
+    }
+}
+
+/// Weight format - can be either V1 (single u64) or V2 (ref_time + proof_size)
+///
+/// Older runtimes used a single u64 for weight (V1), while modern runtimes
+/// use a two-dimensional weight with ref_time and proof_size (V2).
+#[derive(Debug, Clone)]
+pub enum WeightRaw {
+    /// Legacy weight format (pre-V2): single u64 value
+    V1(u64),
+    /// Modern weight format (V2): ref_time and proof_size components
+    V2 { ref_time: u64, proof_size: u64 },
+}
+
+impl WeightRaw {
+    /// Convert to JSON Value for API response
+    pub fn to_json(&self) -> Value {
+        match self {
+            WeightRaw::V1(w) => serde_json::json!(w.to_string()),
+            WeightRaw::V2 {
+                ref_time,
+                proof_size,
+            } => serde_json::json!({
+                "refTime": ref_time.to_string(),
+                "proofSize": proof_size.to_string()
+            }),
+        }
+    }
+
+    /// Get the ref_time value (or the single weight value for V1)
+    pub fn ref_time(&self) -> u64 {
+        match self {
+            WeightRaw::V1(w) => *w,
+            WeightRaw::V2 { ref_time, .. } => *ref_time,
+        }
+    }
+}
+
+/// Convert dispatch class byte to string representation
+///
+/// The dispatch class is encoded as a single byte in the SCALE-encoded
+/// RuntimeDispatchInfo response from the runtime API.
+pub fn dispatch_class_from_u8(class: u8) -> String {
+    match class {
+        0 => "Normal".to_string(),
+        1 => "Operational".to_string(),
+        2 => "Mandatory".to_string(),
+        _ => "Unknown".to_string(),
+    }
+}
+
+// ================================================================================================
 // Core Fee Calculation
 // ================================================================================================
 

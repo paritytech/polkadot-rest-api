@@ -1998,7 +1998,7 @@ pub async fn get_block(
                                             );
                                             info.insert(
                                                 "kind".to_string(),
-                                                Value::String("calculated".to_string()),
+                                                Value::String("postDispatch".to_string()),
                                             );
                                             extrinsic.info = info;
                                             continue;
@@ -2031,16 +2031,50 @@ pub async fn get_block(
             match state.query_fee_info(&extrinsic.raw_hex, &parent_hash).await {
                 Ok(fee_info) => {
                     let mut info = transform_fee_info(fee_info);
-                    info.insert("kind".to_string(), Value::String("queryInfo".to_string()));
+                    info.insert("kind".to_string(), Value::String("preDispatch".to_string()));
                     extrinsic.info = info;
                 }
                 Err(e) => {
-                    // Log the error but don't fail the request - just leave info empty
-                    tracing::warn!(
-                        "Failed to query fee info for extrinsic {}: {}",
-                        extrinsic.hash,
+                    // payment_queryInfo RPC failed - try runtime API directly via state_call
+                    // This works for historic blocks where the RPC wrapper might not be available
+                    tracing::debug!(
+                        "payment_queryInfo failed, trying state_call fallback: {}",
                         e
                     );
+
+                    // Convert hex string to raw bytes for the runtime API call
+                    if let Ok(extrinsic_bytes) =
+                        hex::decode(extrinsic.raw_hex.trim_start_matches("0x"))
+                    {
+                        match state
+                            .query_fee_info_via_runtime_api(&extrinsic_bytes, &parent_hash)
+                            .await
+                        {
+                            Ok(dispatch_info) => {
+                                // Transform RuntimeDispatchInfoRaw to our response format
+                                let mut info = transform_fee_info(dispatch_info.to_json());
+                                info.insert(
+                                    "kind".to_string(),
+                                    Value::String("preDispatch".to_string()),
+                                );
+                                extrinsic.info = info;
+                            }
+                            Err(runtime_api_err) => {
+                                // Both RPC and runtime API failed - log and leave info empty
+                                tracing::warn!(
+                                    "Failed to query fee info for extrinsic {} (both RPC and runtime API): RPC: {}, RuntimeAPI: {}",
+                                    extrinsic.hash,
+                                    e,
+                                    runtime_api_err
+                                );
+                            }
+                        }
+                    } else {
+                        tracing::warn!(
+                            "Failed to decode extrinsic hex for fee query: {}",
+                            extrinsic.hash
+                        );
+                    }
                 }
             }
         }
