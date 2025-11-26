@@ -1,11 +1,14 @@
 use crate::state::AppState;
 use crate::types::BlockHash;
-use crate::utils::compute_block_hash_from_header_json;
+use crate::utils::{
+    BlockInfo, RcBlockError, RcBlockResponse, compute_block_hash_from_header_json,
+    find_ah_blocks_by_rc_block,
+};
 use axum::{
     Json,
     extract::{Query, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -18,6 +21,10 @@ pub struct BlockQueryParams {
     /// When true (default), query finalized head. When false, query canonical head.
     #[serde(default = "default_finalized")]
     pub finalized: bool,
+
+    /// When true, query Asset Hub blocks by Relay Chain block number
+    #[serde(default, rename = "useRcBlock")]
+    pub use_rc_block: Option<bool>,
 }
 
 fn default_finalized() -> bool {
@@ -46,6 +53,9 @@ pub enum GetBlockHeadHeaderError {
 
     #[error("Failed to compute block hash: {0}")]
     HashComputationFailed(#[from] crate::utils::HashError),
+
+    #[error("RC block operation failed: {0}")]
+    RcBlockFailed(#[from] RcBlockError),
 }
 
 impl IntoResponse for GetBlockHeadHeaderError {
@@ -53,7 +63,8 @@ impl IntoResponse for GetBlockHeadHeaderError {
         let (status, message) = match self {
             GetBlockHeadHeaderError::HeaderFetchFailed(_)
             | GetBlockHeadHeaderError::HeaderFieldMissing(_)
-            | GetBlockHeadHeaderError::HashComputationFailed(_) => {
+            | GetBlockHeadHeaderError::HashComputationFailed(_)
+            | GetBlockHeadHeaderError::RcBlockFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -72,6 +83,7 @@ impl IntoResponse for GetBlockHeadHeaderError {
 ///
 /// Query Parameters:
 /// - `finalized` (boolean, default: true): When true, returns finalized head. When false, returns canonical head.
+/// - `useRcBlock` (boolean, optional): When true, queries Asset Hub blocks by Relay Chain block number and returns array.
 ///
 /// Optimizations:
 /// - Computes block hash locally from header data (saves 1 RPC call)
@@ -79,7 +91,21 @@ impl IntoResponse for GetBlockHeadHeaderError {
 pub async fn get_blocks_head_header(
     State(state): State<AppState>,
     Query(params): Query<BlockQueryParams>,
-) -> Result<Json<BlockHeaderResponse>, GetBlockHeadHeaderError> {
+) -> Result<Response, GetBlockHeadHeaderError> {
+    // Check if useRcBlock is enabled
+    if params.use_rc_block == Some(true) && state.has_asset_hub() {
+        return handle_rc_block_query(state, params).await;
+    }
+
+    // Standard behavior: return single block header
+    handle_standard_query(state, params).await
+}
+
+/// Handle standard query (single block header response)
+async fn handle_standard_query(
+    state: AppState,
+    params: BlockQueryParams,
+) -> Result<Response, GetBlockHeadHeaderError> {
     let (block_hash, header_json) = if params.finalized {
         let finalized_hash = state
             .legacy_rpc
@@ -150,5 +176,151 @@ pub async fn get_blocks_head_header(
         extrinsics_root,
     };
 
-    Ok(Json(response))
+    Ok(Json(response).into_response())
+}
+
+/// Handle useRcBlock query (array of Asset Hub block headers)
+async fn handle_rc_block_query(
+    state: AppState,
+    params: BlockQueryParams,
+) -> Result<Response, GetBlockHeadHeaderError> {
+    // Get Asset Hub RPC client
+    let ah_rpc_client = state.get_asset_hub_rpc_client().await?;
+
+    // Get RC block number (from finalized head or canonical head)
+    let rc_block_number = if params.finalized {
+        // Get finalized head from current connection (should be RC if useRcBlock is used)
+        let finalized_hash = state
+            .legacy_rpc
+            .chain_get_finalized_head()
+            .await
+            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
+        let header_json = state
+            .get_header_json(&format!("{:?}", finalized_hash))
+            .await
+            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
+
+        let number_hex = header_json
+            .get("number")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("number".to_string()))?;
+
+        u64::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16).map_err(
+            |_| GetBlockHeadHeaderError::HeaderFieldMissing("number (invalid format)".to_string()),
+        )?
+    } else {
+        // Get canonical head
+        let header_json = state
+            .rpc_client
+            .request::<serde_json::Value>("chain_getHeader", rpc_params![])
+            .await
+            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
+
+        let number_hex = header_json
+            .get("number")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("number".to_string()))?;
+
+        u64::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16).map_err(
+            |_| GetBlockHeadHeaderError::HeaderFieldMissing("number (invalid format)".to_string()),
+        )?
+    };
+
+    // Get RC block hash for reference
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_block_hash: Option<String> = rc_rpc_client
+        .request("chain_getBlockHash", rpc_params![rc_block_number])
+        .await
+        .map_err(|e| GetBlockHeadHeaderError::RcBlockFailed(RcBlockError::AssetHubQueryFailed(e)))?;
+    let _rc_block_hash = rc_block_hash.ok_or_else(|| {
+        GetBlockHeadHeaderError::RcBlockFailed(RcBlockError::HeaderFieldMissing(
+            format!("RC block {} not found", rc_block_number)
+        ))
+    })?;
+
+    // Get Relay Chain subxt client to query events
+    let rc_client = state.get_relay_chain_subxt_client().await?;
+    
+    // Find Asset Hub blocks corresponding to this RC block number
+    // This queries RC block events to find paraInclusion.CandidateIncluded events for Asset Hub
+    let ah_blocks = find_ah_blocks_by_rc_block(&rc_client, rc_block_number).await?;
+
+    // If no blocks found, return empty array
+    if ah_blocks.is_empty() {
+        return Ok(Json::<Vec<RcBlockResponse<BlockHeaderResponse>>>(vec![]).into_response());
+    }
+
+    // Query each Asset Hub block and build response
+    let mut results = Vec::new();
+    for ah_block in ah_blocks {
+        // Get block header from Asset Hub
+        let header_json: serde_json::Value = ah_rpc_client
+            .request("chain_getHeader", rpc_params![ah_block.hash.clone()])
+            .await
+            .map_err(|e| GetBlockHeadHeaderError::HeaderFetchFailed(e))?;
+
+        if header_json.is_null() {
+            continue;
+        }
+
+        // Extract header fields
+        let number_hex = header_json
+            .get("number")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("number".to_string()))?;
+
+        let parent_hash = header_json
+            .get("parentHash")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("parentHash".to_string()))?
+            .to_string();
+
+        let state_root = header_json
+            .get("stateRoot")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("stateRoot".to_string()))?
+            .to_string();
+
+        let extrinsics_root = header_json
+            .get("extrinsicsRoot")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                GetBlockHeadHeaderError::HeaderFieldMissing("extrinsicsRoot".to_string())
+            })?
+            .to_string();
+
+        // Build BlockHeaderResponse
+        let data = BlockHeaderResponse {
+            number: number_hex
+                .strip_prefix("0x")
+                .unwrap_or(number_hex)
+                .to_string(),
+            hash: ah_block.hash.clone(),
+            parent_hash,
+            state_root,
+            extrinsics_root,
+        };
+
+        // Extract timestamp from Asset Hub block
+        // TODO: Implement timestamp extraction using storage query
+        let ah_timestamp = "0".to_string();
+
+        // Build RcBlockResponse
+        let rc_response = RcBlockResponse {
+            at: BlockInfo {
+                hash: ah_block.hash,
+                height: number_hex
+                    .strip_prefix("0x")
+                    .unwrap_or(number_hex)
+                    .to_string(),
+            },
+            data,
+            rc_block_number: rc_block_number.to_string(),
+            ah_timestamp,
+        };
+
+        results.push(rc_response);
+    }
+
+    Ok(Json(results).into_response())
 }

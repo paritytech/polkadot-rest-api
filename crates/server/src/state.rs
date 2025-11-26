@@ -1,3 +1,4 @@
+use crate::utils::RcBlockError;
 use config::{ChainType, SidecarConfig};
 use serde_json::Value;
 use std::sync::Arc;
@@ -103,6 +104,158 @@ impl AppState {
         self.rpc_client
             .request("state_getRuntimeVersion", rpc_params![hash])
             .await
+    }
+
+    /// Check if Asset Hub connection is available in multi-chain config
+    pub fn has_asset_hub(&self) -> bool {
+        self.config
+            .substrate
+            .multi_chain_urls
+            .iter()
+            .any(|chain_url| chain_url.chain_type == ChainType::AssetHub)
+            || self.chain_info.chain_type == ChainType::AssetHub
+    }
+
+    /// Get Asset Hub RPC client from multi-chain config
+    ///
+    /// Returns the RPC client for the Asset Hub node if available.
+    /// If the primary connection is to Asset Hub, returns that client.
+    /// Otherwise, looks for Asset Hub in multi-chain URLs.
+    pub async fn get_asset_hub_rpc_client(&self) -> Result<Arc<RpcClient>, RcBlockError> {
+        // If we're already connected to Asset Hub, use that client
+        if self.chain_info.chain_type == ChainType::AssetHub {
+            return Ok(self.rpc_client.clone());
+        }
+
+        // Otherwise, look for Asset Hub in multi-chain URLs
+        let ah_url = self
+            .config
+            .substrate
+            .multi_chain_urls
+            .iter()
+            .find(|chain_url| chain_url.chain_type == ChainType::AssetHub)
+            .map(|chain_url| &chain_url.url)
+            .ok_or(RcBlockError::AssetHubNotAvailable)?;
+
+        // Create RPC client for Asset Hub
+        let ah_rpc_client = RpcClient::from_insecure_url(ah_url)
+            .await
+            .map_err(RcBlockError::AssetHubConnectionFailed)?;
+
+        Ok(Arc::new(ah_rpc_client))
+    }
+
+    /// Get Asset Hub legacy RPC methods
+    pub async fn get_asset_hub_legacy_rpc(
+        &self,
+    ) -> Result<Arc<LegacyRpcMethods<SubstrateConfig>>, RcBlockError> {
+        let ah_rpc_client = self.get_asset_hub_rpc_client().await?;
+        Ok(Arc::new(LegacyRpcMethods::new((*ah_rpc_client).clone())))
+    }
+
+    /// Get Asset Hub subxt client
+    pub async fn get_asset_hub_subxt_client(
+        &self,
+    ) -> Result<Arc<OnlineClient<SubstrateConfig>>, RcBlockError> {
+        // If we're already connected to Asset Hub, use that client
+        if self.chain_info.chain_type == ChainType::AssetHub {
+            return Ok(self.client.clone());
+        }
+
+        // Otherwise, look for Asset Hub in multi-chain URLs
+        let ah_url = self
+            .config
+            .substrate
+            .multi_chain_urls
+            .iter()
+            .find(|chain_url| chain_url.chain_type == ChainType::AssetHub)
+            .map(|chain_url| &chain_url.url)
+            .ok_or(RcBlockError::AssetHubNotAvailable)?;
+
+        // Create RPC client for Asset Hub
+        let ah_rpc_client = RpcClient::from_insecure_url(ah_url)
+            .await
+            .map_err(RcBlockError::AssetHubConnectionFailed)?;
+
+        // Create subxt client from RPC client
+        let subxt_config = SubstrateConfig::new();
+        let ah_client = OnlineClient::from_rpc_client(subxt_config, ah_rpc_client);
+
+        Ok(Arc::new(ah_client))
+    }
+
+    /// Get Relay Chain subxt client
+    pub async fn get_relay_chain_subxt_client(
+        &self,
+    ) -> Result<Arc<OnlineClient<SubstrateConfig>>, RcBlockError> {
+        // If we're already connected to Relay Chain, use that client
+        if self.chain_info.chain_type == ChainType::Relay {
+            return Ok(self.client.clone());
+        }
+
+        // Otherwise, look for Relay Chain in multi-chain URLs
+        let rc_url = self
+            .config
+            .substrate
+            .multi_chain_urls
+            .iter()
+            .find(|chain_url| chain_url.chain_type == ChainType::Relay)
+            .map(|chain_url| &chain_url.url)
+            .ok_or(RcBlockError::AssetHubNotAvailable)?;
+
+        // Create RPC client for Relay Chain
+        // Handle both secure (wss, https) and insecure (ws, http) URLs
+        let rc_rpc_client = if rc_url.starts_with("wss://") || rc_url.starts_with("https://") {
+            RpcClient::from_url(rc_url)
+                .await
+                .map_err(RcBlockError::AssetHubConnectionFailed)?
+        } else {
+            RpcClient::from_insecure_url(rc_url)
+                .await
+                .map_err(RcBlockError::AssetHubConnectionFailed)?
+        };
+
+        // Create subxt client from RPC client
+        let subxt_config = SubstrateConfig::new();
+        let rc_client = OnlineClient::from_rpc_client(subxt_config, rc_rpc_client);
+
+        Ok(Arc::new(rc_client))
+    }
+
+    /// Get Relay Chain RPC client from multi-chain config
+    ///
+    /// Returns the RPC client for the Relay Chain node if available.
+    /// If the primary connection is to Relay Chain, returns that client.
+    /// Otherwise, looks for Relay Chain in multi-chain URLs.
+    pub async fn get_relay_chain_rpc_client(&self) -> Result<Arc<RpcClient>, RcBlockError> {
+        // If we're already connected to Relay Chain, use that client
+        if self.chain_info.chain_type == ChainType::Relay {
+            return Ok(self.rpc_client.clone());
+        }
+
+        // Otherwise, look for Relay Chain in multi-chain URLs
+        let rc_url = self
+            .config
+            .substrate
+            .multi_chain_urls
+            .iter()
+            .find(|chain_url| chain_url.chain_type == ChainType::Relay)
+            .map(|chain_url| &chain_url.url)
+            .ok_or(RcBlockError::AssetHubNotAvailable)?;
+
+        // Create RPC client for Relay Chain
+        // Handle both secure (wss, https) and insecure (ws, http) URLs
+        let rc_rpc_client = if rc_url.starts_with("wss://") || rc_url.starts_with("https://") {
+            RpcClient::from_url(rc_url)
+                .await
+                .map_err(RcBlockError::AssetHubConnectionFailed)?
+        } else {
+            RpcClient::from_insecure_url(rc_url)
+                .await
+                .map_err(RcBlockError::AssetHubConnectionFailed)?
+        };
+
+        Ok(Arc::new(rc_rpc_client))
     }
 }
 
