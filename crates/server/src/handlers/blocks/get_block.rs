@@ -1979,48 +1979,60 @@ pub async fn get_block(
                             if let Some(fee_details) =
                                 utils::parse_fee_details(&fee_details_response)
                             {
-                                // Get estimated weight from queryInfo and calculate accurate fee
-                                if let Ok(query_info) =
-                                    state.query_fee_info(&extrinsic.raw_hex, &parent_hash).await
-                                    && let Some(estimated_weight) =
-                                        utils::extract_estimated_weight(&query_info)
+                                // Get estimated weight from queryInfo (try RPC first, then runtime API)
+                                let query_info_result: Option<(Value, String)> = match state
+                                    .query_fee_info(&extrinsic.raw_hex, &parent_hash)
+                                    .await
                                 {
-                                    match utils::calculate_accurate_fee(
+                                    Ok(query_info) => utils::extract_estimated_weight(&query_info)
+                                        .map(|w| (query_info, w)),
+                                    Err(_) => {
+                                        // Fall back to runtime API
+                                        if let Ok(extrinsic_bytes) =
+                                            hex::decode(extrinsic.raw_hex.trim_start_matches("0x"))
+                                        {
+                                            state
+                                                .query_fee_info_via_runtime_api(
+                                                    &extrinsic_bytes,
+                                                    &parent_hash,
+                                                )
+                                                .await
+                                                .ok()
+                                                .map(|dispatch_info| {
+                                                    let query_info = dispatch_info.to_json();
+                                                    let weight =
+                                                        dispatch_info.weight.ref_time().to_string();
+                                                    (query_info, weight)
+                                                })
+                                        } else {
+                                            None
+                                        }
+                                    }
+                                };
+
+                                if let Some((query_info, estimated_weight)) = query_info_result {
+                                    if let Ok(partial_fee) = utils::calculate_accurate_fee(
                                         &fee_details,
                                         &estimated_weight,
                                         &actual_weight_str,
                                     ) {
-                                        Ok(partial_fee) => {
-                                            let mut info = transform_fee_info(query_info);
-                                            info.insert(
-                                                "partialFee".to_string(),
-                                                Value::String(partial_fee),
-                                            );
-                                            info.insert(
-                                                "kind".to_string(),
-                                                Value::String("postDispatch".to_string()),
-                                            );
-                                            extrinsic.info = info;
-                                            continue;
-                                        }
-                                        Err(e) => {
-                                            tracing::debug!(
-                                                "Failed to calculate fee for extrinsic {}: {}",
-                                                extrinsic.hash,
-                                                e
-                                            );
-                                        }
+                                        let mut info = transform_fee_info(query_info);
+                                        info.insert(
+                                            "partialFee".to_string(),
+                                            Value::String(partial_fee),
+                                        );
+                                        info.insert(
+                                            "kind".to_string(),
+                                            Value::String("postDispatch".to_string()),
+                                        );
+                                        extrinsic.info = info;
+                                        continue;
                                     }
                                 }
                             }
                         }
-                        Err(e) => {
+                        Err(_) => {
                             // queryFeeDetails not available - mark in cache
-                            tracing::debug!(
-                                "queryFeeDetails not available for spec {}: {}",
-                                spec_version,
-                                e
-                            );
                             state.fee_details_cache.set_available(spec_version, false);
                         }
                     }
@@ -2034,14 +2046,9 @@ pub async fn get_block(
                     info.insert("kind".to_string(), Value::String("preDispatch".to_string()));
                     extrinsic.info = info;
                 }
-                Err(e) => {
+                Err(_) => {
                     // payment_queryInfo RPC failed - try runtime API directly via state_call
                     // This works for historic blocks where the RPC wrapper might not be available
-                    tracing::debug!(
-                        "payment_queryInfo failed, trying state_call fallback: {}",
-                        e
-                    );
-
                     // Convert hex string to raw bytes for the runtime API call
                     if let Ok(extrinsic_bytes) =
                         hex::decode(extrinsic.raw_hex.trim_start_matches("0x"))
@@ -2059,21 +2066,10 @@ pub async fn get_block(
                                 );
                                 extrinsic.info = info;
                             }
-                            Err(runtime_api_err) => {
-                                // Both RPC and runtime API failed - log and leave info empty
-                                tracing::warn!(
-                                    "Failed to query fee info for extrinsic {} (both RPC and runtime API): RPC: {}, RuntimeAPI: {}",
-                                    extrinsic.hash,
-                                    e,
-                                    runtime_api_err
-                                );
+                            Err(_) => {
+                                // Both RPC and runtime API failed - leave info empty
                             }
                         }
-                    } else {
-                        tracing::warn!(
-                            "Failed to decode extrinsic hex for fee query: {}",
-                            extrinsic.hash
-                        );
                     }
                 }
             }

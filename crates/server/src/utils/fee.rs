@@ -311,16 +311,32 @@ pub struct FeeDetails {
 /// }
 /// ```
 pub fn parse_fee_details(response: &Value) -> Option<FeeDetails> {
-    let inclusion_fee = response.get("inclusionFee")?;
+    // Try camelCase first, then snake_case
+    let inclusion_fee = response
+        .get("inclusionFee")
+        .or_else(|| response.get("inclusion_fee"))?;
 
     // inclusionFee can be null if the transaction doesn't pay fees
     if inclusion_fee.is_null() {
         return None;
     }
 
-    let base_fee = extract_fee_value(inclusion_fee.get("baseFee")?)?;
-    let len_fee = extract_fee_value(inclusion_fee.get("lenFee")?)?;
-    let adjusted_weight_fee = extract_fee_value(inclusion_fee.get("adjustedWeightFee")?)?;
+    // Try camelCase first, then snake_case for each field
+    let base_fee = extract_fee_value(
+        inclusion_fee
+            .get("baseFee")
+            .or_else(|| inclusion_fee.get("base_fee"))?,
+    )?;
+    let len_fee = extract_fee_value(
+        inclusion_fee
+            .get("lenFee")
+            .or_else(|| inclusion_fee.get("len_fee"))?,
+    )?;
+    let adjusted_weight_fee = extract_fee_value(
+        inclusion_fee
+            .get("adjustedWeightFee")
+            .or_else(|| inclusion_fee.get("adjusted_weight_fee"))?,
+    )?;
 
     Some(FeeDetails {
         base_fee,
@@ -361,9 +377,10 @@ pub fn extract_estimated_weight(query_info: &Value) -> Option<String> {
     let weight = query_info.get("weight")?;
 
     match weight {
-        // Modern weight format: { refTime, proofSize }
+        // Modern weight format: { refTime/ref_time, proofSize/proof_size }
         Value::Object(obj) => {
-            let ref_time = obj.get("refTime")?;
+            // Try camelCase first, then snake_case
+            let ref_time = obj.get("refTime").or_else(|| obj.get("ref_time"))?;
             extract_fee_value(ref_time)
         }
         // Legacy weight format: single number
