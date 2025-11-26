@@ -544,8 +544,8 @@ mod tests {
         let cache = QueryFeeDetailsCache::new();
 
         // Asset hub chains have unknown queryFeeDetails status (null in config)
-        assert_eq!(cache.is_available("asset-hub-polkadot", 1000), None);
         assert_eq!(cache.is_available("statemint", 1000), None);
+        assert_eq!(cache.is_available("statemine", 1000), None);
     }
 
     #[test]

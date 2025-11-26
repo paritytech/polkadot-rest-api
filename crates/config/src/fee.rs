@@ -80,23 +80,9 @@ impl ChainFeeConfigs {
 
     /// Get the fee configuration for a specific chain by spec_name
     pub fn get(&self, spec_name: &str) -> Option<&ChainFeeConfig> {
-        if let Some(config) = self.configs.get(spec_name) {
-            return Some(config);
-        }
-
-        let lowercase = spec_name.to_lowercase();
-        if let Some(config) = self.configs.get(&lowercase) {
-            return Some(config);
-        }
-
-        let mapped_name = match lowercase.as_str() {
-            "statemint" => "asset-hub-polkadot",
-            "statemine" => "asset-hub-kusama",
-            "westmint" => "asset-hub-westend",
-            _ => return None,
-        };
-
-        self.configs.get(mapped_name)
+        self.configs
+            .get(spec_name)
+            .or_else(|| self.configs.get(&spec_name.to_lowercase()))
     }
 
     /// Get the fee configuration for a chain, returning an error if not found
@@ -126,8 +112,8 @@ mod tests {
         let configs = ChainFeeConfigs::load().unwrap();
         assert!(configs.get("polkadot").is_some());
         assert!(configs.get("kusama").is_some());
-        assert!(configs.get("asset-hub-polkadot").is_some());
-        assert!(configs.get("asset-hub-kusama").is_some());
+        assert!(configs.get("statemint").is_some());
+        assert!(configs.get("statemine").is_some());
     }
 
     #[test]
@@ -165,38 +151,17 @@ mod tests {
     }
 
     #[test]
-    fn test_asset_hub_config() {
+    fn test_statemint_config() {
         let configs = ChainFeeConfigs::load().unwrap();
-        let asset_hub = configs.get("asset-hub-polkadot").unwrap();
+        let statemint = configs.get("statemint").unwrap();
 
-        assert_eq!(asset_hub.min_calc_fee_runtime, 601);
+        assert_eq!(statemint.min_calc_fee_runtime, 601);
         // queryFeeDetails status is unknown for asset hubs
-        assert_eq!(asset_hub.query_fee_details_unavailable, None);
-        assert_eq!(asset_hub.query_fee_details_available, None);
+        assert_eq!(statemint.query_fee_details_unavailable, None);
+        assert_eq!(statemint.query_fee_details_available, None);
 
         // Status should be None (unknown)
-        assert_eq!(asset_hub.query_fee_details_status(1000), None);
-    }
-
-    #[test]
-    fn test_chain_name_mapping() {
-        let configs = ChainFeeConfigs::load().unwrap();
-
-        // Statemint should map to asset-hub-polkadot
-        let statemint = configs.get("statemint").unwrap();
-        let asset_hub_polkadot = configs.get("asset-hub-polkadot").unwrap();
-        assert_eq!(
-            statemint.min_calc_fee_runtime,
-            asset_hub_polkadot.min_calc_fee_runtime
-        );
-
-        // Statemine should map to asset-hub-kusama
-        let statemine = configs.get("statemine").unwrap();
-        let asset_hub_kusama = configs.get("asset-hub-kusama").unwrap();
-        assert_eq!(
-            statemine.min_calc_fee_runtime,
-            asset_hub_kusama.min_calc_fee_runtime
-        );
+        assert_eq!(statemint.query_fee_details_status(1000), None);
     }
 
     #[test]

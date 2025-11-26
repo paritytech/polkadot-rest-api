@@ -9,6 +9,11 @@
     "queryFeeDetailsUnavailable": 2027,
     "queryFeeDetailsAvailable": 2028
   },
+  "westend": {
+    "minCalcFeeRuntime": 0,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null
+  },
   "statemint": {
     "minCalcFeeRuntime": 601,
     "queryFeeDetailsUnavailable": null,
@@ -19,22 +24,7 @@
     "queryFeeDetailsUnavailable": null,
     "queryFeeDetailsAvailable": null
   },
-  "asset-hub-polkadot": {
-    "minCalcFeeRuntime": 601,
-    "queryFeeDetailsUnavailable": null,
-    "queryFeeDetailsAvailable": null
-  },
-  "asset-hub-kusama": {
-    "minCalcFeeRuntime": 1,
-    "queryFeeDetailsUnavailable": null,
-    "queryFeeDetailsAvailable": null
-  },
-  "westend": {
-    "minCalcFeeRuntime": 0,
-    "queryFeeDetailsUnavailable": null,
-    "queryFeeDetailsAvailable": null
-  },
-  "asset-hub-westend": {
+  "westmint": {
     "minCalcFeeRuntime": 0,
     "queryFeeDetailsUnavailable": null,
     "queryFeeDetailsAvailable": null
