@@ -946,11 +946,11 @@ fn extract_weight_from_event_data(event_data: &[Value], is_success: bool) -> Opt
             let ref_time = obj
                 .get("refTime")
                 .or_else(|| obj.get("ref_time"))
-                .map(|v| extract_number_as_string(v));
+                .map(extract_number_as_string);
             let proof_size = obj
                 .get("proofSize")
                 .or_else(|| obj.get("proof_size"))
-                .map(|v| extract_number_as_string(v));
+                .map(extract_number_as_string);
 
             Some(ActualWeight {
                 ref_time,
@@ -1979,39 +1979,36 @@ pub async fn get_block(
                             if let Some(fee_details) =
                                 utils::parse_fee_details(&fee_details_response)
                             {
-                                // Get estimated weight from queryInfo
+                                // Get estimated weight from queryInfo and calculate accurate fee
                                 if let Ok(query_info) =
                                     state.query_fee_info(&extrinsic.raw_hex, &parent_hash).await
-                                {
-                                    if let Some(estimated_weight) =
+                                    && let Some(estimated_weight) =
                                         utils::extract_estimated_weight(&query_info)
-                                    {
-                                        // Calculate accurate fee
-                                        match utils::calculate_accurate_fee(
-                                            &fee_details,
-                                            &estimated_weight,
-                                            &actual_weight_str,
-                                        ) {
-                                            Ok(partial_fee) => {
-                                                let mut info = transform_fee_info(query_info);
-                                                info.insert(
-                                                    "partialFee".to_string(),
-                                                    Value::String(partial_fee),
-                                                );
-                                                info.insert(
-                                                    "kind".to_string(),
-                                                    Value::String("calculated".to_string()),
-                                                );
-                                                extrinsic.info = info;
-                                                continue;
-                                            }
-                                            Err(e) => {
-                                                tracing::debug!(
-                                                    "Failed to calculate fee for extrinsic {}: {}",
-                                                    extrinsic.hash,
-                                                    e
-                                                );
-                                            }
+                                {
+                                    match utils::calculate_accurate_fee(
+                                        &fee_details,
+                                        &estimated_weight,
+                                        &actual_weight_str,
+                                    ) {
+                                        Ok(partial_fee) => {
+                                            let mut info = transform_fee_info(query_info);
+                                            info.insert(
+                                                "partialFee".to_string(),
+                                                Value::String(partial_fee),
+                                            );
+                                            info.insert(
+                                                "kind".to_string(),
+                                                Value::String("calculated".to_string()),
+                                            );
+                                            extrinsic.info = info;
+                                            continue;
+                                        }
+                                        Err(e) => {
+                                            tracing::debug!(
+                                                "Failed to calculate fee for extrinsic {}: {}",
+                                                extrinsic.hash,
+                                                e
+                                            );
                                         }
                                     }
                                 }

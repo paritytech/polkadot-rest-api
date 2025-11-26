@@ -54,10 +54,10 @@ impl QueryFeeDetailsCache {
     /// - `None` if unknown and needs to be discovered via RPC
     pub fn is_available(&self, spec_name: &str, spec_version: u32) -> Option<bool> {
         // First, check the static config
-        if let Some(config) = self.fee_configs.get(spec_name) {
-            if let Some(status) = config.query_fee_details_status(spec_version) {
-                return Some(status);
-            }
+        if let Some(config) = self.fee_configs.get(spec_name)
+            && let Some(status) = config.query_fee_details_status(spec_version)
+        {
+            return Some(status);
         }
 
         // Check runtime cache
