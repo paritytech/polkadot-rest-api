@@ -1586,8 +1586,11 @@ async fn extract_extrinsics(
                     decoded_account = true;
                 } else if let Ok(multi_addr) = field.decode_as::<MultiAddress>() {
                     let value = match multi_addr {
-                        MultiAddress::Id(bytes) | MultiAddress::Address32(bytes) => {
-                            json!(bytes_to_ss58(&bytes))
+                        MultiAddress::Id(bytes) => {
+                            json!({ "id": bytes_to_ss58(&bytes) })
+                        }
+                        MultiAddress::Address32(bytes) => {
+                            json!({ "address32": bytes_to_ss58(&bytes) })
                         }
                         MultiAddress::Index(index) => json!({ "index": index }),
                         MultiAddress::Raw(bytes) => {
