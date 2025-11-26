@@ -930,19 +930,13 @@ fn extract_fee_from_transaction_paid_event(events: &[Event]) -> Option<String> {
 /// For ExtrinsicSuccess: event_data = [DispatchInfo]
 /// For ExtrinsicFailed: event_data = [DispatchError, DispatchInfo]
 fn extract_weight_from_event_data(event_data: &[Value], is_success: bool) -> Option<ActualWeight> {
-    // For ExtrinsicSuccess, DispatchInfo is the first element
-    // For ExtrinsicFailed, DispatchInfo is the second element (after DispatchError)
     let dispatch_info_index = if is_success { 0 } else { 1 };
-
     let dispatch_info = event_data.get(dispatch_info_index)?;
-
-    // DispatchInfo should be an object with weight field
     let weight_value = dispatch_info.get("weight")?;
 
     match weight_value {
-        // Modern weight format: { refTime/ref_time, proofSize/proof_size }
         Value::Object(obj) => {
-            // Try camelCase first, then snake_case
+            // Handle both camelCase and snake_case key variants
             let ref_time = obj
                 .get("refTime")
                 .or_else(|| obj.get("ref_time"))
@@ -1418,14 +1412,11 @@ fn categorize_events(
 fn transform_fee_info(fee_info: Value) -> serde_json::Map<String, Value> {
     let mut result = serde_json::Map::new();
 
-    // Extract and transform weight
     if let Some(weight) = fee_info.get("weight") {
         if weight.is_object() {
-            // Modern weight format: { refTime/ref_time, proofSize/proof_size }
             // Handle both camelCase and snake_case key variants from different node versions
             let mut weight_map = serde_json::Map::new();
 
-            // Try camelCase first, then snake_case
             let ref_time = weight.get("refTime").or_else(|| weight.get("ref_time"));
             let proof_size = weight.get("proofSize").or_else(|| weight.get("proof_size"));
 
@@ -1442,12 +1433,10 @@ fn transform_fee_info(fee_info: Value) -> serde_json::Map<String, Value> {
                 );
             }
 
-            // Only insert weight if we found at least one component
             if !weight_map.is_empty() {
                 result.insert("weight".to_string(), Value::Object(weight_map));
             }
         } else {
-            // Legacy weight format: single number
             result.insert(
                 "weight".to_string(),
                 Value::String(extract_number_as_string(weight)),
@@ -1455,12 +1444,10 @@ fn transform_fee_info(fee_info: Value) -> serde_json::Map<String, Value> {
         }
     }
 
-    // Extract class (should be a string like "Normal", "Operational", "Mandatory")
     if let Some(class) = fee_info.get("class") {
         result.insert("class".to_string(), class.clone());
     }
 
-    // Extract partialFee and convert to string
     if let Some(partial_fee) = fee_info.get("partialFee") {
         result.insert(
             "partialFee".to_string(),
@@ -1478,7 +1465,6 @@ fn extract_number_as_string(value: &Value) -> String {
         Value::Number(n) => n.to_string(),
         Value::String(s) => {
             if s.starts_with("0x") {
-                // Convert hex to decimal
                 if let Ok(n) = u128::from_str_radix(s.trim_start_matches("0x"), 16) {
                     n.to_string()
                 } else {
@@ -1798,12 +1784,12 @@ async fn extract_extrinsics(
             args: args_map,
             tip,
             hash,
-            info: serde_json::Map::new(), // Empty for now, populated with fee info later
+            info: serde_json::Map::new(),
             era: era_info,
-            events: Vec::new(), // Will be populated with events during categorization
-            success: false,     // Will be set to true if ExtrinsicSuccess event is found
-            pays_fee,           // Will be updated from DispatchInfo for signed extrinsics
-            raw_hex,            // Used for fee queries
+            events: Vec::new(),
+            success: false,
+            pays_fee,
+            raw_hex,
         });
     }
 
@@ -1892,8 +1878,6 @@ pub async fn get_block(
     let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
         categorize_events(block_events, extrinsics.len());
 
-    // Populate each extrinsic with its events and outcome (success, paysFee)
-    // Keep outcomes available for fee calculation
     let mut extrinsics_with_events = extrinsics;
     for (i, (extrinsic_events, outcome)) in per_extrinsic_events
         .iter()
@@ -1914,7 +1898,6 @@ pub async fn get_block(
         }
     }
 
-    // Get runtime version at this block for fee calculation decisions
     let spec_version = state
         .get_runtime_version_at_hash(&resolved_block.hash)
         .await
@@ -1923,19 +1906,13 @@ pub async fn get_block(
         .map(|v| v as u32)
         .unwrap_or(state.chain_info.spec_version);
 
-    // Query fee info for signed extrinsics that pay fees
-    // Priority: TransactionFeePaid event > queryFeeDetails + calc > queryInfo
-    // Fees are queried at the parent block hash (pre-dispatch state)
+    // Fee priority: TransactionFeePaid event > queryFeeDetails + calc > queryInfo
     for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
-        // Only query fees for signed extrinsics that pay fees
-        // pays_fee is Some(true) for signed extrinsics after event processing
         if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
-            // Priority 1: Check for TransactionFeePaid event (gives exact fee)
             if let Some(fee_from_event) = extract_fee_from_transaction_paid_event(&extrinsic.events)
             {
                 let mut info = serde_json::Map::new();
 
-                // Include weight from outcome (from ExtrinsicSuccess/ExtrinsicFailed event)
                 if let Some(outcome) = extrinsic_outcomes.get(i) {
                     if let Some(ref actual_weight) = outcome.actual_weight {
                         let mut weight_map = serde_json::Map::new();
@@ -1951,7 +1928,6 @@ pub async fn get_block(
                             info.insert("weight".to_string(), Value::Object(weight_map));
                         }
                     }
-                    // Include class from outcome
                     if let Some(ref class) = outcome.class {
                         info.insert("class".to_string(), Value::String(class.clone()));
                     }
@@ -1970,20 +1946,17 @@ pub async fn get_block(
                 .and_then(|w| w.ref_time.clone());
 
             if let Some(actual_weight_str) = actual_weight {
-                // Check if queryFeeDetails is available for this spec version
                 let use_fee_details = state
                     .fee_details_cache
                     .is_available(&state.chain_info.spec_name, spec_version)
-                    .unwrap_or(true); // Default to trying if unknown
+                    .unwrap_or(true);
 
                 if use_fee_details {
-                    // Try queryFeeDetails
                     match state
                         .query_fee_details(&extrinsic.raw_hex, &parent_hash)
                         .await
                     {
                         Ok(fee_details_response) => {
-                            // Mark as available in cache
                             state.fee_details_cache.set_available(spec_version, true);
 
                             if let Some(fee_details) =
@@ -2042,7 +2015,6 @@ pub async fn get_block(
                             }
                         }
                         Err(_) => {
-                            // queryFeeDetails not available - mark in cache
                             state.fee_details_cache.set_available(spec_version, false);
                         }
                     }
@@ -2057,29 +2029,16 @@ pub async fn get_block(
                     extrinsic.info = info;
                 }
                 Err(_) => {
-                    // payment_queryInfo RPC failed - try runtime API directly via state_call
-                    // This works for historic blocks where the RPC wrapper might not be available
-                    // Convert hex string to raw bytes for the runtime API call
+                    // RPC failed - try runtime API for historic blocks
                     if let Ok(extrinsic_bytes) =
                         hex::decode(extrinsic.raw_hex.trim_start_matches("0x"))
-                    {
-                        match state
+                        && let Ok(dispatch_info) = state
                             .query_fee_info_via_runtime_api(&extrinsic_bytes, &parent_hash)
                             .await
-                        {
-                            Ok(dispatch_info) => {
-                                // Transform RuntimeDispatchInfoRaw to our response format
-                                let mut info = transform_fee_info(dispatch_info.to_json());
-                                info.insert(
-                                    "kind".to_string(),
-                                    Value::String("preDispatch".to_string()),
-                                );
-                                extrinsic.info = info;
-                            }
-                            Err(_) => {
-                                // Both RPC and runtime API failed - leave info empty
-                            }
-                        }
+                    {
+                        let mut info = transform_fee_info(dispatch_info.to_json());
+                        info.insert("kind".to_string(), Value::String("preDispatch".to_string()));
+                        extrinsic.info = info;
                     }
                 }
             }

@@ -223,20 +223,16 @@ impl AppState {
         extrinsic_bytes: &[u8],
         block_hash: &str,
     ) -> Result<RuntimeDispatchInfoRaw, subxt_rpcs::Error> {
-        // Encode the parameters: extrinsic bytes followed by length
         let mut params = extrinsic_bytes.to_vec();
         let len = extrinsic_bytes.len() as u32;
         len.encode_to(&mut params);
 
-        // Convert to hex string with 0x prefix
         let params_hex = format!("0x{}", hex::encode(&params));
 
-        // Call the runtime API
         let result_hex: String = self
             .state_call("TransactionPaymentApi_query_info", &params_hex, block_hash)
             .await?;
 
-        // Decode the result - strip 0x prefix and decode from hex
         let result_bytes = hex::decode(result_hex.trim_start_matches("0x")).map_err(|e| {
             subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -253,7 +249,6 @@ impl AppState {
                 <(u64, u8, u128)>::decode(&mut &result_bytes[..])
             && class <= 2
         {
-            // Validate class is in valid range (0=Normal, 1=Operational, 2=Mandatory)
             return Ok(RuntimeDispatchInfoRaw {
                 weight: WeightRaw::V1(weight),
                 class: dispatch_class_from_u8(class),

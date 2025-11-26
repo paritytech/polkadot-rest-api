@@ -209,7 +209,6 @@ pub fn calc_partial_fee_raw(
     let adjusted_weight_fee =
         Perbill::from_rational(estimated_weight, actual_weight) * adjusted_weight_fee;
 
-    // Add the fee components together to get the partial/inclusion fee
     base_fee
         .saturating_add(len_fee)
         .saturating_add(adjusted_weight_fee)
