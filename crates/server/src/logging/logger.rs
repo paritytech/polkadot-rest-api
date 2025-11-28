@@ -95,18 +95,19 @@ pub fn init_with_config(config: LoggingConfig) -> Result<(), LoggingError> {
     let loki_url = config.loki_url;
     // Create filter from level
     // Resolve "http" log level to "debug" for the filter
-      let filter_level = if level == "http" {
-      // Translate to target filter
-      "info,http=debug"
+    let filter_level = if level == "http" {
+        // Translate to target filter
+        "info,http=debug"
     } else {
-      // Standard level
+        // Standard level
         level
     };
 
-    let filter = EnvFilter::try_new(filter_level).map_err(|source| LoggingError::InvalidLogLevel {
-        level: level.to_string(),
-        source,
-    })?;
+    let filter =
+        EnvFilter::try_new(filter_level).map_err(|source| LoggingError::InvalidLogLevel {
+            level: level.to_string(),
+            source,
+        })?;
 
     // Build the subscriber based on config
     let registry = tracing_subscriber::registry();
