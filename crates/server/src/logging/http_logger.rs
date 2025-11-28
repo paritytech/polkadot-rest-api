@@ -37,7 +37,7 @@ pub async fn http_logger_middleware(req: Request, next: Next) -> Response {
     // Emit tracing event based on status code
     match status_code {
         200..=399 => {
-            tracing::info!(
+            tracing::debug!(
                 target: "http",
                 method = %method,
                 path = %full_path,

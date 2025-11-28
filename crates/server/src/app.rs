@@ -33,8 +33,9 @@ pub fn create_app(state: AppState) -> Router {
         app = app.merge(routes::metrics::routes());
     }
 
-    app.layer(CorsLayer::permissive())
+    app
         .layer(middleware::from_fn(http_logger_middleware))
+        .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .layer(RequestBodyLimitLayer::new(request_limit))
         .with_state(state)
