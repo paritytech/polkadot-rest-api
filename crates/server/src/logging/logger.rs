@@ -94,7 +94,13 @@ pub fn init_with_config(config: LoggingConfig) -> Result<(), LoggingError> {
     let write_max_files = config.write_max_files;
     let loki_url = config.loki_url;
     // Create filter from level
-    let filter = EnvFilter::try_new(level).map_err(|source| LoggingError::InvalidLogLevel {
+    // Resolve "http" log level to "info" for the filter
+    let filter_level = if level.eq_ignore_ascii_case("http") {
+        "info"
+    } else {
+        level
+    };
+    let filter = EnvFilter::try_new(filter_level).map_err(|source| LoggingError::InvalidLogLevel {
         level: level.to_string(),
         source,
     })?;

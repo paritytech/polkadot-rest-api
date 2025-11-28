@@ -1,4 +1,4 @@
-use server::{app, logging, state};
+use server::{app, state, logging};
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use thiserror::Error;
@@ -89,7 +89,7 @@ async fn main() -> Result<(), MainError> {
         );
     }
 
-    tracing::info!("Starting server on {}", addr);
+    tracing::warn!("Starting server on {}", addr);
     tracing::info!("Log level: {}", log_level);
     if log_write {
         tracing::info!("File logging enabled: {}/logs.log", log_write_path);

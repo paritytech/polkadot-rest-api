@@ -1,4 +1,4 @@
-use crate::{routes, state::AppState};
+use crate::{logging::http_logger_middleware, routes, state::AppState};
 use axum::{Router, middleware};
 use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
 
@@ -34,6 +34,7 @@ pub fn create_app(state: AppState) -> Router {
     }
 
     app.layer(CorsLayer::permissive())
+        .layer(middleware::from_fn(http_logger_middleware))
         .layer(TraceLayer::new_for_http())
         .layer(RequestBodyLimitLayer::new(request_limit))
         .with_state(state)
