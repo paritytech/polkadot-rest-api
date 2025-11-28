@@ -1914,19 +1914,16 @@ pub async fn get_block(
                 let mut info = serde_json::Map::new();
 
                 if let Some(outcome) = extrinsic_outcomes.get(i) {
-                    if let Some(ref actual_weight) = outcome.actual_weight {
-                        let mut weight_map = serde_json::Map::new();
-                        if let Some(ref ref_time) = actual_weight.ref_time {
-                            weight_map
-                                .insert("refTime".to_string(), Value::String(ref_time.clone()));
-                        }
-                        if let Some(ref proof_size) = actual_weight.proof_size {
-                            weight_map
-                                .insert("proofSize".to_string(), Value::String(proof_size.clone()));
-                        }
-                        if !weight_map.is_empty() {
-                            info.insert("weight".to_string(), Value::Object(weight_map));
-                        }
+                    if let Some(ref actual_weight) = outcome.actual_weight
+                        && let Some(ref ref_time) = actual_weight.ref_time
+                    {
+                        // V1 weight: just a string, V2 weight: object with refTime and proofSize
+                        let weight_value = if let Some(ref proof_size) = actual_weight.proof_size {
+                            json!({ "refTime": ref_time, "proofSize": proof_size })
+                        } else {
+                            Value::String(ref_time.clone())
+                        };
+                        info.insert("weight".to_string(), weight_value);
                     }
                     if let Some(ref class) = outcome.class {
                         info.insert("class".to_string(), Value::String(class.clone()));
