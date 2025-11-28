@@ -89,7 +89,7 @@ async fn main() -> Result<(), MainError> {
         );
     }
 
-    tracing::warn!("Starting server on {}", addr);
+    tracing::info!("Starting server on {}", addr);
     tracing::info!("Log level: {}", log_level);
     if log_write {
         tracing::info!("File logging enabled: {}/logs.log", log_write_path);
