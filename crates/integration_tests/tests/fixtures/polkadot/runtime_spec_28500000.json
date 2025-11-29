@@ -1,0 +1,24 @@
+{
+	"at": {
+		"height": "28500000",
+		"hash": "0xc81393d2525d811740f3dbea75461babdf60a5c3cf266200eaaa6e3ff3eafe0e"
+	},
+	"authoringVersion": "0",
+	"transactionVersion": "26",
+	"implVersion": "0",
+	"specName": "polkadot",
+	"specVersion": "2000000",
+	"chainType": {
+		"live": null
+	},
+	"properties": {
+		"isEthereum": false,
+		"ss58Format": "0",
+		"tokenDecimals": [
+			"10"
+		],
+		"tokenSymbol": [
+			"DOT"
+		]
+	}
+}
