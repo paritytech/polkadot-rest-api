@@ -3,6 +3,7 @@ use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use subxt_rpcs::client::rpc_params;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -18,6 +19,9 @@ pub enum GetSpecError {
 
     #[error("Failed to get system properties")]
     SystemPropertiesFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Failed to get system chain type")]
+    SystemChainTypeFailed(#[source] subxt_rpcs::Error),
 }
 
 impl IntoResponse for GetSpecError {
@@ -77,10 +81,20 @@ pub async fn runtime_spec(
     let block_hash_str = resolved_block.hash;
     let block_height = resolved_block.number.to_string();
 
-    let runtime_version = state
-        .get_runtime_version_at_hash(&block_hash_str)
-        .await
-        .map_err(GetSpecError::RuntimeVersionFailed)?;
+    // Execute RPC calls in parallel
+    // TODO: Once subxt-rpcs v0.50.0 is released, replace the direct RPC request
+    // with `state.legacy_rpc.system_chain_type()` for type-safe access.
+    let (runtime_version_result, properties_result, chain_type_result) = tokio::join!(
+        state.get_runtime_version_at_hash(&block_hash_str),
+        state.legacy_rpc.system_properties(),
+        state
+            .rpc_client
+            .request::<Value>("system_chainType", rpc_params![]),
+    );
+
+    let runtime_version = runtime_version_result.map_err(GetSpecError::RuntimeVersionFailed)?;
+    let properties = properties_result.map_err(GetSpecError::SystemPropertiesFailed)?;
+    let chain_type = chain_type_result.map_err(GetSpecError::SystemChainTypeFailed)?;
 
     let spec_name = runtime_version
         .get("specName")
@@ -111,19 +125,6 @@ pub async fn runtime_spec(
         .and_then(|v| v.as_u64())
         .unwrap_or(0)
         .to_string();
-
-    let properties = state
-        .legacy_rpc
-        .system_properties()
-        .await
-        .map_err(GetSpecError::SystemPropertiesFailed)?;
-
-    // TODO: system_chain_type is not available in LegacyRpcMethods
-    // Need to find the correct RPC method or use a different approach
-    // For now, default to "live"
-    let chain_type = serde_json::json!({
-        "live": null
-    });
 
     let response = RuntimeSpecResponse {
         at: BlockInfo {
@@ -203,6 +204,9 @@ mod tests {
                     "tokenSymbol": ["DOT"]
                 }))
             })
+            .method_handler("system_chainType", async |_params| {
+                MockJson(json!({ "Live": null }))
+            })
             .build();
 
         let state = create_test_state_with_mock(mock_client);
@@ -217,6 +221,7 @@ mod tests {
         assert_eq!(response.spec_name, "polkadot");
         assert_eq!(response.spec_version, "9430");
         assert_eq!(response.transaction_version, "24");
+        assert_eq!(response.chain_type, json!({ "Live": null }));
     }
 
     #[tokio::test]
@@ -244,6 +249,9 @@ mod tests {
                     "tokenDecimals": [12],
                     "tokenSymbol": ["KSM"]
                 }))
+            })
+            .method_handler("system_chainType", async |_params| {
+                MockJson(json!({ "Live": null }))
             })
             .build();
 
@@ -288,6 +296,9 @@ mod tests {
                     "tokenSymbol": ["WND"]
                 }))
             })
+            .method_handler("system_chainType", async |_params| {
+                MockJson(json!({ "Development": null }))
+            })
             .build();
 
         let state = create_test_state_with_mock(mock_client);
@@ -303,6 +314,7 @@ mod tests {
         assert_eq!(response.at.hash, expected_hash);
         assert_eq!(response.at.height, test_number);
         assert_eq!(response.spec_name, "westend");
+        assert_eq!(response.chain_type, json!({ "Development": null }));
     }
 
     #[tokio::test]
