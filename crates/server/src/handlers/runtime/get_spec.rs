@@ -65,6 +65,90 @@ pub struct RuntimeSpecResponse {
     pub properties: Value,
 }
 
+/// Transform chain type to lowercase object format
+/// - String "Live" -> {"live": null}
+/// - Object {"Live": null} -> {"live": null}
+fn transform_chain_type(chain_type: Value) -> Value {
+    match chain_type {
+        Value::String(s) => {
+            let mut map = serde_json::Map::new();
+            map.insert(s.to_lowercase(), Value::Null);
+            Value::Object(map)
+        }
+        Value::Object(map) => {
+            let transformed: serde_json::Map<String, Value> = map
+                .into_iter()
+                .map(|(k, v)| (k.to_lowercase(), v))
+                .collect();
+            Value::Object(transformed)
+        }
+        other => other,
+    }
+}
+
+/// Transform system properties to match expected format:
+/// - ss58Format: number -> string
+/// - tokenDecimals: number or array -> array of strings
+/// - tokenSymbol: string or array -> array of strings
+/// - isEthereum: add if missing (default false)
+fn transform_properties(properties: Value) -> Value {
+    let mut result = serde_json::Map::new();
+
+    if let Value::Object(props) = properties {
+        // Transform ss58Format to string
+        if let Some(ss58) = props.get("ss58Format") {
+            let ss58_str = match ss58 {
+                Value::Number(n) => n.to_string(),
+                Value::String(s) => s.clone(),
+                _ => "0".to_string(),
+            };
+            result.insert("ss58Format".to_string(), Value::String(ss58_str));
+        }
+
+        // Transform tokenDecimals to array of strings
+        if let Some(decimals) = props.get("tokenDecimals") {
+            let decimals_arr = match decimals {
+                Value::Number(n) => vec![Value::String(n.to_string())],
+                Value::Array(arr) => arr
+                    .iter()
+                    .map(|v| match v {
+                        Value::Number(n) => Value::String(n.to_string()),
+                        Value::String(s) => Value::String(s.clone()),
+                        _ => Value::String("0".to_string()),
+                    })
+                    .collect(),
+                _ => vec![],
+            };
+            result.insert("tokenDecimals".to_string(), Value::Array(decimals_arr));
+        }
+
+        // Transform tokenSymbol to array of strings
+        if let Some(symbol) = props.get("tokenSymbol") {
+            let symbol_arr = match symbol {
+                Value::String(s) => vec![Value::String(s.clone())],
+                Value::Array(arr) => arr
+                    .iter()
+                    .map(|v| match v {
+                        Value::String(s) => Value::String(s.clone()),
+                        _ => Value::String("".to_string()),
+                    })
+                    .collect(),
+                _ => vec![],
+            };
+            result.insert("tokenSymbol".to_string(), Value::Array(symbol_arr));
+        }
+
+        // Add isEthereum (default false if not present)
+        let is_ethereum = props
+            .get("isEthereum")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        result.insert("isEthereum".to_string(), Value::Bool(is_ethereum));
+    }
+
+    Value::Object(result)
+}
+
 pub async fn runtime_spec(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
@@ -132,12 +216,14 @@ pub async fn runtime_spec(
             height: block_height,
         },
         authoring_version,
-        chain_type,
+        chain_type: transform_chain_type(chain_type),
         impl_version,
         spec_name,
         spec_version,
         transaction_version,
-        properties: serde_json::to_value(properties).unwrap_or(serde_json::json!({})),
+        properties: transform_properties(
+            serde_json::to_value(properties).unwrap_or(serde_json::json!({})),
+        ),
     };
 
     Ok(Json(response))
@@ -204,9 +290,7 @@ mod tests {
                     "tokenSymbol": ["DOT"]
                 }))
             })
-            .method_handler("system_chainType", async |_params| {
-                MockJson(json!({ "Live": null }))
-            })
+            .method_handler("system_chainType", async |_params| MockJson("Live"))
             .build();
 
         let state = create_test_state_with_mock(mock_client);
@@ -221,7 +305,16 @@ mod tests {
         assert_eq!(response.spec_name, "polkadot");
         assert_eq!(response.spec_version, "9430");
         assert_eq!(response.transaction_version, "24");
-        assert_eq!(response.chain_type, json!({ "Live": null }));
+        assert_eq!(response.chain_type, json!({ "live": null }));
+        assert_eq!(
+            response.properties,
+            json!({
+                "ss58Format": "0",
+                "tokenDecimals": ["10"],
+                "tokenSymbol": ["DOT"],
+                "isEthereum": false
+            })
+        );
     }
 
     #[tokio::test]
@@ -250,9 +343,7 @@ mod tests {
                     "tokenSymbol": ["KSM"]
                 }))
             })
-            .method_handler("system_chainType", async |_params| {
-                MockJson(json!({ "Live": null }))
-            })
+            .method_handler("system_chainType", async |_params| MockJson("Live"))
             .build();
 
         let state = create_test_state_with_mock(mock_client);
@@ -269,6 +360,7 @@ mod tests {
         assert_eq!(response.at.height, "100");
         assert_eq!(response.spec_name, "kusama");
         assert_eq!(response.authoring_version, "2");
+        assert_eq!(response.chain_type, json!({ "live": null }));
     }
 
     #[tokio::test]
@@ -296,9 +388,7 @@ mod tests {
                     "tokenSymbol": ["WND"]
                 }))
             })
-            .method_handler("system_chainType", async |_params| {
-                MockJson(json!({ "Development": null }))
-            })
+            .method_handler("system_chainType", async |_params| MockJson("Development"))
             .build();
 
         let state = create_test_state_with_mock(mock_client);
@@ -314,7 +404,7 @@ mod tests {
         assert_eq!(response.at.hash, expected_hash);
         assert_eq!(response.at.height, test_number);
         assert_eq!(response.spec_name, "westend");
-        assert_eq!(response.chain_type, json!({ "Development": null }));
+        assert_eq!(response.chain_type, json!({ "development": null }));
     }
 
     #[tokio::test]
