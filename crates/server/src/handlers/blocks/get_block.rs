@@ -1909,6 +1909,7 @@ pub async fn get_block(
     // Fee priority: TransactionFeePaid event > queryFeeDetails + calc > queryInfo
     for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
         if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
+            // Priority 1: TransactionFeePaid event (exact fee from runtime)
             if let Some(fee_from_event) = extract_fee_from_transaction_paid_event(&extrinsic.events)
             {
                 let mut info = serde_json::Map::new();
