@@ -1427,6 +1427,7 @@ dependencies = [
  "cfg-if",
  "parity-scale-codec",
  "scale-info",
+ "serde",
 ]
 
 [[package]]
@@ -3719,6 +3720,7 @@ dependencies = [
  "rolling-file",
  "rustc-hex",
  "scale-decode",
+ "scale-info",
  "scale-info-legacy",
  "scale-type-resolver",
  "scale-value",
