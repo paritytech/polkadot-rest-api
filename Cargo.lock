@@ -1374,6 +1374,22 @@ dependencies = [
 
 [[package]]
 name = "frame-decode"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c470df86cf28818dd3cd2fc4667b80dbefe2236c722c3dc1d09e7c6c82d6dfcd"
+dependencies = [
+ "frame-metadata 23.0.0",
+ "parity-scale-codec",
+ "scale-decode",
+ "scale-encode",
+ "scale-info",
+ "scale-type-resolver",
+ "sp-crypto-hashing",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "frame-decode"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fb3bfa2988ef40247e0e0eecfb171a01ad6f4e399485503aad4c413a5f236f3"
@@ -1400,6 +1416,17 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
+]
+
+[[package]]
+name = "frame-metadata"
+version = "18.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daaf440c68eb2c3d88e5760fe8c7af3f9fee9181fab6c2f2c4e7cc48dcc40bb8"
+dependencies = [
+ "cfg-if",
+ "parity-scale-codec",
+ "scale-info",
 ]
 
 [[package]]
@@ -1640,6 +1667,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43a3c133739dddd0d2990f9a4bdf8eb4b21ef50e4851ca85ab661199821d510e"
 dependencies = [
  "ahash",
+]
+
+[[package]]
+name = "hashbrown"
+version = "0.14.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
+dependencies = [
+ "ahash",
+ "allocator-api2",
 ]
 
 [[package]]
@@ -3671,6 +3708,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "config",
+ "frame-metadata 18.0.0",
  "hex",
  "http-body-util",
  "lazy_static",
@@ -3691,6 +3729,7 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "subxt-historic",
+ "subxt-metadata",
  "subxt-rpcs",
  "thiserror 2.0.17",
  "tokio",
@@ -4499,7 +4538,7 @@ version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88fba268dcd0bbd6a781105875a57036c67cc29a0dbd744c13c74c69664ee202"
 dependencies = [
- "frame-decode",
+ "frame-decode 0.15.0",
  "frame-metadata 23.0.0",
  "futures",
  "parity-scale-codec",
@@ -4529,6 +4568,21 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+]
+
+[[package]]
+name = "subxt-metadata"
+version = "0.44.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01fb7c0bfafad78dda7084c6a2444444744af3bbf7b2502399198b9b4c20eddf"
+dependencies = [
+ "frame-decode 0.9.0",
+ "frame-metadata 23.0.0",
+ "hashbrown 0.14.5",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-crypto-hashing",
+ "thiserror 2.0.17",
 ]
 
 [[package]]

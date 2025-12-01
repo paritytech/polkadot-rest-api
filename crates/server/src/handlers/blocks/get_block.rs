@@ -5,16 +5,17 @@ use super::type_name_visitor::GetTypeName;
 use crate::utils::{self, EraInfo};
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash as HashT;
 use std::borrow::Cow;
+use std::sync::Arc;
 use subxt_historic::error::{OnlineClientAtBlockError, StorageEntryIsNotAPlainValue, StorageError};
 use thiserror::Error;
 
@@ -24,6 +25,22 @@ use thiserror::Error;
 
 /// Length of consensus engine ID in digest items (e.g., "BABE", "aura", "pow_")
 const CONSENSUS_ENGINE_ID_LEN: usize = 4;
+
+// ================================================================================================
+// Query Parameters
+// ================================================================================================
+
+/// Query parameters for /blocks/{blockId} endpoint
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockQueryParams {
+    /// When true, include documentation for events
+    #[serde(default)]
+    pub event_docs: bool,
+    /// When true, include documentation for extrinsics
+    #[serde(default)]
+    pub extrinsic_docs: bool,
+}
 
 // ================================================================================================
 // Error Types
@@ -207,6 +224,9 @@ pub struct MethodInfo {
 pub struct Event {
     pub method: MethodInfo,
     pub data: Vec<Value>,
+    /// Documentation for this event (only present when eventDocs=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docs: Option<String>,
 }
 
 /// Events that occurred during block initialization
@@ -264,6 +284,9 @@ pub struct ExtrinsicInfo {
     /// Extracted from DispatchInfo in System.ExtrinsicSuccess/ExtrinsicFailed events
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pays_fee: Option<bool>,
+    /// Documentation for this extrinsic (only present when extrinsicDocs=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docs: Option<String>,
     /// Raw extrinsic bytes as hex (used internally for fee queries, not serialized)
     #[serde(skip)]
     pub raw_hex: String,
@@ -387,6 +410,33 @@ fn lowercase_first_char(s: &str) -> String {
         None => String::new(),
         Some(first) => first.to_lowercase().chain(chars).collect(),
     }
+}
+
+/// Convert lowerCamelCase to PascalCase by uppercasing the first character
+/// Used to convert pallet names back to metadata format (e.g., "system" → "System")
+fn to_pascal_case(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+    }
+}
+
+/// Convert lowerCamelCase to snake_case
+/// Used to convert method names back to metadata format (e.g., "setValidationData" → "set_validation_data")
+fn to_snake_case(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() + 4);
+    for (i, ch) in s.chars().enumerate() {
+        if ch.is_uppercase() {
+            if i > 0 {
+                result.push('_');
+            }
+            result.push(ch.to_ascii_lowercase());
+        } else {
+            result.push(ch);
+        }
+    }
+    result
 }
 
 /// Extract a numeric value from a JSON value as a string
@@ -1366,6 +1416,7 @@ fn categorize_events(
                 method: parsed_event.event_name,
             },
             data: parsed_event.event_data,
+            docs: None, // Will be populated if eventDocs=true
         };
 
         match parsed_event.phase {
@@ -1596,6 +1647,61 @@ async fn get_query_info(
     let query_info = dispatch_info.to_json();
     let weight = dispatch_info.weight.ref_time().to_string();
     Some((query_info, weight))
+}
+
+// ================================================================================================
+// Helper Functions - Documentation
+// ================================================================================================
+
+/// Wrapper for metadata that provides convenient access to documentation
+/// Uses subxt_metadata::Metadata which has methods for looking up pallets and variants by name
+struct MetadataDocs {
+    metadata: subxt_metadata::Metadata,
+}
+
+impl MetadataDocs {
+    /// Get documentation for an event by pallet name and event name
+    /// Returns docs as a single string with lines joined by newlines (matching sidecar format)
+    fn get_event_docs(&self, pallet_name: &str, event_name: &str) -> Option<String> {
+        let pallet = self.metadata.pallet_by_name(pallet_name)?;
+        let variants = pallet.event_variants()?;
+        let variant = variants
+            .iter()
+            .find(|v| v.name.eq_ignore_ascii_case(event_name))?;
+
+        // Join docs lines with newlines (this matches sidecar's sanitizeDocs behavior)
+        let docs = variant.docs.join("\n");
+        if docs.is_empty() { None } else { Some(docs) }
+    }
+
+    /// Get documentation for a call/extrinsic by pallet name and call name
+    /// Returns docs as a single string with lines joined by newlines (matching sidecar format)
+    fn get_call_docs(&self, pallet_name: &str, call_name: &str) -> Option<String> {
+        let pallet = self.metadata.pallet_by_name(pallet_name)?;
+        let variant = pallet.call_variant_by_name(call_name)?;
+
+        // Join docs lines with newlines (this matches sidecar's sanitizeDocs behavior)
+        let docs = variant.docs.join("\n");
+        if docs.is_empty() { None } else { Some(docs) }
+    }
+}
+
+/// Get metadata docs for a specific block using the cached metadata from subxt-historic
+/// Returns None if metadata cannot be retrieved or converted
+async fn get_metadata_docs_at_block(
+    state: &AppState,
+    block_number: u64,
+) -> Option<Arc<MetadataDocs>> {
+    use parity_scale_codec::{Decode, Encode};
+    let client_at_block = state.client.at(block_number).await.ok()?;
+    let runtime_metadata = client_at_block.metadata();
+    // Encode to bytes with the "meta" prefix that subxt_metadata expects
+    let mut encoded = frame_metadata::META_RESERVED.encode();
+    encoded.extend(runtime_metadata.encode());
+
+    let metadata = subxt_metadata::Metadata::decode(&mut &encoded[..]).ok()?;
+
+    Some(Arc::new(MetadataDocs { metadata }))
 }
 
 // ================================================================================================
@@ -1909,6 +2015,7 @@ async fn extract_extrinsics(
             events: Vec::new(),
             success: false,
             pays_fee,
+            docs: None, // Will be populated if extrinsicDocs=true
             raw_hex,
         });
     }
@@ -1923,9 +2030,14 @@ async fn extract_extrinsics(
 /// Handler for GET /blocks/{blockId}
 ///
 /// Returns block information for a given block identifier (hash or number)
+///
+/// Query Parameters:
+/// - `eventDocs` (boolean, default: false): Include documentation for events
+/// - `extrinsicDocs` (boolean, default: false): Include documentation for extrinsics
 pub async fn get_block(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
+    Query(params): Query<BlockQueryParams>,
 ) -> Result<Json<BlockResponse>, GetBlockError> {
     let block_id = block_id.parse::<utils::BlockId>()?;
     // Track if the block was queried by hash (needed for canonical chain check)
@@ -2041,6 +2153,44 @@ pub async fn get_block(
         }
     }
 
+    // Optionally populate documentation for events and extrinsics
+    let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
+
+    if params.event_docs || params.extrinsic_docs {
+        if let Some(metadata_docs) = get_metadata_docs_at_block(&state, resolved_block.number).await
+        {
+            if params.event_docs {
+                let add_docs_to_events = |events: &mut Vec<Event>| {
+                    for event in events.iter_mut() {
+                        // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
+                        // We need to convert back: "system" -> "System", "balances" -> "Balances"
+                        let pallet_name = to_pascal_case(&event.method.pallet);
+                        event.docs =
+                            metadata_docs.get_event_docs(&pallet_name, &event.method.method);
+                    }
+                };
+
+                add_docs_to_events(&mut on_initialize.events);
+                add_docs_to_events(&mut on_finalize.events);
+
+                for extrinsic in extrinsics_with_events.iter_mut() {
+                    add_docs_to_events(&mut extrinsic.events);
+                }
+            }
+
+            if params.extrinsic_docs {
+                for extrinsic in extrinsics_with_events.iter_mut() {
+                    // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
+                    // We need to convert back: "system" -> "System", "balances" -> "Balances"
+                    // Method names in metadata are snake_case, but our method names are lowerCamelCase
+                    let pallet_name = to_pascal_case(&extrinsic.method.pallet);
+                    let method_name = to_snake_case(&extrinsic.method.method);
+                    extrinsic.docs = metadata_docs.get_call_docs(&pallet_name, &method_name);
+                }
+            }
+        }
+    }
+
     let response = BlockResponse {
         number: resolved_block.number.to_string(),
         hash: resolved_block.hash,
@@ -2146,7 +2296,12 @@ mod tests {
 
         let state = create_test_state_with_mock(mock_client);
 
-        let result = get_block(State(state), Path("100".to_string())).await;
+        let result = get_block(
+            State(state),
+            Path("100".to_string()),
+            Query(BlockQueryParams::default()),
+        )
+        .await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
@@ -2227,7 +2382,12 @@ mod tests {
 
         let state = create_test_state_with_mock(mock_client);
 
-        let result = get_block(State(state), Path(test_hash.to_string())).await;
+        let result = get_block(
+            State(state),
+            Path(test_hash.to_string()),
+            Query(BlockQueryParams::default()),
+        )
+        .await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
@@ -2258,7 +2418,12 @@ mod tests {
         let mock_client = MockRpcClient::builder().build();
         let state = create_test_state_with_mock(mock_client);
 
-        let result = get_block(State(state), Path("invalid".to_string())).await;
+        let result = get_block(
+            State(state),
+            Path("invalid".to_string()),
+            Query(BlockQueryParams::default()),
+        )
+        .await;
 
         assert!(result.is_err());
         assert!(matches!(
@@ -2277,7 +2442,12 @@ mod tests {
 
         let state = create_test_state_with_mock(mock_client);
 
-        let result = get_block(State(state), Path("999999".to_string())).await;
+        let result = get_block(
+            State(state),
+            Path("999999".to_string()),
+            Query(BlockQueryParams::default()),
+        )
+        .await;
 
         assert!(result.is_err());
         assert!(matches!(

@@ -23,6 +23,8 @@ socket2 = "0.6"
 config = { path = "../config" }
 subxt-historic = { version = "0.0.6" }
 subxt-rpcs = { version = "0.44.0" }
+subxt-metadata = { version = "0.44.0" }
+frame-metadata = { version = "18", default-features = false, features = ["current", "decode"] }
 primitive-types = "0.13"
 rustc-hex = "2.1"
 hex = "0.4"
