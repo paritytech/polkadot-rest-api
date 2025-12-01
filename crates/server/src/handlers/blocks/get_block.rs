@@ -1660,8 +1660,6 @@ struct MetadataDocs {
 }
 
 impl MetadataDocs {
-    /// Get documentation for an event by pallet name and event name
-    /// Returns docs as a single string with lines joined by newlines (matching sidecar format)
     fn get_event_docs(&self, pallet_name: &str, event_name: &str) -> Option<String> {
         let pallet = self.metadata.pallet_by_name(pallet_name)?;
         let variants = pallet.event_variants()?;
@@ -1674,8 +1672,6 @@ impl MetadataDocs {
         if docs.is_empty() { None } else { Some(docs) }
     }
 
-    /// Get documentation for a call/extrinsic by pallet name and call name
-    /// Returns docs as a single string with lines joined by newlines (matching sidecar format)
     fn get_call_docs(&self, pallet_name: &str, call_name: &str) -> Option<String> {
         let pallet = self.metadata.pallet_by_name(pallet_name)?;
         let variant = pallet.call_variant_by_name(call_name)?;
