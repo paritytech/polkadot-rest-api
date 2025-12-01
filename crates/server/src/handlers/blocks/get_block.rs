@@ -1478,6 +1478,126 @@ fn extract_number_as_string(value: &Value) -> String {
     }
 }
 
+/// Convert ActualWeight to JSON value (V1: string, V2: object)
+fn actual_weight_to_json(actual_weight: &ActualWeight) -> Option<Value> {
+    let ref_time = actual_weight.ref_time.as_ref()?;
+    Some(if let Some(ref proof_size) = actual_weight.proof_size {
+        json!({ "refTime": ref_time, "proofSize": proof_size })
+    } else {
+        Value::String(ref_time.clone())
+    })
+}
+
+/// Extract fee info for a signed extrinsic using the three-priority system:
+/// 1. TransactionFeePaid event (exact fee from runtime)
+/// 2. queryFeeDetails + calc_partial_fee (post-dispatch calculation)
+/// 3. queryInfo (pre-dispatch estimation)
+async fn extract_fee_info_for_extrinsic(
+    state: &AppState,
+    extrinsic_hex: &str,
+    events: &[Event],
+    outcome: Option<&ExtrinsicOutcome>,
+    parent_hash: &str,
+    spec_version: u32,
+) -> serde_json::Map<String, Value> {
+    // Priority 1: TransactionFeePaid event (exact fee from runtime)
+    if let Some(fee_from_event) = extract_fee_from_transaction_paid_event(events) {
+        let mut info = serde_json::Map::new();
+
+        if let Some(outcome) = outcome {
+            if let Some(ref actual_weight) = outcome.actual_weight
+                && let Some(weight_value) = actual_weight_to_json(actual_weight)
+            {
+                info.insert("weight".to_string(), weight_value);
+            }
+            if let Some(ref class) = outcome.class {
+                info.insert("class".to_string(), Value::String(class.clone()));
+            }
+        }
+
+        info.insert("partialFee".to_string(), Value::String(fee_from_event));
+        info.insert("kind".to_string(), Value::String("fromEvent".to_string()));
+        return info;
+    }
+
+    // Priority 2: queryFeeDetails + calc_partial_fee (post-dispatch calculation)
+    let actual_weight_str = outcome
+        .and_then(|o| o.actual_weight.as_ref())
+        .and_then(|w| w.ref_time.clone());
+
+    if let Some(ref actual_weight_str) = actual_weight_str {
+        let use_fee_details = state
+            .fee_details_cache
+            .is_available(&state.chain_info.spec_name, spec_version)
+            .unwrap_or(true);
+
+        if use_fee_details {
+            if let Ok(fee_details_response) =
+                state.query_fee_details(extrinsic_hex, parent_hash).await
+            {
+                state.fee_details_cache.set_available(spec_version, true);
+
+                if let Some(fee_details) = utils::parse_fee_details(&fee_details_response) {
+                    // Get estimated weight from queryInfo (try RPC first, then runtime API)
+                    let query_info_result = get_query_info(state, extrinsic_hex, parent_hash).await;
+
+                    if let Some((query_info, estimated_weight)) = query_info_result
+                        && let Ok(partial_fee) = utils::calculate_accurate_fee(
+                            &fee_details,
+                            &estimated_weight,
+                            actual_weight_str,
+                        )
+                    {
+                        let mut info = transform_fee_info(query_info);
+                        info.insert("partialFee".to_string(), Value::String(partial_fee));
+                        info.insert(
+                            "kind".to_string(),
+                            Value::String("postDispatch".to_string()),
+                        );
+                        return info;
+                    }
+                }
+            } else {
+                state.fee_details_cache.set_available(spec_version, false);
+            }
+        }
+    }
+
+    // Priority 3: queryInfo (pre-dispatch estimation)
+    if let Some((query_info, _)) = get_query_info(state, extrinsic_hex, parent_hash).await {
+        let mut info = transform_fee_info(query_info);
+        info.insert("kind".to_string(), Value::String("preDispatch".to_string()));
+        return info;
+    }
+
+    serde_json::Map::new()
+}
+
+/// Get query info from RPC or runtime API fallback
+async fn get_query_info(
+    state: &AppState,
+    extrinsic_hex: &str,
+    parent_hash: &str,
+) -> Option<(Value, String)> {
+    // Try RPC first
+    if let Ok(query_info) = state.query_fee_info(extrinsic_hex, parent_hash).await
+        && let Some(weight) = utils::extract_estimated_weight(&query_info)
+    {
+        return Some((query_info, weight));
+    }
+
+    // Fall back to runtime API for historic blocks
+    let extrinsic_bytes = hex::decode(extrinsic_hex.trim_start_matches("0x")).ok()?;
+    let dispatch_info = state
+        .query_fee_info_via_runtime_api(&extrinsic_bytes, parent_hash)
+        .await
+        .ok()?;
+
+    let query_info = dispatch_info.to_json();
+    let weight = dispatch_info.weight.ref_time().to_string();
+    Some((query_info, weight))
+}
+
 // ================================================================================================
 // Helper Functions - Extrinsic Processing
 // ================================================================================================
@@ -1906,140 +2026,18 @@ pub async fn get_block(
         .map(|v| v as u32)
         .unwrap_or(state.chain_info.spec_version);
 
-    // Fee priority: TransactionFeePaid event > queryFeeDetails + calc > queryInfo
+    // Populate fee info for signed extrinsics that pay fees
     for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
         if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
-            // Priority 1: TransactionFeePaid event (exact fee from runtime)
-            if let Some(fee_from_event) = extract_fee_from_transaction_paid_event(&extrinsic.events)
-            {
-                let mut info = serde_json::Map::new();
-
-                if let Some(outcome) = extrinsic_outcomes.get(i) {
-                    if let Some(ref actual_weight) = outcome.actual_weight
-                        && let Some(ref ref_time) = actual_weight.ref_time
-                    {
-                        // V1 weight: just a string, V2 weight: object with refTime and proofSize
-                        let weight_value = if let Some(ref proof_size) = actual_weight.proof_size {
-                            json!({ "refTime": ref_time, "proofSize": proof_size })
-                        } else {
-                            Value::String(ref_time.clone())
-                        };
-                        info.insert("weight".to_string(), weight_value);
-                    }
-                    if let Some(ref class) = outcome.class {
-                        info.insert("class".to_string(), Value::String(class.clone()));
-                    }
-                }
-
-                info.insert("partialFee".to_string(), Value::String(fee_from_event));
-                info.insert("kind".to_string(), Value::String("fromEvent".to_string()));
-                extrinsic.info = info;
-                continue;
-            }
-
-            // Priority 2: Try queryFeeDetails + calc_partial_fee (most accurate)
-            let actual_weight = extrinsic_outcomes
-                .get(i)
-                .and_then(|o| o.actual_weight.as_ref())
-                .and_then(|w| w.ref_time.clone());
-
-            if let Some(actual_weight_str) = actual_weight {
-                let use_fee_details = state
-                    .fee_details_cache
-                    .is_available(&state.chain_info.spec_name, spec_version)
-                    .unwrap_or(true);
-
-                if use_fee_details {
-                    match state
-                        .query_fee_details(&extrinsic.raw_hex, &parent_hash)
-                        .await
-                    {
-                        Ok(fee_details_response) => {
-                            state.fee_details_cache.set_available(spec_version, true);
-
-                            if let Some(fee_details) =
-                                utils::parse_fee_details(&fee_details_response)
-                            {
-                                // Get estimated weight from queryInfo (try RPC first, then runtime API)
-                                let query_info_result: Option<(Value, String)> = match state
-                                    .query_fee_info(&extrinsic.raw_hex, &parent_hash)
-                                    .await
-                                {
-                                    Ok(query_info) => utils::extract_estimated_weight(&query_info)
-                                        .map(|w| (query_info, w)),
-                                    Err(_) => {
-                                        // Fall back to runtime API
-                                        if let Ok(extrinsic_bytes) =
-                                            hex::decode(extrinsic.raw_hex.trim_start_matches("0x"))
-                                        {
-                                            state
-                                                .query_fee_info_via_runtime_api(
-                                                    &extrinsic_bytes,
-                                                    &parent_hash,
-                                                )
-                                                .await
-                                                .ok()
-                                                .map(|dispatch_info| {
-                                                    let query_info = dispatch_info.to_json();
-                                                    let weight =
-                                                        dispatch_info.weight.ref_time().to_string();
-                                                    (query_info, weight)
-                                                })
-                                        } else {
-                                            None
-                                        }
-                                    }
-                                };
-
-                                if let Some((query_info, estimated_weight)) = query_info_result
-                                    && let Ok(partial_fee) = utils::calculate_accurate_fee(
-                                        &fee_details,
-                                        &estimated_weight,
-                                        &actual_weight_str,
-                                    )
-                                {
-                                    let mut info = transform_fee_info(query_info);
-                                    info.insert(
-                                        "partialFee".to_string(),
-                                        Value::String(partial_fee),
-                                    );
-                                    info.insert(
-                                        "kind".to_string(),
-                                        Value::String("postDispatch".to_string()),
-                                    );
-                                    extrinsic.info = info;
-                                    continue;
-                                }
-                            }
-                        }
-                        Err(_) => {
-                            state.fee_details_cache.set_available(spec_version, false);
-                        }
-                    }
-                }
-            }
-
-            // Priority 3: Fall back to queryInfo (pre-dispatch estimation)
-            match state.query_fee_info(&extrinsic.raw_hex, &parent_hash).await {
-                Ok(fee_info) => {
-                    let mut info = transform_fee_info(fee_info);
-                    info.insert("kind".to_string(), Value::String("preDispatch".to_string()));
-                    extrinsic.info = info;
-                }
-                Err(_) => {
-                    // RPC failed - try runtime API for historic blocks
-                    if let Ok(extrinsic_bytes) =
-                        hex::decode(extrinsic.raw_hex.trim_start_matches("0x"))
-                        && let Ok(dispatch_info) = state
-                            .query_fee_info_via_runtime_api(&extrinsic_bytes, &parent_hash)
-                            .await
-                    {
-                        let mut info = transform_fee_info(dispatch_info.to_json());
-                        info.insert("kind".to_string(), Value::String("preDispatch".to_string()));
-                        extrinsic.info = info;
-                    }
-                }
-            }
+            extrinsic.info = extract_fee_info_for_extrinsic(
+                &state,
+                &extrinsic.raw_hex,
+                &extrinsic.events,
+                extrinsic_outcomes.get(i),
+                &parent_hash,
+                spec_version,
+            )
+            .await;
         }
     }
 
