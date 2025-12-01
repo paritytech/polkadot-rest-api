@@ -7,7 +7,7 @@ mod substrate;
 
 pub use error::ConfigError;
 pub use express::{ExpressConfig, ExpressError};
-pub use fee::{ChainFeeConfig, ChainFeeConfigs, FeeConfigError};
+pub use fee::{ChainFeeConfig, ChainFeeConfigs, FeeConfigError, QueryFeeDetailsStatus};
 pub use log::{LogConfig, LogError};
 pub use metrics::{MetricsConfig, MetricsError};
 pub use substrate::{

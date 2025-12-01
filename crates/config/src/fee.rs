@@ -12,6 +12,17 @@ pub enum FeeConfigError {
     ChainNotFound(String),
 }
 
+/// Status of queryFeeDetails RPC availability for a given spec version
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueryFeeDetailsStatus {
+    /// queryFeeDetails is available at this spec version
+    Available,
+    /// queryFeeDetails is not available at this spec version
+    Unavailable,
+    /// Availability is unknown and needs to be discovered via RPC
+    Unknown,
+}
+
 /// Fee calculation configuration for a single chain
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,27 +47,21 @@ impl ChainFeeConfig {
     }
 
     /// Check if queryFeeDetails is known to be available for a given runtime version
-    /// Returns:
-    /// - Some(true) if known to be available
-    /// - Some(false) if known to be unavailable
-    /// - None if status is unknown and needs to be discovered
-    pub fn query_fee_details_status(&self, spec_version: u32) -> Option<bool> {
+    pub fn query_fee_details_status(&self, spec_version: u32) -> QueryFeeDetailsStatus {
         match (
             self.query_fee_details_unavailable,
             self.query_fee_details_available,
         ) {
             (Some(unavail), Some(avail)) => {
                 if spec_version <= unavail {
-                    Some(false)
+                    QueryFeeDetailsStatus::Unavailable
                 } else if spec_version >= avail {
-                    Some(true)
+                    QueryFeeDetailsStatus::Available
                 } else {
-                    // Between the known bounds - should not happen normally
-                    None
+                    QueryFeeDetailsStatus::Unknown
                 }
             }
-            // If either bound is unknown, we can't determine status statically
-            _ => None,
+            _ => QueryFeeDetailsStatus::Unknown,
         }
     }
 }
@@ -130,9 +135,18 @@ mod tests {
         assert!(polkadot.supports_fee_calculation(100));
 
         // Test queryFeeDetails status
-        assert_eq!(polkadot.query_fee_details_status(27), Some(false));
-        assert_eq!(polkadot.query_fee_details_status(28), Some(true));
-        assert_eq!(polkadot.query_fee_details_status(100), Some(true));
+        assert_eq!(
+            polkadot.query_fee_details_status(27),
+            QueryFeeDetailsStatus::Unavailable
+        );
+        assert_eq!(
+            polkadot.query_fee_details_status(28),
+            QueryFeeDetailsStatus::Available
+        );
+        assert_eq!(
+            polkadot.query_fee_details_status(100),
+            QueryFeeDetailsStatus::Available
+        );
     }
 
     #[test]
@@ -160,8 +174,10 @@ mod tests {
         assert_eq!(statemint.query_fee_details_unavailable, None);
         assert_eq!(statemint.query_fee_details_available, None);
 
-        // Status should be None (unknown)
-        assert_eq!(statemint.query_fee_details_status(1000), None);
+        assert_eq!(
+            statemint.query_fee_details_status(1000),
+            QueryFeeDetailsStatus::Unknown
+        );
     }
 
     #[test]

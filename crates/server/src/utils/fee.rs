@@ -246,11 +246,15 @@ impl QueryFeeDetailsCache {
     /// - `Some(false)` if known to be unavailable
     /// - `None` if unknown and needs to be discovered via RPC
     pub fn is_available(&self, spec_name: &str, spec_version: u32) -> Option<bool> {
+        use config::QueryFeeDetailsStatus;
+
         // First, check the static config
-        if let Some(config) = self.fee_configs.get(spec_name)
-            && let Some(status) = config.query_fee_details_status(spec_version)
-        {
-            return Some(status);
+        if let Some(config) = self.fee_configs.get(spec_name) {
+            match config.query_fee_details_status(spec_version) {
+                QueryFeeDetailsStatus::Available => return Some(true),
+                QueryFeeDetailsStatus::Unavailable => return Some(false),
+                QueryFeeDetailsStatus::Unknown => {}
+            }
         }
 
         // Check runtime cache
