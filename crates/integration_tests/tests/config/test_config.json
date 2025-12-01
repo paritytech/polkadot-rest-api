@@ -87,7 +87,10 @@
         "endpoint": "/v1/blocks/{blockId}",
         "block_height": 10000006,
         "account_id": null,
-        "query_params": {},
+        "query_params": {
+          "extrinsicDocs": "true",
+          "eventDocs": "true"
+        },
         "fixture_path": "polkadot/blocks_10000006.json",
         "description": "Test block endpoint at Polkadot block 10,000,006"
       }
