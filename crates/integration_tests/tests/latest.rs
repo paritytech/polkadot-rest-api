@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use futures::future::join_all;
+use colored::Colorize;
 use integration_tests::{
     client::TestClient, config::TestConfig, constants::API_READY_TIMEOUT_SECONDS,
 };
@@ -75,26 +75,43 @@ impl LatestTestRunner {
 
         let mut results = TestResults::default();
 
-        tracing::info!(
-            "Running latest tests for chain: {} (block: {})",
-            self.chain_name,
-            latest_block
+        // Test each configured endpoint
+        let endpoint_configs = self.config.latest_endpoints.clone();
+        let total_endpoints = endpoint_configs.len();
+
+        println!(
+            "\n{} {} latest endpoint(s) for chain: {} (block: {})\n",
+            "Running".cyan().bold(),
+            total_endpoints,
+            self.chain_name.yellow(),
+            latest_block.to_string().bright_white()
         );
 
-        // Test each configured endpoint in parallel
-        let endpoint_configs = self.config.latest_endpoints.clone();
+        // Run each endpoint test and print results as they complete
+        for endpoint_config in &endpoint_configs {
+            let endpoint_path = endpoint_config.path.clone();
+            let mut endpoint_results = self
+                .test_endpoint(endpoint_config, &chain_config, latest_block)
+                .await;
 
-        // Create futures for parallel execution
-        let futures: Vec<_> = endpoint_configs
-            .iter()
-            .map(|endpoint_config| self.test_endpoint(endpoint_config, &chain_config, latest_block))
-            .collect();
+            // Print results for this endpoint
+            if endpoint_results.failed == 0 {
+                println!(
+                    "{} {} ({} variation(s) passed)",
+                    "✓".green().bold(),
+                    endpoint_path,
+                    endpoint_results.passed
+                );
+            } else {
+                println!(
+                    "{} {} ({} passed, {} failed)",
+                    "✗".red().bold(),
+                    endpoint_path,
+                    endpoint_results.passed,
+                    endpoint_results.failed
+                );
+            }
 
-        // Execute all tests in parallel
-        let all_results = join_all(futures).await;
-
-        // Aggregate results
-        for mut endpoint_results in all_results {
             results.passed += endpoint_results.passed;
             results.failed += endpoint_results.failed;
             results.failures.append(&mut endpoint_results.failures);
@@ -236,15 +253,28 @@ async fn run_latest_test_for_chain(chain_name: &str) -> Result<()> {
     let mut runner = LatestTestRunner::new(client, config, chain_name.to_string());
     let results = runner.run_all().await?;
 
-    println!("\n=== Latest Test Results for {} ===", chain_name);
-    println!("Passed: {}", results.passed);
-    println!("Failed: {}", results.failed);
+    println!("\n{}", "═".repeat(60).bright_white());
+    println!("Latest Test Results for {}", chain_name.yellow().bold());
+    println!("{}", "═".repeat(60).bright_white());
+    println!(
+        "  {} Passed: {}",
+        "✓".green().bold(),
+        results.passed.to_string().green()
+    );
+    println!(
+        "  {} Failed: {}",
+        "✗".red().bold(),
+        results.failed.to_string().red()
+    );
+    println!("{}\n", "═".repeat(60).bright_white());
 
     if !results.failures.is_empty() {
-        println!("\nFailures:");
+        println!("{}", "Failures:".red().bold());
         for failure in &results.failures {
-            println!("  - {}: {}", failure.endpoint, failure.error);
+            println!("  {} {}", "•".red(), failure.endpoint);
+            println!("    {}: {}", "Error".red(), failure.error);
         }
+        println!();
     }
 
     assert_eq!(results.failed, 0, "{} test(s) failed", results.failed);

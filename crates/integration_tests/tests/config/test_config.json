@@ -60,6 +60,14 @@
   "historical_tests": {
     "polkadot": [
       {
+        "endpoint": "/v1/runtime/spec",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "28500000" },
+        "fixture_path": "polkadot/runtime_spec_28500000.json",
+        "description": "Test runtime spec at Polkadot block 28,500,000"
+      },
+      {
         "endpoint": "/v1/blocks/{blockId}",
         "block_height": 1000000,
         "account_id": null,
