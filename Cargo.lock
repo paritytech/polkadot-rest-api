@@ -2962,7 +2962,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.107",
@@ -4495,9 +4495,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "subxt-historic"
-version = "0.0.5"
+version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c2ad5b185400c9c0d02369f6ecbd4907cb373f8f0943516216fec5b0a7a6db7"
+checksum = "88fba268dcd0bbd6a781105875a57036c67cc29a0dbd744c13c74c69664ee202"
 dependencies = [
  "frame-decode",
  "frame-metadata 23.0.0",
