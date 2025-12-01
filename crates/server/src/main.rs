@@ -1,4 +1,4 @@
-use server::{app, state, logging};
+use server::{app, logging, state};
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use thiserror::Error;

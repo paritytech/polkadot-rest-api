@@ -45,7 +45,7 @@ pub struct LoggingConfig<'a> {
 ///
 /// # Examples
 /// ```no_run
-/// use server::logging::{self, LoggingConfig};
+/// use server::logging::{self, LoggingConfig, init_with_config, LoggingError};
 ///
 /// // Console only
 /// logging::init_with_config(LoggingConfig {
