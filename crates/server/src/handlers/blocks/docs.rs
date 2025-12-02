@@ -5,10 +5,6 @@
 
 use serde::Serialize;
 
-// ================================================================================================
-// Docs Struct
-// ================================================================================================
-
 /// Zero-copy reference to documentation strings from metadata.
 /// Supports all metadata versions V9-V16 without expensive encode/decode operations.
 pub struct Docs<'a> {
@@ -105,10 +101,6 @@ impl Serialize for Docs<'_> {
         serializer.serialize_str(&self.to_string())
     }
 }
-
-// ================================================================================================
-// Documentation Lookup Functions
-// ================================================================================================
 
 /// Extract event documentation from metadata (V9-V16)
 /// Returns a zero-copy Docs reference when possible.
