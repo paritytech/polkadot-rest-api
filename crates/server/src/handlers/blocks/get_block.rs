@@ -15,7 +15,6 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash as HashT;
 use std::borrow::Cow;
-use std::sync::Arc;
 use subxt_historic::error::{OnlineClientAtBlockError, StorageEntryIsNotAPlainValue, StorageError};
 use thiserror::Error;
 
@@ -1653,70 +1652,128 @@ async fn get_query_info(
 // Helper Functions - Documentation
 // ================================================================================================
 
-/// Wrapper for metadata that provides convenient access to documentation.
-/// Supports both modern (V14+) and legacy (V9-V13) metadata formats.
-enum MetadataDocs {
-    /// Modern metadata (V14+) using subxt_metadata::Metadata
-    Modern(subxt_metadata::Metadata),
-    /// Legacy metadata (V9-V13) using frame_metadata::RuntimeMetadata
-    Legacy(frame_metadata::RuntimeMetadata),
+/// Zero-copy reference to documentation strings from metadata.
+/// Supports all metadata versions V9-V16 without expensive encode/decode operations.
+pub struct Docs<'a> {
+    inner: DocsInner<'a>,
 }
 
-impl MetadataDocs {
-    fn get_event_docs(&self, pallet_name: &str, event_name: &str) -> Option<String> {
-        match self {
-            MetadataDocs::Modern(metadata) => {
-                let pallet = metadata.pallet_by_name(pallet_name)?;
-                let variants = pallet.event_variants()?;
-                let variant = variants
-                    .iter()
-                    .find(|v| v.name.eq_ignore_ascii_case(event_name))?;
-                let docs = variant.docs.join("\n");
-                if docs.is_empty() { None } else { Some(docs) }
-            }
-            MetadataDocs::Legacy(runtime_metadata) => {
-                get_legacy_event_docs(runtime_metadata, pallet_name, event_name)
-            }
+/// Internal representation of docs that can hold different reference types
+/// depending on the metadata version.
+enum DocsInner<'a> {
+    /// Reference to Vec<String> (V14+ metadata uses this format)
+    Strings(&'a [String]),
+    /// Reference to static str slice (V9-V13 compile-time metadata)
+    Static(&'a [&'static str]),
+}
+
+impl<'a> Docs<'a> {
+    /// Create docs from a slice of Strings (V14+ metadata)
+    fn from_strings(docs: &'a [String]) -> Option<Self> {
+        if docs.is_empty() || docs.iter().all(|s| s.is_empty()) {
+            None
+        } else {
+            Some(Self {
+                inner: DocsInner::Strings(docs),
+            })
         }
     }
 
-    fn get_call_docs(&self, pallet_name: &str, call_name: &str) -> Option<String> {
-        match self {
-            MetadataDocs::Modern(metadata) => {
-                let pallet = metadata.pallet_by_name(pallet_name)?;
-                let variant = pallet.call_variant_by_name(call_name)?;
-                let docs = variant.docs.join("\n");
-                if docs.is_empty() { None } else { Some(docs) }
+    /// Create docs from a static str slice (V9-V13 metadata)
+    fn from_static(docs: &'a [&'static str]) -> Option<Self> {
+        if docs.is_empty() || docs.iter().all(|s| s.is_empty()) {
+            None
+        } else {
+            Some(Self {
+                inner: DocsInner::Static(docs),
+            })
+        }
+    }
+
+    /// Get event documentation from RuntimeMetadata.
+    /// Works with all metadata versions V9-V16.
+    pub fn for_event(
+        metadata: &'a frame_metadata::RuntimeMetadata,
+        pallet_name: &str,
+        event_name: &str,
+    ) -> Option<Docs<'a>> {
+        get_event_docs(metadata, pallet_name, event_name)
+    }
+
+    /// Get call documentation from RuntimeMetadata.
+    /// Works with all metadata versions V9-V16.
+    pub fn for_call(
+        metadata: &'a frame_metadata::RuntimeMetadata,
+        pallet_name: &str,
+        call_name: &str,
+    ) -> Option<Docs<'a>> {
+        get_call_docs(metadata, pallet_name, call_name)
+    }
+}
+
+impl std::fmt::Display for Docs<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.inner {
+            DocsInner::Strings(docs) => {
+                let mut first = true;
+                for doc in *docs {
+                    if !first {
+                        writeln!(f)?;
+                    }
+                    write!(f, "{}", doc)?;
+                    first = false;
+                }
+                Ok(())
             }
-            MetadataDocs::Legacy(runtime_metadata) => {
-                get_legacy_call_docs(runtime_metadata, pallet_name, call_name)
+            DocsInner::Static(docs) => {
+                let mut first = true;
+                for doc in *docs {
+                    if !first {
+                        writeln!(f)?;
+                    }
+                    write!(f, "{}", doc)?;
+                    first = false;
+                }
+                Ok(())
             }
         }
     }
 }
 
-/// Extract event documentation from legacy metadata (V9-V14)
-fn get_legacy_event_docs(
-    metadata: &frame_metadata::RuntimeMetadata,
+impl Serialize for Docs<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+/// Extract event documentation from metadata (V9-V16)
+/// Returns a zero-copy Docs reference when possible.
+fn get_event_docs<'a>(
+    metadata: &'a frame_metadata::RuntimeMetadata,
     pallet_name: &str,
     event_name: &str,
-) -> Option<String> {
+) -> Option<Docs<'a>> {
     use frame_metadata::RuntimeMetadata::*;
     use frame_metadata::decode_different::DecodeDifferent;
-
-    // Helper to extract docs from DecodeDifferent
-    fn extract_docs(docs: &DecodeDifferent<&'static [&'static str], Vec<String>>) -> Vec<String> {
-        match docs {
-            DecodeDifferent::Decoded(v) => v.clone(),
-            DecodeDifferent::Encode(s) => s.iter().map(|s| s.to_string()).collect(),
-        }
-    }
 
     // Helper to extract string from DecodeDifferent
     fn extract_str<'a>(s: &'a DecodeDifferent<&'static str, String>) -> &'a str {
         match s {
             DecodeDifferent::Decoded(v) => v.as_str(),
             DecodeDifferent::Encode(s) => s,
+        }
+    }
+
+    // Helper to create Docs from DecodeDifferent docs
+    fn docs_from_decode_different<'a>(
+        docs: &'a DecodeDifferent<&'static [&'static str], Vec<String>>,
+    ) -> Option<Docs<'a>> {
+        match docs {
+            DecodeDifferent::Decoded(v) => Docs::from_strings(v),
+            DecodeDifferent::Encode(s) => Docs::from_static(s),
         }
     }
 
@@ -1729,13 +1786,7 @@ fn get_legacy_event_docs(
                     {
                         for event in events {
                             if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
-                                let docs = extract_docs(&event.documentation);
-                                let joined = docs.join("\n");
-                                return if joined.is_empty() {
-                                    None
-                                } else {
-                                    Some(joined)
-                                };
+                                return docs_from_decode_different(&event.documentation);
                             }
                         }
                     }
@@ -1751,13 +1802,7 @@ fn get_legacy_event_docs(
                     {
                         for event in events {
                             if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
-                                let docs = extract_docs(&event.documentation);
-                                let joined = docs.join("\n");
-                                return if joined.is_empty() {
-                                    None
-                                } else {
-                                    Some(joined)
-                                };
+                                return docs_from_decode_different(&event.documentation);
                             }
                         }
                     }
@@ -1773,13 +1818,7 @@ fn get_legacy_event_docs(
                     {
                         for event in events {
                             if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
-                                let docs = extract_docs(&event.documentation);
-                                let joined = docs.join("\n");
-                                return if joined.is_empty() {
-                                    None
-                                } else {
-                                    Some(joined)
-                                };
+                                return docs_from_decode_different(&event.documentation);
                             }
                         }
                     }
@@ -1795,13 +1834,7 @@ fn get_legacy_event_docs(
                     {
                         for event in events {
                             if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
-                                let docs = extract_docs(&event.documentation);
-                                let joined = docs.join("\n");
-                                return if joined.is_empty() {
-                                    None
-                                } else {
-                                    Some(joined)
-                                };
+                                return docs_from_decode_different(&event.documentation);
                             }
                         }
                     }
@@ -1817,13 +1850,7 @@ fn get_legacy_event_docs(
                     {
                         for event in events {
                             if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
-                                let docs = extract_docs(&event.documentation);
-                                let joined = docs.join("\n");
-                                return if joined.is_empty() {
-                                    None
-                                } else {
-                                    Some(joined)
-                                };
+                                return docs_from_decode_different(&event.documentation);
                             }
                         }
                     }
@@ -1840,14 +1867,39 @@ fn get_legacy_event_docs(
                 {
                     for variant in &variant_def.variants {
                         if variant.name.eq_ignore_ascii_case(event_name) {
-                            let docs: Vec<String> =
-                                variant.docs.iter().map(|s| s.to_string()).collect();
-                            let joined = docs.join("\n");
-                            return if joined.is_empty() {
-                                None
-                            } else {
-                                Some(joined)
-                            };
+                            return Docs::from_strings(&variant.docs);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V15(meta) => {
+            for pallet in &meta.pallets {
+                if pallet.name.eq_ignore_ascii_case(pallet_name)
+                    && let Some(event_ty) = &pallet.event
+                    && let Some(ty) = meta.types.resolve(event_ty.ty.id)
+                    && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def
+                {
+                    for variant in &variant_def.variants {
+                        if variant.name.eq_ignore_ascii_case(event_name) {
+                            return Docs::from_strings(&variant.docs);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V16(meta) => {
+            for pallet in &meta.pallets {
+                if pallet.name.eq_ignore_ascii_case(pallet_name)
+                    && let Some(event_ty) = &pallet.event
+                    && let Some(ty) = meta.types.resolve(event_ty.ty.id)
+                    && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def
+                {
+                    for variant in &variant_def.variants {
+                        if variant.name.eq_ignore_ascii_case(event_name) {
+                            return Docs::from_strings(&variant.docs);
                         }
                     }
                 }
@@ -1858,28 +1910,31 @@ fn get_legacy_event_docs(
     }
 }
 
-/// Extract call documentation from legacy metadata (V9-V14)
-fn get_legacy_call_docs(
-    metadata: &frame_metadata::RuntimeMetadata,
+/// Extract call documentation from metadata (V9-V16)
+/// Returns a zero-copy Docs reference when possible.
+fn get_call_docs<'a>(
+    metadata: &'a frame_metadata::RuntimeMetadata,
     pallet_name: &str,
     call_name: &str,
-) -> Option<String> {
+) -> Option<Docs<'a>> {
     use frame_metadata::RuntimeMetadata::*;
     use frame_metadata::decode_different::DecodeDifferent;
-
-    // Helper to extract docs from DecodeDifferent
-    fn extract_docs(docs: &DecodeDifferent<&'static [&'static str], Vec<String>>) -> Vec<String> {
-        match docs {
-            DecodeDifferent::Decoded(v) => v.clone(),
-            DecodeDifferent::Encode(s) => s.iter().map(|s| s.to_string()).collect(),
-        }
-    }
 
     // Helper to extract string from DecodeDifferent
     fn extract_str<'a>(s: &'a DecodeDifferent<&'static str, String>) -> &'a str {
         match s {
             DecodeDifferent::Decoded(v) => v.as_str(),
             DecodeDifferent::Encode(s) => s,
+        }
+    }
+
+    // Helper to create Docs from DecodeDifferent docs
+    fn docs_from_decode_different<'a>(
+        docs: &'a DecodeDifferent<&'static [&'static str], Vec<String>>,
+    ) -> Option<Docs<'a>> {
+        match docs {
+            DecodeDifferent::Decoded(v) => Docs::from_strings(v),
+            DecodeDifferent::Encode(s) => Docs::from_static(s),
         }
     }
 
@@ -1892,13 +1947,7 @@ fn get_legacy_call_docs(
                     {
                         for call in calls {
                             if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
-                                let docs = extract_docs(&call.documentation);
-                                let joined = docs.join("\n");
-                                return if joined.is_empty() {
-                                    None
-                                } else {
-                                    Some(joined)
-                                };
+                                return docs_from_decode_different(&call.documentation);
                             }
                         }
                     }
@@ -1914,13 +1963,7 @@ fn get_legacy_call_docs(
                     {
                         for call in calls {
                             if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
-                                let docs = extract_docs(&call.documentation);
-                                let joined = docs.join("\n");
-                                return if joined.is_empty() {
-                                    None
-                                } else {
-                                    Some(joined)
-                                };
+                                return docs_from_decode_different(&call.documentation);
                             }
                         }
                     }
@@ -1936,13 +1979,7 @@ fn get_legacy_call_docs(
                     {
                         for call in calls {
                             if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
-                                let docs = extract_docs(&call.documentation);
-                                let joined = docs.join("\n");
-                                return if joined.is_empty() {
-                                    None
-                                } else {
-                                    Some(joined)
-                                };
+                                return docs_from_decode_different(&call.documentation);
                             }
                         }
                     }
@@ -1958,13 +1995,7 @@ fn get_legacy_call_docs(
                     {
                         for call in calls {
                             if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
-                                let docs = extract_docs(&call.documentation);
-                                let joined = docs.join("\n");
-                                return if joined.is_empty() {
-                                    None
-                                } else {
-                                    Some(joined)
-                                };
+                                return docs_from_decode_different(&call.documentation);
                             }
                         }
                     }
@@ -1980,13 +2011,7 @@ fn get_legacy_call_docs(
                     {
                         for call in calls {
                             if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
-                                let docs = extract_docs(&call.documentation);
-                                let joined = docs.join("\n");
-                                return if joined.is_empty() {
-                                    None
-                                } else {
-                                    Some(joined)
-                                };
+                                return docs_from_decode_different(&call.documentation);
                             }
                         }
                     }
@@ -2003,14 +2028,39 @@ fn get_legacy_call_docs(
                 {
                     for variant in &variant_def.variants {
                         if variant.name.eq_ignore_ascii_case(call_name) {
-                            let docs: Vec<String> =
-                                variant.docs.iter().map(|s| s.to_string()).collect();
-                            let joined = docs.join("\n");
-                            return if joined.is_empty() {
-                                None
-                            } else {
-                                Some(joined)
-                            };
+                            return Docs::from_strings(&variant.docs);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V15(meta) => {
+            for pallet in &meta.pallets {
+                if pallet.name.eq_ignore_ascii_case(pallet_name)
+                    && let Some(call_ty) = &pallet.calls
+                    && let Some(ty) = meta.types.resolve(call_ty.ty.id)
+                    && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def
+                {
+                    for variant in &variant_def.variants {
+                        if variant.name.eq_ignore_ascii_case(call_name) {
+                            return Docs::from_strings(&variant.docs);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V16(meta) => {
+            for pallet in &meta.pallets {
+                if pallet.name.eq_ignore_ascii_case(pallet_name)
+                    && let Some(call_ty) = &pallet.calls
+                    && let Some(ty) = meta.types.resolve(call_ty.ty.id)
+                    && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def
+                {
+                    for variant in &variant_def.variants {
+                        if variant.name.eq_ignore_ascii_case(call_name) {
+                            return Docs::from_strings(&variant.docs);
                         }
                     }
                 }
@@ -2019,31 +2069,6 @@ fn get_legacy_call_docs(
         }
         _ => None,
     }
-}
-
-/// Get metadata docs for a specific block using the cached metadata from subxt-historic
-/// Tries V15+ decoding first, falls back to legacy (V9-V14) if that fails
-async fn get_metadata_docs_at_block(
-    state: &AppState,
-    block_number: u64,
-) -> Option<Arc<MetadataDocs>> {
-    use parity_scale_codec::{Decode, Encode};
-    let client_at_block = state.client.at(block_number).await.ok()?;
-    let runtime_metadata = client_at_block.metadata();
-
-    // Encode to bytes with the "meta" prefix that subxt_metadata expects
-    let mut encoded = frame_metadata::META_RESERVED.encode();
-    encoded.extend(runtime_metadata.encode());
-
-    // Try V15+ path first (subxt_metadata only supports V15+)
-    if let Ok(metadata) = subxt_metadata::Metadata::decode(&mut &encoded[..]) {
-        return Some(Arc::new(MetadataDocs::Modern(metadata)));
-    }
-
-    // Fall back to legacy path for V9-V14
-    let legacy_metadata =
-        frame_metadata::RuntimeMetadata::decode(&mut runtime_metadata.encode().as_slice()).ok()?;
-    Some(Arc::new(MetadataDocs::Legacy(legacy_metadata)))
 }
 
 // ================================================================================================
@@ -2499,23 +2524,27 @@ pub async fn get_block(
     let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
 
     if (params.event_docs || params.extrinsic_docs)
-        && let Some(metadata_docs) = get_metadata_docs_at_block(&state, resolved_block.number).await
+        && let Ok(client_at_block) = state.client.at(resolved_block.number).await
     {
-        if params.event_docs {
-            let add_docs_to_events = |events: &mut Vec<Event>| {
-                for event in events.iter_mut() {
-                    // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
-                    // We need to convert back: "system" -> "System", "balances" -> "Balances"
-                    let pallet_name = to_pascal_case(&event.method.pallet);
-                    event.docs = metadata_docs.get_event_docs(&pallet_name, &event.method.method);
-                }
-            };
+        let metadata = client_at_block.metadata();
 
-            add_docs_to_events(&mut on_initialize.events);
-            add_docs_to_events(&mut on_finalize.events);
+        if params.event_docs {
+            let add_docs_to_events =
+                |events: &mut Vec<Event>, metadata: &frame_metadata::RuntimeMetadata| {
+                    for event in events.iter_mut() {
+                        // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
+                        // We need to convert back: "system" -> "System", "balances" -> "Balances"
+                        let pallet_name = to_pascal_case(&event.method.pallet);
+                        event.docs = Docs::for_event(metadata, &pallet_name, &event.method.method)
+                            .map(|d| d.to_string());
+                    }
+                };
+
+            add_docs_to_events(&mut on_initialize.events, metadata);
+            add_docs_to_events(&mut on_finalize.events, metadata);
 
             for extrinsic in extrinsics_with_events.iter_mut() {
-                add_docs_to_events(&mut extrinsic.events);
+                add_docs_to_events(&mut extrinsic.events, metadata);
             }
         }
 
@@ -2526,7 +2555,8 @@ pub async fn get_block(
                 // Method names in metadata are snake_case, but our method names are lowerCamelCase
                 let pallet_name = to_pascal_case(&extrinsic.method.pallet);
                 let method_name = to_snake_case(&extrinsic.method.method);
-                extrinsic.docs = metadata_docs.get_call_docs(&pallet_name, &method_name);
+                extrinsic.docs =
+                    Docs::for_call(metadata, &pallet_name, &method_name).map(|d| d.to_string());
             }
         }
     }
