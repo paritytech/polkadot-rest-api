@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash as HashT;
-use std::borrow::Cow;
+use heck::{ToLowerCamelCase, ToSnakeCase, ToUpperCamelCase};
 use subxt_historic::error::{OnlineClientAtBlockError, StorageEntryIsNotAPlainValue, StorageError};
 use thiserror::Error;
 
@@ -358,47 +358,6 @@ fn hex_with_prefix(data: &[u8]) -> String {
     format!("0x{}", hex::encode(data))
 }
 
-/// Convert snake_case to camelCase
-/// Returns `Cow::Borrowed` if the string contains no underscores (no transformation needed),
-/// otherwise allocates a new String with the transformation applied.
-fn snake_to_camel(s: &str) -> Cow<'_, str> {
-    // Fast path: if no underscores, return borrowed string (no allocation!)
-    if !s.contains('_') {
-        return Cow::Borrowed(s);
-    }
-
-    // Slow path: need to transform
-    let mut result = String::with_capacity(s.len());
-    let mut capitalize_next = false;
-
-    for ch in s.chars() {
-        if ch == '_' {
-            capitalize_next = true;
-        } else if capitalize_next {
-            result.push(ch.to_ascii_uppercase());
-            capitalize_next = false;
-        } else {
-            result.push(ch);
-        }
-    }
-
-    Cow::Owned(result)
-}
-
-/// Convert to lowerCamelCase: snake_case → camelCase, then lowercase first character
-/// Used for pallet and method names (e.g., "set_validation_data" → "setValidationData")
-fn to_lower_camel_case(s: &str) -> String {
-    // First convert snake_case to camelCase
-    let camel = snake_to_camel(s);
-
-    // Then lowercase the first character
-    let mut chars = camel.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_lowercase().chain(chars).collect(),
-    }
-}
-
 /// Convert to lowerCamelCase by only lowercasing the first character
 /// This preserves snake_case names (e.g., "inbound_messages_data" stays unchanged)
 /// while converting PascalCase to lowerCamelCase (e.g., "PreRuntime" → "preRuntime")
@@ -409,33 +368,6 @@ fn lowercase_first_char(s: &str) -> String {
         None => String::new(),
         Some(first) => first.to_lowercase().chain(chars).collect(),
     }
-}
-
-/// Convert lowerCamelCase to PascalCase by uppercasing the first character
-/// Used to convert pallet names back to metadata format (e.g., "system" → "System")
-fn to_pascal_case(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_uppercase().chain(chars).collect(),
-    }
-}
-
-/// Convert lowerCamelCase to snake_case
-/// Used to convert method names back to metadata format (e.g., "setValidationData" → "set_validation_data")
-fn to_snake_case(s: &str) -> String {
-    let mut result = String::with_capacity(s.len() + 4);
-    for (i, ch) in s.chars().enumerate() {
-        if ch.is_uppercase() {
-            if i > 0 {
-                result.push('_');
-            }
-            result.push(ch.to_ascii_lowercase());
-        } else {
-            result.push(ch);
-        }
-    }
-    result
 }
 
 /// Extract a numeric value from a JSON value as a string
@@ -1160,7 +1092,7 @@ fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
             let transformed: serde_json::Map<String, Value> = map
                 .into_iter()
                 .map(|(key, val)| {
-                    let camel_key = snake_to_camel(&key).into_owned();
+                    let camel_key = key.to_lower_camel_case();
                     (camel_key, transform_json_unified(val, ss58_prefix))
                 })
                 .collect();
@@ -2114,8 +2046,8 @@ async fn extract_extrinsics(
 
     for extrinsic in extrinsics.iter() {
         // Extract pallet and method name from the call, converting to lowerCamelCase
-        let pallet_name = to_lower_camel_case(extrinsic.call().pallet_name());
-        let method_name = to_lower_camel_case(extrinsic.call().name());
+        let pallet_name = extrinsic.call().pallet_name().to_lower_camel_case();
+        let method_name = extrinsic.call().name().to_lower_camel_case();
 
         // Extract call arguments with field-name-based AccountId32 detection
         let fields = extrinsic.call().fields();
@@ -2534,7 +2466,7 @@ pub async fn get_block(
                     for event in events.iter_mut() {
                         // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
                         // We need to convert back: "system" -> "System", "balances" -> "Balances"
-                        let pallet_name = to_pascal_case(&event.method.pallet);
+                        let pallet_name = event.method.pallet.to_upper_camel_case();
                         event.docs = Docs::for_event(metadata, &pallet_name, &event.method.method)
                             .map(|d| d.to_string());
                     }
@@ -2553,8 +2485,8 @@ pub async fn get_block(
                 // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
                 // We need to convert back: "system" -> "System", "balances" -> "Balances"
                 // Method names in metadata are snake_case, but our method names are lowerCamelCase
-                let pallet_name = to_pascal_case(&extrinsic.method.pallet);
-                let method_name = to_snake_case(&extrinsic.method.method);
+                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
+                let method_name = extrinsic.method.method.to_snake_case();
                 extrinsic.docs =
                     Docs::for_call(metadata, &pallet_name, &method_name).map(|d| d.to_string());
             }
