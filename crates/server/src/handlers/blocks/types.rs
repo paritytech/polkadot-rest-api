@@ -31,6 +31,9 @@ pub struct BlockQueryParams {
     /// When true, include documentation for extrinsics
     #[serde(default)]
     pub extrinsic_docs: bool,
+    /// When true, skip fee calculation for extrinsics (info will be empty object)
+    #[serde(default)]
+    pub no_fees: bool,
 }
 
 // ================================================================================================

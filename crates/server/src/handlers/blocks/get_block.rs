@@ -125,26 +125,28 @@ pub async fn get_block(
         }
     }
 
-    let spec_version = state
-        .get_runtime_version_at_hash(&resolved_block.hash)
-        .await
-        .ok()
-        .and_then(|v| v.get("specVersion").and_then(|sv| sv.as_u64()))
-        .map(|v| v as u32)
-        .unwrap_or(state.chain_info.spec_version);
+    // Populate fee info for signed extrinsics that pay fees (unless noFees=true)
+    if !params.no_fees {
+        let spec_version = state
+            .get_runtime_version_at_hash(&resolved_block.hash)
+            .await
+            .ok()
+            .and_then(|v| v.get("specVersion").and_then(|sv| sv.as_u64()))
+            .map(|v| v as u32)
+            .unwrap_or(state.chain_info.spec_version);
 
-    // Populate fee info for signed extrinsics that pay fees
-    for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
-        if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
-            extrinsic.info = extract_fee_info_for_extrinsic(
-                &state,
-                &extrinsic.raw_hex,
-                &extrinsic.events,
-                extrinsic_outcomes.get(i),
-                &parent_hash,
-                spec_version,
-            )
-            .await;
+        for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
+            if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
+                extrinsic.info = extract_fee_info_for_extrinsic(
+                    &state,
+                    &extrinsic.raw_hex,
+                    &extrinsic.events,
+                    extrinsic_outcomes.get(i),
+                    &parent_hash,
+                    spec_version,
+                )
+                .await;
+            }
         }
     }
 
