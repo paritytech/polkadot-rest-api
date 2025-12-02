@@ -1725,19 +1725,20 @@ fn get_legacy_event_docs(
             if let DecodeDifferent::Decoded(modules) = &meta.modules {
                 for module in modules {
                     if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
-                        && let Some(DecodeDifferent::Decoded(events)) = &module.event {
-                            for event in events {
-                                if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
-                                    let docs = extract_docs(&event.documentation);
-                                    let joined = docs.join("\n");
-                                    return if joined.is_empty() {
-                                        None
-                                    } else {
-                                        Some(joined)
-                                    };
-                                }
+                        && let Some(DecodeDifferent::Decoded(events)) = &module.event
+                    {
+                        for event in events {
+                            if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
+                                let docs = extract_docs(&event.documentation);
+                                let joined = docs.join("\n");
+                                return if joined.is_empty() {
+                                    None
+                                } else {
+                                    Some(joined)
+                                };
                             }
                         }
+                    }
                 }
             }
             None
@@ -1746,19 +1747,20 @@ fn get_legacy_event_docs(
             if let DecodeDifferent::Decoded(modules) = &meta.modules {
                 for module in modules {
                     if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
-                        && let Some(DecodeDifferent::Decoded(events)) = &module.event {
-                            for event in events {
-                                if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
-                                    let docs = extract_docs(&event.documentation);
-                                    let joined = docs.join("\n");
-                                    return if joined.is_empty() {
-                                        None
-                                    } else {
-                                        Some(joined)
-                                    };
-                                }
+                        && let Some(DecodeDifferent::Decoded(events)) = &module.event
+                    {
+                        for event in events {
+                            if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
+                                let docs = extract_docs(&event.documentation);
+                                let joined = docs.join("\n");
+                                return if joined.is_empty() {
+                                    None
+                                } else {
+                                    Some(joined)
+                                };
                             }
                         }
+                    }
                 }
             }
             None
@@ -1767,19 +1769,20 @@ fn get_legacy_event_docs(
             if let DecodeDifferent::Decoded(modules) = &meta.modules {
                 for module in modules {
                     if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
-                        && let Some(DecodeDifferent::Decoded(events)) = &module.event {
-                            for event in events {
-                                if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
-                                    let docs = extract_docs(&event.documentation);
-                                    let joined = docs.join("\n");
-                                    return if joined.is_empty() {
-                                        None
-                                    } else {
-                                        Some(joined)
-                                    };
-                                }
+                        && let Some(DecodeDifferent::Decoded(events)) = &module.event
+                    {
+                        for event in events {
+                            if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
+                                let docs = extract_docs(&event.documentation);
+                                let joined = docs.join("\n");
+                                return if joined.is_empty() {
+                                    None
+                                } else {
+                                    Some(joined)
+                                };
                             }
                         }
+                    }
                 }
             }
             None
@@ -1788,19 +1791,20 @@ fn get_legacy_event_docs(
             if let DecodeDifferent::Decoded(modules) = &meta.modules {
                 for module in modules {
                     if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
-                        && let Some(DecodeDifferent::Decoded(events)) = &module.event {
-                            for event in events {
-                                if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
-                                    let docs = extract_docs(&event.documentation);
-                                    let joined = docs.join("\n");
-                                    return if joined.is_empty() {
-                                        None
-                                    } else {
-                                        Some(joined)
-                                    };
-                                }
+                        && let Some(DecodeDifferent::Decoded(events)) = &module.event
+                    {
+                        for event in events {
+                            if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
+                                let docs = extract_docs(&event.documentation);
+                                let joined = docs.join("\n");
+                                return if joined.is_empty() {
+                                    None
+                                } else {
+                                    Some(joined)
+                                };
                             }
                         }
+                    }
                 }
             }
             None
@@ -1809,19 +1813,20 @@ fn get_legacy_event_docs(
             if let DecodeDifferent::Decoded(modules) = &meta.modules {
                 for module in modules {
                     if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
-                        && let Some(DecodeDifferent::Decoded(events)) = &module.event {
-                            for event in events {
-                                if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
-                                    let docs = extract_docs(&event.documentation);
-                                    let joined = docs.join("\n");
-                                    return if joined.is_empty() {
-                                        None
-                                    } else {
-                                        Some(joined)
-                                    };
-                                }
+                        && let Some(DecodeDifferent::Decoded(events)) = &module.event
+                    {
+                        for event in events {
+                            if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
+                                let docs = extract_docs(&event.documentation);
+                                let joined = docs.join("\n");
+                                return if joined.is_empty() {
+                                    None
+                                } else {
+                                    Some(joined)
+                                };
                             }
                         }
+                    }
                 }
             }
             None
@@ -1830,21 +1835,22 @@ fn get_legacy_event_docs(
             for pallet in &meta.pallets {
                 if pallet.name.eq_ignore_ascii_case(pallet_name)
                     && let Some(event_ty) = &pallet.event
-                        && let Some(ty) = meta.types.resolve(event_ty.ty.id)
-                            && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def {
-                                for variant in &variant_def.variants {
-                                    if variant.name.eq_ignore_ascii_case(event_name) {
-                                        let docs: Vec<String> =
-                                            variant.docs.iter().map(|s| s.to_string()).collect();
-                                        let joined = docs.join("\n");
-                                        return if joined.is_empty() {
-                                            None
-                                        } else {
-                                            Some(joined)
-                                        };
-                                    }
-                                }
-                            }
+                    && let Some(ty) = meta.types.resolve(event_ty.ty.id)
+                    && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def
+                {
+                    for variant in &variant_def.variants {
+                        if variant.name.eq_ignore_ascii_case(event_name) {
+                            let docs: Vec<String> =
+                                variant.docs.iter().map(|s| s.to_string()).collect();
+                            let joined = docs.join("\n");
+                            return if joined.is_empty() {
+                                None
+                            } else {
+                                Some(joined)
+                            };
+                        }
+                    }
+                }
             }
             None
         }
@@ -1882,19 +1888,20 @@ fn get_legacy_call_docs(
             if let DecodeDifferent::Decoded(modules) = &meta.modules {
                 for module in modules {
                     if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
-                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls {
-                            for call in calls {
-                                if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
-                                    let docs = extract_docs(&call.documentation);
-                                    let joined = docs.join("\n");
-                                    return if joined.is_empty() {
-                                        None
-                                    } else {
-                                        Some(joined)
-                                    };
-                                }
+                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls
+                    {
+                        for call in calls {
+                            if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
+                                let docs = extract_docs(&call.documentation);
+                                let joined = docs.join("\n");
+                                return if joined.is_empty() {
+                                    None
+                                } else {
+                                    Some(joined)
+                                };
                             }
                         }
+                    }
                 }
             }
             None
@@ -1903,19 +1910,20 @@ fn get_legacy_call_docs(
             if let DecodeDifferent::Decoded(modules) = &meta.modules {
                 for module in modules {
                     if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
-                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls {
-                            for call in calls {
-                                if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
-                                    let docs = extract_docs(&call.documentation);
-                                    let joined = docs.join("\n");
-                                    return if joined.is_empty() {
-                                        None
-                                    } else {
-                                        Some(joined)
-                                    };
-                                }
+                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls
+                    {
+                        for call in calls {
+                            if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
+                                let docs = extract_docs(&call.documentation);
+                                let joined = docs.join("\n");
+                                return if joined.is_empty() {
+                                    None
+                                } else {
+                                    Some(joined)
+                                };
                             }
                         }
+                    }
                 }
             }
             None
@@ -1924,19 +1932,20 @@ fn get_legacy_call_docs(
             if let DecodeDifferent::Decoded(modules) = &meta.modules {
                 for module in modules {
                     if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
-                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls {
-                            for call in calls {
-                                if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
-                                    let docs = extract_docs(&call.documentation);
-                                    let joined = docs.join("\n");
-                                    return if joined.is_empty() {
-                                        None
-                                    } else {
-                                        Some(joined)
-                                    };
-                                }
+                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls
+                    {
+                        for call in calls {
+                            if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
+                                let docs = extract_docs(&call.documentation);
+                                let joined = docs.join("\n");
+                                return if joined.is_empty() {
+                                    None
+                                } else {
+                                    Some(joined)
+                                };
                             }
                         }
+                    }
                 }
             }
             None
@@ -1945,19 +1954,20 @@ fn get_legacy_call_docs(
             if let DecodeDifferent::Decoded(modules) = &meta.modules {
                 for module in modules {
                     if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
-                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls {
-                            for call in calls {
-                                if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
-                                    let docs = extract_docs(&call.documentation);
-                                    let joined = docs.join("\n");
-                                    return if joined.is_empty() {
-                                        None
-                                    } else {
-                                        Some(joined)
-                                    };
-                                }
+                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls
+                    {
+                        for call in calls {
+                            if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
+                                let docs = extract_docs(&call.documentation);
+                                let joined = docs.join("\n");
+                                return if joined.is_empty() {
+                                    None
+                                } else {
+                                    Some(joined)
+                                };
                             }
                         }
+                    }
                 }
             }
             None
@@ -1966,19 +1976,20 @@ fn get_legacy_call_docs(
             if let DecodeDifferent::Decoded(modules) = &meta.modules {
                 for module in modules {
                     if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
-                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls {
-                            for call in calls {
-                                if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
-                                    let docs = extract_docs(&call.documentation);
-                                    let joined = docs.join("\n");
-                                    return if joined.is_empty() {
-                                        None
-                                    } else {
-                                        Some(joined)
-                                    };
-                                }
+                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls
+                    {
+                        for call in calls {
+                            if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
+                                let docs = extract_docs(&call.documentation);
+                                let joined = docs.join("\n");
+                                return if joined.is_empty() {
+                                    None
+                                } else {
+                                    Some(joined)
+                                };
                             }
                         }
+                    }
                 }
             }
             None
@@ -1987,21 +1998,22 @@ fn get_legacy_call_docs(
             for pallet in &meta.pallets {
                 if pallet.name.eq_ignore_ascii_case(pallet_name)
                     && let Some(call_ty) = &pallet.calls
-                        && let Some(ty) = meta.types.resolve(call_ty.ty.id)
-                            && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def {
-                                for variant in &variant_def.variants {
-                                    if variant.name.eq_ignore_ascii_case(call_name) {
-                                        let docs: Vec<String> =
-                                            variant.docs.iter().map(|s| s.to_string()).collect();
-                                        let joined = docs.join("\n");
-                                        return if joined.is_empty() {
-                                            None
-                                        } else {
-                                            Some(joined)
-                                        };
-                                    }
-                                }
-                            }
+                    && let Some(ty) = meta.types.resolve(call_ty.ty.id)
+                    && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def
+                {
+                    for variant in &variant_def.variants {
+                        if variant.name.eq_ignore_ascii_case(call_name) {
+                            let docs: Vec<String> =
+                                variant.docs.iter().map(|s| s.to_string()).collect();
+                            let joined = docs.join("\n");
+                            return if joined.is_empty() {
+                                None
+                            } else {
+                                Some(joined)
+                            };
+                        }
+                    }
+                }
             }
             None
         }
@@ -2488,37 +2500,36 @@ pub async fn get_block(
 
     if (params.event_docs || params.extrinsic_docs)
         && let Some(metadata_docs) = get_metadata_docs_at_block(&state, resolved_block.number).await
-        {
-            if params.event_docs {
-                let add_docs_to_events = |events: &mut Vec<Event>| {
-                    for event in events.iter_mut() {
-                        // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
-                        // We need to convert back: "system" -> "System", "balances" -> "Balances"
-                        let pallet_name = to_pascal_case(&event.method.pallet);
-                        event.docs =
-                            metadata_docs.get_event_docs(&pallet_name, &event.method.method);
-                    }
-                };
-
-                add_docs_to_events(&mut on_initialize.events);
-                add_docs_to_events(&mut on_finalize.events);
-
-                for extrinsic in extrinsics_with_events.iter_mut() {
-                    add_docs_to_events(&mut extrinsic.events);
-                }
-            }
-
-            if params.extrinsic_docs {
-                for extrinsic in extrinsics_with_events.iter_mut() {
+    {
+        if params.event_docs {
+            let add_docs_to_events = |events: &mut Vec<Event>| {
+                for event in events.iter_mut() {
                     // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
                     // We need to convert back: "system" -> "System", "balances" -> "Balances"
-                    // Method names in metadata are snake_case, but our method names are lowerCamelCase
-                    let pallet_name = to_pascal_case(&extrinsic.method.pallet);
-                    let method_name = to_snake_case(&extrinsic.method.method);
-                    extrinsic.docs = metadata_docs.get_call_docs(&pallet_name, &method_name);
+                    let pallet_name = to_pascal_case(&event.method.pallet);
+                    event.docs = metadata_docs.get_event_docs(&pallet_name, &event.method.method);
                 }
+            };
+
+            add_docs_to_events(&mut on_initialize.events);
+            add_docs_to_events(&mut on_finalize.events);
+
+            for extrinsic in extrinsics_with_events.iter_mut() {
+                add_docs_to_events(&mut extrinsic.events);
             }
         }
+
+        if params.extrinsic_docs {
+            for extrinsic in extrinsics_with_events.iter_mut() {
+                // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
+                // We need to convert back: "system" -> "System", "balances" -> "Balances"
+                // Method names in metadata are snake_case, but our method names are lowerCamelCase
+                let pallet_name = to_pascal_case(&extrinsic.method.pallet);
+                let method_name = to_snake_case(&extrinsic.method.method);
+                extrinsic.docs = metadata_docs.get_call_docs(&pallet_name, &method_name);
+            }
+        }
+    }
 
     let response = BlockResponse {
         number: resolved_block.number.to_string(),
