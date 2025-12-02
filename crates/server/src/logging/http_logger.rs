@@ -3,7 +3,6 @@ use std::time::Instant;
 
 /// HTTP logger middleware that logs request method, path, status code, and duration.
 ///
-/// Mirrors the behavior of the TypeScript substrate-api-sidecar HTTP logger:
 /// - Logs with INFO level (target: http) for 2xx/3xx responses
 /// - Logs with WARN level for 4xx responses
 /// - Logs with ERROR level for 5xx responses
