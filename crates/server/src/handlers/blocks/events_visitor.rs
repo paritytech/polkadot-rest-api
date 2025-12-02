@@ -9,9 +9,9 @@ use scale_decode::{
 use scale_type_resolver::TypeResolver;
 use serde_json::Value as JsonValue;
 
-/// Convert to lowerCamelCase (lowercase first character only)
+/// Lowercase the first character only, preserving the rest
 /// e.g., "ParaInclusion" -> "paraInclusion", "System" -> "system"
-fn to_lower_camel_case(s: &str) -> String {
+fn lowercase_first_char(s: &str) -> String {
     let mut chars = s.chars();
     match chars.next() {
         None => String::new(),
@@ -274,8 +274,8 @@ where
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         // The variant name is the pallet name (e.g., "Balances", "System")
-        // Convert to lowerCamelCase to match substrate-api-sidecar format
-        let pallet_name = to_lower_camel_case(value.name());
+        // Lowercase the first char to match substrate-api-sidecar format
+        let pallet_name = lowercase_first_char(value.name());
 
         // The variant contains fields - get the composite to access them
         let fields_composite = value.fields();

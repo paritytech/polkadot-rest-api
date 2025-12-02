@@ -5,16 +5,16 @@ use super::type_name_visitor::GetTypeName;
 use crate::utils::{self, EraInfo};
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
 };
-use serde::Serialize;
+use heck::{ToLowerCamelCase, ToSnakeCase, ToUpperCamelCase};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash as HashT;
-use std::borrow::Cow;
 use subxt_historic::error::{OnlineClientAtBlockError, StorageEntryIsNotAPlainValue, StorageError};
 use thiserror::Error;
 
@@ -24,6 +24,22 @@ use thiserror::Error;
 
 /// Length of consensus engine ID in digest items (e.g., "BABE", "aura", "pow_")
 const CONSENSUS_ENGINE_ID_LEN: usize = 4;
+
+// ================================================================================================
+// Query Parameters
+// ================================================================================================
+
+/// Query parameters for /blocks/{blockId} endpoint
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockQueryParams {
+    /// When true, include documentation for events
+    #[serde(default)]
+    pub event_docs: bool,
+    /// When true, include documentation for extrinsics
+    #[serde(default)]
+    pub extrinsic_docs: bool,
+}
 
 // ================================================================================================
 // Error Types
@@ -207,6 +223,9 @@ pub struct MethodInfo {
 pub struct Event {
     pub method: MethodInfo,
     pub data: Vec<Value>,
+    /// Documentation for this event (only present when eventDocs=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docs: Option<String>,
 }
 
 /// Events that occurred during block initialization
@@ -264,6 +283,9 @@ pub struct ExtrinsicInfo {
     /// Extracted from DispatchInfo in System.ExtrinsicSuccess/ExtrinsicFailed events
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pays_fee: Option<bool>,
+    /// Documentation for this extrinsic (only present when extrinsicDocs=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docs: Option<String>,
     /// Raw extrinsic bytes as hex (used internally for fee queries, not serialized)
     #[serde(skip)]
     pub raw_hex: String,
@@ -334,47 +356,6 @@ struct ExtrinsicOutcome {
 /// Format bytes as hex string with "0x" prefix
 fn hex_with_prefix(data: &[u8]) -> String {
     format!("0x{}", hex::encode(data))
-}
-
-/// Convert snake_case to camelCase
-/// Returns `Cow::Borrowed` if the string contains no underscores (no transformation needed),
-/// otherwise allocates a new String with the transformation applied.
-fn snake_to_camel(s: &str) -> Cow<'_, str> {
-    // Fast path: if no underscores, return borrowed string (no allocation!)
-    if !s.contains('_') {
-        return Cow::Borrowed(s);
-    }
-
-    // Slow path: need to transform
-    let mut result = String::with_capacity(s.len());
-    let mut capitalize_next = false;
-
-    for ch in s.chars() {
-        if ch == '_' {
-            capitalize_next = true;
-        } else if capitalize_next {
-            result.push(ch.to_ascii_uppercase());
-            capitalize_next = false;
-        } else {
-            result.push(ch);
-        }
-    }
-
-    Cow::Owned(result)
-}
-
-/// Convert to lowerCamelCase: snake_case → camelCase, then lowercase first character
-/// Used for pallet and method names (e.g., "set_validation_data" → "setValidationData")
-fn to_lower_camel_case(s: &str) -> String {
-    // First convert snake_case to camelCase
-    let camel = snake_to_camel(s);
-
-    // Then lowercase the first character
-    let mut chars = camel.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_lowercase().chain(chars).collect(),
-    }
 }
 
 /// Convert to lowerCamelCase by only lowercasing the first character
@@ -1111,7 +1092,7 @@ fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
             let transformed: serde_json::Map<String, Value> = map
                 .into_iter()
                 .map(|(key, val)| {
-                    let camel_key = snake_to_camel(&key).into_owned();
+                    let camel_key = key.to_lower_camel_case();
                     (camel_key, transform_json_unified(val, ss58_prefix))
                 })
                 .collect();
@@ -1366,6 +1347,7 @@ fn categorize_events(
                 method: parsed_event.event_name,
             },
             data: parsed_event.event_data,
+            docs: None, // Will be populated if eventDocs=true
         };
 
         match parsed_event.phase {
@@ -1599,6 +1581,429 @@ async fn get_query_info(
 }
 
 // ================================================================================================
+// Helper Functions - Documentation
+// ================================================================================================
+
+/// Zero-copy reference to documentation strings from metadata.
+/// Supports all metadata versions V9-V16 without expensive encode/decode operations.
+pub struct Docs<'a> {
+    inner: DocsInner<'a>,
+}
+
+/// Internal representation of docs that can hold different reference types
+/// depending on the metadata version.
+enum DocsInner<'a> {
+    /// Reference to Vec<String> (V14+ metadata uses this format)
+    Strings(&'a [String]),
+    /// Reference to static str slice (V9-V13 compile-time metadata)
+    Static(&'a [&'static str]),
+}
+
+impl<'a> Docs<'a> {
+    /// Create docs from a slice of Strings (V14+ metadata)
+    fn from_strings(docs: &'a [String]) -> Option<Self> {
+        if docs.is_empty() || docs.iter().all(|s| s.is_empty()) {
+            None
+        } else {
+            Some(Self {
+                inner: DocsInner::Strings(docs),
+            })
+        }
+    }
+
+    /// Create docs from a static str slice (V9-V13 metadata)
+    fn from_static(docs: &'a [&'static str]) -> Option<Self> {
+        if docs.is_empty() || docs.iter().all(|s| s.is_empty()) {
+            None
+        } else {
+            Some(Self {
+                inner: DocsInner::Static(docs),
+            })
+        }
+    }
+
+    /// Get event documentation from RuntimeMetadata.
+    /// Works with all metadata versions V9-V16.
+    pub fn for_event(
+        metadata: &'a frame_metadata::RuntimeMetadata,
+        pallet_name: &str,
+        event_name: &str,
+    ) -> Option<Docs<'a>> {
+        get_event_docs(metadata, pallet_name, event_name)
+    }
+
+    /// Get call documentation from RuntimeMetadata.
+    /// Works with all metadata versions V9-V16.
+    pub fn for_call(
+        metadata: &'a frame_metadata::RuntimeMetadata,
+        pallet_name: &str,
+        call_name: &str,
+    ) -> Option<Docs<'a>> {
+        get_call_docs(metadata, pallet_name, call_name)
+    }
+}
+
+impl std::fmt::Display for Docs<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.inner {
+            DocsInner::Strings(docs) => {
+                let mut first = true;
+                for doc in *docs {
+                    if !first {
+                        writeln!(f)?;
+                    }
+                    write!(f, "{}", doc)?;
+                    first = false;
+                }
+                Ok(())
+            }
+            DocsInner::Static(docs) => {
+                let mut first = true;
+                for doc in *docs {
+                    if !first {
+                        writeln!(f)?;
+                    }
+                    write!(f, "{}", doc)?;
+                    first = false;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl Serialize for Docs<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+/// Extract event documentation from metadata (V9-V16)
+/// Returns a zero-copy Docs reference when possible.
+fn get_event_docs<'a>(
+    metadata: &'a frame_metadata::RuntimeMetadata,
+    pallet_name: &str,
+    event_name: &str,
+) -> Option<Docs<'a>> {
+    use frame_metadata::RuntimeMetadata::*;
+    use frame_metadata::decode_different::DecodeDifferent;
+
+    // Helper to extract string from DecodeDifferent
+    fn extract_str<'a>(s: &'a DecodeDifferent<&'static str, String>) -> &'a str {
+        match s {
+            DecodeDifferent::Decoded(v) => v.as_str(),
+            DecodeDifferent::Encode(s) => s,
+        }
+    }
+
+    // Helper to create Docs from DecodeDifferent docs
+    fn docs_from_decode_different<'a>(
+        docs: &'a DecodeDifferent<&'static [&'static str], Vec<String>>,
+    ) -> Option<Docs<'a>> {
+        match docs {
+            DecodeDifferent::Decoded(v) => Docs::from_strings(v),
+            DecodeDifferent::Encode(s) => Docs::from_static(s),
+        }
+    }
+
+    match metadata {
+        V9(meta) => {
+            if let DecodeDifferent::Decoded(modules) = &meta.modules {
+                for module in modules {
+                    if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
+                        && let Some(DecodeDifferent::Decoded(events)) = &module.event
+                    {
+                        for event in events {
+                            if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
+                                return docs_from_decode_different(&event.documentation);
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V10(meta) => {
+            if let DecodeDifferent::Decoded(modules) = &meta.modules {
+                for module in modules {
+                    if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
+                        && let Some(DecodeDifferent::Decoded(events)) = &module.event
+                    {
+                        for event in events {
+                            if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
+                                return docs_from_decode_different(&event.documentation);
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V11(meta) => {
+            if let DecodeDifferent::Decoded(modules) = &meta.modules {
+                for module in modules {
+                    if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
+                        && let Some(DecodeDifferent::Decoded(events)) = &module.event
+                    {
+                        for event in events {
+                            if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
+                                return docs_from_decode_different(&event.documentation);
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V12(meta) => {
+            if let DecodeDifferent::Decoded(modules) = &meta.modules {
+                for module in modules {
+                    if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
+                        && let Some(DecodeDifferent::Decoded(events)) = &module.event
+                    {
+                        for event in events {
+                            if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
+                                return docs_from_decode_different(&event.documentation);
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V13(meta) => {
+            if let DecodeDifferent::Decoded(modules) = &meta.modules {
+                for module in modules {
+                    if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
+                        && let Some(DecodeDifferent::Decoded(events)) = &module.event
+                    {
+                        for event in events {
+                            if extract_str(&event.name).eq_ignore_ascii_case(event_name) {
+                                return docs_from_decode_different(&event.documentation);
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V14(meta) => {
+            for pallet in &meta.pallets {
+                if pallet.name.eq_ignore_ascii_case(pallet_name)
+                    && let Some(event_ty) = &pallet.event
+                    && let Some(ty) = meta.types.resolve(event_ty.ty.id)
+                    && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def
+                {
+                    for variant in &variant_def.variants {
+                        if variant.name.eq_ignore_ascii_case(event_name) {
+                            return Docs::from_strings(&variant.docs);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V15(meta) => {
+            for pallet in &meta.pallets {
+                if pallet.name.eq_ignore_ascii_case(pallet_name)
+                    && let Some(event_ty) = &pallet.event
+                    && let Some(ty) = meta.types.resolve(event_ty.ty.id)
+                    && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def
+                {
+                    for variant in &variant_def.variants {
+                        if variant.name.eq_ignore_ascii_case(event_name) {
+                            return Docs::from_strings(&variant.docs);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V16(meta) => {
+            for pallet in &meta.pallets {
+                if pallet.name.eq_ignore_ascii_case(pallet_name)
+                    && let Some(event_ty) = &pallet.event
+                    && let Some(ty) = meta.types.resolve(event_ty.ty.id)
+                    && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def
+                {
+                    for variant in &variant_def.variants {
+                        if variant.name.eq_ignore_ascii_case(event_name) {
+                            return Docs::from_strings(&variant.docs);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Extract call documentation from metadata (V9-V16)
+/// Returns a zero-copy Docs reference when possible.
+fn get_call_docs<'a>(
+    metadata: &'a frame_metadata::RuntimeMetadata,
+    pallet_name: &str,
+    call_name: &str,
+) -> Option<Docs<'a>> {
+    use frame_metadata::RuntimeMetadata::*;
+    use frame_metadata::decode_different::DecodeDifferent;
+
+    // Helper to extract string from DecodeDifferent
+    fn extract_str<'a>(s: &'a DecodeDifferent<&'static str, String>) -> &'a str {
+        match s {
+            DecodeDifferent::Decoded(v) => v.as_str(),
+            DecodeDifferent::Encode(s) => s,
+        }
+    }
+
+    // Helper to create Docs from DecodeDifferent docs
+    fn docs_from_decode_different<'a>(
+        docs: &'a DecodeDifferent<&'static [&'static str], Vec<String>>,
+    ) -> Option<Docs<'a>> {
+        match docs {
+            DecodeDifferent::Decoded(v) => Docs::from_strings(v),
+            DecodeDifferent::Encode(s) => Docs::from_static(s),
+        }
+    }
+
+    match metadata {
+        V9(meta) => {
+            if let DecodeDifferent::Decoded(modules) = &meta.modules {
+                for module in modules {
+                    if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
+                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls
+                    {
+                        for call in calls {
+                            if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
+                                return docs_from_decode_different(&call.documentation);
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V10(meta) => {
+            if let DecodeDifferent::Decoded(modules) = &meta.modules {
+                for module in modules {
+                    if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
+                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls
+                    {
+                        for call in calls {
+                            if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
+                                return docs_from_decode_different(&call.documentation);
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V11(meta) => {
+            if let DecodeDifferent::Decoded(modules) = &meta.modules {
+                for module in modules {
+                    if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
+                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls
+                    {
+                        for call in calls {
+                            if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
+                                return docs_from_decode_different(&call.documentation);
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V12(meta) => {
+            if let DecodeDifferent::Decoded(modules) = &meta.modules {
+                for module in modules {
+                    if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
+                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls
+                    {
+                        for call in calls {
+                            if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
+                                return docs_from_decode_different(&call.documentation);
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V13(meta) => {
+            if let DecodeDifferent::Decoded(modules) = &meta.modules {
+                for module in modules {
+                    if extract_str(&module.name).eq_ignore_ascii_case(pallet_name)
+                        && let Some(DecodeDifferent::Decoded(calls)) = &module.calls
+                    {
+                        for call in calls {
+                            if extract_str(&call.name).eq_ignore_ascii_case(call_name) {
+                                return docs_from_decode_different(&call.documentation);
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V14(meta) => {
+            for pallet in &meta.pallets {
+                if pallet.name.eq_ignore_ascii_case(pallet_name)
+                    && let Some(call_ty) = &pallet.calls
+                    && let Some(ty) = meta.types.resolve(call_ty.ty.id)
+                    && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def
+                {
+                    for variant in &variant_def.variants {
+                        if variant.name.eq_ignore_ascii_case(call_name) {
+                            return Docs::from_strings(&variant.docs);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V15(meta) => {
+            for pallet in &meta.pallets {
+                if pallet.name.eq_ignore_ascii_case(pallet_name)
+                    && let Some(call_ty) = &pallet.calls
+                    && let Some(ty) = meta.types.resolve(call_ty.ty.id)
+                    && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def
+                {
+                    for variant in &variant_def.variants {
+                        if variant.name.eq_ignore_ascii_case(call_name) {
+                            return Docs::from_strings(&variant.docs);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        V16(meta) => {
+            for pallet in &meta.pallets {
+                if pallet.name.eq_ignore_ascii_case(pallet_name)
+                    && let Some(call_ty) = &pallet.calls
+                    && let Some(ty) = meta.types.resolve(call_ty.ty.id)
+                    && let scale_info::TypeDef::Variant(variant_def) = &ty.type_def
+                {
+                    for variant in &variant_def.variants {
+                        if variant.name.eq_ignore_ascii_case(call_name) {
+                            return Docs::from_strings(&variant.docs);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+// ================================================================================================
 // Helper Functions - Extrinsic Processing
 // ================================================================================================
 
@@ -1641,8 +2046,8 @@ async fn extract_extrinsics(
 
     for extrinsic in extrinsics.iter() {
         // Extract pallet and method name from the call, converting to lowerCamelCase
-        let pallet_name = to_lower_camel_case(extrinsic.call().pallet_name());
-        let method_name = to_lower_camel_case(extrinsic.call().name());
+        let pallet_name = extrinsic.call().pallet_name().to_lower_camel_case();
+        let method_name = extrinsic.call().name().to_lower_camel_case();
 
         // Extract call arguments with field-name-based AccountId32 detection
         let fields = extrinsic.call().fields();
@@ -1909,6 +2314,7 @@ async fn extract_extrinsics(
             events: Vec::new(),
             success: false,
             pays_fee,
+            docs: None, // Will be populated if extrinsicDocs=true
             raw_hex,
         });
     }
@@ -1923,9 +2329,14 @@ async fn extract_extrinsics(
 /// Handler for GET /blocks/{blockId}
 ///
 /// Returns block information for a given block identifier (hash or number)
+///
+/// Query Parameters:
+/// - `eventDocs` (boolean, default: false): Include documentation for events
+/// - `extrinsicDocs` (boolean, default: false): Include documentation for extrinsics
 pub async fn get_block(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
+    Query(params): Query<BlockQueryParams>,
 ) -> Result<Json<BlockResponse>, GetBlockError> {
     let block_id = block_id.parse::<utils::BlockId>()?;
     // Track if the block was queried by hash (needed for canonical chain check)
@@ -2041,6 +2452,47 @@ pub async fn get_block(
         }
     }
 
+    // Optionally populate documentation for events and extrinsics
+    let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
+
+    if (params.event_docs || params.extrinsic_docs)
+        && let Ok(client_at_block) = state.client.at(resolved_block.number).await
+    {
+        let metadata = client_at_block.metadata();
+
+        if params.event_docs {
+            let add_docs_to_events =
+                |events: &mut Vec<Event>, metadata: &frame_metadata::RuntimeMetadata| {
+                    for event in events.iter_mut() {
+                        // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
+                        // We need to convert back: "system" -> "System", "balances" -> "Balances"
+                        let pallet_name = event.method.pallet.to_upper_camel_case();
+                        event.docs = Docs::for_event(metadata, &pallet_name, &event.method.method)
+                            .map(|d| d.to_string());
+                    }
+                };
+
+            add_docs_to_events(&mut on_initialize.events, metadata);
+            add_docs_to_events(&mut on_finalize.events, metadata);
+
+            for extrinsic in extrinsics_with_events.iter_mut() {
+                add_docs_to_events(&mut extrinsic.events, metadata);
+            }
+        }
+
+        if params.extrinsic_docs {
+            for extrinsic in extrinsics_with_events.iter_mut() {
+                // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
+                // We need to convert back: "system" -> "System", "balances" -> "Balances"
+                // Method names in metadata are snake_case, but our method names are lowerCamelCase
+                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
+                let method_name = extrinsic.method.method.to_snake_case();
+                extrinsic.docs =
+                    Docs::for_call(metadata, &pallet_name, &method_name).map(|d| d.to_string());
+            }
+        }
+    }
+
     let response = BlockResponse {
         number: resolved_block.number.to_string(),
         hash: resolved_block.hash,
@@ -2146,7 +2598,12 @@ mod tests {
 
         let state = create_test_state_with_mock(mock_client);
 
-        let result = get_block(State(state), Path("100".to_string())).await;
+        let result = get_block(
+            State(state),
+            Path("100".to_string()),
+            Query(BlockQueryParams::default()),
+        )
+        .await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
@@ -2227,7 +2684,12 @@ mod tests {
 
         let state = create_test_state_with_mock(mock_client);
 
-        let result = get_block(State(state), Path(test_hash.to_string())).await;
+        let result = get_block(
+            State(state),
+            Path(test_hash.to_string()),
+            Query(BlockQueryParams::default()),
+        )
+        .await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
@@ -2258,7 +2720,12 @@ mod tests {
         let mock_client = MockRpcClient::builder().build();
         let state = create_test_state_with_mock(mock_client);
 
-        let result = get_block(State(state), Path("invalid".to_string())).await;
+        let result = get_block(
+            State(state),
+            Path("invalid".to_string()),
+            Query(BlockQueryParams::default()),
+        )
+        .await;
 
         assert!(result.is_err());
         assert!(matches!(
@@ -2277,7 +2744,12 @@ mod tests {
 
         let state = create_test_state_with_mock(mock_client);
 
-        let result = get_block(State(state), Path("999999".to_string())).await;
+        let result = get_block(
+            State(state),
+            Path("999999".to_string()),
+            Query(BlockQueryParams::default()),
+        )
+        .await;
 
         assert!(result.is_err());
         assert!(matches!(
