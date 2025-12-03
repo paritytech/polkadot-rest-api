@@ -1,4 +1,5 @@
 use crate::types::BlockHash;
+use config::Hasher;
 use parity_scale_codec::{Decode, Encode};
 use sp_core::H256;
 use sp_runtime::generic::{Digest, DigestItem};
@@ -19,15 +20,28 @@ pub enum HashError {
     ScaleDecodeError(String),
 }
 
-/// Compute the block hash from header JSON fields
-///
-/// This reconstructs the SCALE-encoded header and hashes it with Blake2b-256,
-/// matching Substrate's block hash calculation.
-///
-/// Returns `BlockHash` wrapper type with controlled string formatting.
-/// Convert to string with `hash.to_string()` or use directly in JSON responses.
+pub trait HasherExt {
+    fn hash(&self, data: &[u8]) -> [u8; 32];
+}
+
+impl HasherExt for Hasher {
+    fn hash(&self, data: &[u8]) -> [u8; 32] {
+        match self {
+            Hasher::Blake2_256 => sp_core::blake2_256(data),
+            Hasher::Keccak256 => sp_core::keccak_256(data),
+        }
+    }
+}
+
 pub fn compute_block_hash_from_header_json(
     header_json: &serde_json::Value,
+) -> Result<BlockHash, HashError> {
+    compute_block_hash_from_header_json_with_hasher(header_json, Hasher::Blake2_256)
+}
+
+pub fn compute_block_hash_from_header_json_with_hasher(
+    header_json: &serde_json::Value,
+    hasher: Hasher,
 ) -> Result<BlockHash, HashError> {
     let parent_hash = extract_hash(header_json, "parentHash")?;
     let number = extract_block_number(header_json, "number")?;
@@ -46,7 +60,7 @@ pub fn compute_block_hash_from_header_json(
 
     // Compute hash using Blake2b-256 of SCALE-encoded header
     let encoded = header.encode();
-    let hash = sp_core::blake2_256(&encoded);
+    let hash = hasher.hash(&encoded);
 
     Ok(BlockHash::from(H256::from(hash)))
 }
@@ -219,5 +233,82 @@ mod tests {
         let hash_str = hash.to_string();
         assert!(hash_str.starts_with("0x"));
         assert_eq!(hash_str.len(), 66); // "0x" + 64 hex chars
+    }
+
+    #[test]
+    fn test_hasher_from_str() {
+        // Blake2-256 variants
+        assert_eq!(Hasher::from_str("blake2-256"), Hasher::Blake2_256);
+        assert_eq!(Hasher::from_str("blake2_256"), Hasher::Blake2_256);
+        assert_eq!(Hasher::from_str("BLAKE2-256"), Hasher::Blake2_256);
+
+        // Keccak-256 variants
+        assert_eq!(Hasher::from_str("keccak-256"), Hasher::Keccak256);
+        assert_eq!(Hasher::from_str("keccak256"), Hasher::Keccak256);
+        assert_eq!(Hasher::from_str("KECCAK-256"), Hasher::Keccak256);
+
+        // Unknown defaults to Blake2-256
+        assert_eq!(Hasher::from_str("unknown"), Hasher::Blake2_256);
+        assert_eq!(Hasher::from_str(""), Hasher::Blake2_256);
+    }
+
+    #[test]
+    fn test_hasher_hash_blake2() {
+        let hasher = Hasher::Blake2_256;
+        let data = b"test data";
+        let hash = hasher.hash(data);
+
+        // Verify it matches sp_core::blake2_256
+        let expected = sp_core::blake2_256(data);
+        assert_eq!(hash, expected);
+    }
+
+    #[test]
+    fn test_hasher_hash_keccak() {
+        let hasher = Hasher::Keccak256;
+        let data = b"test data";
+        let hash = hasher.hash(data);
+
+        // Verify it matches sp_core::keccak_256
+        let expected = sp_core::keccak_256(data);
+        assert_eq!(hash, expected);
+    }
+
+    #[test]
+    fn test_hasher_default() {
+        assert_eq!(Hasher::default(), Hasher::Blake2_256);
+    }
+
+    #[test]
+    fn test_compute_hash_with_hasher() {
+        // Simple header for testing
+        let header_json = json!({
+            "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "number": "0x1",
+            "stateRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "extrinsicsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "digest": {
+                "logs": []
+            }
+        });
+
+        // Compute with default (should use Blake2-256)
+        let default_hash = compute_block_hash_from_header_json(&header_json).unwrap();
+
+        // Compute with explicit Blake2-256
+        let blake_hash =
+            compute_block_hash_from_header_json_with_hasher(&header_json, Hasher::Blake2_256)
+                .unwrap();
+
+        // These should be equal
+        assert_eq!(default_hash, blake_hash);
+
+        // Compute with Keccak-256 (should be different)
+        let keccak_hash =
+            compute_block_hash_from_header_json_with_hasher(&header_json, Hasher::Keccak256)
+                .unwrap();
+
+        // These should be different
+        assert_ne!(blake_hash, keccak_hash);
     }
 }
