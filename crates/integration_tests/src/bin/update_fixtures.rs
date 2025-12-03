@@ -127,13 +127,17 @@ async fn update_chain_fixtures(
     for test_case in &test_cases {
         if let Some(block_height) = test_case.block_height {
             let endpoint = test_case.endpoint.to_string();
-            
-            println!("\nFetching {} at block {} from API...", endpoint, block_height);
-            
+
+            println!(
+                "\nFetching {} at block {} from API...",
+                endpoint, block_height
+            );
+
             let data = if endpoint.contains("/blocks/") {
                 fetch_block_from_api(client, api_url, &block_height.to_string()).await?
             } else if endpoint.contains("/runtime/") {
-                fetch_runtime_from_api(client, api_url, &endpoint, &block_height.to_string()).await?
+                fetch_runtime_from_api(client, api_url, &endpoint, &block_height.to_string())
+                    .await?
             } else {
                 println!("  ⚠ Skipping unsupported endpoint: {}", endpoint);
                 continue;
@@ -263,10 +267,8 @@ async fn fetch_runtime_from_api(
         if data.get("magicNumber").is_none() {
             anyhow::bail!("API response missing required field: magicNumber");
         }
-    } else if endpoint.contains("/code") {
-        if data.get("code").is_none() {
-            anyhow::bail!("API response missing required field: code");
-        }
+    } else if endpoint.contains("/code") && data.get("code").is_none() {
+        anyhow::bail!("API response missing required field: code");
     }
 
     println!("  ✓ Response received (block height: {})", block_height);

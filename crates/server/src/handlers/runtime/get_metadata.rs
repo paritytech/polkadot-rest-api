@@ -1,7 +1,12 @@
 use crate::handlers::common::{AtBlockParam, BlockInfo};
 use crate::state::AppState;
 use crate::utils;
-use axum::{Json, extract::{State, Path}, http::StatusCode, response::IntoResponse};
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+};
 use serde::Serialize;
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -67,7 +72,7 @@ fn extract_magic_number(metadata_hex: &str) -> Option<String> {
     let byte1 = u8::from_str_radix(&magic_bytes[2..4], 16).ok()?;
     let byte2 = u8::from_str_radix(&magic_bytes[4..6], 16).ok()?;
     let byte3 = u8::from_str_radix(&magic_bytes[6..8], 16).ok()?;
-    
+
     let magic_value = u32::from_be_bytes([byte0, byte1, byte2, byte3]);
     Some(magic_value.to_string())
 }

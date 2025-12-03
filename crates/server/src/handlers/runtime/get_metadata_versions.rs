@@ -15,7 +15,9 @@ pub enum GetMetadataVersionsError {
     #[error("Block resolution failed")]
     BlockResolveFailed(#[from] crate::utils::BlockResolveError),
 
-    #[error("Function 'api.call.metadata.metadataVersions()' is not available at this block height.")]
+    #[error(
+        "Function 'api.call.metadata.metadataVersions()' is not available at this block height."
+    )]
     MetadataVersionsNotAvailable,
 
     #[error("Failed to get metadata versions")]
@@ -68,10 +70,11 @@ pub async fn runtime_metadata_versions(
         .await
         .map_err(|e| {
             let error_message = e.to_string();
-            if error_message.contains("Cannot resolve a callabel function") 
+            if error_message.contains("Cannot resolve a callabel function")
                 || error_message.contains("failed to find a function")
                 || error_message.contains("not found")
-                || error_message.contains("does not exist") {
+                || error_message.contains("does not exist")
+            {
                 GetMetadataVersionsError::MetadataVersionsNotAvailable
             } else {
                 GetMetadataVersionsError::MetadataVersionsFailed(e)
