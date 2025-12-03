@@ -7,13 +7,17 @@ pub fn create_app(state: AppState) -> Router {
     let metrics_enabled = state.config.metrics.enabled;
 
     // Create v1 API router
-    let v1_routes = Router::new()
-        .merge(routes::ahm::routes())
+    let mut v1_routes = Router::new()
         .merge(routes::blocks::blocks_routes())
         .merge(routes::health::routes())
         .merge(routes::runtime::routes())
-        .merge(routes::version::routes())
-        .with_state(state.clone());
+        .merge(routes::version::routes());
+
+    if state.chain_config.supports_ahm {
+        v1_routes = v1_routes.merge(routes::ahm::routes());
+    }
+
+    let v1_routes = v1_routes.with_state(state.clone());
 
     // Apply metrics middleware if enabled (needs to be after with_state)
     let v1_routes = if metrics_enabled {
