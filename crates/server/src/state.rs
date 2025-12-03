@@ -1,7 +1,7 @@
 use crate::utils::{
     QueryFeeDetailsCache, RuntimeDispatchInfoRaw, WeightRaw, dispatch_class_from_u8,
 };
-use config::{ChainType, KnownRelayChain, SidecarConfig};
+use config::{ChainType, SidecarConfig};
 use parity_scale_codec::{Compact, Decode, Encode};
 use serde_json::Value;
 use std::sync::Arc;
@@ -52,6 +52,8 @@ pub struct AppState {
     pub chain_info: ChainInfo,
     /// Cache for tracking queryFeeDetails availability per spec version
     pub fee_details_cache: Arc<QueryFeeDetailsCache>,
+    pub chain_configs: Arc<config::ChainConfigs>,
+    pub chain_config: config::ChainConfig,
 }
 
 impl AppState {
@@ -74,26 +76,16 @@ impl AppState {
         // Get chain info first to determine which legacy types to load
         let chain_info = get_chain_info(&legacy_rpc).await?;
 
-        // Configure SubstrateConfig with appropriate legacy types based on chain
-        let subxt_config = match chain_info.chain_type.as_relay_chain(&chain_info.spec_name) {
-            Some(KnownRelayChain::Polkadot) => {
-                // Load Polkadot-specific legacy types for historic block support
-                SubstrateConfig::new()
-                    .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
-            }
-            Some(KnownRelayChain::Kusama)
-            | Some(KnownRelayChain::Westend)
-            | Some(KnownRelayChain::Rococo)
-            | Some(KnownRelayChain::Paseo) => {
-                // For other known relay chains, use Polkadot types as fallback
-                // TODO: Add chain-specific legacy types when available
-                SubstrateConfig::new()
-                    .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
-            }
-            None => {
-                // For parachains and unknown chains, use empty legacy types
-                SubstrateConfig::new()
-            }
+        let chain_configs = Arc::new(config::ChainConfigs::default());
+        let chain_config = chain_configs
+            .get(&chain_info.spec_name)
+            .cloned()
+            .unwrap_or_default();
+
+        let subxt_config = match chain_config.legacy_types.as_str() {
+            "polkadot" => SubstrateConfig::new()
+                .set_legacy_types(subxt_historic::config::polkadot::legacy_types()),
+            _ => SubstrateConfig::new(),
         };
 
         let client = OnlineClient::from_rpc_client(subxt_config, rpc_client.clone());
@@ -105,6 +97,8 @@ impl AppState {
             rpc_client: Arc::new(rpc_client),
             chain_info,
             fee_details_cache: Arc::new(QueryFeeDetailsCache::new()),
+            chain_configs,
+            chain_config,
         })
     }
 
