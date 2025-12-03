@@ -1,12 +1,8 @@
+use crate::handlers::common::{AtBlockParam, BlockInfo};
 use crate::state::AppState;
 use crate::utils;
-use axum::{
-    Json,
-    extract::{Path, State},
-    http::StatusCode,
-    response::IntoResponse,
-};
-use serde::{Deserialize, Serialize};
+use axum::{Json, extract::{State, Path}, http::StatusCode, response::IntoResponse};
+use serde::Serialize;
 use serde_json::{Value, json};
 use thiserror::Error;
 
@@ -52,23 +48,28 @@ impl IntoResponse for GetMetadataError {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct AtBlockParam {
-    pub at: Option<String>,
-}
-
 #[derive(Debug, Serialize)]
-pub struct BlockInfo {
-    pub hash: String,
-    pub height: String,
-}
-
-#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MetadataResponse {
     pub at: BlockInfo,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub magic_number: Option<String>,
     pub metadata: Value,
+}
+
+fn extract_magic_number(metadata_hex: &str) -> Option<String> {
+    let trimmed = metadata_hex.trim_start_matches("0x");
+    if trimmed.len() < 8 {
+        return None;
+    }
+
+    let magic_bytes = &trimmed[0..8];
+    let byte0 = u8::from_str_radix(&magic_bytes[0..2], 16).ok()?;
+    let byte1 = u8::from_str_radix(&magic_bytes[2..4], 16).ok()?;
+    let byte2 = u8::from_str_radix(&magic_bytes[4..6], 16).ok()?;
+    let byte3 = u8::from_str_radix(&magic_bytes[6..8], 16).ok()?;
+    
+    let magic_value = u32::from_be_bytes([byte0, byte1, byte2, byte3]);
+    Some(magic_value.to_string())
 }
 
 pub async fn runtime_metadata(
@@ -143,20 +144,6 @@ pub async fn runtime_metadata_versioned(
         magic_number,
         metadata: serde_json::json!(metadata_hex),
     }))
-}
-
-fn extract_magic_number(metadata_hex: &str) -> Option<String> {
-    let trimmed = metadata_hex.trim_start_matches("0x");
-    if trimmed.len() < 8 {
-        return None;
-    }
-
-    let magic_bytes = &trimmed[0..8];
-    if let Ok(magic_value) = u32::from_str_radix(magic_bytes, 16) {
-        Some(magic_value.to_string())
-    } else {
-        None
-    }
 }
 
 #[cfg(test)]

@@ -1,8 +1,9 @@
+use crate::handlers::common::{AtBlockParam, BlockInfo};
 use crate::state::AppState;
 use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use hex;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
 use thiserror::Error;
 
@@ -13,6 +14,9 @@ pub enum GetMetadataVersionsError {
 
     #[error("Block resolution failed")]
     BlockResolveFailed(#[from] crate::utils::BlockResolveError),
+
+    #[error("Function 'api.call.metadata.metadataVersions()' is not available at this block height.")]
+    MetadataVersionsNotAvailable,
 
     #[error("Failed to get metadata versions")]
     MetadataVersionsFailed(#[source] subxt_rpcs::Error),
@@ -29,22 +33,13 @@ impl IntoResponse for GetMetadataVersionsError {
         };
 
         let body = Json(json!({
-            "error": message,
+            "code": status.as_u16(),
+            "message": message,
+            "stack": format!("Error: {}", message),
         }));
 
         (status, body).into_response()
     }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AtBlockParam {
-    pub at: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct BlockInfo {
-    pub hash: String,
-    pub height: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -71,7 +66,17 @@ pub async fn runtime_metadata_versions(
             subxt_rpcs::rpc_params!["Metadata_metadata_versions", "0x", &resolved_block.hash],
         )
         .await
-        .map_err(GetMetadataVersionsError::MetadataVersionsFailed)?;
+        .map_err(|e| {
+            let error_message = e.to_string();
+            if error_message.contains("Cannot resolve a callabel function") 
+                || error_message.contains("failed to find a function")
+                || error_message.contains("not found")
+                || error_message.contains("does not exist") {
+                GetMetadataVersionsError::MetadataVersionsNotAvailable
+            } else {
+                GetMetadataVersionsError::MetadataVersionsFailed(e)
+            }
+        })?;
 
     let versions_bytes = hex::decode(versions_hex.trim_start_matches("0x")).map_err(|_| {
         GetMetadataVersionsError::MetadataVersionsFailed(subxt_rpcs::Error::Client(
@@ -83,7 +88,7 @@ pub async fn runtime_metadata_versions(
     for chunk in versions_bytes.chunks(4) {
         if chunk.len() == 4 {
             let version = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-            versions.push(format!("v{}", version));
+            versions.push(version.to_string());
         }
     }
 
@@ -157,10 +162,7 @@ mod tests {
         let response = result.unwrap().0;
 
         assert_eq!(response.at.height, "42");
-        assert_eq!(
-            response.versions,
-            vec!["v14".to_string(), "v15".to_string()]
-        );
+        assert_eq!(response.versions, vec!["14".to_string(), "15".to_string()]);
     }
 
     #[tokio::test]

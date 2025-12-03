@@ -1,7 +1,8 @@
+use crate::handlers::common::{AtBlockParam, BlockInfo};
 use crate::state::AppState;
 use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
 use thiserror::Error;
 
@@ -15,6 +16,9 @@ pub enum GetCodeError {
 
     #[error("Failed to get runtime code")]
     CodeFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Runtime code not found at specified block")]
+    CodeNotFound,
 }
 
 impl IntoResponse for GetCodeError {
@@ -23,6 +27,7 @@ impl IntoResponse for GetCodeError {
             GetCodeError::InvalidBlockParam(_) | GetCodeError::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
+            GetCodeError::CodeNotFound => (StatusCode::NOT_FOUND, self.to_string()),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
@@ -34,18 +39,8 @@ impl IntoResponse for GetCodeError {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct AtBlockParam {
-    pub at: Option<String>,
-}
-
 #[derive(Debug, Serialize)]
-pub struct BlockInfo {
-    pub hash: String,
-    pub height: String,
-}
-
-#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CodeResponse {
     pub at: BlockInfo,
     pub code: String,
@@ -73,12 +68,14 @@ pub async fn runtime_code(
         .await
         .map_err(GetCodeError::CodeFailed)?;
 
+    let code = code.ok_or(GetCodeError::CodeNotFound)?;
+
     Ok(Json(CodeResponse {
         at: BlockInfo {
             hash: resolved_block.hash,
             height: resolved_block.number.to_string(),
         },
-        code: code.unwrap_or_else(|| "0x".to_string()),
+        code,
     }))
 }
 
@@ -215,9 +212,11 @@ mod tests {
         let params = AtBlockParam { at: None };
         let result = runtime_code(State(state), axum::extract::Query(params)).await;
 
-        assert!(result.is_ok());
-        let response = result.unwrap().0;
-        // When not found, it should return empty code
-        assert_eq!(response.code, "0x");
+        // Should return error
+        assert!(result.is_err());
+        match result {
+            Err(GetCodeError::CodeNotFound) => {} // Expected
+            _ => panic!("Expected CodeNotFound error"),
+        }
     }
 }
