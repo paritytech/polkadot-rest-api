@@ -312,6 +312,8 @@ mod tests {
             rpc_client,
             chain_info,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
+            chain_configs: Arc::new(config::ChainConfigs::default()),
+            chain_config: config::ChainConfig::default(),
         }
     }
 
