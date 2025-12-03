@@ -45,7 +45,7 @@ pub struct LoggingConfig<'a> {
 ///
 /// # Examples
 /// ```no_run
-/// use server::logging::{self, LoggingConfig};
+/// use server::logging::{self, LoggingConfig, init_with_config, LoggingError};
 ///
 /// // Console only
 /// logging::init_with_config(LoggingConfig {
@@ -94,10 +94,20 @@ pub fn init_with_config(config: LoggingConfig) -> Result<(), LoggingError> {
     let write_max_files = config.write_max_files;
     let loki_url = config.loki_url;
     // Create filter from level
-    let filter = EnvFilter::try_new(level).map_err(|source| LoggingError::InvalidLogLevel {
-        level: level.to_string(),
-        source,
-    })?;
+    // Resolve "http" log level to "debug" for the filter
+    let filter_level = if level == "http" {
+        // Translate to target filter
+        "info,http=debug"
+    } else {
+        // Standard level
+        level
+    };
+
+    let filter =
+        EnvFilter::try_new(filter_level).map_err(|source| LoggingError::InvalidLogLevel {
+            level: level.to_string(),
+            source,
+        })?;
 
     // Build the subscriber based on config
     let registry = tracing_subscriber::registry();

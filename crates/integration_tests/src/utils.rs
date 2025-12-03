@@ -1,7 +1,31 @@
 use anyhow::Result;
+use colored::Colorize;
 use serde_json::Value;
 use std::collections::HashMap;
 
+/// Compare two JSON values and return detailed differences.
+///
+/// # Arguments
+/// * `actual` - The actual JSON value received (e.g., from API response)
+/// * `expected` - The expected JSON value to compare against
+/// * `ignore_fields` - List of field names to ignore during comparison (e.g., "timestamp", "blockHash")
+///
+/// # Returns
+/// * `Ok(ComparisonResult::Match)` if values match (ignoring specified fields)
+/// * `Ok(ComparisonResult::Mismatch)` with detailed differences if values don't match
+///
+/// # Example
+/// ```
+/// use serde_json::json;
+/// use integration_tests::utils::compare_json;
+///
+/// let expected = json!({"name": "test", "timestamp": "2024-01-01"});
+/// let actual = json!({"name": "test", "timestamp": "2024-12-31"});
+///
+/// // Ignoring timestamp field, this will match
+/// let result = compare_json(&actual, &expected, &["timestamp"]).unwrap();
+/// assert!(result.is_match());
+/// ```
 pub fn compare_json(
     actual: &Value,
     expected: &Value,
@@ -18,12 +42,32 @@ pub fn compare_json(
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum Difference {
+    ValueMismatch {
+        path: String,
+        expected: Value,
+        actual: Value,
+    },
+    MissingField {
+        path: String,
+    },
+    ExtraField {
+        path: String,
+    },
+    ArrayLengthMismatch {
+        path: String,
+        expected_len: usize,
+        actual_len: usize,
+    },
+}
+
 fn compare_json_recursive(
     actual: &Value,
     expected: &Value,
     ignore_fields: &[&str],
     path: &str,
-    differences: &mut Vec<String>,
+    differences: &mut Vec<Difference>,
 ) {
     match (actual, expected) {
         (Value::Object(actual_obj), Value::Object(expected_obj)) => {
@@ -51,7 +95,7 @@ fn compare_json_recursive(
                         differences,
                     );
                 } else {
-                    differences.push(format!("Missing field: {}", current_path));
+                    differences.push(Difference::MissingField { path: current_path });
                 }
             }
 
@@ -64,39 +108,56 @@ fn compare_json_recursive(
                         format!("{}.{}", path, key)
                     };
                     // Only warn about extra fields, don't fail
-                    differences.push(format!("Extra field (not in expected): {}", current_path));
+                    differences.push(Difference::ExtraField { path: current_path });
                 }
             }
         }
         (Value::Array(actual_arr), Value::Array(expected_arr)) => {
             if actual_arr.len() != expected_arr.len() {
-                differences.push(format!(
-                    "Array length mismatch at {}: expected {}, got {}",
-                    path,
-                    expected_arr.len(),
-                    actual_arr.len()
-                ));
-            } else {
-                for (i, (actual_val, expected_val)) in
-                    actual_arr.iter().zip(expected_arr.iter()).enumerate()
-                {
-                    let current_path = format!("{}[{}]", path, i);
-                    compare_json_recursive(
-                        actual_val,
-                        expected_val,
-                        ignore_fields,
-                        &current_path,
-                        differences,
-                    );
+                differences.push(Difference::ArrayLengthMismatch {
+                    path: path.to_string(),
+                    expected_len: expected_arr.len(),
+                    actual_len: actual_arr.len(),
+                });
+
+                // Report extra elements in actual
+                if actual_arr.len() > expected_arr.len() {
+                    for i in expected_arr.len()..actual_arr.len() {
+                        let current_path = format!("{}[{}]", path, i);
+                        differences.push(Difference::ExtraField { path: current_path });
+                    }
                 }
+
+                // Report missing elements (in expected but not in actual)
+                if expected_arr.len() > actual_arr.len() {
+                    for i in actual_arr.len()..expected_arr.len() {
+                        let current_path = format!("{}[{}]", path, i);
+                        differences.push(Difference::MissingField { path: current_path });
+                    }
+                }
+            }
+
+            // Compare overlapping elements even if lengths differ
+            for (i, (actual_val, expected_val)) in
+                actual_arr.iter().zip(expected_arr.iter()).enumerate()
+            {
+                let current_path = format!("{}[{}]", path, i);
+                compare_json_recursive(
+                    actual_val,
+                    expected_val,
+                    ignore_fields,
+                    &current_path,
+                    differences,
+                );
             }
         }
         (actual_val, expected_val) => {
             if actual_val != expected_val {
-                differences.push(format!(
-                    "Value mismatch at {}: expected {:?}, got {:?}",
-                    path, expected_val, actual_val
-                ));
+                differences.push(Difference::ValueMismatch {
+                    path: path.to_string(),
+                    expected: expected_val.clone(),
+                    actual: actual_val.clone(),
+                });
             }
         }
     }
@@ -105,7 +166,7 @@ fn compare_json_recursive(
 #[derive(Debug)]
 pub enum ComparisonResult {
     Match,
-    Mismatch { differences: Vec<String> },
+    Mismatch { differences: Vec<Difference> },
 }
 
 impl ComparisonResult {
@@ -113,10 +174,527 @@ impl ComparisonResult {
         matches!(self, ComparisonResult::Match)
     }
 
-    pub fn differences(&self) -> &[String] {
+    pub fn differences(&self) -> &[Difference] {
         match self {
             ComparisonResult::Match => &[],
             ComparisonResult::Mismatch { differences } => differences,
+        }
+    }
+
+    /// Recursively sort JSON object keys to ensure consistent ordering
+    fn sort_json_keys(value: &Value) -> Value {
+        match value {
+            Value::Object(map) => {
+                let mut sorted_map = serde_json::Map::new();
+                let mut keys: Vec<_> = map.keys().collect();
+                keys.sort();
+
+                for key in keys {
+                    if let Some(val) = map.get(key) {
+                        sorted_map.insert(key.clone(), Self::sort_json_keys(val));
+                    }
+                }
+                Value::Object(sorted_map)
+            }
+            Value::Array(arr) => Value::Array(arr.iter().map(Self::sort_json_keys).collect()),
+            other => other.clone(),
+        }
+    }
+
+    /// Format differences with colored output showing expected vs actual
+    ///
+    /// Shows a unified JSON view with inline diffs at exact locations
+    pub fn format_diff(&self, expected: &Value, actual: &Value) -> String {
+        match self {
+            ComparisonResult::Match => String::new(),
+            ComparisonResult::Mismatch { differences } => {
+                let mut output = Vec::new();
+
+                output.push(format!("\n{}", "=".repeat(80).bright_white()));
+                output.push(format!("{}", "RESPONSE MISMATCH".bright_yellow().bold()));
+                output.push(format!("{}\n", "=".repeat(80).bright_white()));
+
+                // Sort keys to ensure consistent ordering
+                let sorted_expected = Self::sort_json_keys(expected);
+                let sorted_actual = Self::sort_json_keys(actual);
+
+                // Create a map of paths to differences for quick lookup
+                let diff_map = Self::create_diff_map(differences);
+
+                // Generate the unified JSON with inline diffs
+                let unified =
+                    Self::format_unified_json(&sorted_expected, &sorted_actual, "", &diff_map, 0);
+                output.push(unified);
+
+                output.push(String::new());
+                output.push(format!("{}", "=".repeat(80).bright_white()));
+                output.push(format!(
+                    "{} {}",
+                    "Total differences:".bright_cyan().bold(),
+                    differences.len().to_string().bright_white()
+                ));
+
+                output.join("\n")
+            }
+        }
+    }
+
+    /// Create a map of paths to differences for quick lookup
+    fn create_diff_map(
+        differences: &[Difference],
+    ) -> std::collections::HashMap<String, &Difference> {
+        let mut map = std::collections::HashMap::new();
+        for diff in differences {
+            let path = match diff {
+                Difference::ValueMismatch { path, .. } => path,
+                Difference::MissingField { path } => path,
+                Difference::ExtraField { path } => path,
+                Difference::ArrayLengthMismatch { path, .. } => path,
+            };
+            map.insert(path.clone(), diff);
+        }
+        map
+    }
+
+    /// Format a unified JSON view with inline diffs
+    fn format_unified_json(
+        expected: &Value,
+        actual: &Value,
+        current_path: &str,
+        _diff_map: &std::collections::HashMap<String, &Difference>,
+        indent: usize,
+    ) -> String {
+        let indent_str = "  ".repeat(indent);
+        let mut output = Vec::new();
+
+        match (expected, actual) {
+            (Value::Object(exp_obj), Value::Object(act_obj)) => {
+                output.push("{".to_string());
+
+                let mut keys: Vec<_> = exp_obj.keys().chain(act_obj.keys()).collect();
+                keys.sort();
+                keys.dedup();
+
+                for (i, key) in keys.iter().enumerate() {
+                    let field_path = if current_path.is_empty() {
+                        key.to_string()
+                    } else {
+                        format!("{}.{}", current_path, key)
+                    };
+
+                    let exp_val = exp_obj.get(*key);
+                    let act_val = act_obj.get(*key);
+                    let is_last = i == keys.len() - 1;
+                    let comma = if is_last { "" } else { "," };
+
+                    match (exp_val, act_val) {
+                        (Some(e), Some(a)) => {
+                            // Both present
+                            if e == a {
+                                // Same value
+                                match e {
+                                    Value::Object(_) | Value::Array(_) => {
+                                        let val_str = Self::format_value_with_indent(e, indent + 1);
+                                        let lines: Vec<&str> = val_str.lines().collect();
+                                        // First line: key and opening brace/bracket
+                                        output.push(format!(
+                                            "{}  \"{}\": {}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            lines[0]
+                                        ));
+                                        // Subsequent lines already have proper indentation from format_value_with_indent
+                                        for (idx, line) in lines.iter().skip(1).enumerate() {
+                                            let is_last_line = idx == lines.len() - 2;
+                                            if is_last_line {
+                                                output.push(format!("{}{}", line, comma));
+                                            } else {
+                                                output.push(line.to_string());
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        let val_str = Self::value_to_inline_string(e);
+                                        output.push(format!(
+                                            "{}  \"{}\": {}{}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            val_str,
+                                            comma
+                                        ));
+                                    }
+                                }
+                            } else {
+                                // Different - check if it's a complex type or leaf
+                                match (e, a) {
+                                    (Value::Object(_), Value::Object(_))
+                                    | (Value::Array(_), Value::Array(_)) => {
+                                        // Recurse for complex types
+                                        output.push(format!(
+                                            "{}  \"{}\": {}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            Self::format_unified_json(
+                                                e,
+                                                a,
+                                                &field_path,
+                                                _diff_map,
+                                                indent + 1
+                                            )
+                                        ));
+                                        // Add comma on a separate line if needed
+                                        if !comma.is_empty() {
+                                            let last_line = output.last_mut().unwrap();
+                                            last_line.push_str(comma);
+                                        }
+                                    }
+                                    _ => {
+                                        // Leaf value difference - show inline
+                                        let actual_str = Self::value_to_inline_string(a);
+                                        let expected_str = Self::value_to_inline_string(e);
+
+                                        output.push(
+                                            format!(
+                                                "- {}\"{}\": {}{}",
+                                                "  ".repeat(indent),
+                                                key,
+                                                actual_str,
+                                                comma
+                                            )
+                                            .red()
+                                            .to_string(),
+                                        );
+                                        output.push(
+                                            format!(
+                                                "+ {}\"{}\": {}{}",
+                                                "  ".repeat(indent),
+                                                key,
+                                                expected_str,
+                                                comma
+                                            )
+                                            .green()
+                                            .to_string(),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        (Some(e), None) => {
+                            // Missing in actual
+                            match e {
+                                Value::Object(_) | Value::Array(_) => {
+                                    let val_str = Self::format_value_with_indent(e, indent + 1);
+                                    let lines: Vec<&str> = val_str.lines().collect();
+                                    // First line: key and opening brace/bracket
+                                    output.push(
+                                        format!(
+                                            "+ {}\"{}\": {}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            lines[0]
+                                        )
+                                        .green()
+                                        .to_string(),
+                                    );
+                                    // Subsequent lines: prefix at leftmost, line already has indentation
+                                    for (idx, line) in lines.iter().skip(1).enumerate() {
+                                        let is_last_line = idx == lines.len() - 2;
+                                        if is_last_line {
+                                            output.push(
+                                                format!("+ {}{}", line, comma).green().to_string(),
+                                            );
+                                        } else {
+                                            output.push(format!("+ {}", line).green().to_string());
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    let val_str = Self::value_to_inline_string(e);
+                                    output.push(
+                                        format!(
+                                            "+ {}\"{}\": {}{}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            val_str,
+                                            comma
+                                        )
+                                        .green()
+                                        .to_string(),
+                                    );
+                                }
+                            }
+                        }
+                        (None, Some(a)) => {
+                            // Extra in actual
+                            match a {
+                                Value::Object(_) | Value::Array(_) => {
+                                    let val_str = Self::format_value_with_indent(a, indent + 1);
+                                    let lines: Vec<&str> = val_str.lines().collect();
+                                    // First line: key and opening brace/bracket
+                                    output.push(
+                                        format!(
+                                            "- {}\"{}\": {}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            lines[0]
+                                        )
+                                        .red()
+                                        .to_string(),
+                                    );
+                                    // Subsequent lines: prefix at leftmost, line already has indentation
+                                    for (idx, line) in lines.iter().skip(1).enumerate() {
+                                        let is_last_line = idx == lines.len() - 2;
+                                        if is_last_line {
+                                            output.push(
+                                                format!("- {}{}", line, comma).red().to_string(),
+                                            );
+                                        } else {
+                                            output.push(format!("- {}", line).red().to_string());
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    let val_str = Self::value_to_inline_string(a);
+                                    output.push(
+                                        format!(
+                                            "- {}\"{}\": {}{}",
+                                            "  ".repeat(indent),
+                                            key,
+                                            val_str,
+                                            comma
+                                        )
+                                        .red()
+                                        .to_string(),
+                                    );
+                                }
+                            }
+                        }
+                        (None, None) => unreachable!(),
+                    }
+                }
+
+                output.push(format!("{}}}", indent_str));
+            }
+            (Value::Array(exp_arr), Value::Array(act_arr)) => {
+                output.push("[".to_string());
+
+                let max_len = exp_arr.len().max(act_arr.len());
+
+                for i in 0..max_len {
+                    let elem_path = format!("{}[{}]", current_path, i);
+                    let exp_elem = exp_arr.get(i);
+                    let act_elem = act_arr.get(i);
+                    let is_last = i == max_len - 1;
+                    let comma = if is_last { "" } else { "," };
+
+                    match (exp_elem, act_elem) {
+                        (Some(e), Some(a)) => {
+                            if e == a {
+                                // Same element
+                                match e {
+                                    Value::Object(_) | Value::Array(_) => {
+                                        let val_str = Self::format_value_with_indent(e, indent + 1);
+                                        let lines: Vec<&str> = val_str.lines().collect();
+                                        // First line with indent
+                                        output.push(format!(
+                                            "{}  {}",
+                                            "  ".repeat(indent),
+                                            lines[0]
+                                        ));
+                                        // Subsequent lines already have proper indentation
+                                        for (idx, line) in lines.iter().skip(1).enumerate() {
+                                            let is_last_line = idx == lines.len() - 2;
+                                            if is_last_line {
+                                                output.push(format!("{}{}", line, comma));
+                                            } else {
+                                                output.push(line.to_string());
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        let val_str = Self::value_to_inline_string(e);
+                                        output.push(format!(
+                                            "{}  {}{}",
+                                            "  ".repeat(indent),
+                                            val_str,
+                                            comma
+                                        ));
+                                    }
+                                }
+                            } else {
+                                // Different - check if it's a complex type or leaf
+                                match (e, a) {
+                                    (Value::Object(_), Value::Object(_))
+                                    | (Value::Array(_), Value::Array(_)) => {
+                                        // Recurse for complex types
+                                        let nested_json = Self::format_unified_json(
+                                            e,
+                                            a,
+                                            &elem_path,
+                                            _diff_map,
+                                            indent + 1,
+                                        );
+                                        output.push(format!(
+                                            "{}  {}{}",
+                                            "  ".repeat(indent),
+                                            nested_json,
+                                            comma
+                                        ));
+                                    }
+                                    _ => {
+                                        // Leaf value difference - show inline
+                                        let actual_str = Self::value_to_inline_string(a);
+                                        let expected_str = Self::value_to_inline_string(e);
+
+                                        output.push(
+                                            format!(
+                                                "- {}{}{}",
+                                                "  ".repeat(indent),
+                                                actual_str,
+                                                comma
+                                            )
+                                            .red()
+                                            .to_string(),
+                                        );
+                                        output.push(
+                                            format!(
+                                                "+ {}{}{}",
+                                                "  ".repeat(indent),
+                                                expected_str,
+                                                comma
+                                            )
+                                            .green()
+                                            .to_string(),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        (Some(e), None) => {
+                            // Missing in actual
+                            match e {
+                                Value::Object(_) | Value::Array(_) => {
+                                    let val_str = Self::format_value_with_indent(e, indent);
+                                    let lines: Vec<&str> = val_str.lines().collect();
+                                    // First line with indent
+                                    output.push(
+                                        format!("+ {}{}", "  ".repeat(indent), lines[0])
+                                            .green()
+                                            .to_string(),
+                                    );
+                                    // Subsequent lines: prefix at leftmost, line already has indentation
+                                    for (idx, line) in lines.iter().skip(1).enumerate() {
+                                        let is_last_line = idx == lines.len() - 2;
+                                        if is_last_line {
+                                            output.push(
+                                                format!("+ {}{}", line, comma).green().to_string(),
+                                            );
+                                        } else {
+                                            output.push(format!("+ {}", line).green().to_string());
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    let val_str = Self::value_to_inline_string(e);
+                                    output.push(
+                                        format!("+ {}{}{}", "  ".repeat(indent), val_str, comma)
+                                            .green()
+                                            .to_string(),
+                                    );
+                                }
+                            }
+                        }
+                        (None, Some(a)) => {
+                            // Extra in actual
+                            match a {
+                                Value::Object(_) | Value::Array(_) => {
+                                    let val_str = Self::format_value_with_indent(a, indent);
+                                    let lines: Vec<&str> = val_str.lines().collect();
+                                    // First line with indent
+                                    output.push(
+                                        format!("- {}{}", "  ".repeat(indent), lines[0])
+                                            .red()
+                                            .to_string(),
+                                    );
+                                    // Subsequent lines: prefix at leftmost, line already has indentation
+                                    for (idx, line) in lines.iter().skip(1).enumerate() {
+                                        let is_last_line = idx == lines.len() - 2;
+                                        if is_last_line {
+                                            output.push(
+                                                format!("- {}{}", line, comma).red().to_string(),
+                                            );
+                                        } else {
+                                            output.push(format!("- {}", line).red().to_string());
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    let val_str = Self::value_to_inline_string(a);
+                                    output.push(
+                                        format!("- {}{}{}", "  ".repeat(indent), val_str, comma)
+                                            .red()
+                                            .to_string(),
+                                    );
+                                }
+                            }
+                        }
+                        (None, None) => unreachable!(),
+                    }
+                }
+
+                output.push(format!("{}]", indent_str));
+            }
+            _ => {
+                // Leaf values - should be handled by parent
+                return Self::value_to_inline_string(expected);
+            }
+        }
+
+        output.join("\n")
+    }
+
+    /// Convert a value to an inline string representation with proper indentation
+    fn value_to_inline_string(value: &Value) -> String {
+        // Use compact format for inline values - they'll be on the same line
+        serde_json::to_string(value).unwrap_or_else(|_| "null".to_string())
+    }
+
+    /// Format a value with proper indentation for multi-line display
+    fn format_value_with_indent(value: &Value, indent: usize) -> String {
+        let indent_str = "  ".repeat(indent);
+        match value {
+            Value::Object(map) => {
+                let mut output = vec!["{".to_string()];
+                let keys: Vec<_> = map.keys().collect();
+                for (i, key) in keys.iter().enumerate() {
+                    if let Some(val) = map.get(*key) {
+                        let is_last = i == keys.len() - 1;
+                        let comma = if is_last { "" } else { "," };
+                        let val_str = Self::value_to_inline_string(val);
+                        output.push(format!(
+                            "{}\"{}\": {}{}",
+                            "  ".repeat(indent + 1),
+                            key,
+                            val_str,
+                            comma
+                        ));
+                    }
+                }
+                output.push(format!("{}}}", indent_str));
+                output.join("\n")
+            }
+            Value::Array(arr) => {
+                let mut output = vec!["[".to_string()];
+                for (i, val) in arr.iter().enumerate() {
+                    let is_last = i == arr.len() - 1;
+                    let comma = if is_last { "" } else { "," };
+                    let val_str = Self::value_to_inline_string(val);
+                    output.push(format!("{}{}{}", "  ".repeat(indent + 1), val_str, comma));
+                }
+                output.push(format!("{}]", indent_str));
+                output.join("\n")
+            }
+            _ => Self::value_to_inline_string(value),
         }
     }
 }
@@ -139,5 +717,390 @@ pub fn build_query_string(params: &std::collections::HashMap<String, String>) ->
         serde_urlencoded::to_string(pairs)
             .map(|encoded| format!("?{}", encoded))
             .unwrap_or_else(|_| String::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_compare_json_exact_match() {
+        let json1 = json!({
+            "name": "test",
+            "value": 123,
+            "nested": {
+                "field": "data"
+            }
+        });
+        let json2 = json1.clone();
+
+        let result = compare_json(&json1, &json2, &[]).unwrap();
+        assert!(result.is_match());
+        assert_eq!(result.differences().len(), 0);
+    }
+
+    #[test]
+    fn test_compare_json_simple_value_mismatch() {
+        let expected = json!({"value": 100});
+        let actual = json!({"value": 200});
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+        assert_eq!(result.differences().len(), 1);
+
+        match &result.differences()[0] {
+            Difference::ValueMismatch {
+                path,
+                expected: exp,
+                actual: act,
+            } => {
+                assert_eq!(path, "value");
+                assert_eq!(exp, &json!(100));
+                assert_eq!(act, &json!(200));
+            }
+            _ => panic!("Expected ValueMismatch"),
+        }
+    }
+
+    #[test]
+    fn test_compare_json_missing_field() {
+        let expected = json!({
+            "field1": "value1",
+            "field2": "value2"
+        });
+        let actual = json!({
+            "field1": "value1"
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+        assert_eq!(result.differences().len(), 1);
+
+        match &result.differences()[0] {
+            Difference::MissingField { path } => {
+                assert_eq!(path, "field2");
+            }
+            _ => panic!("Expected MissingField"),
+        }
+    }
+
+    #[test]
+    fn test_compare_json_extra_field() {
+        let expected = json!({
+            "field1": "value1"
+        });
+        let actual = json!({
+            "field1": "value1",
+            "field2": "value2"
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+        assert_eq!(result.differences().len(), 1);
+
+        match &result.differences()[0] {
+            Difference::ExtraField { path } => {
+                assert_eq!(path, "field2");
+            }
+            _ => panic!("Expected ExtraField"),
+        }
+    }
+
+    #[test]
+    fn test_compare_json_nested_value_mismatch() {
+        let expected = json!({
+            "outer": {
+                "inner": {
+                    "value": 100
+                }
+            }
+        });
+        let actual = json!({
+            "outer": {
+                "inner": {
+                    "value": 200
+                }
+            }
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+        assert_eq!(result.differences().len(), 1);
+
+        match &result.differences()[0] {
+            Difference::ValueMismatch { path, .. } => {
+                assert_eq!(path, "outer.inner.value");
+            }
+            _ => panic!("Expected ValueMismatch"),
+        }
+    }
+
+    #[test]
+    fn test_compare_json_array_length_mismatch() {
+        let expected = json!({
+            "items": [1, 2, 3]
+        });
+        let actual = json!({
+            "items": [1, 2]
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+
+        // Should have ArrayLengthMismatch and MissingField for items[2]
+        let has_length_mismatch = result.differences().iter().any(|d| {
+            matches!(d, Difference::ArrayLengthMismatch { path, expected_len, actual_len }
+                if path == "items" && *expected_len == 3 && *actual_len == 2)
+        });
+        assert!(has_length_mismatch);
+
+        let has_missing_element = result
+            .differences()
+            .iter()
+            .any(|d| matches!(d, Difference::MissingField { path } if path == "items[2]"));
+        assert!(has_missing_element);
+    }
+
+    #[test]
+    fn test_compare_json_array_extra_element() {
+        let expected = json!({
+            "items": [1, 2]
+        });
+        let actual = json!({
+            "items": [1, 2, 3]
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+
+        // Should have ArrayLengthMismatch and ExtraField for items[2]
+        let has_length_mismatch = result.differences().iter().any(|d| {
+            matches!(d, Difference::ArrayLengthMismatch { path, expected_len, actual_len }
+                if path == "items" && *expected_len == 2 && *actual_len == 3)
+        });
+        assert!(has_length_mismatch);
+
+        let has_extra_element = result
+            .differences()
+            .iter()
+            .any(|d| matches!(d, Difference::ExtraField { path } if path == "items[2]"));
+        assert!(has_extra_element);
+    }
+
+    #[test]
+    fn test_compare_json_array_value_mismatch() {
+        let expected = json!({
+            "items": [1, 2, 3]
+        });
+        let actual = json!({
+            "items": [1, 99, 3]
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+        assert_eq!(result.differences().len(), 1);
+
+        match &result.differences()[0] {
+            Difference::ValueMismatch { path, .. } => {
+                assert_eq!(path, "items[1]");
+            }
+            _ => panic!("Expected ValueMismatch"),
+        }
+    }
+
+    #[test]
+    fn test_compare_json_ignore_fields() {
+        let expected = json!({
+            "timestamp": "2024-01-01T00:00:00Z",
+            "blockHash": "0xabc",
+            "value": 100
+        });
+        let actual = json!({
+            "timestamp": "2024-12-31T23:59:59Z",
+            "blockHash": "0xdef",
+            "value": 100
+        });
+
+        // Without ignoring fields, should have differences
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+        assert_eq!(result.differences().len(), 2);
+
+        // With ignoring fields, should match
+        let result = compare_json(&actual, &expected, &["timestamp", "blockHash"]).unwrap();
+        assert!(result.is_match());
+        assert_eq!(result.differences().len(), 0);
+    }
+
+    #[test]
+    fn test_compare_json_ignore_nested_fields() {
+        let expected = json!({
+            "data": {
+                "timestamp": "2024-01-01T00:00:00Z",
+                "value": 100
+            }
+        });
+        let actual = json!({
+            "data": {
+                "timestamp": "2024-12-31T23:59:59Z",
+                "value": 100
+            }
+        });
+
+        let result = compare_json(&actual, &expected, &["timestamp"]).unwrap();
+        assert!(result.is_match());
+        assert_eq!(result.differences().len(), 0);
+    }
+
+    #[test]
+    fn test_compare_json_key_ordering() {
+        // Same data, different key order
+        let json1 = json!({
+            "z": 1,
+            "a": 2,
+            "m": 3
+        });
+        let json2 = json!({
+            "a": 2,
+            "m": 3,
+            "z": 1
+        });
+
+        let result = compare_json(&json1, &json2, &[]).unwrap();
+        assert!(result.is_match());
+    }
+
+    #[test]
+    fn test_compare_json_complex_nested() {
+        let expected = json!({
+            "modules": [
+                {
+                    "name": "System",
+                    "calls": ["remark", "set_code"],
+                    "events": 5
+                },
+                {
+                    "name": "Balances",
+                    "calls": ["transfer"],
+                    "events": 10
+                }
+            ]
+        });
+        let actual = json!({
+            "modules": [
+                {
+                    "name": "System",
+                    "calls": ["remark", "set_code"],
+                    "events": 5
+                },
+                {
+                    "name": "Balances",
+                    "calls": ["transfer", "transfer_keep_alive"],
+                    "events": 12
+                }
+            ]
+        });
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        assert!(!result.is_match());
+
+        // Should have differences for array length and events value
+        let has_array_length = result.differences().iter().any(|d| {
+            matches!(d, Difference::ArrayLengthMismatch { path, .. }
+                if path == "modules[1].calls")
+        });
+        assert!(has_array_length);
+
+        let has_events_mismatch = result.differences().iter().any(|d| {
+            matches!(d, Difference::ValueMismatch { path, .. }
+                if path == "modules[1].events")
+        });
+        assert!(has_events_mismatch);
+    }
+
+    #[test]
+    fn test_sort_json_keys() {
+        let unsorted = json!({
+            "z": 1,
+            "a": {
+                "y": 2,
+                "b": 3
+            },
+            "m": [1, 2, 3]
+        });
+
+        let sorted = ComparisonResult::sort_json_keys(&unsorted);
+
+        // Keys should be alphabetically sorted
+        if let Value::Object(map) = &sorted {
+            let keys: Vec<_> = map.keys().collect();
+            assert_eq!(keys, vec!["a", "m", "z"]);
+
+            // Nested object keys should also be sorted
+            if let Some(Value::Object(nested)) = map.get("a") {
+                let nested_keys: Vec<_> = nested.keys().collect();
+                assert_eq!(nested_keys, vec!["b", "y"]);
+            }
+        } else {
+            panic!("Expected Object");
+        }
+    }
+
+    #[test]
+    fn test_format_diff_creates_output() {
+        let expected = json!({"value": 100});
+        let actual = json!({"value": 200});
+
+        let result = compare_json(&actual, &expected, &[]).unwrap();
+        let diff_output = result.format_diff(&expected, &actual);
+
+        // Should contain the formatted diff
+        assert!(diff_output.contains("RESPONSE MISMATCH"));
+        assert!(diff_output.contains("Total differences:"));
+        assert!(diff_output.contains("value"));
+    }
+
+    #[test]
+    fn test_format_diff_no_output_on_match() {
+        let json1 = json!({"value": 100});
+        let json2 = json1.clone();
+
+        let result = compare_json(&json1, &json2, &[]).unwrap();
+        let diff_output = result.format_diff(&json1, &json2);
+
+        // Should be empty for matching JSON
+        assert_eq!(diff_output, "");
+    }
+
+    #[test]
+    fn test_replace_placeholders() {
+        let template = "path/{blockId}/account/{accountId}";
+        let mut replacements = HashMap::new();
+        replacements.insert("blockId".to_string(), "12345".to_string());
+        replacements.insert("accountId".to_string(), "abc".to_string());
+
+        let result = replace_placeholders(template, &replacements);
+        assert_eq!(result, "path/12345/account/abc");
+    }
+
+    #[test]
+    fn test_build_query_string_empty() {
+        let params = HashMap::new();
+        let result = build_query_string(&params);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_build_query_string_with_params() {
+        let mut params = HashMap::new();
+        params.insert("at".to_string(), "12345".to_string());
+        params.insert("verbose".to_string(), "true".to_string());
+
+        let result = build_query_string(&params);
+        assert!(result.starts_with('?'));
+        assert!(result.contains("at=12345"));
+        assert!(result.contains("verbose=true"));
     }
 }

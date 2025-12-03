@@ -690,6 +690,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "colored"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
+dependencies = [
+ "lazy_static",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1364,9 +1374,9 @@ dependencies = [
 
 [[package]]
 name = "frame-decode"
-version = "0.10.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "641e3739fa708a278d35b008a05244008c221240abc3e1c27138466c13e999ed"
+checksum = "0fb3bfa2988ef40247e0e0eecfb171a01ad6f4e399485503aad4c413a5f236f3"
 dependencies = [
  "frame-metadata 23.0.0",
  "parity-scale-codec",
@@ -1649,6 +1659,12 @@ name = "hashbrown"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5419bdc4f6a9207fbeba6d11b604d481addf78ecd10c11ad51e76c2f6482748d"
+
+[[package]]
+name = "heck"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermit-abi"
@@ -2042,6 +2058,7 @@ name = "integration_tests"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "colored",
  "config",
  "futures",
  "jsonrpsee",
@@ -3309,9 +3326,9 @@ dependencies = [
 
 [[package]]
 name = "scale-decode"
-version = "0.16.0"
+version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d78196772d25b90a98046794ce0fe2588b39ebdfbdc1e45b4c6c85dd43bebad"
+checksum = "8d6ed61699ad4d54101ab5a817169259b5b0efc08152f8632e61482d8a27ca3d"
 dependencies = [
  "parity-scale-codec",
  "primitive-types 0.13.1",
@@ -3324,9 +3341,9 @@ dependencies = [
 
 [[package]]
 name = "scale-decode-derive"
-version = "0.16.0"
+version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f4b54a1211260718b92832b661025d1f1a4b6930fbadd6908e00edd265fa5f7"
+checksum = "65cb245f7fdb489e7ba43a616cbd34427fe3ba6fe0edc1d0d250085e6c84f3ec"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -3375,9 +3392,9 @@ dependencies = [
 
 [[package]]
 name = "scale-info-legacy"
-version = "0.2.4"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd183213b6831b6bc08fda67a310bf9299889d669e264a2a2168679079a0c522"
+checksum = "2500adfb429a0ffda37919df92c05d0c1359c10e0444c17253c84b84dfce542f"
 dependencies = [
  "hashbrown 0.15.5",
  "scale-type-resolver",
@@ -3660,6 +3677,8 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "config",
+ "frame-metadata 23.0.0",
+ "heck",
  "hex",
  "http-body-util",
  "lazy_static",
@@ -3670,6 +3689,9 @@ dependencies = [
  "rolling-file",
  "rustc-hex",
  "scale-decode",
+ "scale-info",
+ "scale-info-legacy",
+ "scale-type-resolver",
  "scale-value",
  "serde",
  "serde_json",
@@ -4482,9 +4504,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "subxt-historic"
-version = "0.0.4"
+version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8b2a5308a47f317334483651203c6046de5a30b2ff362e88387637884977b91"
+checksum = "88fba268dcd0bbd6a781105875a57036c67cc29a0dbd744c13c74c69664ee202"
 dependencies = [
  "frame-decode",
  "frame-metadata 23.0.0",

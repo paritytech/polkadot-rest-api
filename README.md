@@ -1,5 +1,11 @@
 # Polkadot REST API
 
+## Implementation Details
+
+### Logging
+
+Logging levels supported are ```race, debug, info, http, warn, error```. **http** level allows for the emission of http information logging (method, route, elapsed time, success code). However currently tracing does not support *http*.  To mitigate this, **http** level falls back to *debug* for successful logs, *warn* for 4** request logs, and *error* for 5**
+
 ## Benchmarks
 
 ### Benchmark Workflows
@@ -82,16 +88,50 @@ cargo run --release --bin polkadot-rest-api
 # Run all integration tests
 cargo test --package integration_tests
 
-# Run tests for a specific chain
-cargo test --package integration_tests test_latest_polkadot
-cargo test --package integration_tests test_latest_kusama
-cargo test --package integration_tests test_historical_polkadot
-cargo test --package integration_tests test_historical_kusama
-cargo test --package integration_tests test_historical_asset_hub_polkadot
-cargo test --package integration_tests test_historical_asset_hub_kusama
+# Run a specific test suite (recommended - cleaner output)
+cargo test --package integration_tests --test historical  # All historical tests
+cargo test --package integration_tests --test latest      # All latest tests
+cargo test --package integration_tests --test basic       # All basic tests
+```
 
-# Run basic endpoint tests (chain-agnostic)
-cargo test --package integration_tests --test basic
+**Running tests for a specific chain:**
+
+```bash
+# Historical tests (use fixtures for regression testing)
+cargo test --package integration_tests --test historical test_historical_polkadot
+cargo test --package integration_tests --test historical test_historical_kusama
+cargo test --package integration_tests --test historical test_historical_asset_hub_polkadot
+cargo test --package integration_tests --test historical test_historical_asset_hub_kusama
+
+# Latest tests (test against live blockchain data)
+cargo test --package integration_tests --test latest test_latest_polkadot
+cargo test --package integration_tests --test latest test_latest_kusama
+cargo test --package integration_tests --test latest test_latest_asset_hub_polkadot
+cargo test --package integration_tests --test latest test_latest_asset_hub_kusama
+```
+
+**Viewing test output:**
+
+By default, cargo captures test output. To see the detailed test progress with checkmarks and colored output, add `-- --nocapture`:
+
+```bash
+cargo test --package integration_tests --test historical test_historical_polkadot -- --nocapture
+```
+
+Example output:
+```
+Running 2 historical test cases for chain: polkadot
+
+✓ /v1/blocks/{blockId} (block 1000000)
+✓ /v1/blocks/{blockId} (block 10000000)
+
+════════════════════════════════════════════════════════════
+Historical Test Results for polkadot
+════════════════════════════════════════════════════════════
+  ✓ Passed: 2
+  ✗ Failed: 0
+════════════════════════════════════════════════════════════
+```
 
 ### Updating Test Fixtures
 

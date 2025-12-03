@@ -110,6 +110,7 @@ mod tests {
             legacy_rpc,
             rpc_client,
             chain_info,
+            fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
         }
     }
 

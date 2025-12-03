@@ -1,13 +1,21 @@
 use anyhow::{Context, Result};
+use colored::Colorize;
 use reqwest::Client;
 use serde_json::Value;
 use std::time::Duration;
+
+/// Default timeout for regular API requests (2 minutes)
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Short timeout for health check connections (2 seconds)
+const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// HTTP client for making API requests during tests
 #[derive(Clone)]
 pub struct TestClient {
     base_url: String,
     client: Client,
+    health_check_client: Client,
     #[allow(dead_code)]
     timeout: Duration,
 }
@@ -18,10 +26,14 @@ impl TestClient {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             client: Client::builder()
-                .timeout(Duration::from_secs(120))
+                .timeout(DEFAULT_REQUEST_TIMEOUT)
                 .build()
                 .expect("Failed to create HTTP client"),
-            timeout: Duration::from_secs(120),
+            health_check_client: Client::builder()
+                .timeout(HEALTH_CHECK_TIMEOUT)
+                .build()
+                .expect("Failed to create health check client"),
+            timeout: DEFAULT_REQUEST_TIMEOUT,
         }
     }
 
@@ -33,6 +45,10 @@ impl TestClient {
                 .timeout(timeout)
                 .build()
                 .expect("Failed to create HTTP client"),
+            health_check_client: Client::builder()
+                .timeout(HEALTH_CHECK_TIMEOUT)
+                .build()
+                .expect("Failed to create health check client"),
             timeout,
         }
     }
@@ -81,26 +97,73 @@ impl TestClient {
     }
 
     /// Wait for the API to be ready
+    ///
+    /// Uses a short timeout for health checks to fail fast when no server is running.
     pub async fn wait_for_ready(&self, max_retries: u32) -> Result<()> {
+        println!("Waiting for API at {} ...", self.base_url.cyan());
+
         for i in 0..max_retries {
-            match self.get("/v1/health").await {
-                Ok(response) if response.status.is_success() => {
-                    tracing::info!("API is ready");
+            let url = format!("{}/v1/health", self.base_url);
+
+            match self.health_check_client.get(&url).send().await {
+                Ok(response) if response.status().is_success() => {
+                    println!(
+                        "{} API is ready (took {} seconds)",
+                        "ok:".green().bold(),
+                        i + 1
+                    );
                     return Ok(());
                 }
-                _ => {
-                    if i < max_retries - 1 {
-                        tracing::debug!(
-                            "API not ready yet, retrying in 1s... (attempt {}/{})",
-                            i + 1,
-                            max_retries
-                        );
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-                    }
+                Ok(response) => {
+                    // Server is running but returned non-success status
+                    println!(
+                        "  Attempt {}/{}: Server returned status {}",
+                        i + 1,
+                        max_retries,
+                        response.status()
+                    );
+                }
+                Err(e) => {
+                    // Connection failed - server likely not running
+                    let reason = if e.is_connect() {
+                        "connection refused"
+                    } else if e.is_timeout() {
+                        "timeout"
+                    } else {
+                        "error"
+                    };
+                    println!(
+                        "  Attempt {}/{}: {} ({})",
+                        i + 1,
+                        max_retries,
+                        reason,
+                        format!("{:.1}s timeout", HEALTH_CHECK_TIMEOUT.as_secs_f32())
+                            .bright_black()
+                    );
                 }
             }
+
+            if i < max_retries - 1 {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
         }
-        anyhow::bail!("API did not become ready after {} attempts", max_retries)
+
+        println!(
+            "\n{} API did not become ready after {} seconds",
+            "error:".red().bold(),
+            max_retries
+        );
+        println!(
+            "\n{} Make sure the server is running:",
+            "hint:".cyan().bold()
+        );
+        println!("  cargo run --release --bin polkadot-rest-api\n");
+
+        anyhow::bail!(
+            "API at {} did not become ready after {} attempts",
+            self.base_url,
+            max_retries
+        )
     }
 }
 

@@ -1,4 +1,8 @@
+use crate::utils::{
+    QueryFeeDetailsCache, RuntimeDispatchInfoRaw, WeightRaw, dispatch_class_from_u8,
+};
 use config::{ChainType, KnownRelayChain, SidecarConfig};
+use parity_scale_codec::{Compact, Decode, Encode};
 use serde_json::Value;
 use std::sync::Arc;
 use subxt_historic::{OnlineClient, SubstrateConfig};
@@ -46,6 +50,8 @@ pub struct AppState {
     pub legacy_rpc: Arc<LegacyRpcMethods<SubstrateConfig>>,
     pub rpc_client: Arc<RpcClient>,
     pub chain_info: ChainInfo,
+    /// Cache for tracking queryFeeDetails availability per spec version
+    pub fee_details_cache: Arc<QueryFeeDetailsCache>,
 }
 
 impl AppState {
@@ -98,6 +104,7 @@ impl AppState {
             legacy_rpc: Arc::new(legacy_rpc),
             rpc_client: Arc::new(rpc_client),
             chain_info,
+            fee_details_cache: Arc::new(QueryFeeDetailsCache::new()),
         })
     }
 
@@ -129,6 +136,157 @@ impl AppState {
         self.rpc_client
             .request("state_getRuntimeVersion", rpc_params![hash])
             .await
+    }
+
+    /// Query fee information for an extrinsic at a specific block hash
+    ///
+    /// Uses the `payment_queryInfo` RPC method to get weight, class, and partial fee
+    /// for a given extrinsic. The block hash should typically be the parent block
+    /// of the block containing the extrinsic (pre-dispatch state).
+    ///
+    /// Returns the RuntimeDispatchInfo as JSON with fields:
+    /// - weight: { refTime, proofSize } or just a number for older runtimes
+    /// - class: "Normal", "Operational", or "Mandatory"
+    /// - partialFee: fee amount as string
+    pub async fn query_fee_info(
+        &self,
+        extrinsic_hex: &str,
+        block_hash: &str,
+    ) -> Result<Value, subxt_rpcs::Error> {
+        self.rpc_client
+            .request("payment_queryInfo", rpc_params![extrinsic_hex, block_hash])
+            .await
+    }
+
+    /// Query detailed fee breakdown for an extrinsic at a specific block hash
+    ///
+    /// Uses the `payment_queryFeeDetails` RPC method to get the fee breakdown needed
+    /// for accurate fee calculation. The block hash should typically be the parent block
+    /// of the block containing the extrinsic (pre-dispatch state).
+    ///
+    /// Returns FeeDetails as JSON with fields:
+    /// - inclusionFee: { baseFee, lenFee, adjustedWeightFee } or null
+    ///
+    /// Note: This RPC method is not available on all runtimes. Check the chain's
+    /// fee configuration to determine availability based on spec_version.
+    pub async fn query_fee_details(
+        &self,
+        extrinsic_hex: &str,
+        block_hash: &str,
+    ) -> Result<Value, subxt_rpcs::Error> {
+        self.rpc_client
+            .request(
+                "payment_queryFeeDetails",
+                rpc_params![extrinsic_hex, block_hash],
+            )
+            .await
+    }
+
+    /// Execute a runtime API call via `state_call` RPC method.
+    ///
+    /// This allows calling runtime APIs directly against the historic state at a
+    /// specific block hash. The parameters should be SCALE-encoded bytes.
+    ///
+    /// # Arguments
+    /// * `method` - The runtime API method name (e.g., "TransactionPaymentApi_query_info")
+    /// * `call_parameters` - SCALE-encoded parameters as hex string (with 0x prefix)
+    /// * `block_hash` - The block hash to execute against
+    ///
+    /// Returns the raw response bytes as a hex string.
+    pub async fn state_call(
+        &self,
+        method: &str,
+        call_parameters: &str,
+        block_hash: &str,
+    ) -> Result<String, subxt_rpcs::Error> {
+        self.rpc_client
+            .request(
+                "state_call",
+                rpc_params![method, call_parameters, block_hash],
+            )
+            .await
+    }
+
+    /// Query fee information for an extrinsic using the TransactionPaymentApi runtime API.
+    ///
+    /// This is an alternative to `query_fee_info` that uses `state_call` to call the
+    /// runtime API directly. This method works for historic blocks where the
+    /// `payment_queryInfo` RPC method might not be available.
+    ///
+    /// # Arguments
+    /// * `extrinsic_bytes` - The raw extrinsic bytes (not hex encoded)
+    /// * `block_hash` - The block hash to execute against (parent block for pre-dispatch state)
+    ///
+    /// Returns RuntimeDispatchInfo containing weight, class, and partialFee.
+    pub async fn query_fee_info_via_runtime_api(
+        &self,
+        extrinsic_bytes: &[u8],
+        block_hash: &str,
+    ) -> Result<RuntimeDispatchInfoRaw, subxt_rpcs::Error> {
+        let mut params = extrinsic_bytes.to_vec();
+        let len = extrinsic_bytes.len() as u32;
+        len.encode_to(&mut params);
+
+        let params_hex = format!("0x{}", hex::encode(&params));
+
+        let result_hex: String = self
+            .state_call("TransactionPaymentApi_query_info", &params_hex, block_hash)
+            .await?;
+
+        let result_bytes = hex::decode(result_hex.trim_start_matches("0x")).map_err(|e| {
+            subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Failed to decode hex: {}", e),
+            )))
+        })?;
+
+        // Try to decode as legacy RuntimeDispatchInfo (with V1 weight) FIRST
+        // Format: { weight: u64, class: u8, partial_fee: u128 } = exactly 25 bytes
+        // V1 is tried first because it has a fixed size and validates cleanly.
+        // The V2 Compact decoder is too permissive and will "succeed" with garbage on V1 data.
+        if result_bytes.len() == 25
+            && let Ok((weight, class, partial_fee)) =
+                <(u64, u8, u128)>::decode(&mut &result_bytes[..])
+            && class <= 2
+        {
+            return Ok(RuntimeDispatchInfoRaw {
+                weight: WeightRaw::V1(weight),
+                class: dispatch_class_from_u8(class),
+                partial_fee,
+            });
+        }
+
+        // Try to decode as modern RuntimeDispatchInfo (with V2 weight)
+        // Format: { weight: { ref_time: Compact<u64>, proof_size: Compact<u64> }, class: u8, partial_fee: u128 }
+        if let Ok((ref_time, proof_size, class, partial_fee)) =
+            <(Compact<u64>, Compact<u64>, u8, u128)>::decode(&mut &result_bytes[..])
+            && class <= 2
+        {
+            return Ok(RuntimeDispatchInfoRaw {
+                weight: WeightRaw::V2 {
+                    ref_time: ref_time.0,
+                    proof_size: proof_size.0,
+                },
+                class: dispatch_class_from_u8(class),
+                partial_fee,
+            });
+        }
+
+        // If V2 failed validation, try V1 without length check as fallback
+        if let Ok((weight, class, partial_fee)) = <(u64, u8, u128)>::decode(&mut &result_bytes[..])
+            && class <= 2
+        {
+            return Ok(RuntimeDispatchInfoRaw {
+                weight: WeightRaw::V1(weight),
+                class: dispatch_class_from_u8(class),
+                partial_fee,
+            });
+        }
+
+        Err(subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Failed to decode RuntimeDispatchInfo from state_call response",
+        ))))
     }
 }
 
