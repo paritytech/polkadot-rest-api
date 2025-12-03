@@ -14,4 +14,7 @@ pub use fee::{
     dispatch_class_from_u8, extract_estimated_weight, parse_fee_details,
 };
 pub use format::{decode_address_to_ss58, hex_with_prefix, lowercase_first_char};
-pub use hash::{HashError, HasherExt, compute_block_hash_from_header_json};
+pub use hash::{
+    HashError, HasherExt, compute_block_hash_from_header_json,
+    compute_block_hash_from_header_json_with_hasher,
+};

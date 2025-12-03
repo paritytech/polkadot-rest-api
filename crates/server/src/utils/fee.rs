@@ -699,7 +699,11 @@ mod tests {
 
             let supports = cache.supports_fee_calculation(chain, 0);
             if chain == "polkadot" || chain == "westend" {
-                assert!(supports, "Chain '{}' should support fee calculation from spec 0", chain);
+                assert!(
+                    supports,
+                    "Chain '{}' should support fee calculation from spec 0",
+                    chain
+                );
             }
         }
     }

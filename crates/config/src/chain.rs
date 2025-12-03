@@ -1,5 +1,7 @@
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
+use std::convert::Infallible;
+use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -24,22 +26,27 @@ impl<'de> Deserialize<'de> for Hasher {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Ok(Self::from_str(&s))
+        // FromStr::from_str is infallible for Hasher
+        Ok(s.parse().unwrap())
     }
 }
 
-impl Hasher {
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().replace('_', "-").as_str() {
+impl FromStr for Hasher {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let hasher = match s.to_lowercase().replace('_', "-").as_str() {
             "keccak-256" | "keccak256" => Hasher::Keccak256,
             _ => Hasher::Blake2_256,
-        }
+        };
+        Ok(hasher)
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainConfig {
+    // TODO: Use finalizes to add checks before finalization operations
     #[serde(default = "default_finalizes")]
     pub finalizes: bool,
 
@@ -52,6 +59,7 @@ pub struct ChainConfig {
     #[serde(default)]
     pub query_fee_details_available: Option<u32>,
 
+    // TODO: Use block_number_bytes for decoding block numbers in SCALE-encoded data
     #[serde(default = "default_block_number_bytes")]
     pub block_number_bytes: usize,
 
@@ -175,8 +183,10 @@ mod tests {
     #[test]
     fn test_get_polkadot_config() {
         let configs = ChainConfigs::load().unwrap();
-        let polkadot = configs.get("polkadot").expect("Polkadot config should exist");
-        
+        let polkadot = configs
+            .get("polkadot")
+            .expect("Polkadot config should exist");
+
         assert_eq!(polkadot.finalizes, true);
         assert_eq!(polkadot.block_number_bytes, 4);
         assert_eq!(polkadot.hasher, Hasher::Blake2_256);
@@ -345,7 +355,7 @@ mod tests {
     #[test]
     fn test_asset_hub_chains_have_null_query_fee_details() {
         let configs = ChainConfigs::load().unwrap();
-        
+
         // Asset hubs should have null for query fee details (unknown status)
         let asset_hubs = vec![
             "statemint",
@@ -357,9 +367,10 @@ mod tests {
         ];
 
         for chain_name in asset_hubs {
-            let config = configs.get(chain_name)
+            let config = configs
+                .get(chain_name)
                 .expect(&format!("Chain '{}' should exist", chain_name));
-            
+
             assert_eq!(
                 config.query_fee_details_unavailable, None,
                 "Chain '{}' should have null query_fee_details_unavailable",
@@ -432,7 +443,7 @@ mod tests {
         let configs = ChainConfigs::load().unwrap();
         let result = configs.get_or_error("nonexistent-chain");
         assert!(result.is_err());
-        
+
         match result {
             Err(ChainConfigError::ChainNotFound(chain)) => {
                 assert_eq!(chain, "nonexistent-chain");
@@ -459,13 +470,16 @@ mod tests {
     #[test]
     fn test_all_chains_have_required_fields() {
         let configs = ChainConfigs::load().unwrap();
-        
+
         for chain_name in configs.chain_names() {
             let config = configs.get(chain_name).unwrap();
-            
+
             // All chains should have these basic properties
-            assert!(config.block_number_bytes > 0, 
-                "Chain '{}' should have positive block_number_bytes", chain_name);
+            assert!(
+                config.block_number_bytes > 0,
+                "Chain '{}' should have positive block_number_bytes",
+                chain_name
+            );
             // Hasher is always valid (type-safe enum)
             // Note: finalizes can be true or false, both are valid
             // Note: min_calc_fee_runtime can be 0 or higher, both are valid
@@ -606,7 +620,8 @@ mod tests {
         for chain_name in configs.chain_names() {
             let config = configs.get(chain_name).unwrap();
             assert_eq!(
-                config.hasher, Hasher::Blake2_256,
+                config.hasher,
+                Hasher::Blake2_256,
                 "Chain '{}' should use blake2-256 hasher",
                 chain_name
             );

@@ -238,18 +238,18 @@ mod tests {
     #[test]
     fn test_hasher_from_str() {
         // Blake2-256 variants
-        assert_eq!(Hasher::from_str("blake2-256"), Hasher::Blake2_256);
-        assert_eq!(Hasher::from_str("blake2_256"), Hasher::Blake2_256);
-        assert_eq!(Hasher::from_str("BLAKE2-256"), Hasher::Blake2_256);
+        assert_eq!("blake2-256".parse::<Hasher>().unwrap(), Hasher::Blake2_256);
+        assert_eq!("blake2_256".parse::<Hasher>().unwrap(), Hasher::Blake2_256);
+        assert_eq!("BLAKE2-256".parse::<Hasher>().unwrap(), Hasher::Blake2_256);
 
         // Keccak-256 variants
-        assert_eq!(Hasher::from_str("keccak-256"), Hasher::Keccak256);
-        assert_eq!(Hasher::from_str("keccak256"), Hasher::Keccak256);
-        assert_eq!(Hasher::from_str("KECCAK-256"), Hasher::Keccak256);
+        assert_eq!("keccak-256".parse::<Hasher>().unwrap(), Hasher::Keccak256);
+        assert_eq!("keccak256".parse::<Hasher>().unwrap(), Hasher::Keccak256);
+        assert_eq!("KECCAK-256".parse::<Hasher>().unwrap(), Hasher::Keccak256);
 
         // Unknown defaults to Blake2-256
-        assert_eq!(Hasher::from_str("unknown"), Hasher::Blake2_256);
-        assert_eq!(Hasher::from_str(""), Hasher::Blake2_256);
+        assert_eq!("unknown".parse::<Hasher>().unwrap(), Hasher::Blake2_256);
+        assert_eq!("".parse::<Hasher>().unwrap(), Hasher::Blake2_256);
     }
 
     #[test]

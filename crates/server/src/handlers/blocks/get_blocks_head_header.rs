@@ -1,6 +1,6 @@
 use crate::state::AppState;
 use crate::types::BlockHash;
-use crate::utils::compute_block_hash_from_header_json;
+use crate::utils::compute_block_hash_from_header_json_with_hasher;
 use axum::{
     Json,
     extract::{Query, State},
@@ -105,7 +105,10 @@ pub async fn get_blocks_head_header(
 
         // OPTIMIZATION: Compute hash locally from header data
         // This saves 1 RPC call (chain_getBlockHash)
-        let block_hash_typed = compute_block_hash_from_header_json(&header_json)?;
+        let block_hash_typed = compute_block_hash_from_header_json_with_hasher(
+            &header_json,
+            state.chain_config.hasher,
+        )?;
         let block_hash = block_hash_typed.to_string();
 
         (block_hash, header_json)
