@@ -1,3 +1,4 @@
+mod chain;
 mod error;
 mod express;
 mod fee;
@@ -5,9 +6,10 @@ mod log;
 mod metrics;
 mod substrate;
 
+pub use chain::{ChainConfig, ChainConfigError, ChainConfigs, Hasher, QueryFeeDetailsStatus};
 pub use error::ConfigError;
 pub use express::{ExpressConfig, ExpressError};
-pub use fee::{ChainFeeConfig, ChainFeeConfigs, FeeConfigError, QueryFeeDetailsStatus};
+pub use fee::{ChainFeeConfig, ChainFeeConfigs, FeeConfigError};
 pub use log::{LogConfig, LogError};
 pub use metrics::{MetricsConfig, MetricsError};
 pub use substrate::{

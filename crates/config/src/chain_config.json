@@ -1,0 +1,92 @@
+{
+  "polkadot": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 0,
+    "queryFeeDetailsUnavailable": 27,
+    "queryFeeDetailsAvailable": 28,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "polkadot",
+    "supportsAhm": true
+  },
+  "kusama": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 1058,
+    "queryFeeDetailsUnavailable": 2027,
+    "queryFeeDetailsAvailable": 2028,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "polkadot",
+    "supportsAhm": true
+  },
+  "westend": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 0,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "polkadot",
+    "supportsAhm": true
+  },
+  "statemint": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 601,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "none",
+    "supportsAhm": true
+  },
+  "statemine": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 1,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "none",
+    "supportsAhm": true
+  },
+  "westmint": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 0,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "none",
+    "supportsAhm": true
+  },
+  "asset-hub-polkadot": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 601,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "none",
+    "supportsAhm": true
+  },
+  "asset-hub-kusama": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 1,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "none",
+    "supportsAhm": true
+  },
+  "asset-hub-westend": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 0,
+    "queryFeeDetailsUnavailable": null,
+    "queryFeeDetailsAvailable": null,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "none",
+    "supportsAhm": true
+  }
+}
