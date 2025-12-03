@@ -54,6 +54,13 @@ pub struct HistoricalTestCase {
     pub fixture_path: PathBuf,
     /// Optional description of the test case
     pub description: Option<String>,
+    /// Expected HTTP status code (defaults to 200)
+    #[serde(default = "default_status_code")]
+    pub expected_status: u16,
+}
+
+fn default_status_code() -> u16 {
+    200
 }
 
 /// Test configuration loaded from file

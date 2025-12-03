@@ -54,6 +54,7 @@ impl HistoricalTestRunner {
 
         // Aggregate results
         let mut results = TestResults::default();
+        
         for (test_case, result) in all_results {
             match result {
                 Ok(()) => {
@@ -103,10 +104,11 @@ impl HistoricalTestRunner {
             .await
             .context(format!("Failed to fetch endpoint: {}", full_path))?;
 
-        // Check status code
-        if !status.is_success() {
+        // Check status code matches expected
+        if status.as_u16() != test_case.expected_status {
             anyhow::bail!(
-                "Request failed with status {}: {}",
+                "Status code mismatch. Expected {}, got {}: {}",
+                test_case.expected_status,
                 status,
                 serde_json::to_string_pretty(&actual_json).unwrap_or_default()
             );

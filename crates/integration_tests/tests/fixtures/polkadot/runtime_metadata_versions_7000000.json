@@ -1,0 +1,5 @@
+{
+  "code": 500,
+  "message": "Function 'api.call.metadata.metadataVersions()' is not available at this block height.",
+  "stack": "Error: Function 'api.call.metadata.metadataVersions()' is not available at this block height."
+}

@@ -126,18 +126,26 @@ async fn update_chain_fixtures(
 
     for test_case in &test_cases {
         if let Some(block_height) = test_case.block_height {
-            println!("\nFetching block {} from API...", block_height);
-            let block_data =
-                fetch_block_from_api(client, api_url, &block_height.to_string()).await?;
+            let endpoint = test_case.endpoint.to_string();
+            
+            println!("\nFetching {} at block {} from API...", endpoint, block_height);
+            
+            let data = if endpoint.contains("/blocks/") {
+                fetch_block_from_api(client, api_url, &block_height.to_string()).await?
+            } else if endpoint.contains("/runtime/") {
+                fetch_runtime_from_api(client, api_url, &endpoint, &block_height.to_string()).await?
+            } else {
+                println!("  ⚠ Skipping unsupported endpoint: {}", endpoint);
+                continue;
+            };
 
-            // Extract filename from fixture_path
             let filename = test_case
                 .fixture_path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .context("Invalid fixture path")?;
 
-            save_fixture(chain_name, filename, &block_data)?;
+            save_fixture(chain_name, filename, &data)?;
         }
     }
 
@@ -179,11 +187,11 @@ async fn fetch_block_from_api(client: &Client, api_url: &str, block_id: &str) ->
     let required_fields = [
         "number",
         "hash",
-        "parentHash",     // from parent_hash
-        "stateRoot",      // from state_root
-        "extrinsicsRoot", // from extrinsics_root
-        "logs",           // Vec<DigestLog>
-        "extrinsics",     // Vec<ExtrinsicInfo>
+        "parentHash",
+        "stateRoot",
+        "extrinsicsRoot",
+        "logs",
+        "extrinsics",
     ];
     for field in &required_fields {
         if block_data.get(field).is_none() {
@@ -202,6 +210,68 @@ async fn fetch_block_from_api(client: &Client, api_url: &str, block_id: &str) ->
     println!("  ✓ Block {}", block_data["number"]);
 
     Ok(block_data)
+}
+
+async fn fetch_runtime_from_api(
+    client: &Client,
+    api_url: &str,
+    endpoint: &str,
+    block_height: &str,
+) -> Result<Value> {
+    let url = format!(
+        "{}{}?at={}",
+        api_url.trim_end_matches('/'),
+        endpoint,
+        block_height
+    );
+
+    println!("  Requesting: {}", url);
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .context(format!("Failed to send request to {}", url))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        anyhow::bail!("API returned status {}: {}", status, text);
+    }
+
+    let data: Value = response
+        .json()
+        .await
+        .context(format!("Failed to parse JSON response from {}", url))?;
+
+    if !data.is_object() {
+        anyhow::bail!("API response is not a JSON object");
+    }
+
+    if data.get("at").is_none() {
+        anyhow::bail!("API response missing required field: at");
+    }
+
+    if endpoint.contains("/metadata/versions") {
+        if data.get("versions").is_none() {
+            anyhow::bail!("API response missing required field: versions");
+        }
+    } else if endpoint.contains("/metadata") {
+        if data.get("metadata").is_none() {
+            anyhow::bail!("API response missing required field: metadata");
+        }
+        if data.get("magicNumber").is_none() {
+            anyhow::bail!("API response missing required field: magicNumber");
+        }
+    } else if endpoint.contains("/code") {
+        if data.get("code").is_none() {
+            anyhow::bail!("API response missing required field: code");
+        }
+    }
+
+    println!("  ✓ Response received (block height: {})", block_height);
+
+    Ok(data)
 }
 
 fn save_fixture(chain: &str, filename: &str, data: &Value) -> Result<()> {
