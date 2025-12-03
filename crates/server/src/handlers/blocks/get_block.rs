@@ -62,14 +62,22 @@ pub async fn get_block(
         .to_string();
 
     let logs = decode_digest_logs(&header_json);
+
+    // Only fetch finalization data if finalizedKey=true (default)
     let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
         extract_author(&state, resolved_block.number, &logs),
         extract_extrinsics(&state, resolved_block.number),
         fetch_block_events(&state, resolved_block.number),
-        get_finalized_block_number(&state),
-        // Only fetch canonical hash if queried by hash (needed for fork detection)
         async {
-            if queried_by_hash {
+            if params.finalized_key {
+                Some(get_finalized_block_number(&state).await)
+            } else {
+                None
+            }
+        },
+        // Only fetch canonical hash if queried by hash AND finalizedKey=true
+        async {
+            if queried_by_hash && params.finalized_key {
                 Some(get_canonical_hash_at_number(&state, resolved_block.number).await)
             } else {
                 None
@@ -79,26 +87,32 @@ pub async fn get_block(
 
     let extrinsics = extrinsics_result?;
     let block_events = events_result?;
-    let finalized_head_number = finalized_head_result?;
 
-    // Determine if the block is finalized:
-    // 1. Block number must be <= finalized head number
-    // 2. If queried by hash, the hash must match the canonical chain hash
-    //    (to detect blocks on forked/orphaned chains)
-    let finalized = if resolved_block.number <= finalized_head_number {
-        if let Some(canonical_result) = canonical_hash_result {
-            // Queried by hash - verify it's on the canonical chain
-            match canonical_result? {
-                Some(canonical_hash) => canonical_hash == resolved_block.hash,
-                // If canonical hash not found, block is not finalized
-                None => false,
+    // Determine if the block is finalized (only when finalizedKey=true)
+    let finalized = if let Some(finalized_head_result) = finalized_head_result {
+        let finalized_head_number = finalized_head_result?;
+        // 1. Block number must be <= finalized head number
+        // 2. If queried by hash, the hash must match the canonical chain hash
+        //    (to detect blocks on forked/orphaned chains)
+        let is_finalized = if resolved_block.number <= finalized_head_number {
+            if let Some(canonical_result) = canonical_hash_result {
+                // Queried by hash - verify it's on the canonical chain
+                match canonical_result? {
+                    Some(canonical_hash) => canonical_hash == resolved_block.hash,
+                    // If canonical hash not found, block is not finalized
+                    None => false,
+                }
+            } else {
+                // Queried by number - assumed to be canonical
+                true
             }
         } else {
-            // Queried by number - assumed to be canonical
-            true
-        }
+            false
+        };
+        Some(is_finalized)
     } else {
-        false
+        // finalizedKey=false, omit finalized field
+        None
     };
 
     // Categorize events by phase and extract extrinsic outcomes (success, paysFee)
