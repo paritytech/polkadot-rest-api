@@ -22,7 +22,7 @@ pub const CONSENSUS_ENGINE_ID_LEN: usize = 4;
 // ================================================================================================
 
 /// Query parameters for /blocks/{blockId} endpoint
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockQueryParams {
     /// When true, include documentation for events
@@ -34,6 +34,24 @@ pub struct BlockQueryParams {
     /// When true, skip fee calculation for extrinsics (info will be empty object)
     #[serde(default)]
     pub no_fees: bool,
+    /// When true, include finalized status in response. When false, omit finalized field.
+    #[serde(default = "default_true")]
+    pub finalized_key: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for BlockQueryParams {
+    fn default() -> Self {
+        Self {
+            event_docs: false,
+            extrinsic_docs: false,
+            no_fees: false,
+            finalized_key: true,
+        }
+    }
 }
 
 // ================================================================================================
@@ -301,8 +319,9 @@ pub struct BlockResponse {
     pub on_initialize: OnInitialize,
     pub extrinsics: Vec<ExtrinsicInfo>,
     pub on_finalize: OnFinalize,
-    /// Whether this block has been finalized
-    pub finalized: bool,
+    /// Whether this block has been finalized (omitted when finalizedKey=false)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finalized: Option<bool>,
 }
 
 // ================================================================================================
