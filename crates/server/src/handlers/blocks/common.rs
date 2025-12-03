@@ -717,6 +717,14 @@ pub async fn extract_fee_info_for_extrinsic(
     parent_hash: &str,
     spec_version: u32,
 ) -> serde_json::Map<String, Value> {
+    // Early return if fee calculation is not supported for this spec version
+    if !state
+        .fee_details_cache
+        .supports_fee_calculation(&state.chain_info.spec_name, spec_version)
+    {
+        return serde_json::Map::new();
+    }
+
     // Priority 1: TransactionFeePaid event (exact fee from runtime)
     if let Some(fee_from_event) = extract_fee_from_transaction_paid_event(events) {
         let mut info = serde_json::Map::new();
