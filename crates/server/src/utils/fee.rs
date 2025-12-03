@@ -5,7 +5,7 @@
 //! - `QueryFeeDetailsCache`: Tracks whether `payment_queryFeeDetails` is available per spec_version
 //! - `parse_fee_details` / `extract_estimated_weight`: RPC response parsing utilities
 
-use config::ChainFeeConfigs;
+use config::ChainConfigs;
 use serde_json::Value;
 use sp_runtime::Perbill;
 use std::collections::HashMap;
@@ -227,15 +227,15 @@ pub fn calc_partial_fee_raw(
 pub struct QueryFeeDetailsCache {
     /// Cached results: spec_version -> is_available
     cache: RwLock<HashMap<u32, bool>>,
-    /// Chain fee configurations for static lookup
-    fee_configs: ChainFeeConfigs,
+    /// Chain configurations for static lookup
+    chain_configs: ChainConfigs,
 }
 
 impl QueryFeeDetailsCache {
     pub fn new() -> Self {
         Self {
             cache: RwLock::new(HashMap::new()),
-            fee_configs: ChainFeeConfigs::default(),
+            chain_configs: ChainConfigs::default(),
         }
     }
 
@@ -249,7 +249,7 @@ impl QueryFeeDetailsCache {
         use config::QueryFeeDetailsStatus;
 
         // First, check the static config
-        if let Some(config) = self.fee_configs.get(spec_name) {
+        if let Some(config) = self.chain_configs.get(spec_name) {
             match config.query_fee_details_status(spec_version) {
                 QueryFeeDetailsStatus::Available => return Some(true),
                 QueryFeeDetailsStatus::Unavailable => return Some(false),
@@ -271,7 +271,7 @@ impl QueryFeeDetailsCache {
 
     /// Check if fee calculation is supported for a given chain and spec version
     pub fn supports_fee_calculation(&self, spec_name: &str, spec_version: u32) -> bool {
-        if let Some(config) = self.fee_configs.get(spec_name) {
+        if let Some(config) = self.chain_configs.get(spec_name) {
             config.supports_fee_calculation(spec_version)
         } else {
             // For unknown chains, assume fee calculation is supported
@@ -678,5 +678,184 @@ mod tests {
         let fee = calculate_accurate_fee(&fee_details, "500", "1000").unwrap();
         // 100 + 50 + (1000 * 500/1000) = 100 + 50 + 500 = 650
         assert_eq!(fee, "650");
+    }
+
+    // --- ChainConfigs tests ---
+
+    #[test]
+    fn test_chain_config_integration_all_relay_chains() {
+        let cache = QueryFeeDetailsCache::new();
+
+        // Test all relay chains have proper config
+        let relay_chains = vec!["polkadot", "kusama", "westend"];
+
+        for chain in relay_chains {
+            let result = cache.is_available(chain, 0);
+            assert!(
+                result.is_some() || result.is_none(),
+                "Chain '{}' availability check should work",
+                chain
+            );
+
+            let supports = cache.supports_fee_calculation(chain, 0);
+            if chain == "polkadot" || chain == "westend" {
+                assert!(supports, "Chain '{}' should support fee calculation from spec 0", chain);
+            }
+        }
+    }
+
+    #[test]
+    fn test_chain_config_integration_kusama_fee_calc_threshold() {
+        let cache = QueryFeeDetailsCache::new();
+
+        // Kusama has minCalcFeeRuntime = 1058
+        assert!(!cache.supports_fee_calculation("kusama", 1057));
+        assert!(cache.supports_fee_calculation("kusama", 1058));
+        assert!(cache.supports_fee_calculation("kusama", 2000));
+    }
+
+    #[test]
+    fn test_chain_config_integration_query_fee_details_transitions() {
+        let cache = QueryFeeDetailsCache::new();
+
+        // Test Polkadot transition from unavailable to available
+        assert_eq!(cache.is_available("polkadot", 26), Some(false));
+        assert_eq!(cache.is_available("polkadot", 27), Some(false));
+        assert_eq!(cache.is_available("polkadot", 28), Some(true));
+        assert_eq!(cache.is_available("polkadot", 29), Some(true));
+
+        // Test Kusama transition
+        assert_eq!(cache.is_available("kusama", 2026), Some(false));
+        assert_eq!(cache.is_available("kusama", 2027), Some(false));
+        assert_eq!(cache.is_available("kusama", 2028), Some(true));
+        assert_eq!(cache.is_available("kusama", 2029), Some(true));
+    }
+
+    #[test]
+    fn test_chain_config_integration_asset_hubs_unknown_status() {
+        let cache = QueryFeeDetailsCache::new();
+
+        // All asset hub variants should return None (unknown status)
+        let asset_hubs = vec![
+            "statemint",
+            "statemine",
+            "westmint",
+            "asset-hub-polkadot",
+            "asset-hub-kusama",
+            "asset-hub-westend",
+        ];
+
+        for chain in asset_hubs {
+            assert_eq!(
+                cache.is_available(chain, 0),
+                None,
+                "Chain '{}' should have unknown queryFeeDetails status",
+                chain
+            );
+            assert_eq!(
+                cache.is_available(chain, 1000),
+                None,
+                "Chain '{}' should have unknown queryFeeDetails status at any spec",
+                chain
+            );
+        }
+    }
+
+    #[test]
+    fn test_chain_config_integration_runtime_cache_fallback() {
+        let cache = QueryFeeDetailsCache::new();
+
+        // For chains with unknown status (like statemint), runtime cache should work
+        assert_eq!(cache.is_available("statemint", 500), None);
+
+        cache.set_available(500, true);
+
+        assert_eq!(cache.is_available("unknown-chain", 999), None);
+
+        cache.set_available(999, false);
+    }
+
+    #[test]
+    fn test_chain_config_integration_case_insensitive() {
+        let cache = QueryFeeDetailsCache::new();
+
+        // Should work with different cases
+        assert_eq!(
+            cache.is_available("polkadot", 28),
+            cache.is_available("Polkadot", 28)
+        );
+        assert_eq!(
+            cache.is_available("kusama", 2028),
+            cache.is_available("KUSAMA", 2028)
+        );
+    }
+
+    #[test]
+    fn test_chain_config_integration_all_chains_min_fee_calc() {
+        let cache = QueryFeeDetailsCache::new();
+
+        // Test that min_calc_fee_runtime works for all configured chains
+        let test_cases = vec![
+            ("polkadot", 0),    // min is 0
+            ("kusama", 1058),   // min is 1058
+            ("westend", 0),     // min is 0
+            ("statemint", 601), // min is 601
+            ("statemine", 1),   // min is 1
+            ("westmint", 0),    // min is 0
+        ];
+
+        for (chain, min_spec) in test_cases {
+            if min_spec > 0 {
+                assert!(
+                    !cache.supports_fee_calculation(chain, min_spec - 1),
+                    "Chain '{}' should not support fee calc below spec {}",
+                    chain,
+                    min_spec
+                );
+            }
+            assert!(
+                cache.supports_fee_calculation(chain, min_spec),
+                "Chain '{}' should support fee calc at spec {}",
+                chain,
+                min_spec
+            );
+            assert!(
+                cache.supports_fee_calculation(chain, min_spec + 100),
+                "Chain '{}' should support fee calc above spec {}",
+                chain,
+                min_spec
+            );
+        }
+    }
+
+    #[test]
+    fn test_chain_config_integration_unknown_chain_defaults() {
+        let cache = QueryFeeDetailsCache::new();
+
+        // Unknown chains should have sensible defaults
+        assert_eq!(
+            cache.is_available("totally-unknown-chain", 1),
+            None,
+            "Unknown chain should return None for availability"
+        );
+
+        assert!(
+            cache.supports_fee_calculation("totally-unknown-chain", 1),
+            "Unknown chain should default to supporting fee calculation"
+        );
+    }
+
+    #[test]
+    fn test_chain_config_integration_statemint_vs_asset_hub_polkadot() {
+        let cache = QueryFeeDetailsCache::new();
+
+        // Both statemint and asset-hub-polkadot should behave the same
+        assert_eq!(
+            cache.is_available("statemint", 1000),
+            cache.is_available("asset-hub-polkadot", 1000)
+        );
+
+        assert!(cache.supports_fee_calculation("statemint", 601));
+        assert!(cache.supports_fee_calculation("asset-hub-polkadot", 601));
     }
 }

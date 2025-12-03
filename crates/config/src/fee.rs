@@ -1,3 +1,4 @@
+use crate::chain::QueryFeeDetailsStatus;
 use serde::Deserialize;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -10,17 +11,6 @@ pub enum FeeConfigError {
 
     #[error("Chain '{0}' not found in fee configuration")]
     ChainNotFound(String),
-}
-
-/// Status of queryFeeDetails RPC availability for a given spec version
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum QueryFeeDetailsStatus {
-    /// queryFeeDetails is available at this spec version
-    Available,
-    /// queryFeeDetails is not available at this spec version
-    Unavailable,
-    /// Availability is unknown and needs to be discovered via RPC
-    Unknown,
 }
 
 /// Fee calculation configuration for a single chain
