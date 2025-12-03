@@ -21,7 +21,7 @@ tower = "0.5"
 tower-http = { version = "0.6.6", features = ["trace", "cors", "limit"] }
 socket2 = "0.6"
 config = { path = "../config" }
-subxt-historic = { version = "0.0.6" }
+subxt-historic = { version = "0.0.7" }
 subxt-rpcs = { version = "0.44.0" }
 frame-metadata = { version = "23", default-features = false, features = ["current", "decode", "legacy", "std"] }
 scale-info = "2.11"
@@ -35,7 +35,7 @@ sp-runtime = "39"
 sp-consensus-babe = "0.40"
 scale-value = "0.18"
 scale-decode = { version = "0.16", features = ["derive"] }
-scale-type-resolver = "0.2.0"
+scale-type-resolver = { version = "0.2.0", features = ["visitor"] }
 scale-info-legacy = "0.4.0"
 prometheus = "0.13"
 lazy_static = "1.4"

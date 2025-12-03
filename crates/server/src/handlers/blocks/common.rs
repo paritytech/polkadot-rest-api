@@ -11,6 +11,13 @@ use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash as HashT;
+use subxt_historic::client::{ClientAtBlock, OnlineClientAtBlock};
+use subxt_historic::SubstrateConfig;
+
+/// Type alias for the ClientAtBlock type used throughout the codebase.
+/// This represents a client pinned to a specific block height with access to
+/// storage, extrinsics, and metadata for that block.
+pub type BlockClient<'a> = ClientAtBlock<OnlineClientAtBlock<'a, SubstrateConfig>, SubstrateConfig>;
 
 use super::docs::Docs;
 use super::transform::{
@@ -149,10 +156,8 @@ pub async fn get_finalized_block_number(state: &AppState) -> Result<u64, GetBloc
 
 /// Fetch validator set from chain state at a specific block
 pub async fn get_validators_at_block(
-    state: &AppState,
-    block_number: u64,
+    client_at_block: &BlockClient<'_>,
 ) -> Result<Vec<AccountId32>, GetBlockError> {
-    let client_at_block = state.client.at(block_number).await?;
     let storage_entry = client_at_block.storage().entry("Session", "Validators")?;
     let validators_value = storage_entry.fetch(()).await?.ok_or_else(|| {
         // Use the parity_scale_codec::Error for missing validators which will be converted to StorageDecodeFailed
@@ -172,7 +177,7 @@ pub async fn get_validators_at_block(
 /// Extract author ID from block header digest logs by mapping authority index to validator
 pub async fn extract_author(
     state: &AppState,
-    block_number: u64,
+    client_at_block: &BlockClient<'_>,
     logs: &[DigestLog],
 ) -> Option<String> {
     use sp_consensus_babe::digests::PreDigest;
@@ -182,10 +187,10 @@ pub async fn extract_author(
     const POW_ENGINE: &[u8] = b"pow_";
 
     // Fetch validators once for this block
-    let validators = match get_validators_at_block(state, block_number).await {
+    let validators = match get_validators_at_block(client_at_block).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::debug!("Failed to get validators for block {}: {}", block_number, e);
+            tracing::debug!("Failed to get validators: {}", e);
             return None;
         }
     };
@@ -447,24 +452,19 @@ pub fn extract_class_from_event_data(event_data: &[Value], is_success: bool) -> 
 /// Fetch and parse all events for a block
 pub async fn fetch_block_events(
     state: &AppState,
-    block_number: u64,
+    client_at_block: &BlockClient<'_>,
 ) -> Result<Vec<ParsedEvent>, GetBlockError> {
     use crate::handlers::blocks::events_visitor::{EventPhase as VisitorEventPhase, EventsVisitor};
 
-    let client_at_block = state.client.at(block_number).await?;
     let storage_entry = client_at_block.storage().entry("System", "Events")?;
     let events_value = storage_entry.fetch(()).await?.ok_or_else(|| {
-        tracing::warn!("No events storage found for block {}", block_number);
+        tracing::warn!("No events storage found for block");
         parity_scale_codec::Error::from("Events storage not found")
     })?;
 
     // Use the visitor pattern to get type information for each field
     let events_with_types = events_value.visit(EventsVisitor::new()).map_err(|e| {
-        tracing::warn!(
-            "Failed to decode events for block {}: {:?}",
-            block_number,
-            e
-        );
+        tracing::warn!("Failed to decode events: {:?}", e);
         GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
             "Failed to decode events",
         ))
@@ -474,11 +474,7 @@ pub async fn fetch_block_events(
     let events_vec = events_value
         .decode_as::<Vec<scale_value::Value<()>>>()
         .map_err(|e| {
-            tracing::warn!(
-                "Failed to decode events for block {}: {:?}",
-                block_number,
-                e
-            );
+            tracing::warn!("Failed to decode events: {:?}", e);
             GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
                 "Failed to decode events",
             ))
@@ -797,32 +793,14 @@ pub async fn extract_fee_info_for_extrinsic(
 /// Extract extrinsics from a block using subxt-historic
 pub async fn extract_extrinsics(
     state: &AppState,
-    block_number: u64,
+    client_at_block: &BlockClient<'_>,
 ) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
-    // Use subxt-historic to get a client at the specific block height
-    // This ensures we use the correct metadata for that block
-    let client_at_block = match state.client.at(block_number).await {
-        Ok(client) => client,
-        Err(e) => {
-            // This should never happen in production with real chains
-            // If it does, it indicates a serious issue with metadata or RPC
-            tracing::warn!(
-                "Failed to get client at block {}: {:?}. Returning empty extrinsics. \
-                 This is expected in tests with mock RPC, but should not happen in production.",
-                block_number,
-                e
-            );
-            return Ok(Vec::new());
-        }
-    };
-
     let extrinsics = match client_at_block.extrinsics().fetch().await {
         Ok(exts) => exts,
         Err(e) => {
             // This could indicate RPC issues or network problems
             tracing::warn!(
-                "Failed to fetch extrinsics for block {}: {:?}. Returning empty extrinsics.",
-                block_number,
+                "Failed to fetch extrinsics: {:?}. Returning empty extrinsics.",
                 e
             );
             return Ok(Vec::new());
