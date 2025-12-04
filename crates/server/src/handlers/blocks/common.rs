@@ -191,7 +191,7 @@ pub async fn extract_author(
     let validators = match get_validators_at_block(client_at_block).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::debug!(block_number, "Failed to get validators: {}", e);
+            tracing::debug!("Failed to get validators for block {}: {}", block_number, e);
             return None;
         }
     };
@@ -460,13 +460,17 @@ pub async fn fetch_block_events(
 
     let storage_entry = client_at_block.storage().entry("System", "Events")?;
     let events_value = storage_entry.fetch(()).await?.ok_or_else(|| {
-        tracing::warn!(block_number, "No events storage found for block");
+        tracing::warn!("No events storage found for block {}", block_number);
         parity_scale_codec::Error::from("Events storage not found")
     })?;
 
     // Use the visitor pattern to get type information for each field
     let events_with_types = events_value.visit(EventsVisitor::new()).map_err(|e| {
-        tracing::warn!(block_number, "Failed to decode events: {:?}", e);
+        tracing::warn!(
+            "Failed to decode events for block {}: {:?}",
+            block_number,
+            e
+        );
         GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
             "Failed to decode events",
         ))
@@ -476,7 +480,11 @@ pub async fn fetch_block_events(
     let events_vec = events_value
         .decode_as::<Vec<scale_value::Value<()>>>()
         .map_err(|e| {
-            tracing::warn!(block_number, "Failed to decode events: {:?}", e);
+            tracing::warn!(
+                "Failed to decode events for block {}: {:?}",
+                block_number,
+                e
+            );
             GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
                 "Failed to decode events",
             ))
@@ -803,8 +811,8 @@ pub async fn extract_extrinsics(
         Err(e) => {
             // This could indicate RPC issues or network problems
             tracing::warn!(
+                "Failed to fetch extrinsics for block {}: {:?}. Returning empty extrinsics.",
                 block_number,
-                "Failed to fetch extrinsics: {:?}. Returning empty extrinsics.",
                 e
             );
             return Ok(Vec::new());
