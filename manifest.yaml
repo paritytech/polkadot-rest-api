@@ -1,0 +1,9 @@
+productionHostname: polkadot-rest-api.parity.io
+registry: europe-docker.pkg.dev/parity-mgmt/polkadot-rest-api
+
+images:
+  api:
+    dockerfile: Dockerfile
+    context: .
+    port: 8080
+    ingressRoute: /
