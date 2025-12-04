@@ -67,9 +67,9 @@ pub async fn get_block(
     let client_at_block = state.client.at(resolved_block.number).await?;
 
     let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
-        extract_author(&state, &client_at_block, &logs),
-        extract_extrinsics(&state, &client_at_block),
-        fetch_block_events(&state, &client_at_block),
+        extract_author(&state, &client_at_block, &logs, resolved_block.number),
+        extract_extrinsics(&state, &client_at_block, resolved_block.number),
+        fetch_block_events(&state, &client_at_block, resolved_block.number),
         // Only fetch canonical hash if queried by hash (needed for fork detection)
         async {
             if params.finalized_key {

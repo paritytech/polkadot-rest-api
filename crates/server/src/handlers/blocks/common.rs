@@ -179,6 +179,7 @@ pub async fn extract_author(
     state: &AppState,
     client_at_block: &BlockClient<'_>,
     logs: &[DigestLog],
+    block_number: u64,
 ) -> Option<String> {
     use sp_consensus_babe::digests::PreDigest;
 
@@ -190,7 +191,7 @@ pub async fn extract_author(
     let validators = match get_validators_at_block(client_at_block).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::debug!("Failed to get validators: {}", e);
+            tracing::debug!(block_number, "Failed to get validators: {}", e);
             return None;
         }
     };
@@ -453,18 +454,19 @@ pub fn extract_class_from_event_data(event_data: &[Value], is_success: bool) -> 
 pub async fn fetch_block_events(
     state: &AppState,
     client_at_block: &BlockClient<'_>,
+    block_number: u64,
 ) -> Result<Vec<ParsedEvent>, GetBlockError> {
     use crate::handlers::blocks::events_visitor::{EventPhase as VisitorEventPhase, EventsVisitor};
 
     let storage_entry = client_at_block.storage().entry("System", "Events")?;
     let events_value = storage_entry.fetch(()).await?.ok_or_else(|| {
-        tracing::warn!("No events storage found for block");
+        tracing::warn!(block_number, "No events storage found for block");
         parity_scale_codec::Error::from("Events storage not found")
     })?;
 
     // Use the visitor pattern to get type information for each field
     let events_with_types = events_value.visit(EventsVisitor::new()).map_err(|e| {
-        tracing::warn!("Failed to decode events: {:?}", e);
+        tracing::warn!(block_number, "Failed to decode events: {:?}", e);
         GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
             "Failed to decode events",
         ))
@@ -474,7 +476,7 @@ pub async fn fetch_block_events(
     let events_vec = events_value
         .decode_as::<Vec<scale_value::Value<()>>>()
         .map_err(|e| {
-            tracing::warn!("Failed to decode events: {:?}", e);
+            tracing::warn!(block_number, "Failed to decode events: {:?}", e);
             GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
                 "Failed to decode events",
             ))
@@ -794,12 +796,14 @@ pub async fn extract_fee_info_for_extrinsic(
 pub async fn extract_extrinsics(
     state: &AppState,
     client_at_block: &BlockClient<'_>,
+    block_number: u64,
 ) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
     let extrinsics = match client_at_block.extrinsics().fetch().await {
         Ok(exts) => exts,
         Err(e) => {
             // This could indicate RPC issues or network problems
             tracing::warn!(
+                block_number,
                 "Failed to fetch extrinsics: {:?}. Returning empty extrinsics.",
                 e
             );
