@@ -1,0 +1,12 @@
+{{- if .Values.middleware.rateLimitEnabled }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ include "polkadot-rest-api.fullname" . }}-rate-limiter
+  labels:
+    {{- include "polkadot-rest-api.labels" . | nindent 4 }}
+spec:
+  rateLimit:
+    average: {{ .Values.middleware.rateLimitAverageRps }}
+    burst: {{ .Values.middleware.rateLimitBurst | default .Values.middleware.rateLimitAverageRps }}
+{{- end }}
