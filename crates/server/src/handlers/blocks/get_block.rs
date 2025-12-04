@@ -63,11 +63,14 @@ pub async fn get_block(
 
     let logs = decode_digest_logs(&header_json);
 
-    // Only fetch finalization data if finalizedKey=true (default)
+    // Create client_at_block once and reuse for all operations
+    let client_at_block = state.client.at(resolved_block.number).await?;
+
     let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
-        extract_author(&state, resolved_block.number, &logs),
-        extract_extrinsics(&state, resolved_block.number),
-        fetch_block_events(&state, resolved_block.number),
+        extract_author(&state, &client_at_block, &logs, resolved_block.number),
+        extract_extrinsics(&state, &client_at_block, resolved_block.number),
+        fetch_block_events(&state, &client_at_block, resolved_block.number),
+        // Only fetch canonical hash if queried by hash (needed for fork detection)
         async {
             if params.finalized_key {
                 Some(get_finalized_block_number(&state).await)
@@ -167,9 +170,8 @@ pub async fn get_block(
     // Optionally populate documentation for events and extrinsics
     let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
 
-    if (params.event_docs || params.extrinsic_docs)
-        && let Ok(client_at_block) = state.client.at(resolved_block.number).await
-    {
+    if params.event_docs || params.extrinsic_docs {
+        // Reuse the client_at_block we created earlier
         let metadata = client_at_block.metadata();
 
         if params.event_docs {

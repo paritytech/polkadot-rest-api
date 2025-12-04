@@ -4504,9 +4504,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "subxt-historic"
-version = "0.0.6"
+version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88fba268dcd0bbd6a781105875a57036c67cc29a0dbd744c13c74c69664ee202"
+checksum = "4f0dd166f3f71df34f2207312b19bfa63637f055cbfe098d333087f417ef0b04"
 dependencies = [
  "frame-decode",
  "frame-metadata 23.0.0",
