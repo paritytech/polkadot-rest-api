@@ -1,0 +1,26 @@
+services:
+  polkadot:
+    container_name: polkadot
+    image: docker.io/parity/polkadot:latest
+    volumes:
+      - polkadot-data:/data
+    ports:
+      - "9944:9944"
+    command: --base-path /data --chain polkadot --sync warp --state-pruning 256 --database paritydb --unsafe-rpc-external --rpc-cors=all
+
+  rest-api:
+    container_name: rest-api
+    image: docker.io/parity/polkadot-rest-api:latest
+    build: .
+    read_only: true
+    restart: on-failure
+    ports:
+      - "8080:8080"
+    environment:
+      SAS_SUBSTRATE_URL: ws://polkadot:9944
+      # SAS_SUBSTRATE_URL: wss://rpc.polkadot.io
+    depends_on:
+      - polkadot
+
+volumes:
+  polkadot-data:
