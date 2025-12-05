@@ -29,9 +29,9 @@ jobs:
       - name: Define version
         id: version
         run: |
-          echo "DATE_TAG=$(date -u +'%Y%m%d-%H%M%S')-${COMMIT_SHA:0:8}" >> ${GITHUB_OUTPUT}
           export COMMIT_SHA="${{ github.sha }}"
           export COMMIT_SHA_SHORT=${COMMIT_SHA:0:8}
+          echo "DATE_TAG=$(date -u +'%Y%m%d-%H%M%S')-${COMMIT_SHA_SHORT}" >> ${GITHUB_OUTPUT}
           export REF_NAME="${{ github.ref_name }}"
           export REF_SLUG=${REF_NAME//\//_}
           if [[ ${REF_SLUG} == "main" ]]
