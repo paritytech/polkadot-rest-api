@@ -1,4 +1,4 @@
-registry: docker.io/parity/polkadot-rest-api
+registry: docker.io/paritytech/polkadot-rest-api
 
 images:
   polkadot-rest-api:
