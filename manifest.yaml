@@ -1,5 +1,5 @@
 productionHostname: polkadot-rest-api.parity.io
-registry: europe-docker.pkg.dev/parity-mgmt/polkadot-rest-api
+registry: docker.io/parity/polkadot-rest-api
 
 images:
   api:
