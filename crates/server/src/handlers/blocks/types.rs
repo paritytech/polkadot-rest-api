@@ -37,6 +37,12 @@ pub struct BlockQueryParams {
     /// When true, include finalized status in response. When false, omit finalized field.
     #[serde(default = "default_true")]
     pub finalized_key: bool,
+    /// When true, decode and include XCM messages from the block's extrinsics
+    #[serde(default)]
+    pub decoded_xcm_msgs: bool,
+    /// Filter decoded XCM messages by parachain ID (only used when decodedXcmMsgs=true)
+    #[serde(default)]
+    pub para_id: Option<u32>,
 }
 
 fn default_true() -> bool {
@@ -50,6 +56,8 @@ impl Default for BlockQueryParams {
             extrinsic_docs: false,
             no_fees: false,
             finalized_key: true,
+            decoded_xcm_msgs: false,
+            para_id: None,
         }
     }
 }
