@@ -208,6 +208,7 @@ pub async fn get_block(
         extrinsics: extrinsics_with_events,
         on_finalize,
         finalized,
+        decoded_xcm_msgs: None, // TODO: implement XCM decoding
     };
 
     Ok(Json(response))

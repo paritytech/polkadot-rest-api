@@ -330,6 +330,9 @@ pub struct BlockResponse {
     /// Whether this block has been finalized (omitted when finalizedKey=false)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finalized: Option<bool>,
+    /// Decoded XCM messages (omitted when decodedXcmMsgs=false)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decoded_xcm_msgs: Option<XcmMessages>,
 }
 
 // ================================================================================================
