@@ -1,5 +1,6 @@
+productionHostname: polkadot-rest-api.parity.io
 images:
-  api:
+  polkadot-rest-api:
     env:
       SAS_SUBSTRATE_URL: wss://apps-rpc.polkadot.io
       RUST_LOG: info
