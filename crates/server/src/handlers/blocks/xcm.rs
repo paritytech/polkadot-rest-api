@@ -2,7 +2,31 @@
 
 use super::types::{DownwardMessage, ExtrinsicInfo, HorizontalMessage, UpwardMessage, XcmMessages};
 use config::ChainType;
+use parity_scale_codec::Decode;
 use serde_json::Value;
+use staging_xcm::VersionedXcm;
+
+/// Decode a hex-encoded XCM message into a JSON value.
+/// Returns the decoded XCM instructions if successful, or the raw hex string if decoding fails.
+fn decode_xcm_message(hex_str: &str) -> Value {
+    // Strip 0x prefix if present
+    let hex_clean = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+
+    // Convert hex to bytes
+    let Ok(bytes) = hex::decode(hex_clean) else {
+        return Value::String(hex_str.to_string());
+    };
+
+    // Try to decode as VersionedXcm
+    // Note: VersionedXcm<()> uses () as the Call type since we don't need to decode calls
+    match VersionedXcm::<()>::decode(&mut &bytes[..]) {
+        Ok(xcm) => {
+            // Format the XCM as a debug string since VersionedXcm doesn't implement Serialize
+            Value::String(format!("{:?}", xcm))
+        }
+        Err(_) => Value::String(hex_str.to_string()),
+    }
+}
 
 /// Decodes XCM messages from block extrinsics.
 pub struct XcmDecoder<'a> {
@@ -74,13 +98,15 @@ impl<'a> XcmDecoder<'a> {
                 };
 
                 // Extract upward messages
-                if let Some(upward_msgs) = commitments.get("upwardMessages").and_then(|v| v.as_array()) {
+                if let Some(upward_msgs) =
+                    commitments.get("upwardMessages").and_then(|v| v.as_array())
+                {
                     for msg in upward_msgs {
                         if let Some(msg_data) = msg.as_str() {
                             if !msg_data.is_empty() {
                                 messages.upward_messages.push(UpwardMessage {
                                     origin_para_id: para_id.to_string(),
-                                    data: Value::String(msg_data.to_string()), // TODO: decode XCM in Phase 7
+                                    data: decode_xcm_message(msg_data),
                                 });
                             }
                         }
@@ -88,14 +114,13 @@ impl<'a> XcmDecoder<'a> {
                 }
 
                 // Extract horizontal messages
-                if let Some(horizontal_msgs) =
-                    commitments.get("horizontalMessages").and_then(|v| v.as_array())
+                if let Some(horizontal_msgs) = commitments
+                    .get("horizontalMessages")
+                    .and_then(|v| v.as_array())
                 {
                     for msg in horizontal_msgs {
-                        let recipient = msg
-                            .get("recipient")
-                            .and_then(|r| r.as_str())
-                            .unwrap_or("0");
+                        let recipient =
+                            msg.get("recipient").and_then(|r| r.as_str()).unwrap_or("0");
                         let msg_data = msg.get("data").and_then(|d| d.as_str()).unwrap_or("");
 
                         if !msg_data.is_empty() {
@@ -103,7 +128,7 @@ impl<'a> XcmDecoder<'a> {
                                 origin_para_id: para_id.to_string(),
                                 destination_para_id: Some(recipient.to_string()),
                                 sent_at: None,
-                                data: Value::String(msg_data.to_string()), // TODO: decode XCM in Phase 7
+                                data: decode_xcm_message(msg_data),
                             });
                         }
                     }
@@ -155,7 +180,7 @@ impl<'a> XcmDecoder<'a> {
                             messages.downward_messages.push(DownwardMessage {
                                 sent_at,
                                 msg: msg_hex.clone(),
-                                data: Value::String(msg_hex), // TODO: decode XCM in Phase 7
+                                data: decode_xcm_message(&msg_hex),
                             });
                         }
                     }
@@ -194,7 +219,7 @@ impl<'a> XcmDecoder<'a> {
                                 origin_para_id,
                                 destination_para_id: None, // Not available for parachain perspective
                                 sent_at,
-                                data: Value::String(msg_data), // TODO: decode XCM in Phase 7
+                                data: decode_xcm_message(&msg_data),
                             });
                         }
                     }
