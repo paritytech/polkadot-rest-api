@@ -24,10 +24,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       VERSION: ${{ steps.version.outputs.VERSION }}
+      DATE_TAG: ${{ steps.version.outputs.DATE_TAG }}
     steps:
       - name: Define version
         id: version
         run: |
+          echo "DATE_TAG=$(date -u +'%Y%m%d-%H%M%S')" >> ${GITHUB_OUTPUT}
           export COMMIT_SHA="${{ github.sha }}"
           export COMMIT_SHA_SHORT=${COMMIT_SHA:0:8}
           export REF_NAME="${{ github.ref_name }}"
@@ -46,6 +48,7 @@ jobs:
     needs: [set-variables]
     env:
       VERSION: ${{ needs.set-variables.outputs.VERSION }}
+      DATE_TAG: ${{ needs.set-variables.outputs.DATE_TAG }}
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -68,3 +71,4 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: |
             docker.io/parity/polkadot-rest-api:${{ env.VERSION }}
+            docker.io/parity/polkadot-rest-api:${{ env.DATE_TAG }}
