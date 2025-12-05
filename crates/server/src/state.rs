@@ -1,3 +1,4 @@
+use crate::routes::RouteRegistry;
 use crate::utils::{
     QueryFeeDetailsCache, RuntimeDispatchInfoRaw, WeightRaw, dispatch_class_from_u8,
 };
@@ -52,6 +53,8 @@ pub struct AppState {
     pub chain_info: ChainInfo,
     /// Cache for tracking queryFeeDetails availability per spec version
     pub fee_details_cache: Arc<QueryFeeDetailsCache>,
+    /// Registry of all available routes for introspection
+    pub route_registry: RouteRegistry,
 }
 
 impl AppState {
@@ -105,6 +108,7 @@ impl AppState {
             rpc_client: Arc::new(rpc_client),
             chain_info,
             fee_details_cache: Arc::new(QueryFeeDetailsCache::new()),
+            route_registry: RouteRegistry::new(),
         })
     }
 
