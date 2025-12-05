@@ -333,6 +333,52 @@ pub struct BlockResponse {
 }
 
 // ================================================================================================
+// XCM Message Types
+// ================================================================================================
+
+/// Container for decoded XCM messages from a block
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct XcmMessages {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub horizontal_messages: Vec<HorizontalMessage>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub downward_messages: Vec<DownwardMessage>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub upward_messages: Vec<UpwardMessage>,
+}
+
+/// Upward message from a parachain to the relay chain
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpwardMessage {
+    pub origin_para_id: String,
+    pub data: Value,
+}
+
+/// Downward message from the relay chain to a parachain
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownwardMessage {
+    pub sent_at: String,
+    pub msg: String,
+    pub data: Value,
+}
+
+/// Horizontal message between parachains
+/// Format differs slightly between relay chain and parachain perspective
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HorizontalMessage {
+    pub origin_para_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_para_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sent_at: Option<String>,
+    pub data: Value,
+}
+
+// ================================================================================================
 // Internal Structs
 // ================================================================================================
 
