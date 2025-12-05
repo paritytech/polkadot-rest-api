@@ -1,6 +1,6 @@
 //! XCM message decoding for block extrinsics.
 
-use super::types::{ExtrinsicInfo, HorizontalMessage, UpwardMessage, XcmMessages};
+use super::types::{DownwardMessage, ExtrinsicInfo, HorizontalMessage, UpwardMessage, XcmMessages};
 use config::ChainType;
 use serde_json::Value;
 
@@ -117,7 +117,91 @@ impl<'a> XcmDecoder<'a> {
     /// Decode XCM messages from parachain extrinsics.
     /// Looks for `parachainSystem.setValidationData` and extracts downward/horizontal messages.
     fn decode_parachain_messages(&self) -> XcmMessages {
-        // TODO: implement parachain message extraction
-        XcmMessages::default()
+        let mut messages = XcmMessages::default();
+
+        for extrinsic in self.extrinsics {
+            if extrinsic.method.pallet != "parachainSystem"
+                || extrinsic.method.method != "setValidationData"
+            {
+                continue;
+            }
+
+            let Some(data) = extrinsic.args.get("data") else {
+                continue;
+            };
+
+            // Get inbound_messages_data (polkadot-rest-api structure)
+            let Some(inbound_data) = data.get("inbound_messages_data") else {
+                continue;
+            };
+
+            // Extract downward messages
+            if let Some(downward) = inbound_data.get("downwardMessages") {
+                // Check fullMessages array
+                if let Some(full_msgs) = downward.get("fullMessages").and_then(|v| v.as_array()) {
+                    for msg in full_msgs {
+                        let sent_at = msg
+                            .get("sentAt")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("0")
+                            .to_string();
+                        let msg_hex = msg
+                            .get("msg")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        if !msg_hex.is_empty() {
+                            messages.downward_messages.push(DownwardMessage {
+                                sent_at,
+                                msg: msg_hex.clone(),
+                                data: Value::String(msg_hex), // TODO: decode XCM in Phase 7
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Extract horizontal messages
+            if let Some(horizontal) = inbound_data.get("horizontalMessages") {
+                // Check fullMessages array
+                if let Some(full_msgs) = horizontal.get("fullMessages").and_then(|v| v.as_array()) {
+                    for msg in full_msgs {
+                        let sent_at = msg
+                            .get("sentAt")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        let origin_para_id = msg
+                            .get("originParaId")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("0")
+                            .to_string();
+                        let msg_data = msg
+                            .get("data")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        // Apply paraId filter if specified
+                        if let Some(filter) = self.para_id_filter {
+                            if origin_para_id != filter.to_string() {
+                                continue;
+                            }
+                        }
+
+                        if !msg_data.is_empty() {
+                            messages.horizontal_messages.push(HorizontalMessage {
+                                origin_para_id,
+                                destination_para_id: None, // Not available for parachain perspective
+                                sent_at,
+                                data: Value::String(msg_data), // TODO: decode XCM in Phase 7
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        messages
     }
 }
