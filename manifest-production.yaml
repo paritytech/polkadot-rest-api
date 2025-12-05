@@ -1,4 +1,5 @@
 productionHostname: polkadot-rest-api.parity.io
+productionCertIssuerType: "http"
 images:
   polkadot-rest-api:
     env:
