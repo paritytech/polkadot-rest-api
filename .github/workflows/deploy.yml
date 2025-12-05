@@ -71,4 +71,4 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: |
             docker.io/paritytech/polkadot-rest-api:${{ env.VERSION }}
-            docker.io/paritytech/polkadot-rest-api:${{ env.DATE_TAG }}
+            docker.io/paritytech/polkadot-rest-api:${{ env.DATE_TAG }}-${COMMIT_SHA:0:8}
