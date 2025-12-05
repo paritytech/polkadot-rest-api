@@ -29,7 +29,7 @@ jobs:
       - name: Define version
         id: version
         run: |
-          echo "DATE_TAG=$(date -u +'%Y%m%d-%H%M%S')" >> ${GITHUB_OUTPUT}
+          echo "DATE_TAG=$(date -u +'%Y%m%d-%H%M%S-${COMMIT_SHA:0:8}')" >> ${GITHUB_OUTPUT}
           export COMMIT_SHA="${{ github.sha }}"
           export COMMIT_SHA_SHORT=${COMMIT_SHA:0:8}
           export REF_NAME="${{ github.ref_name }}"
@@ -71,4 +71,4 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: |
             docker.io/paritytech/polkadot-rest-api:${{ env.VERSION }}
-            docker.io/paritytech/polkadot-rest-api:${{ env.DATE_TAG }}-${COMMIT_SHA:0:8}
+            docker.io/paritytech/polkadot-rest-api:${{ env.DATE_TAG }}
