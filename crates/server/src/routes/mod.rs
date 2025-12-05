@@ -7,4 +7,4 @@ pub mod root;
 pub mod runtime;
 pub mod version;
 
-pub use registry::{RegisterRoute, RouteRegistry};
+pub use registry::{API_VERSION, RegisterRoute, RouteRegistry};

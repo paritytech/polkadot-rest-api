@@ -8,6 +8,9 @@ use axum::{Router, routing::MethodRouter};
 use serde::Serialize;
 use std::sync::{Arc, RwLock};
 
+/// Current API version prefix for all routes.
+pub const API_VERSION: &str = "/v1";
+
 /// Information about a registered route.
 #[derive(Clone, Serialize)]
 pub struct RouteInfo {
