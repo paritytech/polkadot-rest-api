@@ -1,5 +1,3 @@
-registry: docker.io/paritytech/polkadot-rest-api
-
 images:
   polkadot-rest-api:
     dockerfile: Dockerfile
