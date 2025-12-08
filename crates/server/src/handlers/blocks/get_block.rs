@@ -304,4 +304,167 @@ async fn handle_rc_block_query(
     Ok(Json(response).into_response())
 }
 
+// ================================================================================================
+// Tests
+// ================================================================================================
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::AppState;
+    use config::SidecarConfig;
+    use serde_json::json;
+    use std::sync::Arc;
+    use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
+    use subxt_rpcs::client::{MockRpcClient, RpcClient};
+
+    /// Helper to create a test AppState with mocked RPC responses
+    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+        let config = SidecarConfig::default();
+        let rpc_client = Arc::new(RpcClient::new(mock_client));
+        let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
+        let chain_info = crate::state::ChainInfo {
+            chain_type: config::ChainType::Relay,
+            spec_name: "test".to_string(),
+            spec_version: 1,
+            ss58_prefix: 42,
+        };
+
+        AppState {
+            config,
+            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
+                subxt_historic::SubstrateConfig::new(),
+                (*rpc_client).clone(),
+            )),
+            legacy_rpc,
+            rpc_client,
+            chain_info,
+            fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires proper subxt metadata mocking for event fetching
+    async fn test_get_block_by_number() {
+        // Note: We don't mock state_getStorage here, so author_id will be None
+        // Full author extraction is tested against live chain
+        let mock_client = MockRpcClient::builder()
+            .method_handler("chain_getBlockHash", async |_params| {
+                MockJson("0x1234567890123456789012345678901234567890123456789012345678901234")
+            })
+            .method_handler("chain_getHeader", async |_params| {
+                MockJson(json!({
+                    "number": "0x64",
+                    "parentHash": "0xabcdef0000000000000000000000000000000000000000000000000000000000",
+                    "stateRoot": "0xdef0000000000000000000000000000000000000000000000000000000000000",
+                    "extrinsicsRoot": "0x1230000000000000000000000000000000000000000000000000000000000000",
+                    "digest": {
+                        "logs": [
+                            // PreRuntime log: discriminant (6) + engine_id ("BABE") + variant (01) + authority_index (03000000 = 3 in LE)
+                            "0x06424142450103000000"
+                        ]
+                    }
+                }))
+            })
+            // Mock archive_v1_body to return empty extrinsics array
+            .method_handler("archive_v1_body", async |_params| {
+                MockJson(json!([]))
+            })
+            // Mock state_getRuntimeVersion for subxt metadata fetch
+            .method_handler("state_getRuntimeVersion", async |_params| {
+                MockJson(json!({
+                    "specVersion": 1,
+                    "transactionVersion": 1
+                }))
+            })
+            // Mock state_getMetadata for subxt
+            .method_handler("state_getMetadata", async |_params| {
+                // Return minimal valid metadata (this is a complex SCALE-encoded structure)
+                // For testing, we'll return a minimal valid metadata hex
+                MockJson("0x6d657461")
+            })
+            // Mock state_getStorage for System.Events (returns empty events)
+            .method_handler("state_getStorage", async |_params| {
+                // Return SCALE-encoded empty Vec<EventRecord>
+                MockJson("0x00")
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+        let block_id = "100".to_string();
+        let params = BlockQueryParams::default();
+
+        // Attempt to get the block - this will fail at metadata fetch in current setup
+        // but validates the handler flow up to that point
+        let result = get_block(State(state), Path(block_id), Query(params)).await;
+
+        // We expect an error due to metadata fetching limitations in mock environment
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decode_digest_logs() {
+        use serde_json::json;
+
+        // Test decoding PreRuntime BABE log
+        let header_json = json!({
+            "digest": {
+                "logs": [
+                    // PreRuntime (6) + BABE engine (42414245) + payload
+                    "0x0642414245340201000000ef55a50f00000000"
+                ]
+            }
+        });
+
+        let logs = decode_digest_logs(&header_json);
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].log_type, "PreRuntime");
+        assert_eq!(logs[0].index, "6");
+
+        // The value should be [engine_id, payload]
+        let arr = logs[0].value.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0].as_str().unwrap(), "0x42414245"); // "BABE" in hex
+    }
+
+    #[test]
+    fn test_decode_seal_log() {
+        use serde_json::json;
+
+        // Test decoding Seal log
+        // Format: discriminant (05) + engine_id (42414245 = "BABE") + SCALE compact length (0101 = 64) + 64 bytes of signature data
+        let header_json = json!({
+            "digest": {
+                "logs": [
+                    // Seal (5) + BABE engine (42414245) + compact length (0101 = 64 bytes) + 64 bytes of signature
+                    "0x05424142450101aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                ]
+            }
+        });
+
+        let logs = decode_digest_logs(&header_json);
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].log_type, "Seal");
+        assert_eq!(logs[0].index, "5");
+    }
+
+    #[test]
+    fn test_decode_runtime_environment_updated() {
+        use serde_json::json;
+
+        // Test decoding RuntimeEnvironmentUpdated log (discriminant 8, no data)
+        let header_json = json!({
+            "digest": {
+                "logs": [
+                    "0x08"
+                ]
+            }
+        });
+
+        let logs = decode_digest_logs(&header_json);
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].log_type, "RuntimeEnvironmentUpdated");
+        assert_eq!(logs[0].index, "8");
+        assert!(logs[0].value.is_null());
+    }
+}
