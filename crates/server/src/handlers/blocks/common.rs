@@ -819,6 +819,9 @@ pub async fn extract_extrinsics(
         }
     };
 
+    // Get the type resolver from the client for proper enum serialization
+    let resolver = client_at_block.resolver();
+
     let mut result = Vec::new();
 
     for extrinsic in extrinsics.iter() {
@@ -898,23 +901,40 @@ pub async fn extract_extrinsics(
                 // If we failed to decode as account types, fall through to Value<()> decoding
             }
 
-            // For non-account fields (or account fields that failed to decode), use Value<()>
-            match field.decode_as::<scale_value::Value<()>>() {
-                Ok(value) => {
-                    let json_value = serde_json::to_value(&value).unwrap_or(Value::Null);
-                    // Single-pass transformation: combines byte-to-hex, snake_case, enum simplification, and SS58 decoding
-                    let transformed =
-                        transform_json_unified(json_value, Some(state.chain_info.ss58_prefix));
-                    args_map.insert(field_key, transformed);
+            // For non-account fields (or account fields that failed to decode), use the ToPjsOutputVisitor
+            // This properly handles basic vs non-basic enum serialization
+            use super::enum_visitor::ToPjsOutputVisitor;
+
+            match field.visit(ToPjsOutputVisitor::new(
+                &resolver,
+                state.chain_info.ss58_prefix,
+            )) {
+                Ok(json_value) => {
+                    args_map.insert(field_key, json_value);
                 }
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to decode field '{}' in {}.{}: {}",
-                        field_name,
-                        pallet_name,
-                        method_name,
-                        e
-                    );
+                Err(_e) => {
+                    // If we failed to decode as enum types, fall through to Value<()> decoding
+                    match field.decode_as::<scale_value::Value<()>>() {
+                        Ok(value) => {
+                            let json_value = serde_json::to_value(&value).unwrap_or(Value::Null);
+                            // Single-pass transformation: combines byte-to-hex, snake_case, enum simplification, and SS58 decoding
+                            let transformed = transform_json_unified(
+                                json_value,
+                                Some(state.chain_info.ss58_prefix),
+                            );
+                            args_map.insert(field_key, transformed);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to decode field '{}' in {}.{}: {}",
+                                field_name,
+                                pallet_name,
+                                method_name,
+                                e
+                            );
+                        }
+                    }
+                    
                 }
             }
         }

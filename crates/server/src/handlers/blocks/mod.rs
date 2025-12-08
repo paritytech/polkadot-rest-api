@@ -1,5 +1,6 @@
 mod common;
 mod docs;
+mod enum_visitor;
 pub mod events_visitor;
 pub mod get_block;
 pub mod get_blocks_head_header;
