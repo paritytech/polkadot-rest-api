@@ -131,25 +131,41 @@ fn handle_from_relay(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::AppState;
+    use crate::state::{AppState, ChainInfo};
     use config::SidecarConfig;
+    use std::sync::Arc;
+    use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
-    async fn create_state_with_url(url: &str) -> AppState {
-        let mut config = SidecarConfig::default();
-        config.substrate.url = url.to_string();
-        AppState::new_with_config(config)
-            .await
-            .expect("Failed to create AppState")
+    /// Helper to create a test AppState with mocked RPC client and custom chain info
+    fn create_test_state_with_chain_info(chain_type: ChainType, spec_name: &str) -> AppState {
+        let config = SidecarConfig::default();
+        let mock_client = MockRpcClient::builder().build();
+        let rpc_client = Arc::new(RpcClient::new(mock_client));
+        let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
+        let chain_info = ChainInfo {
+            chain_type,
+            spec_name: spec_name.to_string(),
+            spec_version: 1,
+            ss58_prefix: 42,
+        };
+
+        AppState {
+            config,
+            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
+                subxt_historic::SubstrateConfig::new(),
+                (*rpc_client).clone(),
+            )),
+            legacy_rpc,
+            rpc_client,
+            chain_info,
+            fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
+        }
     }
 
     #[tokio::test]
     async fn test_ahm_info_asset_hub_westmint() {
         // Test: Asset Hub with static boundaries (westmint)
-        // This should return static migration boundaries
-        let state = create_state_with_url("wss://westmint-rpc.polkadot.io").await;
-
-        // Verify we're connected to westmint
-        assert_eq!(state.chain_info.spec_name, "westmint");
+        let state = create_test_state_with_chain_info(ChainType::AssetHub, "westmint");
 
         let result = ahm_info(State(state)).await;
 
@@ -163,13 +179,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_ahm_info_relay_westend() {
-        // Test: Relay Chain with static boundaries (westend)
-        // This should map westend -> westmint and return static boundaries
-        let state = create_state_with_url("wss://westend-rpc.polkadot.io").await;
+    async fn test_ahm_info_asset_hub_statemint() {
+        // Test: Asset Hub Polkadot (statemint)
+        let state = create_test_state_with_chain_info(ChainType::AssetHub, "statemint");
 
-        // Verify we're connected to westend
-        assert_eq!(state.chain_info.spec_name, "westend");
+        let result = ahm_info(State(state)).await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+
+        assert_eq!(response.relay.start_block, Some(28490502));
+        assert_eq!(response.relay.end_block, Some(28495696));
+        assert_eq!(response.asset_hub.start_block, Some(10254470));
+        assert_eq!(response.asset_hub.end_block, Some(10259208));
+    }
+
+    #[tokio::test]
+    async fn test_ahm_info_asset_hub_statemine() {
+        // Test: Asset Hub Kusama (statemine)
+        let state = create_test_state_with_chain_info(ChainType::AssetHub, "statemine");
+
+        let result = ahm_info(State(state)).await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+
+        assert_eq!(response.relay.start_block, Some(30423691));
+        assert_eq!(response.relay.end_block, Some(30425590));
+        assert_eq!(response.asset_hub.start_block, Some(11150168));
+        assert_eq!(response.asset_hub.end_block, Some(11151931));
+    }
+
+    #[tokio::test]
+    async fn test_ahm_info_relay_westend() {
+        // Test: Relay Chain (Westend) maps to westmint
+        let state = create_test_state_with_chain_info(ChainType::Relay, "westend");
 
         let result = ahm_info(State(state)).await;
 
@@ -184,12 +228,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_ahm_info_relay_polkadot() {
-        // Test: Relay Chain (Polkadot) with static boundaries
-        // This should map polkadot -> statemint and return static boundaries
-        let state = create_state_with_url("wss://rpc.polkadot.io").await;
-
-        // Verify we're connected to polkadot
-        assert_eq!(state.chain_info.spec_name, "polkadot");
+        // Test: Relay Chain (Polkadot) maps to statemint
+        let state = create_test_state_with_chain_info(ChainType::Relay, "polkadot");
 
         let result = ahm_info(State(state)).await;
 
@@ -204,12 +244,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_ahm_info_relay_kusama() {
-        // Test: Relay Chain (Kusama) with static boundaries
-        // This should map kusama -> statemine and return static boundaries
-        let state = create_state_with_url("wss://kusama-rpc.polkadot.io").await;
-
-        // Verify we're connected to kusama
-        assert_eq!(state.chain_info.spec_name, "kusama");
+        // Test: Relay Chain (Kusama) maps to statemine
+        let state = create_test_state_with_chain_info(ChainType::Relay, "kusama");
 
         let result = ahm_info(State(state)).await;
 
@@ -220,5 +256,51 @@ mod tests {
         assert_eq!(response.relay.end_block, Some(30425590));
         assert_eq!(response.asset_hub.start_block, Some(11150168));
         assert_eq!(response.asset_hub.end_block, Some(11151931));
+    }
+
+    #[tokio::test]
+    async fn test_ahm_info_invalid_chain_type() {
+        // Test: Parachain type should return error
+        let state = create_test_state_with_chain_info(ChainType::Parachain, "some-parachain");
+
+        let result = ahm_info(State(state)).await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            GetAhmInfoError::NoMigrationData(name) => {
+                assert_eq!(name, "some-parachain");
+            }
+            _ => panic!("Expected NoMigrationData error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_ahm_info_unknown_relay() {
+        // Test: Unknown relay chain should return error
+        let state = create_test_state_with_chain_info(ChainType::Relay, "unknown-relay");
+
+        let result = ahm_info(State(state)).await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            GetAhmInfoError::InvalidChainSpec => {}
+            _ => panic!("Expected InvalidChainSpec error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_ahm_info_unknown_asset_hub() {
+        // Test: Unknown asset hub should return error
+        let state = create_test_state_with_chain_info(ChainType::AssetHub, "unknown-asset-hub");
+
+        let result = ahm_info(State(state)).await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            GetAhmInfoError::NoMigrationData(name) => {
+                assert_eq!(name, "unknown-asset-hub");
+            }
+            _ => panic!("Expected NoMigrationData error"),
+        }
     }
 }

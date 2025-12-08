@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use futures::future::join_all;
+use colored::Colorize;
+use futures::stream::{FuturesUnordered, StreamExt};
 use integration_tests::{
     client::TestClient, config::TestConfig, constants::API_READY_TIMEOUT_SECONDS,
     fixtures::FixtureLoader, utils::compare_json,
@@ -33,15 +34,17 @@ impl HistoricalTestRunner {
     /// Run all historical tests for the configured chain
     async fn run_all(&self) -> Result<TestResults> {
         let test_cases = self.config.get_historical_tests(&self.chain_name);
+        let total_tests = test_cases.len();
 
-        tracing::info!(
-            "Running {} historical test cases for chain: {}",
-            test_cases.len(),
-            self.chain_name
+        println!(
+            "\n{} {} historical test cases for chain: {}\n",
+            "Running".cyan().bold(),
+            total_tests,
+            self.chain_name.yellow()
         );
 
-        // Create futures for parallel execution
-        let futures: Vec<_> = test_cases
+        // Create FuturesUnordered for streaming results as they complete
+        let mut futures: FuturesUnordered<_> = test_cases
             .iter()
             .map(|test_case| async move {
                 let result = self.run_test_case(test_case).await;
@@ -49,16 +52,19 @@ impl HistoricalTestRunner {
             })
             .collect();
 
-        // Execute all tests in parallel
-        let all_results = join_all(futures).await;
-
-        // Aggregate results
+        // Process results as they complete
         let mut results = TestResults::default();
-        for (test_case, result) in all_results {
+        while let Some((test_case, result)) = futures.next().await {
+            let test_name = if let Some(block_height) = test_case.block_height {
+                format!("{} (block {})", test_case.endpoint, block_height)
+            } else {
+                test_case.endpoint.clone()
+            };
+
             match result {
                 Ok(()) => {
                     results.passed += 1;
-                    tracing::info!("✓ Test passed: {}", test_case.endpoint);
+                    println!("{} {}", "✓".green().bold(), test_name);
                 }
                 Err(e) => {
                     results.failed += 1;
@@ -67,7 +73,7 @@ impl HistoricalTestRunner {
                         description: test_case.description.clone(),
                         error: format!("{:?}", e),
                     });
-                    tracing::error!("✗ Test failed: {} - {}", test_case.endpoint, e);
+                    println!("{} {} - {}", "✗".red().bold(), test_name, e);
                 }
             }
         }
@@ -129,10 +135,8 @@ impl HistoricalTestRunner {
 
         if !comparison.is_match() {
             anyhow::bail!(
-                "Response mismatch:\nDifferences:\n{}\n\nActual:\n{}\n\nExpected:\n{}",
-                comparison.differences().join("\n"),
-                serde_json::to_string_pretty(&actual_json)?,
-                serde_json::to_string_pretty(&expected_json)?
+                "Response mismatch:{}",
+                comparison.format_diff(&expected_json, &actual_json)
             );
         }
 
@@ -178,18 +182,31 @@ async fn run_historical_test_for_chain(chain_name: &str) -> Result<()> {
     let runner = HistoricalTestRunner::new(client, config, fixture_loader, chain_name.to_string());
     let results = runner.run_all().await?;
 
-    println!("\n=== Historical Test Results for {} ===", chain_name);
-    println!("Passed: {}", results.passed);
-    println!("Failed: {}", results.failed);
+    println!("\n{}", "═".repeat(60).bright_white());
+    println!("Historical Test Results for {}", chain_name.yellow().bold());
+    println!("{}", "═".repeat(60).bright_white());
+    println!(
+        "  {} Passed: {}",
+        "✓".green().bold(),
+        results.passed.to_string().green()
+    );
+    println!(
+        "  {} Failed: {}",
+        "✗".red().bold(),
+        results.failed.to_string().red()
+    );
+    println!("{}\n", "═".repeat(60).bright_white());
 
     if !results.failures.is_empty() {
-        println!("\nFailures:");
+        println!("{}", "Failures:".red().bold());
         for failure in &results.failures {
-            println!("  - {}: {}", failure.endpoint, failure.error);
+            println!("  {} {}", "•".red(), failure.endpoint);
+            println!("    {}: {}", "Error".red(), failure.error);
             if let Some(ref desc) = failure.description {
-                println!("    Description: {}", desc);
+                println!("    {}: {}", "Description".yellow(), desc);
             }
         }
+        println!();
     }
 
     assert_eq!(results.failed, 0, "{} test(s) failed", results.failed);

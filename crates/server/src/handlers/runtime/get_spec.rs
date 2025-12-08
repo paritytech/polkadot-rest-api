@@ -3,6 +3,7 @@ use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use subxt_rpcs::client::rpc_params;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -18,6 +19,9 @@ pub enum GetSpecError {
 
     #[error("Failed to get system properties")]
     SystemPropertiesFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Failed to get system chain type")]
+    SystemChainTypeFailed(#[source] subxt_rpcs::Error),
 }
 
 impl IntoResponse for GetSpecError {
@@ -61,6 +65,90 @@ pub struct RuntimeSpecResponse {
     pub properties: Value,
 }
 
+/// Transform chain type to lowercase object format
+/// - String "Live" -> {"live": null}
+/// - Object {"Live": null} -> {"live": null}
+fn transform_chain_type(chain_type: Value) -> Value {
+    match chain_type {
+        Value::String(s) => {
+            let mut map = serde_json::Map::new();
+            map.insert(s.to_lowercase(), Value::Null);
+            Value::Object(map)
+        }
+        Value::Object(map) => {
+            let transformed: serde_json::Map<String, Value> = map
+                .into_iter()
+                .map(|(k, v)| (k.to_lowercase(), v))
+                .collect();
+            Value::Object(transformed)
+        }
+        other => other,
+    }
+}
+
+/// Transform system properties to match expected format:
+/// - ss58Format: number -> string
+/// - tokenDecimals: number or array -> array of strings
+/// - tokenSymbol: string or array -> array of strings
+/// - isEthereum: add if missing (default false)
+fn transform_properties(properties: Value) -> Value {
+    let mut result = serde_json::Map::new();
+
+    if let Value::Object(props) = properties {
+        // Transform ss58Format to string
+        if let Some(ss58) = props.get("ss58Format") {
+            let ss58_str = match ss58 {
+                Value::Number(n) => n.to_string(),
+                Value::String(s) => s.clone(),
+                _ => "0".to_string(),
+            };
+            result.insert("ss58Format".to_string(), Value::String(ss58_str));
+        }
+
+        // Transform tokenDecimals to array of strings
+        if let Some(decimals) = props.get("tokenDecimals") {
+            let decimals_arr = match decimals {
+                Value::Number(n) => vec![Value::String(n.to_string())],
+                Value::Array(arr) => arr
+                    .iter()
+                    .map(|v| match v {
+                        Value::Number(n) => Value::String(n.to_string()),
+                        Value::String(s) => Value::String(s.clone()),
+                        _ => Value::String("0".to_string()),
+                    })
+                    .collect(),
+                _ => vec![],
+            };
+            result.insert("tokenDecimals".to_string(), Value::Array(decimals_arr));
+        }
+
+        // Transform tokenSymbol to array of strings
+        if let Some(symbol) = props.get("tokenSymbol") {
+            let symbol_arr = match symbol {
+                Value::String(s) => vec![Value::String(s.clone())],
+                Value::Array(arr) => arr
+                    .iter()
+                    .map(|v| match v {
+                        Value::String(s) => Value::String(s.clone()),
+                        _ => Value::String("".to_string()),
+                    })
+                    .collect(),
+                _ => vec![],
+            };
+            result.insert("tokenSymbol".to_string(), Value::Array(symbol_arr));
+        }
+
+        // Add isEthereum (default false if not present)
+        let is_ethereum = props
+            .get("isEthereum")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        result.insert("isEthereum".to_string(), Value::Bool(is_ethereum));
+    }
+
+    Value::Object(result)
+}
+
 pub async fn runtime_spec(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
@@ -77,10 +165,20 @@ pub async fn runtime_spec(
     let block_hash_str = resolved_block.hash;
     let block_height = resolved_block.number.to_string();
 
-    let runtime_version = state
-        .get_runtime_version_at_hash(&block_hash_str)
-        .await
-        .map_err(GetSpecError::RuntimeVersionFailed)?;
+    // Execute RPC calls in parallel
+    // TODO: Once subxt-rpcs v0.50.0 is released, replace the direct RPC request
+    // with `state.legacy_rpc.system_chain_type()` for type-safe access.
+    let (runtime_version_result, properties_result, chain_type_result) = tokio::join!(
+        state.get_runtime_version_at_hash(&block_hash_str),
+        state.legacy_rpc.system_properties(),
+        state
+            .rpc_client
+            .request::<Value>("system_chainType", rpc_params![]),
+    );
+
+    let runtime_version = runtime_version_result.map_err(GetSpecError::RuntimeVersionFailed)?;
+    let properties = properties_result.map_err(GetSpecError::SystemPropertiesFailed)?;
+    let chain_type = chain_type_result.map_err(GetSpecError::SystemChainTypeFailed)?;
 
     let spec_name = runtime_version
         .get("specName")
@@ -112,31 +210,20 @@ pub async fn runtime_spec(
         .unwrap_or(0)
         .to_string();
 
-    let properties = state
-        .legacy_rpc
-        .system_properties()
-        .await
-        .map_err(GetSpecError::SystemPropertiesFailed)?;
-
-    // TODO: system_chain_type is not available in LegacyRpcMethods
-    // Need to find the correct RPC method or use a different approach
-    // For now, default to "live"
-    let chain_type = serde_json::json!({
-        "live": null
-    });
-
     let response = RuntimeSpecResponse {
         at: BlockInfo {
             hash: block_hash_str,
             height: block_height,
         },
         authoring_version,
-        chain_type,
+        chain_type: transform_chain_type(chain_type),
         impl_version,
         spec_name,
         spec_version,
         transaction_version,
-        properties: serde_json::to_value(properties).unwrap_or(serde_json::json!({})),
+        properties: transform_properties(
+            serde_json::to_value(properties).unwrap_or(serde_json::json!({})),
+        ),
     };
 
     Ok(Json(response))
@@ -161,6 +248,7 @@ mod tests {
             chain_type: config::ChainType::Relay,
             spec_name: "test".to_string(),
             spec_version: 1,
+            ss58_prefix: 42,
         };
 
         AppState {
@@ -172,6 +260,7 @@ mod tests {
             legacy_rpc,
             rpc_client,
             chain_info,
+            fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
         }
     }
 
@@ -202,6 +291,7 @@ mod tests {
                     "tokenSymbol": ["DOT"]
                 }))
             })
+            .method_handler("system_chainType", async |_params| MockJson("Live"))
             .build();
 
         let state = create_test_state_with_mock(mock_client);
@@ -218,6 +308,16 @@ mod tests {
         assert_eq!(response.spec_name, "polkadot");
         assert_eq!(response.spec_version, "9430");
         assert_eq!(response.transaction_version, "24");
+        assert_eq!(response.chain_type, json!({ "live": null }));
+        assert_eq!(
+            response.properties,
+            json!({
+                "ss58Format": "0",
+                "tokenDecimals": ["10"],
+                "tokenSymbol": ["DOT"],
+                "isEthereum": false
+            })
+        );
     }
 
     #[tokio::test]
@@ -246,6 +346,7 @@ mod tests {
                     "tokenSymbol": ["KSM"]
                 }))
             })
+            .method_handler("system_chainType", async |_params| MockJson("Live"))
             .build();
 
         let state = create_test_state_with_mock(mock_client);
@@ -262,6 +363,7 @@ mod tests {
         assert_eq!(response.at.height, "100");
         assert_eq!(response.spec_name, "kusama");
         assert_eq!(response.authoring_version, "2");
+        assert_eq!(response.chain_type, json!({ "live": null }));
     }
 
     #[tokio::test]
@@ -289,6 +391,7 @@ mod tests {
                     "tokenSymbol": ["WND"]
                 }))
             })
+            .method_handler("system_chainType", async |_params| MockJson("Development"))
             .build();
 
         let state = create_test_state_with_mock(mock_client);
@@ -304,6 +407,7 @@ mod tests {
         assert_eq!(response.at.hash, expected_hash);
         assert_eq!(response.at.height, test_number);
         assert_eq!(response.spec_name, "westend");
+        assert_eq!(response.chain_type, json!({ "development": null }));
     }
 
     #[tokio::test]

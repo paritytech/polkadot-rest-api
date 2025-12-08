@@ -17,7 +17,7 @@ pub enum MetricsError {
     InvalidPrometheusPrefix(String),
 }
 
-/// Configuration for Prometheus metrics
+/// Configuration for Prometheus metrics and Loki logging
 #[derive(Debug, Clone, Deserialize)]
 pub struct MetricsConfig {
     /// Enable or disable metrics collection
@@ -32,6 +32,12 @@ pub struct MetricsConfig {
     /// Prometheus metric name prefix (default: "polkadot_rest_api")
     pub prometheus_prefix: String,
 
+    /// Loki server host (for log aggregation)
+    pub loki_host: String,
+
+    /// Loki server port (for log aggregation)
+    pub loki_port: u16,
+
     /// Include query parameters in route labels (matches sidecar's INCLUDE_QUERYPARAMS)
     pub include_queryparams: bool,
 }
@@ -43,6 +49,8 @@ impl Default for MetricsConfig {
             prom_host: "127.0.0.1".to_string(),
             prom_port: 9100,
             prometheus_prefix: "polkadot_rest_api".to_string(),
+            loki_host: "127.0.0.1".to_string(),
+            loki_port: 3100,
             include_queryparams: false,
         }
     }
@@ -50,12 +58,12 @@ impl Default for MetricsConfig {
 
 impl MetricsConfig {
     pub fn validate(&self) -> Result<(), MetricsError> {
-        // Validate host is a valid IP address
+        // Validate prom_host is a valid IP address
         if IpAddr::from_str(&self.prom_host).is_err() {
             return Err(MetricsError::InvalidHost(self.prom_host.clone()));
         }
 
-        // Validate port is in valid range
+        // Validate prom_port is in valid range
         if self.prom_port == 0 {
             return Err(MetricsError::InvalidPort(self.prom_port));
         }
@@ -80,6 +88,16 @@ impl MetricsConfig {
             }
         }
 
+        // Validate loki_host is a valid IP address
+        if IpAddr::from_str(&self.loki_host).is_err() {
+            return Err(MetricsError::InvalidHost(self.loki_host.clone()));
+        }
+
+        // Validate loki_port is in valid range
+        if self.loki_port == 0 {
+            return Err(MetricsError::InvalidPort(self.loki_port));
+        }
+
         Ok(())
     }
 }
@@ -91,11 +109,13 @@ mod tests {
     #[test]
     fn test_default_metrics_config() {
         let config = MetricsConfig::default();
-        assert_eq!(config.enabled, false);
+        assert!(!config.enabled);
         assert_eq!(config.prom_host, "127.0.0.1");
         assert_eq!(config.prom_port, 9100);
         assert_eq!(config.prometheus_prefix, "polkadot_rest_api");
-        assert_eq!(config.include_queryparams, false);
+        assert_eq!(config.loki_host, "127.0.0.1");
+        assert_eq!(config.loki_port, 3100);
+        assert!(!config.include_queryparams);
         assert!(config.validate().is_ok());
     }
 
@@ -106,30 +126,64 @@ mod tests {
             prom_host: "::1".to_string(),
             prom_port: 9100,
             prometheus_prefix: "test".to_string(),
+            loki_host: "::1".to_string(),
+            loki_port: 3100,
             include_queryparams: false,
         };
         assert!(config.validate().is_ok());
     }
 
     #[test]
-    fn test_invalid_host() {
+    fn test_invalid_prom_host() {
         let config = MetricsConfig {
             enabled: true,
             prom_host: "not-an-ip".to_string(),
             prom_port: 9100,
             prometheus_prefix: "test".to_string(),
+            loki_host: "127.0.0.1".to_string(),
+            loki_port: 3100,
             include_queryparams: false,
         };
         assert!(config.validate().is_err());
     }
 
     #[test]
-    fn test_invalid_port() {
+    fn test_invalid_loki_host() {
+        let config = MetricsConfig {
+            enabled: true,
+            prom_host: "127.0.0.1".to_string(),
+            prom_port: 9100,
+            prometheus_prefix: "test".to_string(),
+            loki_host: "not-an-ip".to_string(),
+            loki_port: 3100,
+            include_queryparams: false,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_invalid_prom_port() {
         let config = MetricsConfig {
             enabled: true,
             prom_host: "127.0.0.1".to_string(),
             prom_port: 0,
             prometheus_prefix: "test".to_string(),
+            loki_host: "127.0.0.1".to_string(),
+            loki_port: 3100,
+            include_queryparams: false,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_invalid_loki_port() {
+        let config = MetricsConfig {
+            enabled: true,
+            prom_host: "127.0.0.1".to_string(),
+            prom_port: 9100,
+            prometheus_prefix: "test".to_string(),
+            loki_host: "127.0.0.1".to_string(),
+            loki_port: 0,
             include_queryparams: false,
         };
         assert!(config.validate().is_err());
@@ -142,6 +196,8 @@ mod tests {
             prom_host: "127.0.0.1".to_string(),
             prom_port: 9100,
             prometheus_prefix: "my_app_metrics".to_string(),
+            loki_host: "127.0.0.1".to_string(),
+            loki_port: 3100,
             include_queryparams: false,
         };
         assert!(config.validate().is_ok());
@@ -154,6 +210,8 @@ mod tests {
             prom_host: "127.0.0.1".to_string(),
             prom_port: 9100,
             prometheus_prefix: "app:metrics".to_string(),
+            loki_host: "127.0.0.1".to_string(),
+            loki_port: 3100,
             include_queryparams: false,
         };
         assert!(config.validate().is_ok());
@@ -166,6 +224,8 @@ mod tests {
             prom_host: "127.0.0.1".to_string(),
             prom_port: 9100,
             prometheus_prefix: "_metrics".to_string(),
+            loki_host: "127.0.0.1".to_string(),
+            loki_port: 3100,
             include_queryparams: false,
         };
         assert!(config.validate().is_ok());
@@ -178,6 +238,8 @@ mod tests {
             prom_host: "127.0.0.1".to_string(),
             prom_port: 9100,
             prometheus_prefix: "123metrics".to_string(),
+            loki_host: "127.0.0.1".to_string(),
+            loki_port: 3100,
             include_queryparams: false,
         };
         assert!(config.validate().is_err());
@@ -190,6 +252,8 @@ mod tests {
             prom_host: "127.0.0.1".to_string(),
             prom_port: 9100,
             prometheus_prefix: "my-metrics".to_string(),
+            loki_host: "127.0.0.1".to_string(),
+            loki_port: 3100,
             include_queryparams: false,
         };
         assert!(config.validate().is_err());
@@ -202,6 +266,8 @@ mod tests {
             prom_host: "127.0.0.1".to_string(),
             prom_port: 9100,
             prometheus_prefix: "my.metrics".to_string(),
+            loki_host: "127.0.0.1".to_string(),
+            loki_port: 3100,
             include_queryparams: false,
         };
         assert!(config.validate().is_err());

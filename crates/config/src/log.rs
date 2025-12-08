@@ -20,7 +20,7 @@ pub struct LogConfig {
     /// Log Level
     ///
     /// Env: SAS_LOG_LEVEL
-    /// Valid values: trace, debug, info, warn, error
+    /// Valid values: trace, debug, http, info, warn, error
     /// Default: info
     pub level: String,
 
@@ -92,7 +92,7 @@ fn default_write_max_files() -> usize {
 
 impl LogConfig {
     pub(crate) fn validate(&self) -> Result<(), LogError> {
-        let valid_levels = ["trace", "debug", "info", "warn", "error"];
+        let valid_levels = ["trace", "debug", "http", "info", "warn", "error"];
 
         if !valid_levels.contains(&self.level.as_str()) {
             return Err(LogError::InvalidLogLevel {
@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_validate_valid_levels() {
-        for level in ["trace", "debug", "info", "warn", "error"] {
+        for level in ["trace", "debug", "http", "info", "warn", "error"] {
             let config = LogConfig {
                 level: level.to_string(),
                 ..Default::default()

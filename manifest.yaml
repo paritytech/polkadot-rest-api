@@ -1,0 +1,6 @@
+images:
+  polkadot-rest-api:
+    dockerfile: Dockerfile
+    context: .
+    port: 8080
+    ingressRoute: /

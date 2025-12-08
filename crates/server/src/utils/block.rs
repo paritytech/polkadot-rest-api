@@ -299,6 +299,7 @@ mod tests {
             chain_type: config::ChainType::Relay,
             spec_name: "test".to_string(),
             spec_version: 1,
+            ss58_prefix: 42,
         };
 
         AppState {
@@ -310,6 +311,7 @@ mod tests {
             legacy_rpc,
             rpc_client,
             chain_info,
+            fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
         }
     }
 
