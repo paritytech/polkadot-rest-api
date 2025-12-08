@@ -358,14 +358,6 @@ pub async fn find_rc_block_for_ah_block(
                 .or_else(|| json.as_array()?.first()?.as_u64())
                 .or_else(|| json.as_object()?.values().next()?.as_u64())
         })
-        .map(|rc_block_number| {
-            tracing::info!(
-                "Found RC block {} from parachainSystem.setValidationData for AH block {}",
-                rc_block_number,
-                ah_block_number
-            );
-            rc_block_number
-        })
 }
 
 /// Get validators for Asset Hub block
@@ -375,21 +367,54 @@ async fn get_ah_validators(
 ) -> Result<Vec<AccountId32>, GetBlockError> {
     use parity_scale_codec::Decode;
 
-    let client_at_block = state.client.at(block_number).await?;
-    let storage_entry = client_at_block.storage().entry("Session", "Validators")?;
-    let plain_entry = storage_entry.into_plain()?;
-    let validators_value = plain_entry.fetch().await?.ok_or_else(|| {
-        parity_scale_codec::Error::from("validators storage not found")
-    })?;
-    let raw_bytes = validators_value.into_bytes();
-    let validators_raw: Vec<[u8; 32]> = Vec::<[u8; 32]>::decode(&mut &raw_bytes[..])?;
-    let validators: Vec<AccountId32> = validators_raw.into_iter().map(AccountId32::from).collect();
+    let block_hash: String = state.rpc_client
+        .request("chain_getBlockHash", rpc_params![block_number])
+        .await
+        .map_err(|e| GetBlockError::HeaderFetchFailed(e))?;
 
-    if validators.is_empty() {
-        return Err(parity_scale_codec::Error::from("no validators found in storage").into());
+    // Use state_getStorage with explicit block hash to get historical Aura::Authorities
+    // Storage key for Aura::Authorities: 0x57f8dc2f5ab09467896f47300f0424385e0621c4869aa60c02be9adcc98a0d1d
+    let aura_authorities_key = "0x57f8dc2f5ab09467896f47300f0424385e0621c4869aa60c02be9adcc98a0d1d";
+    
+    let storage_result: Option<String> = state.rpc_client
+        .request("state_getStorage", rpc_params![aura_authorities_key, &block_hash])
+        .await
+        .map_err(|e| GetBlockError::HeaderFetchFailed(e))?;
+    
+    if let Some(storage_hex) = storage_result {
+        let storage_bytes = hex::decode(storage_hex.trim_start_matches("0x"))
+            .map_err(|_| GetBlockError::HeaderFieldMissing("Invalid hex in storage".to_string()))?;
+        
+        let validators: Vec<AccountId32> = Vec::<AccountId32>::decode(&mut &storage_bytes[..])
+            .map_err(|e| GetBlockError::HeaderFieldMissing(format!("Failed to decode validators: {}", e)))?;
+        
+        if !validators.is_empty() {
+            return Ok(validators);
+        }
+    }
+    
+    // Fallback to Session::Validators via RPC
+    // Storage key for Session::Validators: 0xcec5070d609dd3497f72bde07fc96ba0726380404683fc89e8233450c8aa19505ffb64e1c6068bfea
+    let session_validators_key = "0xcec5070d609dd3497f72bde07fc96ba0726380404683fc89e8233450c8aa19505ffb64e1c6068bfea";
+    
+    let storage_result: Option<String> = state.rpc_client
+        .request("state_getStorage", rpc_params![session_validators_key, &block_hash])
+        .await
+        .map_err(|e| GetBlockError::HeaderFetchFailed(e))?;
+    
+    if let Some(storage_hex) = storage_result {
+        let storage_bytes = hex::decode(storage_hex.trim_start_matches("0x"))
+            .map_err(|_| GetBlockError::HeaderFieldMissing("Invalid hex in storage".to_string()))?;
+        
+        let validators: Vec<AccountId32> = Vec::<AccountId32>::decode(&mut &storage_bytes[..])
+            .map_err(|e| GetBlockError::HeaderFieldMissing(format!("Failed to decode validators: {}", e)))?;
+        
+        if !validators.is_empty() {
+            return Ok(validators);
+        }
     }
 
-    Ok(validators)
+    Err(GetBlockError::HeaderFieldMissing("No validators found in storage".to_string()))
 }
 
 /// Get validators at a specific block (RC validators for parachains, AH validators otherwise)
@@ -406,8 +431,6 @@ pub async fn get_validators_at_block(
             let rc_block_number = find_rc_block_for_ah_block(state, block_number).await
                 .unwrap_or(block_number);
             
-            tracing::info!("Using RC block {} for validators (AH block {})", rc_block_number, block_number);
-            
             let rc_client_at_block = (*rc_client).at(rc_block_number).await?;
             let storage_entry = rc_client_at_block.storage().entry("Session", "Validators")?;
             let plain_entry = storage_entry.into_plain()?;
@@ -422,7 +445,6 @@ pub async fn get_validators_at_block(
                 return Err(parity_scale_codec::Error::from("no validators found in storage").into());
             }
 
-            tracing::info!("Using Relay Chain validators ({} validators) for parachain block {}", validators.len(), block_number);
             return Ok(validators);
         }
     }
@@ -431,7 +453,11 @@ pub async fn get_validators_at_block(
 }
 
 /// Extract block author from digest logs
-pub async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog]) -> Option<String> {
+pub async fn extract_author(
+    state: &AppState,
+    block_number: u64,
+    logs: &[DigestLog],
+) -> Option<String> {
     use parity_scale_codec::{Compact, Decode};
     use sp_consensus_babe::digests::PreDigest;
 
@@ -439,29 +465,25 @@ pub async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestL
     const AURA_ENGINE: &[u8] = b"aura";
     const POW_ENGINE: &[u8] = b"pow_";
 
-    let validators = match get_validators_at_block(state, block_number).await {
-        Ok(v) => {
-            tracing::info!(
-                "Fetched {} validators for block {}",
-                v.len(),
-                block_number
-            );
-            v
-        }
-        Err(_) => {
-            return None;
-        }
-    };
+    let validators = get_ah_validators(state, block_number).await.ok()?;
 
-    // Check PreRuntime logs for BABE/Aura
-    for log in logs {
+    for log in logs.iter() {
         if log.log_type != "PreRuntime" {
             continue;
         }
 
-        let (engine_id_bytes, payload) = extract_engine_and_payload(log)?;
+        let (engine_id_bytes, payload) = match extract_engine_and_payload(log) {
+            Some((engine, payload)) => (engine, payload),
+            None => {
+                continue;
+            }
+        };
         
-        let engine_slice = engine_id_bytes.get(..4)?;
+        let engine_slice = match engine_id_bytes.get(..4) {
+            Some(slice) => slice,
+            None => continue,
+        };
+        
         match engine_slice {
             _ if engine_slice == BABE_ENGINE => {
                 if payload.is_empty() {
@@ -469,37 +491,44 @@ pub async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestL
                 }
 
                 let mut cursor = &payload[..];
-                let _length = Compact::<u32>::decode(&mut cursor).ok()?;
                 let pre_digest = PreDigest::decode(&mut cursor).ok()?;
                 let authority_index = pre_digest.authority_index() as usize;
-                let author = validators.get(authority_index)?;
-                return Some(author.to_ss58check());
+                
+                if let Some(author) = validators.get(authority_index) {
+                    return Some(author.to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(0)));
+                } else {
+                    return None;
+                }
             }
             _ if engine_slice == AURA_ENGINE => {
-                let mut cursor = &payload[..];
-                
-                let slot = if let Ok(compact_slot) = Compact::<u64>::decode(&mut cursor) {
-                    compact_slot.0
+                let slot = if payload.len() >= 8 {
+                    u64::from_le_bytes([
+                        payload[0], payload[1], payload[2], payload[3],
+                        payload[4], payload[5], payload[6], payload[7],
+                    ])
                 } else {
-                    cursor = &payload[..];
-                    u64::decode(&mut cursor).ok()?
+                    let mut cursor = &payload[..];
+                    if let Ok(compact_slot) = Compact::<u64>::decode(&mut cursor) {
+                        compact_slot.0
+                    } else {
+                        cursor = &payload[..];
+                        u64::decode(&mut cursor).ok()?
+                    }
                 };
 
                 let index = (slot as usize) % validators.len();
-                tracing::info!(
-                    "Aura author extraction: block={}, slot={}, validator_count={}, index={}",
-                    block_number, slot, validators.len(), index
-                );
-                let author = validators.get(index)?;
-                let author_ss58 = author.to_ss58check();
-                tracing::info!("Extracted author: {} (validator at index {})", author_ss58, index);
-                return Some(author_ss58);
+                
+                if let Some(author) = validators.get(index) {
+                    return Some(author.to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(0)));
+                } else {
+                    return None;
+                }
             }
             _ => continue,
         }
     }
 
-    for log in logs {
+    for log in logs.iter() {
         if log.log_type != "Consensus" {
             continue;
         }
@@ -510,7 +539,7 @@ pub async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestL
             let mut account_bytes = [0u8; 32];
             account_bytes.copy_from_slice(&payload[..32]);
             let account_id = AccountId32::from(account_bytes);
-            return Some(account_id.to_ss58check());
+            return Some(account_id.to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(0)));
         }
     }
 

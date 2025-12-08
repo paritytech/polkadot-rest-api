@@ -82,8 +82,6 @@ pub struct BlockHeaderRcResponse {
     pub state_root: String,
     pub extrinsics_root: String,
     pub digest: DigestInfo,
-    pub rc_block_hash: String,
-    pub rc_block_number: String,
     pub ah_timestamp: String,
 }
 
@@ -125,8 +123,6 @@ pub struct BlockRcResponse {
     pub extrinsics: Vec<crate::handlers::blocks::ExtrinsicInfo>,
     pub on_finalize: OnInitializeFinalize,
     pub finalized: bool,
-    pub rc_block_hash: String,
-    pub rc_block_number: String,
     pub ah_timestamp: String,
 }
 

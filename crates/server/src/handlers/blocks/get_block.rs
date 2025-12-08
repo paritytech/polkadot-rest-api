@@ -8,7 +8,7 @@ use crate::utils::{
 use crate::utils::rc_block::RcBlockFullWithParachainsResponse;
 use crate::handlers::blocks::utils::{
     DigestLog, ExtrinsicInfo,
-    extract_header_fields, extract_author, extract_extrinsics, is_block_finalized,
+    extract_header_fields, extract_author, extract_extrinsics,
 };
 use axum::{
     Json,
@@ -243,6 +243,34 @@ async fn handle_rc_block_query(
             .await
             .unwrap_or_else(|| "0".to_string());
 
+        let finalized = {
+            let finalized_head: Option<String> = ah_rpc_client
+                .request("chain_getFinalizedHead", rpc_params![])
+                .await
+                .ok();
+            
+            if let Some(finalized_hash) = finalized_head {
+                let finalized_header: Option<serde_json::Value> = ah_rpc_client
+                    .request("chain_getHeader", rpc_params![finalized_hash])
+                    .await
+                    .ok();
+                
+                if let Some(header) = finalized_header {
+                    let finalized_number = header
+                        .get("number")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| u64::from_str_radix(s.strip_prefix("0x").unwrap_or(s), 16).ok())
+                        .unwrap_or(0);
+                    
+                    block_number <= finalized_number
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+
         let rc_response = BlockRcResponse {
             number,
             hash: ah_block.hash.clone(),
@@ -258,9 +286,7 @@ async fn handle_rc_block_query(
             on_finalize: utils::rc_block::OnInitializeFinalize {
                 events: Vec::new(),
             },
-            finalized: is_block_finalized(&ah_rpc_client, &ah_block.hash).await.unwrap_or(false),
-            rc_block_hash: ah_block.rc_block_hash.clone(),
-            rc_block_number: rc_block_number.to_string(),
+            finalized,
             ah_timestamp,
         };
 

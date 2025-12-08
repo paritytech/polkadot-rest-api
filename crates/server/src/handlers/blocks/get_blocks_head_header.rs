@@ -285,12 +285,10 @@ async fn handle_rc_block_query(
 
         let rc_response = BlockHeaderRcResponse {
             parent_hash,
-            number: number_hex.to_string(),  // Keep hex format with 0x prefix
+            number: number_hex.to_string(),
             state_root,
             extrinsics_root,
             digest,
-            rc_block_hash: ah_block.rc_block_hash.clone(),
-            rc_block_number: rc_block_number.to_string(),
             ah_timestamp,
         };
 
