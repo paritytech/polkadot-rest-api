@@ -332,7 +332,7 @@ pub async fn find_rc_block_for_ah_block(
     
     let args = target_extrinsic.call()
         .fields()
-        .decode::<scale_value::Composite<()>>()
+        .decode_as::<scale_value::Composite<()>>()
         .ok()?;
     
     let data_value = get_field_from_composite(&args, &["data"], Some(0))?;
@@ -433,8 +433,7 @@ pub async fn get_validators_at_block(
             
             let rc_client_at_block = (*rc_client).at(rc_block_number).await?;
             let storage_entry = rc_client_at_block.storage().entry("Session", "Validators")?;
-            let plain_entry = storage_entry.into_plain()?;
-            let validators_value = plain_entry.fetch().await?.ok_or_else(|| {
+            let validators_value = storage_entry.fetch(()).await?.ok_or_else(|| {
                 parity_scale_codec::Error::from("validators storage not found")
             })?;
             let raw_bytes = validators_value.into_bytes();
@@ -832,27 +831,19 @@ pub async fn extract_extrinsics(
     // Fetch events for this block to associate with extrinsics
     let all_events = match client_at_block.storage().entry("System", "Events") {
         Ok(entry) => {
-            match entry.into_plain() {
-                Ok(plain_entry) => {
-                    match plain_entry.fetch().await {
-                        Ok(Some(events_value)) => {
-                            match events_value.decode::<scale_value::Value>() {
-                                Ok(decoded) => Some(decoded),
-                                Err(e) => {
-                                    tracing::warn!("Failed to decode events: {:?}", e);
-                                    None
-                                }
-                            }
-                        }
-                        Ok(None) => None,
+            match entry.fetch(()).await {
+                Ok(Some(events_value)) => {
+                    match events_value.decode_as::<scale_value::Value<()>>() {
+                        Ok(decoded) => Some(decoded),
                         Err(e) => {
-                            tracing::warn!("Failed to fetch events: {:?}", e);
+                            tracing::warn!("Failed to decode events: {:?}", e);
                             None
                         }
                     }
                 }
+                Ok(None) => None,
                 Err(e) => {
-                    tracing::warn!("Events storage is not plain: {:?}", e);
+                    tracing::warn!("Failed to fetch events: {:?}", e);
                     None
                 }
             }
@@ -872,7 +863,7 @@ pub async fn extract_extrinsics(
         let args_composite = extrinsic
             .call()
             .fields()
-            .decode::<scale_value::Composite<()>>()
+            .decode_as::<scale_value::Composite<()>>()
             .map_err(|e| {
                 GetBlockError::ExtrinsicDecodeFailed(format!("Failed to decode args: {}", e))
             })?;
@@ -921,16 +912,16 @@ pub async fn extract_extrinsics(
             for ext in extensions.iter() {
                 match ext.name() {
                     "CheckNonce" => {
-                        if let Ok(compact_nonce) = ext.decode::<Compact<u64>>() {
+                        if let Ok(compact_nonce) = ext.decode_as::<Compact<u64>>() {
                             nonce_value = Some(compact_nonce.0.to_string());
-                        } else if let Ok(nonce) = ext.decode::<u64>() {
+                        } else if let Ok(nonce) = ext.decode_as::<u64>() {
                             nonce_value = Some(nonce.to_string());
                         }
                     }
                     "ChargeTransactionPayment" | "ChargeAssetTxPayment" => {
-                        if let Ok(compact_tip) = ext.decode::<Compact<u128>>() {
+                        if let Ok(compact_tip) = ext.decode_as::<Compact<u128>>() {
                             tip_value = Some(compact_tip.0.to_string());
-                        } else if let Ok(tip) = ext.decode::<u128>() {
+                        } else if let Ok(tip) = ext.decode_as::<u128>() {
                             tip_value = Some(tip.to_string());
                         }
                     }

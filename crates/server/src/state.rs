@@ -288,6 +288,8 @@ impl AppState {
         };
 
         Ok(Arc::new(rc_rpc_client))
+    }
+
     /// Query fee information for an extrinsic at a specific block hash
     ///
     /// Uses the `payment_queryInfo` RPC method to get weight, class, and partial fee

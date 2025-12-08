@@ -200,18 +200,14 @@ pub async fn find_ah_blocks_by_rc_block(
         .entry("System", "Events")
         .map_err(|e| RcBlockError::StorageFetchFailed(format!("Failed to get storage entry: {:?}", e)))?;
     
-    let plain_entry = storage_entry
-        .into_plain()
-        .map_err(|e| RcBlockError::StorageFetchFailed(format!("Storage entry is not plain: {:?}", e)))?;
-    
-    let events_value = plain_entry
-        .fetch()
+    let events_value = storage_entry
+        .fetch(())
         .await
         .map_err(|e| RcBlockError::StorageFetchFailed(format!("Failed to fetch events: {:?}", e)))?
         .ok_or_else(|| RcBlockError::HeaderFieldMissing("Events not found".to_string()))?;
     
     let events_decoded: scale_value::Value<()> = events_value
-        .decode()
+        .decode_as()
         .map_err(|e| RcBlockError::EventsQueryFailed(format!("Failed to decode events: {:?}", e)))?;
     
     // Extract Asset Hub blocks from CandidateIncluded events
