@@ -1,0 +1,24 @@
+{
+	"at": {
+		"height": "11152000",
+		"hash": "0x70c613cd0258cf801515f7b7f3e4bd9f00d1c597aa62a51b9b777528b284962f"
+	},
+	"authoringVersion": "1",
+	"transactionVersion": "15",
+	"implVersion": "0",
+	"specName": "statemine",
+	"specVersion": "1009001",
+	"chainType": {
+		"live": null
+	},
+	"properties": {
+		"isEthereum": false,
+		"ss58Format": "2",
+		"tokenDecimals": [
+			"12"
+		],
+		"tokenSymbol": [
+			"KSM"
+		]
+	}
+}
