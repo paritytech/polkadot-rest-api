@@ -3,18 +3,17 @@ use crate::types::BlockHash;
 use crate::utils::{
     RcBlockError, compute_block_hash_from_header_json,
     find_ah_blocks_by_rc_block, get_timestamp_from_storage,
-    BlockHeaderRcResponse, DigestInfo, DigestLog,
+    BlockHeaderRcResponse,
 };
+use crate::handlers::blocks::utils::extract_digest_from_header;
 use axum::{
     Json,
     extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sp_runtime::generic::DigestItem;
 use subxt_rpcs::rpc_params;
 use thiserror::Error;
 
@@ -190,16 +189,18 @@ async fn handle_rc_block_query(
     // Get Asset Hub RPC client
     let ah_rpc_client = state.get_asset_hub_rpc_client().await?;
 
-    // Get RC block number (from finalized head or canonical head)
+    let rc_client = state.get_relay_chain_subxt_client().await?;
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+
     let rc_block_number = if params.finalized {
-        // Get finalized head from current connection (should be RC if useRcBlock is used)
-        let finalized_hash = state
-            .legacy_rpc
-            .chain_get_finalized_head()
+        let finalized_hash = rc_rpc_client
+            .request::<Option<String>>("chain_getFinalizedHead", rpc_params![])
             .await
-            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
-        let header_json = state
-            .get_header_json(&format!("{:?}", finalized_hash))
+            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?
+            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("Finalized head not found".to_string()))?;
+        
+        let header_json: serde_json::Value = rc_rpc_client
+            .request("chain_getHeader", rpc_params![finalized_hash.clone()])
             .await
             .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
 
@@ -212,9 +213,7 @@ async fn handle_rc_block_query(
             |_| GetBlockHeadHeaderError::HeaderFieldMissing("number (invalid format)".to_string()),
         )?
     } else {
-        // Get canonical head
-        let header_json = state
-            .rpc_client
+        let header_json: serde_json::Value = rc_rpc_client
             .request::<serde_json::Value>("chain_getHeader", rpc_params![])
             .await
             .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
@@ -228,9 +227,6 @@ async fn handle_rc_block_query(
             |_| GetBlockHeadHeaderError::HeaderFieldMissing("number (invalid format)".to_string()),
         )?
     };
-
-    let rc_client = state.get_relay_chain_subxt_client().await?;
-    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
 
     // Find Asset Hub blocks corresponding to this RC block number
     // This queries RC block events to find paraInclusion.CandidateIncluded events for Asset Hub
@@ -303,79 +299,3 @@ async fn handle_rc_block_query(
     Ok(Json(results).into_response())
 }
 
-fn extract_digest_from_header(header_json: &serde_json::Value) -> DigestInfo {
-    let logs = header_json
-        .get("digest")
-        .and_then(|d| d.get("logs"))
-        .and_then(|l| l.as_array())
-        .map(|logs_arr| {
-            logs_arr
-                .iter()
-                .filter_map(|log_hex| {
-                    // Logs from RPC are hex-encoded strings, need to decode them
-                    let hex_str = log_hex.as_str()?;
-                    let hex_data = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-                    let bytes = hex::decode(hex_data).ok()?;
-
-                    if bytes.is_empty() {
-                        return None;
-                    }
-
-                    let mut cursor = &bytes[..];
-                    let digest_item = match DigestItem::decode(&mut cursor) {
-                        Ok(item) => item,
-                        Err(_) => return None,
-                    };
-
-                    // Convert to DigestLog format matching TypeScript sidecar
-                    match digest_item {
-                        DigestItem::PreRuntime(engine_id, data) => {
-                            Some(DigestLog {
-                                pre_runtime: Some((
-                                    format!("0x{}", hex::encode(engine_id)),
-                                    format!("0x{}", hex::encode(data)),
-                                )),
-                                consensus: None,
-                                seal: None,
-                                other: None,
-                            })
-                        }
-                        DigestItem::Consensus(engine_id, data) => {
-                            Some(DigestLog {
-                                pre_runtime: None,
-                                consensus: Some((
-                                    format!("0x{}", hex::encode(engine_id)),
-                                    format!("0x{}", hex::encode(data)),
-                                )),
-                                seal: None,
-                                other: None,
-                            })
-                        }
-                        DigestItem::Seal(engine_id, data) => {
-                            Some(DigestLog {
-                                pre_runtime: None,
-                                consensus: None,
-                                seal: Some((
-                                    format!("0x{}", hex::encode(engine_id)),
-                                    format!("0x{}", hex::encode(data)),
-                                )),
-                                other: None,
-                            })
-                        }
-                        DigestItem::Other(data) => {
-                            Some(DigestLog {
-                                pre_runtime: None,
-                                consensus: None,
-                                seal: None,
-                                other: Some(format!("0x{}", hex::encode(data))),
-                            })
-                        }
-                        DigestItem::RuntimeEnvironmentUpdated => None,
-                    }
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    DigestInfo { logs }
-}

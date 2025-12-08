@@ -104,9 +104,9 @@ pub struct BlockRcResponse {
     pub extrinsics_root: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author_id: Option<String>,
-    pub logs: Vec<crate::handlers::blocks::get_block::DigestLog>,
+    pub logs: Vec<crate::handlers::blocks::DigestLog>,
     pub on_initialize: OnInitializeFinalize,
-    pub extrinsics: Vec<crate::handlers::blocks::get_block::ExtrinsicInfo>,
+    pub extrinsics: Vec<crate::handlers::blocks::ExtrinsicInfo>,
     pub on_finalize: OnInitializeFinalize,
     pub finalized: bool,
     pub rc_block_hash: String,
