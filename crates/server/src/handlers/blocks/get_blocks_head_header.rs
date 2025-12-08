@@ -1,13 +1,11 @@
+use crate::handlers::blocks::utils::extract_digest_from_header;
 use crate::state::AppState;
 use crate::types::BlockHash;
-use crate::utils::{
-    RcBlockError, compute_block_hash_from_header_json,
-    find_ah_blocks_by_rc_block, get_timestamp_from_storage,
-    get_rc_block_header_info,
-    BlockHeaderRcResponse,
-};
 use crate::utils::rc_block::RcBlockHeaderWithParachainsResponse;
-use crate::handlers::blocks::utils::extract_digest_from_header;
+use crate::utils::{
+    BlockHeaderRcResponse, RcBlockError, compute_block_hash_from_header_json,
+    find_ah_blocks_by_rc_block, get_rc_block_header_info, get_timestamp_from_storage,
+};
 use axum::{
     Json,
     extract::{Query, State},
@@ -102,7 +100,9 @@ pub async fn get_blocks_head_header(
     }
 
     // Standard behavior: return single block header
-    handle_standard_query(state, params).await.map(|json| json.into_response())
+    handle_standard_query(state, params)
+        .await
+        .map(|json| json.into_response())
 }
 
 /// Handle standard query (single block header response)
@@ -199,8 +199,10 @@ async fn handle_rc_block_query(
             .request::<Option<String>>("chain_getFinalizedHead", rpc_params![])
             .await
             .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?
-            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("Finalized head not found".to_string()))?;
-        
+            .ok_or_else(|| {
+                GetBlockHeadHeaderError::HeaderFieldMissing("Finalized head not found".to_string())
+            })?;
+
         let header_json: serde_json::Value = rc_rpc_client
             .request("chain_getHeader", rpc_params![finalized_hash.clone()])
             .await
@@ -231,7 +233,7 @@ async fn handle_rc_block_query(
     };
 
     // Get RC block header info (hash, parent hash, number)
-    let (rc_block_hash, rc_block_parent_hash, rc_block_number_str) = 
+    let (rc_block_hash, rc_block_parent_hash, rc_block_number_str) =
         get_rc_block_header_info(&rc_rpc_client, rc_block_number).await?;
 
     // Find Asset Hub blocks corresponding to this RC block number
@@ -305,4 +307,3 @@ async fn handle_rc_block_query(
 
     Ok(Json(response).into_response())
 }
-

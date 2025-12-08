@@ -296,9 +296,7 @@ mod tests {
 
         let state = create_test_state_with_mock(mock_client);
 
-        let params = AtBlockParam {
-            at: None,
-        };
+        let params = AtBlockParam { at: None };
         let result = runtime_spec(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());

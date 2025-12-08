@@ -1,5 +1,5 @@
 use crate::utils::{
-    QueryFeeDetailsCache, RuntimeDispatchInfoRaw, WeightRaw, dispatch_class_from_u8, RcBlockError,
+    QueryFeeDetailsCache, RcBlockError, RuntimeDispatchInfoRaw, WeightRaw, dispatch_class_from_u8,
 };
 use config::{ChainType, KnownRelayChain, SidecarConfig};
 use parity_scale_codec::{Compact, Decode, Encode};

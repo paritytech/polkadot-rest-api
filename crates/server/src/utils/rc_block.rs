@@ -176,45 +176,56 @@ pub async fn find_ah_blocks_by_rc_block(
     rc_block_number: u64,
 ) -> Result<Vec<AssetHubBlock>, RcBlockError> {
     const ASSET_HUB_PARA_ID: u32 = 1000;
-    
+
     let rc_block_hash: Option<String> = rc_rpc_client
         .request("chain_getBlockHash", rpc_params![rc_block_number])
         .await
         .map_err(RcBlockError::AssetHubQueryFailed)?;
-    
+
     let rc_block_hash = rc_block_hash.ok_or_else(|| {
         RcBlockError::HeaderFieldMissing(format!("RC block {} not found", rc_block_number))
     })?;
-    
-    tracing::info!("Querying events for RC block {} (hash: {})", rc_block_number, rc_block_hash);
-    
+
+    tracing::info!(
+        "Querying events for RC block {} (hash: {})",
+        rc_block_number,
+        rc_block_hash
+    );
+
     // Get client at the specific block height
     let client_at_block = rc_client
         .at(rc_block_number)
         .await
         .map_err(|e| RcBlockError::ClientAtBlockFailed(format!("{:?}", e)))?;
-    
+
     // Query System::Events storage using subxt-historic
     let storage_entry = client_at_block
         .storage()
         .entry("System", "Events")
-        .map_err(|e| RcBlockError::StorageFetchFailed(format!("Failed to get storage entry: {:?}", e)))?;
-    
+        .map_err(|e| {
+            RcBlockError::StorageFetchFailed(format!("Failed to get storage entry: {:?}", e))
+        })?;
+
     let events_value = storage_entry
         .fetch(())
         .await
         .map_err(|e| RcBlockError::StorageFetchFailed(format!("Failed to fetch events: {:?}", e)))?
         .ok_or_else(|| RcBlockError::HeaderFieldMissing("Events not found".to_string()))?;
-    
-    let events_decoded: scale_value::Value<()> = events_value
-        .decode_as()
-        .map_err(|e| RcBlockError::EventsQueryFailed(format!("Failed to decode events: {:?}", e)))?;
-    
+
+    let events_decoded: scale_value::Value<()> = events_value.decode_as().map_err(|e| {
+        RcBlockError::EventsQueryFailed(format!("Failed to decode events: {:?}", e))
+    })?;
+
     // Extract Asset Hub blocks from CandidateIncluded events
-    let ah_blocks = extract_ah_blocks_from_events(&events_decoded, ASSET_HUB_PARA_ID, &rc_block_hash)?;
-    
-    tracing::info!("Found {} Asset Hub blocks in RC block {}", ah_blocks.len(), rc_block_number);
-    
+    let ah_blocks =
+        extract_ah_blocks_from_events(&events_decoded, ASSET_HUB_PARA_ID, &rc_block_hash)?;
+
+    tracing::info!(
+        "Found {} Asset Hub blocks in RC block {}",
+        ah_blocks.len(),
+        rc_block_number
+    );
+
     Ok(ah_blocks)
 }
 
@@ -224,10 +235,10 @@ fn extract_ah_blocks_from_events(
     target_para_id: u32,
     rc_block_hash: &str,
 ) -> Result<Vec<AssetHubBlock>, RcBlockError> {
-    use scale_value::{ValueDef, Composite};
-    
+    use scale_value::{Composite, ValueDef};
+
     let mut ah_blocks = Vec::new();
-    
+
     let events_composite = match &events.value {
         ValueDef::Composite(composite) => composite,
         _ => {
@@ -235,7 +246,7 @@ fn extract_ah_blocks_from_events(
             return Ok(ah_blocks);
         }
     };
-    
+
     let events_values = match events_composite {
         Composite::Unnamed(values) => values,
         Composite::Named(_) => {
@@ -243,45 +254,49 @@ fn extract_ah_blocks_from_events(
             return Ok(ah_blocks);
         }
     };
-    
+
     tracing::info!("Processing {} events", events_values.len());
-    
+
     for (idx, event_record) in events_values.iter().enumerate() {
         let record_composite = match &event_record.value {
             ValueDef::Composite(c) => c,
             _ => continue,
         };
-        
+
         let event_value = match record_composite {
-            Composite::Named(fields) => {
-                fields.iter()
-                    .find(|(name, _)| name == "event")
-                    .map(|(_, v)| v)
-            }
+            Composite::Named(fields) => fields
+                .iter()
+                .find(|(name, _)| name == "event")
+                .map(|(_, v)| v),
             Composite::Unnamed(values) => values.get(1), // event is typically second field
         };
-        
+
         let event = match event_value {
             Some(v) => v,
             None => continue,
         };
-        
+
         let event_variant = match &event.value {
             ValueDef::Variant(variant) => variant,
             _ => continue,
         };
-        
+
         let pallet_name = &event_variant.name;
-        
+
         // Only process paraInclusion events
-        if !(pallet_name.to_lowercase().contains("parainclusion") 
+        if !(pallet_name.to_lowercase().contains("parainclusion")
             || pallet_name.to_lowercase().contains("para_inclusion")
             || pallet_name == "ParaInclusion"
-            || pallet_name == "paraInclusion") {
+            || pallet_name == "paraInclusion")
+        {
             continue;
         }
-        
-        tracing::info!("Found paraInclusion event at index {}, pallet_name: {}", idx, pallet_name);
+
+        tracing::info!(
+            "Found paraInclusion event at index {}, pallet_name: {}",
+            idx,
+            pallet_name
+        );
 
         let (event_name, event_data) = match &event_variant.values {
             Composite::Unnamed(values) => {
@@ -293,9 +308,7 @@ fn extract_ah_blocks_from_events(
                     ValueDef::Variant(inner_variant) => {
                         (inner_variant.name.clone(), &inner_variant.values)
                     }
-                    _ => {
-                        ("Unknown".to_string(), &event_variant.values)
-                    }
+                    _ => ("Unknown".to_string(), &event_variant.values),
                 }
             }
             Composite::Named(fields) => {
@@ -307,23 +320,27 @@ fn extract_ah_blocks_from_events(
                     ValueDef::Variant(inner_variant) => {
                         (inner_variant.name.clone(), &inner_variant.values)
                     }
-                    _ => {
-                        (name.clone(), &event_variant.values)
-                    }
+                    _ => (name.clone(), &event_variant.values),
                 }
             }
         };
-        
+
         if event_name != "CandidateIncluded" {
             continue;
         }
-        
-        if let Some(ah_block) = extract_ah_block_from_candidate_included(event_data, target_para_id, rc_block_hash) {
-            tracing::info!("Extracted AH block: number={}, hash={}", ah_block.number, ah_block.hash);
+
+        if let Some(ah_block) =
+            extract_ah_block_from_candidate_included(event_data, target_para_id, rc_block_hash)
+        {
+            tracing::info!(
+                "Extracted AH block: number={}, hash={}",
+                ah_block.number,
+                ah_block.hash
+            );
             ah_blocks.push(ah_block);
         }
     }
-    
+
     Ok(ah_blocks)
 }
 
@@ -332,38 +349,39 @@ fn extract_ah_block_from_candidate_included(
     target_para_id: u32,
     rc_block_hash: &str,
 ) -> Option<AssetHubBlock> {
+    use scale_value::Composite;
     use sp_runtime::traits::BlakeTwo256;
     use sp_runtime::traits::Hash as HashT;
-    use scale_value::Composite;
-    
+
     let values: Vec<&scale_value::Value<()>> = match event_data {
         Composite::Named(fields) => fields.iter().map(|(_, v)| v).collect(),
         Composite::Unnamed(values) => values.iter().collect(),
     };
-    
+
     if values.len() < 2 {
         return None;
     }
 
     let candidate_receipt = values.first()?;
-    
+
     let para_id = match extract_para_id_from_receipt(candidate_receipt) {
-        Some(id) => {
-            id
-        }
+        Some(id) => id,
         None => {
             return None;
         }
     };
-    
+
     if para_id != target_para_id {
         return None;
     }
-    
-    tracing::info!("Found CandidateIncluded for target para_id {}", target_para_id);
-    
+
+    tracing::info!(
+        "Found CandidateIncluded for target para_id {}",
+        target_para_id
+    );
+
     let head_data = values.get(1)?;
-    
+
     tracing::info!("Extracting header bytes from HeadData");
     let header_bytes = match serde_json::to_value(head_data)
         .ok()
@@ -374,20 +392,25 @@ fn extract_ah_block_from_candidate_included(
             bytes
         }
         None => {
-            tracing::warn!("Failed to extract bytes from HeadData - value structure may be different");
+            tracing::warn!(
+                "Failed to extract bytes from HeadData - value structure may be different"
+            );
             return None;
         }
     };
-    
+
     // Extract block number from header
     let block_number = extract_block_number_from_header(&header_bytes)?;
 
     let block_hash = BlakeTwo256::hash(&header_bytes);
     let block_hash_hex = format!("0x{}", hex::encode(block_hash.as_ref()));
-    
-    tracing::info!("Extracted AH block from CandidateIncluded: number={}, hash={}", 
-        block_number, block_hash_hex);
-    
+
+    tracing::info!(
+        "Extracted AH block from CandidateIncluded: number={}, hash={}",
+        block_number,
+        block_hash_hex
+    );
+
     Some(AssetHubBlock {
         hash: block_hash_hex,
         number: block_number,
@@ -398,42 +421,32 @@ fn extract_ah_block_from_candidate_included(
 
 fn extract_para_id_from_receipt(receipt: &scale_value::Value<()>) -> Option<u32> {
     let receipt_composite = as_composite(receipt)?;
-    
-    let descriptor_value = get_field_from_composite(
-        receipt_composite,
-        &["descriptor"],
-        Some(0)
-    )?;
-    
-    let descriptor_composite = as_composite(descriptor_value)?;
-    
-    let para_id_value = get_field_from_composite(
-        descriptor_composite,
-        &["para_id", "paraId"],
-        Some(0) 
-    )?;
-    
-    // Extract u32 using standard serde_json conversion
-    serde_json::to_value(para_id_value)
-        .ok()
-        .and_then(|json| {
-            json.as_u64()
-                .and_then(|n| u32::try_from(n).ok())
-                .or_else(|| {
-                    json.as_array()
-                        .and_then(|arr| arr.first())
-                        .and_then(|first| first.as_u64())
-                        .and_then(|n| u32::try_from(n).ok())
-                })
-                .or_else(|| {
-                    json.as_object()
-                        .and_then(|obj| obj.values().next())
-                        .and_then(|val| val.as_u64())
-                        .and_then(|n| u32::try_from(n).ok())
-                })
-        })
-}
 
+    let descriptor_value = get_field_from_composite(receipt_composite, &["descriptor"], Some(0))?;
+
+    let descriptor_composite = as_composite(descriptor_value)?;
+
+    let para_id_value =
+        get_field_from_composite(descriptor_composite, &["para_id", "paraId"], Some(0))?;
+
+    // Extract u32 using standard serde_json conversion
+    serde_json::to_value(para_id_value).ok().and_then(|json| {
+        json.as_u64()
+            .and_then(|n| u32::try_from(n).ok())
+            .or_else(|| {
+                json.as_array()
+                    .and_then(|arr| arr.first())
+                    .and_then(|first| first.as_u64())
+                    .and_then(|n| u32::try_from(n).ok())
+            })
+            .or_else(|| {
+                json.as_object()
+                    .and_then(|obj| obj.values().next())
+                    .and_then(|val| val.as_u64())
+                    .and_then(|n| u32::try_from(n).ok())
+            })
+    })
+}
 
 pub(crate) fn as_composite(value: &scale_value::Value<()>) -> Option<&scale_value::Composite<()>> {
     use scale_value::ValueDef;
@@ -449,14 +462,11 @@ pub(crate) fn get_field_from_composite<'a>(
     unnamed_index: Option<usize>,
 ) -> Option<&'a scale_value::Value<()>> {
     match composite {
-        scale_value::Composite::Named(fields) => {
-            fields.iter()
-                .find(|(name, _)| field_names.iter().any(|&n| n == *name))
-                .map(|(_, v)| v)
-        }
-        scale_value::Composite::Unnamed(values) => {
-            unnamed_index.and_then(|idx| values.get(idx))
-        }
+        scale_value::Composite::Named(fields) => fields
+            .iter()
+            .find(|(name, _)| field_names.iter().any(|&n| n == *name))
+            .map(|(_, v)| v),
+        scale_value::Composite::Unnamed(values) => unnamed_index.and_then(|idx| values.get(idx)),
     }
 }
 
@@ -465,21 +475,18 @@ fn extract_bytes_from_json(json: &serde_json::Value) -> Option<Vec<u8>> {
         serde_json::Value::Array(arr) => {
             let bytes: Vec<u8> = arr
                 .iter()
-                .filter_map(|v| {
-                    v.as_u64()
-                        .and_then(|n| (n <= 255).then_some(n as u8))
-                })
+                .filter_map(|v| v.as_u64().and_then(|n| (n <= 255).then_some(n as u8)))
                 .collect();
-            
+
             if !bytes.is_empty() {
                 return Some(bytes);
             }
-            
+
             // If single element, recurse
             if arr.len() == 1 {
                 return extract_bytes_from_json(&arr[0]);
             }
-            
+
             None
         }
         serde_json::Value::Object(map) => {
@@ -498,17 +505,16 @@ fn extract_bytes_from_json(json: &serde_json::Value) -> Option<Vec<u8>> {
 
 fn extract_block_number_from_header(header_bytes: &[u8]) -> Option<u64> {
     use sp_core::H256;
-    
+
     let mut cursor = &header_bytes[..];
-    
+
     let _parent_hash = H256::decode(&mut cursor).ok()?;
-    
+
     // Now decode the block number (Compact<u64>)
     Compact::<u64>::decode(&mut cursor)
         .ok()
         .map(|compact| compact.0)
 }
-
 
 /// Get Asset Hub block with full information including timestamp
 pub async fn get_ah_block_with_timestamp(
@@ -557,25 +563,23 @@ pub async fn get_rc_block_header_info(
         .request("chain_getBlockHash", rpc_params![rc_block_number])
         .await
         .map_err(RcBlockError::AssetHubQueryFailed)?;
-    
+
     let rc_block_hash = rc_block_hash.ok_or_else(|| {
         RcBlockError::HeaderFieldMissing(format!("RC block {} not found", rc_block_number))
     })?;
-    
+
     // Get RC block header to extract parent hash
     let header_json: serde_json::Value = rc_rpc_client
         .request("chain_getHeader", rpc_params![rc_block_hash.clone()])
         .await
         .map_err(RcBlockError::HeaderFetchFailed)?;
-    
+
     let rc_block_parent_hash = header_json
         .get("parentHash")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            RcBlockError::HeaderFieldMissing("parentHash".to_string())
-        })?
+        .ok_or_else(|| RcBlockError::HeaderFieldMissing("parentHash".to_string()))?
         .to_string();
-    
+
     Ok((
         rc_block_hash,
         rc_block_parent_hash,
@@ -591,16 +595,16 @@ pub async fn get_timestamp_from_storage(
     // Storage key for Timestamp::Now is: twox128("Timestamp") ++ twox128("Now")
     // Pre-computed: 0xf0c365c3cf59d671eb72da0e7a4113c49f1f0515f462cdcf84e0f1d6045dfcbb
     let timestamp_key = "0xf0c365c3cf59d671eb72da0e7a4113c49f1f0515f462cdcf84e0f1d6045dfcbb";
-    
+
     let timestamp_hex: Option<String> = rpc_client
         .request("state_getStorage", rpc_params![timestamp_key, block_hash])
         .await
         .ok()?;
-    
+
     let timestamp_hex = timestamp_hex?;
-    
+
     let timestamp_bytes = hex::decode(timestamp_hex.trim_start_matches("0x")).ok()?;
-    
+
     if timestamp_bytes.len() >= 8 {
         let timestamp = u64::from_le_bytes(timestamp_bytes[..8].try_into().ok()?);
         Some(timestamp.to_string())

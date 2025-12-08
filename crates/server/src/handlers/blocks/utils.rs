@@ -6,14 +6,14 @@ use crate::utils::{
     rc_block::{as_composite, get_field_from_composite},
 };
 use parity_scale_codec::Decode;
-use scale_value::{Value as ScaleValue, ValueDef, Composite};
+use scale_value::{Composite, Value as ScaleValue, ValueDef};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::BlakeTwo256;
-use subxt_rpcs::rpc_params;
 use sp_runtime::traits::Hash as HashT;
+use subxt_rpcs::rpc_params;
 
 use super::get_block::GetBlockError;
 
@@ -104,17 +104,29 @@ pub fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
                 DigestItem::PreRuntime(engine_id, data) => {
                     let engine_id_hex = format!("0x{}", hex::encode(engine_id));
                     let payload_hex = format!("0x{}", hex::encode(data));
-                    ("PreRuntime".to_string(), json!([engine_id_hex, payload_hex]), Some(data.clone()))
+                    (
+                        "PreRuntime".to_string(),
+                        json!([engine_id_hex, payload_hex]),
+                        Some(data.clone()),
+                    )
                 }
                 DigestItem::Consensus(engine_id, data) => {
                     let engine_id_hex = format!("0x{}", hex::encode(engine_id));
                     let payload_hex = format!("0x{}", hex::encode(data));
-                    ("Consensus".to_string(), json!([engine_id_hex, payload_hex]), None)
+                    (
+                        "Consensus".to_string(),
+                        json!([engine_id_hex, payload_hex]),
+                        None,
+                    )
                 }
                 DigestItem::Seal(engine_id, data) => {
                     let engine_id_hex = format!("0x{}", hex::encode(engine_id));
                     let payload_hex = format!("0x{}", hex::encode(data));
-                    ("Seal".to_string(), json!([engine_id_hex, payload_hex]), None)
+                    (
+                        "Seal".to_string(),
+                        json!([engine_id_hex, payload_hex]),
+                        None,
+                    )
                 }
                 DigestItem::Other(data) => {
                     let data_hex = format!("0x{}", hex::encode(data));
@@ -146,7 +158,7 @@ pub fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
 /// Extract digest from header JSON (for header-only responses)
 pub fn extract_digest_from_header(header_json: &serde_json::Value) -> crate::utils::DigestInfo {
     use crate::utils::DigestLog as RcDigestLog;
-    
+
     let logs = header_json
         .get("digest")
         .and_then(|d| d.get("logs"))
@@ -172,47 +184,39 @@ pub fn extract_digest_from_header(header_json: &serde_json::Value) -> crate::uti
 
                     // Convert to DigestLog format matching TypeScript sidecar
                     match digest_item {
-                        DigestItem::PreRuntime(engine_id, data) => {
-                            Some(RcDigestLog {
-                                pre_runtime: Some((
-                                    format!("0x{}", hex::encode(engine_id)),
-                                    format!("0x{}", hex::encode(data)),
-                                )),
-                                consensus: None,
-                                seal: None,
-                                other: None,
-                            })
-                        }
-                        DigestItem::Consensus(engine_id, data) => {
-                            Some(RcDigestLog {
-                                pre_runtime: None,
-                                consensus: Some((
-                                    format!("0x{}", hex::encode(engine_id)),
-                                    format!("0x{}", hex::encode(data)),
-                                )),
-                                seal: None,
-                                other: None,
-                            })
-                        }
-                        DigestItem::Seal(engine_id, data) => {
-                            Some(RcDigestLog {
-                                pre_runtime: None,
-                                consensus: None,
-                                seal: Some((
-                                    format!("0x{}", hex::encode(engine_id)),
-                                    format!("0x{}", hex::encode(data)),
-                                )),
-                                other: None,
-                            })
-                        }
-                        DigestItem::Other(data) => {
-                            Some(RcDigestLog {
-                                pre_runtime: None,
-                                consensus: None,
-                                seal: None,
-                                other: Some(format!("0x{}", hex::encode(data))),
-                            })
-                        }
+                        DigestItem::PreRuntime(engine_id, data) => Some(RcDigestLog {
+                            pre_runtime: Some((
+                                format!("0x{}", hex::encode(engine_id)),
+                                format!("0x{}", hex::encode(data)),
+                            )),
+                            consensus: None,
+                            seal: None,
+                            other: None,
+                        }),
+                        DigestItem::Consensus(engine_id, data) => Some(RcDigestLog {
+                            pre_runtime: None,
+                            consensus: Some((
+                                format!("0x{}", hex::encode(engine_id)),
+                                format!("0x{}", hex::encode(data)),
+                            )),
+                            seal: None,
+                            other: None,
+                        }),
+                        DigestItem::Seal(engine_id, data) => Some(RcDigestLog {
+                            pre_runtime: None,
+                            consensus: None,
+                            seal: Some((
+                                format!("0x{}", hex::encode(engine_id)),
+                                format!("0x{}", hex::encode(data)),
+                            )),
+                            other: None,
+                        }),
+                        DigestItem::Other(data) => Some(RcDigestLog {
+                            pre_runtime: None,
+                            consensus: None,
+                            seal: None,
+                            other: Some(format!("0x{}", hex::encode(data))),
+                        }),
                         DigestItem::RuntimeEnvironmentUpdated => None,
                     }
                 })
@@ -226,28 +230,28 @@ pub fn extract_digest_from_header(header_json: &serde_json::Value) -> crate::uti
 /// Extract engine ID and payload from a digest log
 pub fn extract_engine_and_payload(log: &DigestLog) -> Option<(Vec<u8>, Vec<u8>)> {
     let payload = log.original_bytes.clone().or_else(|| {
-        log.value.as_array()?
+        log.value
+            .as_array()?
             .get(1)?
             .as_str()
             .and_then(|s| hex::decode(s.strip_prefix("0x").unwrap_or(s)).ok())
     })?;
 
-    let engine_id_bytes = log.value.as_array()?
-        .get(0)?
-        .as_str()
-        .and_then(|s| {
-            if s.starts_with("0x") {
-                hex::decode(s.strip_prefix("0x")?).ok()
-            } else {
-                Some(s.as_bytes().to_vec())
-            }
-        })?;
+    let engine_id_bytes = log.value.as_array()?.get(0)?.as_str().and_then(|s| {
+        if s.starts_with("0x") {
+            hex::decode(s.strip_prefix("0x")?).ok()
+        } else {
+            Some(s.as_bytes().to_vec())
+        }
+    })?;
 
     Some((engine_id_bytes, payload))
 }
 
 /// Extract header fields from JSON header
-pub fn extract_header_fields(header_json: &serde_json::Value) -> Result<(String, String, String, Vec<DigestLog>), GetBlockError> {
+pub fn extract_header_fields(
+    header_json: &serde_json::Value,
+) -> Result<(String, String, String, Vec<DigestLog>), GetBlockError> {
     let parent_hash = header_json
         .get("parentHash")
         .and_then(|v| v.as_str())
@@ -272,11 +276,14 @@ pub fn extract_header_fields(header_json: &serde_json::Value) -> Result<(String,
 }
 
 /// Check if a block is finalized by comparing with finalized head
-pub async fn is_block_finalized(rpc_client: &subxt_rpcs::RpcClient, block_hash: &str) -> Result<bool, subxt_rpcs::Error> {
+pub async fn is_block_finalized(
+    rpc_client: &subxt_rpcs::RpcClient,
+    block_hash: &str,
+) -> Result<bool, subxt_rpcs::Error> {
     let finalized_hash = rpc_client
         .request::<Option<String>>("chain_getFinalizedHead", rpc_params![])
         .await?;
-    
+
     Ok(finalized_hash.as_deref() == Some(block_hash))
 }
 
@@ -285,7 +292,7 @@ pub fn to_camel_case(s: &str) -> String {
     if s.is_empty() {
         return String::new();
     }
-    
+
     if s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
         let mut result = String::with_capacity(s.len());
         let mut chars = s.chars();
@@ -297,10 +304,10 @@ pub fn to_camel_case(s: &str) -> String {
         }
         return result;
     }
-    
+
     let mut result = String::with_capacity(s.len());
     let mut capitalize_next = false;
-    
+
     for c in s.chars() {
         if c == '_' {
             capitalize_next = true;
@@ -311,46 +318,43 @@ pub fn to_camel_case(s: &str) -> String {
             result.push(c);
         }
     }
-    
+
     result
 }
 
 /// Find RC block number for an AH block by extracting from parachainSystem.setValidationData
-pub async fn find_rc_block_for_ah_block(
-    state: &AppState,
-    ah_block_number: u64,
-) -> Option<u64> {
+pub async fn find_rc_block_for_ah_block(state: &AppState, ah_block_number: u64) -> Option<u64> {
     // Get extrinsics for this block
     let client_at_block = state.client.at(ah_block_number).await.ok()?;
     let extrinsics = client_at_block.extrinsics().fetch().await.ok()?;
-    
+
     // Find the specific extrinsic using iterator
     let target_extrinsic = extrinsics.iter().find(|ext| {
-        ext.call().pallet_name() == "ParachainSystem" 
-        && ext.call().name() == "set_validation_data"
+        ext.call().pallet_name() == "ParachainSystem" && ext.call().name() == "set_validation_data"
     })?;
-    
-    let args = target_extrinsic.call()
+
+    let args = target_extrinsic
+        .call()
         .fields()
         .decode_as::<scale_value::Composite<()>>()
         .ok()?;
-    
+
     let data_value = get_field_from_composite(&args, &["data"], Some(0))?;
     let data_composite = as_composite(data_value)?;
-    
+
     let validation_data_value = get_field_from_composite(
         data_composite,
         &["validationData", "validation_data"],
-        Some(0)
+        Some(0),
     )?;
     let validation_data_composite = as_composite(validation_data_value)?;
-    
+
     let relay_parent_number_value = get_field_from_composite(
         validation_data_composite,
         &["relayParentNumber", "relay_parent_number"],
-        Some(1) // Usually second field after parentHead
+        Some(1), // Usually second field after parentHead
     )?;
-    
+
     serde_json::to_value(relay_parent_number_value)
         .ok()
         .and_then(|json| {
@@ -367,7 +371,8 @@ async fn get_ah_validators(
 ) -> Result<Vec<AccountId32>, GetBlockError> {
     use parity_scale_codec::Decode;
 
-    let block_hash: String = state.rpc_client
+    let block_hash: String = state
+        .rpc_client
         .request("chain_getBlockHash", rpc_params![block_number])
         .await
         .map_err(|e| GetBlockError::HeaderFetchFailed(e))?;
@@ -375,46 +380,61 @@ async fn get_ah_validators(
     // Use state_getStorage with explicit block hash to get historical Aura::Authorities
     // Storage key for Aura::Authorities: 0x57f8dc2f5ab09467896f47300f0424385e0621c4869aa60c02be9adcc98a0d1d
     let aura_authorities_key = "0x57f8dc2f5ab09467896f47300f0424385e0621c4869aa60c02be9adcc98a0d1d";
-    
-    let storage_result: Option<String> = state.rpc_client
-        .request("state_getStorage", rpc_params![aura_authorities_key, &block_hash])
+
+    let storage_result: Option<String> = state
+        .rpc_client
+        .request(
+            "state_getStorage",
+            rpc_params![aura_authorities_key, &block_hash],
+        )
         .await
         .map_err(|e| GetBlockError::HeaderFetchFailed(e))?;
-    
+
     if let Some(storage_hex) = storage_result {
         let storage_bytes = hex::decode(storage_hex.trim_start_matches("0x"))
             .map_err(|_| GetBlockError::HeaderFieldMissing("Invalid hex in storage".to_string()))?;
-        
+
         let validators: Vec<AccountId32> = Vec::<AccountId32>::decode(&mut &storage_bytes[..])
-            .map_err(|e| GetBlockError::HeaderFieldMissing(format!("Failed to decode validators: {}", e)))?;
-        
-        if !validators.is_empty() {
-            return Ok(validators);
-        }
-    }
-    
-    // Fallback to Session::Validators via RPC
-    // Storage key for Session::Validators: 0xcec5070d609dd3497f72bde07fc96ba0726380404683fc89e8233450c8aa19505ffb64e1c6068bfea
-    let session_validators_key = "0xcec5070d609dd3497f72bde07fc96ba0726380404683fc89e8233450c8aa19505ffb64e1c6068bfea";
-    
-    let storage_result: Option<String> = state.rpc_client
-        .request("state_getStorage", rpc_params![session_validators_key, &block_hash])
-        .await
-        .map_err(|e| GetBlockError::HeaderFetchFailed(e))?;
-    
-    if let Some(storage_hex) = storage_result {
-        let storage_bytes = hex::decode(storage_hex.trim_start_matches("0x"))
-            .map_err(|_| GetBlockError::HeaderFieldMissing("Invalid hex in storage".to_string()))?;
-        
-        let validators: Vec<AccountId32> = Vec::<AccountId32>::decode(&mut &storage_bytes[..])
-            .map_err(|e| GetBlockError::HeaderFieldMissing(format!("Failed to decode validators: {}", e)))?;
-        
+            .map_err(|e| {
+                GetBlockError::HeaderFieldMissing(format!("Failed to decode validators: {}", e))
+            })?;
+
         if !validators.is_empty() {
             return Ok(validators);
         }
     }
 
-    Err(GetBlockError::HeaderFieldMissing("No validators found in storage".to_string()))
+    // Fallback to Session::Validators via RPC
+    // Storage key for Session::Validators: 0xcec5070d609dd3497f72bde07fc96ba0726380404683fc89e8233450c8aa19505ffb64e1c6068bfea
+    let session_validators_key =
+        "0xcec5070d609dd3497f72bde07fc96ba0726380404683fc89e8233450c8aa19505ffb64e1c6068bfea";
+
+    let storage_result: Option<String> = state
+        .rpc_client
+        .request(
+            "state_getStorage",
+            rpc_params![session_validators_key, &block_hash],
+        )
+        .await
+        .map_err(|e| GetBlockError::HeaderFetchFailed(e))?;
+
+    if let Some(storage_hex) = storage_result {
+        let storage_bytes = hex::decode(storage_hex.trim_start_matches("0x"))
+            .map_err(|_| GetBlockError::HeaderFieldMissing("Invalid hex in storage".to_string()))?;
+
+        let validators: Vec<AccountId32> = Vec::<AccountId32>::decode(&mut &storage_bytes[..])
+            .map_err(|e| {
+                GetBlockError::HeaderFieldMissing(format!("Failed to decode validators: {}", e))
+            })?;
+
+        if !validators.is_empty() {
+            return Ok(validators);
+        }
+    }
+
+    Err(GetBlockError::HeaderFieldMissing(
+        "No validators found in storage".to_string(),
+    ))
 }
 
 /// Get validators at a specific block (RC validators for parachains, AH validators otherwise)
@@ -425,23 +445,31 @@ pub async fn get_validators_at_block(
     use parity_scale_codec::Decode;
 
     use config::ChainType;
-    if state.chain_info.chain_type == ChainType::AssetHub || 
-       state.chain_info.chain_type == ChainType::Parachain {
+    if state.chain_info.chain_type == ChainType::AssetHub
+        || state.chain_info.chain_type == ChainType::Parachain
+    {
         if let Ok(rc_client) = state.get_relay_chain_subxt_client().await {
-            let rc_block_number = find_rc_block_for_ah_block(state, block_number).await
+            let rc_block_number = find_rc_block_for_ah_block(state, block_number)
+                .await
                 .unwrap_or(block_number);
-            
+
             let rc_client_at_block = (*rc_client).at(rc_block_number).await?;
-            let storage_entry = rc_client_at_block.storage().entry("Session", "Validators")?;
-            let validators_value = storage_entry.fetch(()).await?.ok_or_else(|| {
-                parity_scale_codec::Error::from("validators storage not found")
-            })?;
+            let storage_entry = rc_client_at_block
+                .storage()
+                .entry("Session", "Validators")?;
+            let validators_value = storage_entry
+                .fetch(())
+                .await?
+                .ok_or_else(|| parity_scale_codec::Error::from("validators storage not found"))?;
             let raw_bytes = validators_value.into_bytes();
             let validators_raw: Vec<[u8; 32]> = Vec::<[u8; 32]>::decode(&mut &raw_bytes[..])?;
-            let validators: Vec<AccountId32> = validators_raw.into_iter().map(AccountId32::from).collect();
+            let validators: Vec<AccountId32> =
+                validators_raw.into_iter().map(AccountId32::from).collect();
 
             if validators.is_empty() {
-                return Err(parity_scale_codec::Error::from("no validators found in storage").into());
+                return Err(
+                    parity_scale_codec::Error::from("no validators found in storage").into(),
+                );
             }
 
             return Ok(validators);
@@ -477,12 +505,12 @@ pub async fn extract_author(
                 continue;
             }
         };
-        
+
         let engine_slice = match engine_id_bytes.get(..4) {
             Some(slice) => slice,
             None => continue,
         };
-        
+
         match engine_slice {
             _ if engine_slice == BABE_ENGINE => {
                 if payload.is_empty() {
@@ -492,9 +520,13 @@ pub async fn extract_author(
                 let mut cursor = &payload[..];
                 let pre_digest = PreDigest::decode(&mut cursor).ok()?;
                 let authority_index = pre_digest.authority_index() as usize;
-                
+
                 if let Some(author) = validators.get(authority_index) {
-                    return Some(author.to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(0)));
+                    return Some(
+                        author.to_ss58check_with_version(
+                            sp_core::crypto::Ss58AddressFormat::custom(0),
+                        ),
+                    );
                 } else {
                     return None;
                 }
@@ -502,8 +534,8 @@ pub async fn extract_author(
             _ if engine_slice == AURA_ENGINE => {
                 let slot = if payload.len() >= 8 {
                     u64::from_le_bytes([
-                        payload[0], payload[1], payload[2], payload[3],
-                        payload[4], payload[5], payload[6], payload[7],
+                        payload[0], payload[1], payload[2], payload[3], payload[4], payload[5],
+                        payload[6], payload[7],
                     ])
                 } else {
                     let mut cursor = &payload[..];
@@ -516,9 +548,13 @@ pub async fn extract_author(
                 };
 
                 let index = (slot as usize) % validators.len();
-                
+
                 if let Some(author) = validators.get(index) {
-                    return Some(author.to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(0)));
+                    return Some(
+                        author.to_ss58check_with_version(
+                            sp_core::crypto::Ss58AddressFormat::custom(0),
+                        ),
+                    );
                 } else {
                     return None;
                 }
@@ -533,12 +569,14 @@ pub async fn extract_author(
         }
 
         let (engine_id_bytes, payload) = extract_engine_and_payload(log)?;
-        
+
         if engine_id_bytes.as_slice() == POW_ENGINE && payload.len() >= 32 {
             let mut account_bytes = [0u8; 32];
             account_bytes.copy_from_slice(&payload[..32]);
             let account_id = AccountId32::from(account_bytes);
-            return Some(account_id.to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(0)));
+            return Some(
+                account_id.to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(0)),
+            );
         }
     }
 
@@ -546,23 +584,26 @@ pub async fn extract_author(
 }
 
 /// Restructure args for parachainSystem.setValidationData to match expected format
-pub fn restructure_parachain_validation_data_args(mut args_map: serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
-
+pub fn restructure_parachain_validation_data_args(
+    mut args_map: serde_json::Map<String, Value>,
+) -> serde_json::Map<String, Value> {
     let mut data_obj = if let Some(Value::Object(existing_data)) = args_map.remove("data") {
         existing_data
     } else {
         serde_json::Map::new()
     };
 
-    let mut validation_data = if let Some(Value::Object(existing_vd)) = data_obj.remove("validationData") {
-        existing_vd
-    } else if let Some(Value::Object(existing_vd_snake)) = data_obj.remove("validation_data") {
-        existing_vd_snake.into_iter()
-            .map(|(k, v)| (to_camel_case(&k), v))
-            .collect()
-    } else {
-        serde_json::Map::new()
-    };
+    let mut validation_data =
+        if let Some(Value::Object(existing_vd)) = data_obj.remove("validationData") {
+            existing_vd
+        } else if let Some(Value::Object(existing_vd_snake)) = data_obj.remove("validation_data") {
+            existing_vd_snake
+                .into_iter()
+                .map(|(k, v)| (to_camel_case(&k), v))
+                .collect()
+        } else {
+            serde_json::Map::new()
+        };
 
     if validation_data.is_empty() {
         for (key, value) in args_map.iter() {
@@ -574,8 +615,10 @@ pub fn restructure_parachain_validation_data_args(mut args_map: serde_json::Map<
                 "relayChainState" | "downwardMessages" | "horizontalMessages" => {
                     data_obj.insert(camel_key, value.clone());
                 }
-                _ if !validation_data.contains_key(&camel_key) 
-                    && !["relayChainState", "downwardMessages", "horizontalMessages"].contains(&camel_key.as_str()) => {
+                _ if !validation_data.contains_key(&camel_key)
+                    && !["relayChainState", "downwardMessages", "horizontalMessages"]
+                        .contains(&camel_key.as_str()) =>
+                {
                     validation_data.insert(camel_key, value.clone());
                 }
                 _ => {}
@@ -583,13 +626,17 @@ pub fn restructure_parachain_validation_data_args(mut args_map: serde_json::Map<
         }
     }
 
-    data_obj = data_obj.into_iter()
+    data_obj = data_obj
+        .into_iter()
         .map(|(k, v)| {
             let camel_key = to_camel_case(&k);
             let converted_value = if let Value::Object(nested_obj) = v {
-                Value::Object(nested_obj.into_iter()
-                    .map(|(nk, nv)| (to_camel_case(&nk), nv))
-                    .collect())
+                Value::Object(
+                    nested_obj
+                        .into_iter()
+                        .map(|(nk, nv)| (to_camel_case(&nk), nv))
+                        .collect(),
+                )
             } else {
                 v
             };
@@ -604,7 +651,10 @@ pub fn restructure_parachain_validation_data_args(mut args_map: serde_json::Map<
     }
     if let Some(Value::String(hm)) = data_obj.get("horizontalMessages") {
         if hm == "0x" {
-            data_obj.insert("horizontalMessages".to_string(), Value::Object(serde_json::Map::new()));
+            data_obj.insert(
+                "horizontalMessages".to_string(),
+                Value::Object(serde_json::Map::new()),
+            );
         }
     }
 
@@ -620,13 +670,18 @@ pub fn convert_args_to_sidecar_format(value: serde_json::Value) -> serde_json::V
         serde_json::Value::Number(n) => serde_json::Value::String(n.to_string()),
         serde_json::Value::Array(arr) => {
             // Check if byte array (all numbers 0-255)
-            if arr.iter().all(|v| v.as_u64().map(|n| n <= 255).unwrap_or(false)) {
-                let bytes: Vec<u8> = arr.iter()
+            if arr
+                .iter()
+                .all(|v| v.as_u64().map(|n| n <= 255).unwrap_or(false))
+            {
+                let bytes: Vec<u8> = arr
+                    .iter()
                     .filter_map(|v| v.as_u64().map(|n| n as u8))
                     .collect();
                 serde_json::Value::String(format!("0x{}", hex::encode(&bytes)))
             } else {
-                let converted: Vec<serde_json::Value> = arr.into_iter()
+                let converted: Vec<serde_json::Value> = arr
+                    .into_iter()
                     .map(convert_args_to_sidecar_format)
                     .collect();
                 if converted.len() == 1 {
@@ -637,7 +692,8 @@ pub fn convert_args_to_sidecar_format(value: serde_json::Value) -> serde_json::V
             }
         }
         serde_json::Value::Object(mut map) => {
-            map.values_mut().for_each(|v| *v = convert_args_to_sidecar_format(v.clone()));
+            map.values_mut()
+                .for_each(|v| *v = convert_args_to_sidecar_format(v.clone()));
             serde_json::Value::Object(map)
         }
         other => other,
@@ -650,47 +706,66 @@ pub fn convert_event_to_sidecar_format(
     to_camel_case_fn: impl Fn(&str) -> String,
 ) -> serde_json::Value {
     let event_json = serde_json::to_value(event_val).unwrap_or(serde_json::Value::Null);
-    
-    let pallet_name = event_json.get("name")
+
+    let pallet_name = event_json
+        .get("name")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    
-    let event_inner = event_json.get("values")
+
+    let event_inner = event_json
+        .get("values")
         .and_then(|v| v.as_array())
         .and_then(|arr| arr.get(0));
-    
+
     if let Some(inner_val) = event_inner {
-        let event_name = inner_val.get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        
+        let event_name = inner_val.get("name").and_then(|v| v.as_str()).unwrap_or("");
+
         let data = if event_name == "ExtrinsicSuccess" {
-            let dispatch_info = inner_val.get("values")
+            let dispatch_info = inner_val
+                .get("values")
                 .and_then(|v| v.as_object())
                 .and_then(|obj| obj.get("dispatch_info"))
                 .and_then(|v| v.as_object());
-            
+
             if let Some(dispatch_info) = dispatch_info {
                 let mut converted_data = serde_json::Map::new();
-                
-                dispatch_info.get("weight")
-                    .map(|w| w.as_u64().map(|n| n.to_string())
-                        .or_else(|| w.as_str().map(|s| s.to_string()))
-                        .unwrap_or_else(|| w.to_string()))
-                    .map(|s| converted_data.insert("weight".to_string(), serde_json::Value::String(s)));
-                
-                dispatch_info.get("class")
+
+                dispatch_info
+                    .get("weight")
+                    .map(|w| {
+                        w.as_u64()
+                            .map(|n| n.to_string())
+                            .or_else(|| w.as_str().map(|s| s.to_string()))
+                            .unwrap_or_else(|| w.to_string())
+                    })
+                    .map(|s| {
+                        converted_data.insert("weight".to_string(), serde_json::Value::String(s))
+                    });
+
+                dispatch_info
+                    .get("class")
                     .and_then(|v| v.as_object())
                     .and_then(|obj| obj.get("name"))
                     .and_then(|v| v.as_str())
-                    .map(|s| converted_data.insert("class".to_string(), serde_json::Value::String(s.to_string())));
-                
-                dispatch_info.get("pays_fee")
+                    .map(|s| {
+                        converted_data.insert(
+                            "class".to_string(),
+                            serde_json::Value::String(s.to_string()),
+                        )
+                    });
+
+                dispatch_info
+                    .get("pays_fee")
                     .and_then(|v| v.as_object())
                     .and_then(|obj| obj.get("name"))
                     .and_then(|v| v.as_str())
-                    .map(|s| converted_data.insert("paysFee".to_string(), serde_json::Value::String(s.to_string())));
-                
+                    .map(|s| {
+                        converted_data.insert(
+                            "paysFee".to_string(),
+                            serde_json::Value::String(s.to_string()),
+                        )
+                    });
+
                 if converted_data.is_empty() {
                     vec![serde_json::to_value(inner_val).unwrap_or(serde_json::Value::Null)]
                 } else {
@@ -702,7 +777,7 @@ pub fn convert_event_to_sidecar_format(
         } else {
             vec![serde_json::to_value(inner_val).unwrap_or(serde_json::Value::Null)]
         };
-        
+
         json!({
             "method": {
                 "pallet": to_camel_case_fn(pallet_name),
@@ -725,25 +800,26 @@ pub fn extract_extrinsic_events(
         Some(Composite::Unnamed(values)) => values,
         _ => return (Vec::new(), true, false),
     };
-    
+
     let mut extrinsic_events = Vec::new();
     let mut success = true;
     let mut pays_fee = false;
-    
+
     for event_record in events_composite.iter() {
         let record_composite = match as_composite(event_record) {
             Some(c) => c,
             None => continue,
         };
-        
+
         let phase_value = get_field_from_composite(record_composite, &["phase"], Some(0));
-        
+
         let is_our_extrinsic = phase_value
             .and_then(|v| {
                 if let ValueDef::Variant(variant) = &v.value {
                     if variant.name == "ApplyExtrinsic" {
                         if let Composite::Unnamed(values) = &variant.values {
-                            return values.get(0)
+                            return values
+                                .get(0)
                                 .and_then(|idx_val| serde_json::to_value(idx_val).ok())
                                 .and_then(|v| v.as_u64())
                                 .map(|idx| idx == extrinsic_index as u64);
@@ -753,26 +829,27 @@ pub fn extract_extrinsic_events(
                 None
             })
             .unwrap_or(false);
-        
+
         if !is_our_extrinsic {
             continue;
         }
-        
+
         // Extract event
         let event_val = get_field_from_composite(record_composite, &["event"], Some(1));
-        
+
         if let Some(event_val) = event_val {
             let converted_event = convert_event_to_sidecar_format(event_val, &to_camel_case_fn);
-            
+
             if let Some(method) = converted_event.get("method").and_then(|v| v.as_object()) {
                 let pallet = method.get("pallet").and_then(|v| v.as_str());
                 let method_name = method.get("method").and_then(|v| v.as_str());
-                
+
                 if pallet == Some("system") {
                     match method_name {
                         Some("ExtrinsicSuccess") => {
                             success = true;
-                            pays_fee = converted_event.get("data")
+                            pays_fee = converted_event
+                                .get("data")
                                 .and_then(|v| v.as_array())
                                 .and_then(|arr| arr.get(0))
                                 .and_then(|v| v.as_object())
@@ -786,11 +863,11 @@ pub fn extract_extrinsic_events(
                     }
                 }
             }
-            
+
             extrinsic_events.push(converted_event);
         }
     }
-    
+
     (extrinsic_events, success, pays_fee)
 }
 
@@ -830,24 +907,20 @@ pub async fn extract_extrinsics(
 
     // Fetch events for this block to associate with extrinsics
     let all_events = match client_at_block.storage().entry("System", "Events") {
-        Ok(entry) => {
-            match entry.fetch(()).await {
-                Ok(Some(events_value)) => {
-                    match events_value.decode_as::<scale_value::Value<()>>() {
-                        Ok(decoded) => Some(decoded),
-                        Err(e) => {
-                            tracing::warn!("Failed to decode events: {:?}", e);
-                            None
-                        }
-                    }
-                }
-                Ok(None) => None,
+        Ok(entry) => match entry.fetch(()).await {
+            Ok(Some(events_value)) => match events_value.decode_as::<scale_value::Value<()>>() {
+                Ok(decoded) => Some(decoded),
                 Err(e) => {
-                    tracing::warn!("Failed to fetch events: {:?}", e);
+                    tracing::warn!("Failed to decode events: {:?}", e);
                     None
                 }
+            },
+            Ok(None) => None,
+            Err(e) => {
+                tracing::warn!("Failed to fetch events: {:?}", e);
+                None
             }
-        }
+        },
         Err(e) => {
             tracing::warn!("Failed to get events storage entry: {:?}", e);
             None
@@ -886,10 +959,9 @@ pub async fn extract_extrinsics(
         }
 
         let signature_info = if extrinsic.is_signed() {
-            if let (Some(sig_bytes), Some(addr_bytes)) = (
-                extrinsic.signature_bytes(),
-                extrinsic.address_bytes(),
-            ) {
+            if let (Some(sig_bytes), Some(addr_bytes)) =
+                (extrinsic.signature_bytes(), extrinsic.address_bytes())
+            {
                 Some(SignatureInfo {
                     signature: format!("0x{}", hex::encode(sig_bytes)),
                     signer: format!("0x{}", hex::encode(addr_bytes)),
@@ -928,7 +1000,9 @@ pub async fn extract_extrinsics(
                     "CheckMortality" | "CheckEra" => {
                         let era_bytes = ext.bytes();
                         let mut offset = 0;
-                        if let Some(decoded_era) = utils::decode_era_from_bytes(era_bytes, &mut offset) {
+                        if let Some(decoded_era) =
+                            utils::decode_era_from_bytes(era_bytes, &mut offset)
+                        {
                             let era_json = if let Some(ref mortal) = decoded_era.mortal_era {
                                 let mut map = serde_json::Map::new();
                                 map.insert("name".to_string(), Value::String("Mortal".to_string()));
@@ -944,7 +1018,10 @@ pub async fn extract_extrinsics(
                                 Value::Object(map)
                             } else if decoded_era.immortal_era.is_some() {
                                 let mut map = serde_json::Map::new();
-                                map.insert("name".to_string(), Value::String("Immortal".to_string()));
+                                map.insert(
+                                    "name".to_string(),
+                                    Value::String("Immortal".to_string()),
+                                );
                                 Value::Object(map)
                             } else {
                                 continue;
@@ -958,7 +1035,9 @@ pub async fn extract_extrinsics(
 
             let era = if let Some(era_json) = era_value {
                 utils::parse_era_info(&era_json)
-            } else if let Some(era_parsed) = utils::extract_era_from_extrinsic_bytes(extrinsic.bytes()) {
+            } else if let Some(era_parsed) =
+                utils::extract_era_from_extrinsic_bytes(extrinsic.bytes())
+            {
                 era_parsed
             } else {
                 EraInfo {
@@ -989,7 +1068,7 @@ pub async fn extract_extrinsics(
         } else {
             (Vec::new(), true, false)
         };
-        
+
         if !extrinsic.is_signed() {
             pays_fee = false;
         }
@@ -1014,4 +1093,3 @@ pub async fn extract_extrinsics(
 
     Ok(result)
 }
-

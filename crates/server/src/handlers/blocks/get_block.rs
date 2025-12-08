@@ -2,20 +2,16 @@
 //!
 //! This module provides the main handler for fetching block information.
 
-use crate::state::AppState;
-use crate::utils::{
-    self, RcBlockError,
-    find_ah_blocks_by_rc_block, get_timestamp_from_storage,
-    get_rc_block_header_info,
-    BlockRcResponse,
-};
-use crate::utils::rc_block::RcBlockFullWithParachainsResponse;
+use crate::handlers::blocks::common::{categorize_events, fetch_block_events};
 use crate::handlers::blocks::utils::{
-    DigestLog, ExtrinsicInfo,
-    extract_header_fields, extract_author, extract_extrinsics, is_block_finalized,
+    DigestLog, ExtrinsicInfo, extract_author, extract_extrinsics, extract_header_fields,
+    is_block_finalized,
 };
-use crate::handlers::blocks::common::{
-    fetch_block_events, categorize_events,
+use crate::state::AppState;
+use crate::utils::rc_block::RcBlockFullWithParachainsResponse;
+use crate::utils::{
+    self, BlockRcResponse, RcBlockError, find_ah_blocks_by_rc_block, get_rc_block_header_info,
+    get_timestamp_from_storage,
 };
 use axum::{
     Json,
@@ -118,7 +114,6 @@ pub struct BlockResponse {
     pub finalized: bool,
 }
 
-
 /// Query parameters for /blocks/{blockId} endpoint
 #[derive(Debug, Deserialize)]
 pub struct GetBlockQueryParams {
@@ -140,8 +135,6 @@ pub async fn get_block(
 
     handle_standard_block_query(state, block_id).await
 }
-
-
 
 async fn handle_standard_block_query(
     state: AppState,
@@ -170,18 +163,16 @@ async fn handle_standard_block_query(
     );
 
     let extrinsics = extrinsics_result?;
-    let block_events = events_result.map_err(|e| {
-        match e {
-            crate::handlers::blocks::types::GetBlockError::StorageDecodeFailed(err) => {
-                GetBlockError::StorageDecodeFailed(err)
-            }
-            crate::handlers::blocks::types::GetBlockError::StorageFetchFailed(err) => {
-                GetBlockError::StorageFetchFailed(err)
-            }
-            _ => GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
-                "Failed to fetch events"
-            )),
+    let block_events = events_result.map_err(|e| match e {
+        crate::handlers::blocks::types::GetBlockError::StorageDecodeFailed(err) => {
+            GetBlockError::StorageDecodeFailed(err)
         }
+        crate::handlers::blocks::types::GetBlockError::StorageFetchFailed(err) => {
+            GetBlockError::StorageFetchFailed(err)
+        }
+        _ => GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
+            "Failed to fetch events",
+        )),
     })?;
 
     // Determine if the block is finalized
@@ -200,7 +191,8 @@ async fn handle_standard_block_query(
         .enumerate()
     {
         if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            extrinsic.events = extrinsic_events.iter()
+            extrinsic.events = extrinsic_events
+                .iter()
                 .map(|e| serde_json::to_value(e).unwrap_or(serde_json::Value::Null))
                 .collect();
             extrinsic.success = outcome.success;
@@ -265,7 +257,7 @@ async fn handle_rc_block_query(
     let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
 
     // Get RC block header info (hash, parent hash, number)
-    let (rc_block_hash, rc_block_parent_hash, rc_block_number_str) = 
+    let (rc_block_hash, rc_block_parent_hash, rc_block_number_str) =
         get_rc_block_header_info(&rc_rpc_client, rc_block_number).await?;
 
     // Find Asset Hub blocks corresponding to this RC block number
@@ -286,22 +278,25 @@ async fn handle_rc_block_query(
         }
 
         // Extract header fields
-        let (parent_hash, state_root, extrinsics_root, logs) = match extract_header_fields(&header_json) {
-            Ok(fields) => fields,
-            Err(e) => {
-                tracing::warn!("Failed to extract header fields: {:?}", e);
-                continue;
-            }
-        };
+        let (parent_hash, state_root, extrinsics_root, logs) =
+            match extract_header_fields(&header_json) {
+                Ok(fields) => fields,
+                Err(e) => {
+                    tracing::warn!("Failed to extract header fields: {:?}", e);
+                    continue;
+                }
+            };
 
         let number_hex = header_json
             .get("number")
             .and_then(|v| v.as_str())
             .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))?;
-        
-        let block_number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
-            .map_err(|e| GetBlockError::HeaderFieldMissing(format!("Failed to parse block number: {}", e)))?;
-        
+
+        let block_number =
+            u64::from_str_radix(number_hex.trim_start_matches("0x"), 16).map_err(|e| {
+                GetBlockError::HeaderFieldMissing(format!("Failed to parse block number: {}", e))
+            })?;
+
         let number = block_number.to_string();
 
         let author_id = extract_author(&state, block_number, &logs).await;
@@ -309,7 +304,11 @@ async fn handle_rc_block_query(
         let extrinsics = match extract_extrinsics(&state, block_number).await {
             Ok(exts) => exts,
             Err(e) => {
-                tracing::warn!("Failed to extract extrinsics for block {}: {:?}", block_number, e);
+                tracing::warn!(
+                    "Failed to extract extrinsics for block {}: {:?}",
+                    block_number,
+                    e
+                );
                 Vec::new()
             }
         };
@@ -323,20 +322,22 @@ async fn handle_rc_block_query(
                 .request("chain_getFinalizedHead", rpc_params![])
                 .await
                 .ok();
-            
+
             if let Some(finalized_hash) = finalized_head {
                 let finalized_header: Option<serde_json::Value> = ah_rpc_client
                     .request("chain_getHeader", rpc_params![finalized_hash])
                     .await
                     .ok();
-                
+
                 if let Some(header) = finalized_header {
                     let finalized_number = header
                         .get("number")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| u64::from_str_radix(s.strip_prefix("0x").unwrap_or(s), 16).ok())
+                        .and_then(|s| {
+                            u64::from_str_radix(s.strip_prefix("0x").unwrap_or(s), 16).ok()
+                        })
                         .unwrap_or(0);
-                    
+
                     block_number <= finalized_number
                 } else {
                     false
@@ -354,13 +355,9 @@ async fn handle_rc_block_query(
             extrinsics_root,
             author_id,
             logs,
-            on_initialize: utils::rc_block::OnInitializeFinalize {
-                events: Vec::new(),
-            },
-        extrinsics,
-            on_finalize: utils::rc_block::OnInitializeFinalize {
-                events: Vec::new(),
-            },
+            on_initialize: utils::rc_block::OnInitializeFinalize { events: Vec::new() },
+            extrinsics,
+            on_finalize: utils::rc_block::OnInitializeFinalize { events: Vec::new() },
             finalized,
             ah_timestamp,
         };
