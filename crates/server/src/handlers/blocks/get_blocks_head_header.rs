@@ -102,14 +102,14 @@ pub async fn get_blocks_head_header(
     }
 
     // Standard behavior: return single block header
-    handle_standard_query(state, params).await
+    handle_standard_query(state, params).await.map(|json| json.into_response())
 }
 
 /// Handle standard query (single block header response)
 async fn handle_standard_query(
     state: AppState,
     params: BlockQueryParams,
-) -> Result<Response, GetBlockHeadHeaderError> {
+) -> Result<Json<BlockHeaderResponse>, GetBlockHeadHeaderError> {
     let (block_hash, header_json) = if params.finalized {
         let finalized_hash = state
             .legacy_rpc
@@ -180,7 +180,7 @@ async fn handle_standard_query(
         extrinsics_root,
     };
 
-    Ok(Json(response).into_response())
+    Ok(Json(response))
 }
 
 /// Handle useRcBlock query (array of Asset Hub block headers)

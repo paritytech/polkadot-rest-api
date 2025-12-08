@@ -1,11 +1,6 @@
 use crate::state::AppState;
-use crate::utils::{self};
-use axum::{
-    Json,
-    extract::State,
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
+use crate::utils;
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -69,15 +64,7 @@ pub struct RuntimeSpecResponse {
 pub async fn runtime_spec(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
-) -> Result<Response, GetSpecError> {
-    handle_standard_runtime_query(state, params).await
-}
-
-/// Handle standard runtime query (single runtime spec response)
-async fn handle_standard_runtime_query(
-    state: AppState,
-    params: AtBlockParam,
-) -> Result<Response, GetSpecError> {
+) -> Result<Json<RuntimeSpecResponse>, GetSpecError> {
     // Parse the block identifier in the handler (sync)
     let block_id = params
         .at
@@ -152,7 +139,7 @@ async fn handle_standard_runtime_query(
         properties: serde_json::to_value(properties).unwrap_or(serde_json::json!({})),
     };
 
-    Ok(Json(response).into_response())
+    Ok(Json(response))
 }
 
 #[cfg(test)]
@@ -225,6 +212,12 @@ mod tests {
         let result = runtime_spec(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
+        let response = result.unwrap().0;
+
+        assert_eq!(response.at.height, "42");
+        assert_eq!(response.spec_name, "polkadot");
+        assert_eq!(response.spec_version, "9430");
+        assert_eq!(response.transaction_version, "24");
     }
 
     #[tokio::test]
@@ -263,12 +256,18 @@ mod tests {
         let result = runtime_spec(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
+        let response = result.unwrap().0;
+
+        assert_eq!(response.at.hash, test_hash);
+        assert_eq!(response.at.height, "100");
+        assert_eq!(response.spec_name, "kusama");
+        assert_eq!(response.authoring_version, "2");
     }
 
     #[tokio::test]
     async fn test_runtime_spec_at_specific_number() {
         let test_number = "200";
-        let _expected_hash = "0x9876543210987654321098765432109876543210987654321098765432109876";
+        let expected_hash = "0x9876543210987654321098765432109876543210987654321098765432109876";
 
         let mock_client = MockRpcClient::builder()
             .method_handler("chain_getBlockHash", async |_params| {
@@ -300,6 +299,11 @@ mod tests {
         let result = runtime_spec(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
+        let response = result.unwrap().0;
+
+        assert_eq!(response.at.hash, expected_hash);
+        assert_eq!(response.at.height, test_number);
+        assert_eq!(response.spec_name, "westend");
     }
 
     #[tokio::test]
