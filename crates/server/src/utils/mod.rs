@@ -10,6 +10,9 @@ pub use extrinsic::{
 pub use hash::{HashError, compute_block_hash_from_header_json};
 pub use rc_block::{
     AssetHubBlock, BlockInfo, RcBlockError, RcBlockResponse,
+    BlockHeaderRcResponse, BlockRcResponse, RuntimeSpecRcResponse,
+    DigestInfo, DigestLog,
     find_ah_blocks_by_rc_block,
     get_ah_block_with_timestamp,
+    get_timestamp_from_storage,
 };

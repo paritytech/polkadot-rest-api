@@ -1,8 +1,11 @@
 use crate::state::AppState;
 use crate::utils::{
-    self, BlockInfo, EraInfo, RcBlockError, RcBlockResponse,
-    find_ah_blocks_by_rc_block,
+    self, EraInfo, RcBlockError,
+    find_ah_blocks_by_rc_block, get_timestamp_from_storage,
+    BlockRcResponse,
+    rc_block::{as_composite, get_field_from_composite},
 };
+use scale_value::{Value as ScaleValue, ValueDef, Composite};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -12,7 +15,7 @@ use axum::{
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::{Value, json};
-use sp_core::crypto::AccountId32;
+use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash as HashT;
 use subxt_historic::error::{OnlineClientAtBlockError, StorageEntryIsNotAPlainValue, StorageError};
@@ -90,61 +93,262 @@ impl IntoResponse for GetBlockError {
     }
 }
 
-/// SCALE encoding discriminants for the DigestItem enum from sp_runtime::generic
-///
-/// These discriminants match the SCALE encoding of substrate's DigestItem enum.
-/// Reference: sp_runtime::generic::DigestItem
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-enum DigestItemDiscriminant {
-    /// ChangesTrieRoot has been removed but was 2
-    /// ChangesTrieSignal has been removed but was 3
-    Other = 0,
-    Consensus = 4,
-    Seal = 5,
-    PreRuntime = 6,
-    RuntimeEnvironmentUpdated = 8,
-}
 
-impl TryFrom<u8> for DigestItemDiscriminant {
-    type Error = ();
+use parity_scale_codec::Decode;
+use sp_runtime::generic::DigestItem;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Other),
-            4 => Ok(Self::Consensus),
-            5 => Ok(Self::Seal),
-            6 => Ok(Self::PreRuntime),
-            8 => Ok(Self::RuntimeEnvironmentUpdated),
-            _ => Err(()),
-        }
-    }
-}
-
-impl DigestItemDiscriminant {
-    /// Convert discriminant to string representation for JSON serialization
-    fn as_str(&self) -> &'static str {
-        match self {
-            Self::Other => "Other",
-            Self::Consensus => "Consensus",
-            Self::Seal => "Seal",
-            Self::PreRuntime => "PreRuntime",
-            Self::RuntimeEnvironmentUpdated => "RuntimeEnvironmentUpdated",
-        }
-    }
-}
-
-/// Represents a decoded digest log entry
-#[derive(Debug, Serialize)]
+/// Represents a digest log entry for JSON serialization
+#[derive(Debug, Clone, Serialize)]
 pub struct DigestLog {
     #[serde(rename = "type")]
     pub log_type: String,
+    #[serde(serialize_with = "serialize_index_as_string")]
     pub index: u32,
     pub value: Value,
+    #[serde(skip)]
+    pub original_bytes: Option<Vec<u8>>,
 }
 
-/// Fetch validator set from chain state at a specific block
+/// Serialize index as string instead of number
+fn serialize_index_as_string<S>(index: &u32, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&index.to_string())
+}
+
+/// Decode digest logs from hex-encoded strings in a JSON header
+fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
+    let logs = match header_json
+        .get("digest")
+        .and_then(|d| d.get("logs"))
+        .and_then(|l| l.as_array())
+    {
+        Some(logs) => logs,
+        None => return Vec::new(),
+    };
+
+    logs.iter()
+        .filter_map(|log_hex| {
+            let hex_str = log_hex.as_str()?;
+            let hex_data = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+            let bytes = hex::decode(hex_data).ok()?;
+
+            if bytes.is_empty() {
+                return None;
+            }
+
+            let mut cursor = &bytes[..];
+            let digest_item = match DigestItem::decode(&mut cursor) {
+                Ok(item) => item,
+                Err(e) => {
+                    tracing::warn!("Failed to decode digest item: {:?}", e);
+                    return None;
+                }
+            };
+
+            let (log_type, value, original_bytes) = match &digest_item {
+                DigestItem::PreRuntime(engine_id, data) => {
+                    let engine_id_hex = format!("0x{}", hex::encode(engine_id));
+                    let payload_hex = format!("0x{}", hex::encode(data));
+                    ("PreRuntime".to_string(), json!([engine_id_hex, payload_hex]), Some(data.clone()))
+                }
+                DigestItem::Consensus(engine_id, data) => {
+                    let engine_id_hex = format!("0x{}", hex::encode(engine_id));
+                    let payload_hex = format!("0x{}", hex::encode(data));
+                    ("Consensus".to_string(), json!([engine_id_hex, payload_hex]), None)
+                }
+                DigestItem::Seal(engine_id, data) => {
+                    let engine_id_hex = format!("0x{}", hex::encode(engine_id));
+                    let payload_hex = format!("0x{}", hex::encode(data));
+                    ("Seal".to_string(), json!([engine_id_hex, payload_hex]), None)
+                }
+                DigestItem::Other(data) => {
+                    let data_hex = format!("0x{}", hex::encode(data));
+                    ("Other".to_string(), json!(data_hex), None)
+                }
+                DigestItem::RuntimeEnvironmentUpdated => {
+                    ("RuntimeEnvironmentUpdated".to_string(), Value::Null, None)
+                }
+            };
+
+            let index = match digest_item {
+                DigestItem::Other(_) => 0,
+                DigestItem::Consensus(_, _) => 4,
+                DigestItem::Seal(_, _) => 5,
+                DigestItem::PreRuntime(_, _) => 6,
+                DigestItem::RuntimeEnvironmentUpdated => 8,
+            };
+
+            Some(DigestLog {
+                log_type,
+                index: index as u32,
+                value,
+                original_bytes,
+            })
+        })
+        .collect()
+}
+
+/// Restructure args for parachainSystem.setValidationData to match expected format
+fn restructure_parachain_validation_data_args(mut args_map: serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
+
+    let mut data_obj = if let Some(Value::Object(existing_data)) = args_map.remove("data") {
+        existing_data
+    } else {
+        serde_json::Map::new()
+    };
+
+    let mut validation_data = if let Some(Value::Object(existing_vd)) = data_obj.remove("validationData") {
+        existing_vd
+    } else if let Some(Value::Object(existing_vd_snake)) = data_obj.remove("validation_data") {
+        existing_vd_snake.into_iter()
+            .map(|(k, v)| (to_camel_case(&k), v))
+            .collect()
+    } else {
+        serde_json::Map::new()
+    };
+
+    if validation_data.is_empty() {
+        for (key, value) in args_map.iter() {
+            let camel_key = to_camel_case(key);
+            match camel_key.as_str() {
+                "parentHead" | "relayParentNumber" | "relayParentStorageRoot" | "maxPovSize" => {
+                    validation_data.insert(camel_key, value.clone());
+                }
+                "relayChainState" | "downwardMessages" | "horizontalMessages" => {
+                    data_obj.insert(camel_key, value.clone());
+                }
+                _ if !validation_data.contains_key(&camel_key) 
+                    && !["relayChainState", "downwardMessages", "horizontalMessages"].contains(&camel_key.as_str()) => {
+                    validation_data.insert(camel_key, value.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    data_obj = data_obj.into_iter()
+        .map(|(k, v)| {
+            let camel_key = to_camel_case(&k);
+            let converted_value = if let Value::Object(nested_obj) = v {
+                Value::Object(nested_obj.into_iter()
+                    .map(|(nk, nv)| (to_camel_case(&nk), nv))
+                    .collect())
+            } else {
+                v
+            };
+            (camel_key, converted_value)
+        })
+        .collect();
+
+    if let Some(Value::String(dm)) = data_obj.get("downwardMessages") {
+        if dm == "0x" {
+            data_obj.insert("downwardMessages".to_string(), Value::Array(vec![]));
+        }
+    }
+    if let Some(Value::String(hm)) = data_obj.get("horizontalMessages") {
+        if hm == "0x" {
+            data_obj.insert("horizontalMessages".to_string(), Value::Object(serde_json::Map::new()));
+        }
+    }
+
+    data_obj.insert("validationData".to_string(), Value::Object(validation_data));
+    let mut restructured = serde_json::Map::new();
+    restructured.insert("data".to_string(), Value::Object(data_obj));
+    restructured
+}
+
 async fn get_validators_at_block(
+    state: &AppState,
+    block_number: u64,
+) -> Result<Vec<AccountId32>, GetBlockError> {
+    use parity_scale_codec::Decode;
+
+    use config::ChainType;
+    if state.chain_info.chain_type == ChainType::AssetHub || 
+       state.chain_info.chain_type == ChainType::Parachain {
+        if let Ok(rc_client) = state.get_relay_chain_subxt_client().await {
+            let rc_block_number = find_rc_block_for_ah_block(state, block_number).await
+                .unwrap_or(block_number);
+            
+            tracing::info!("Using RC block {} for validators (AH block {})", rc_block_number, block_number);
+            
+            let rc_client_at_block = (*rc_client).at(rc_block_number).await?;
+            let storage_entry = rc_client_at_block.storage().entry("Session", "Validators")?;
+            let plain_entry = storage_entry.into_plain()?;
+            let validators_value = plain_entry.fetch().await?.ok_or_else(|| {
+                parity_scale_codec::Error::from("validators storage not found")
+            })?;
+            let raw_bytes = validators_value.into_bytes();
+            let validators_raw: Vec<[u8; 32]> = Vec::<[u8; 32]>::decode(&mut &raw_bytes[..])?;
+            let validators: Vec<AccountId32> = validators_raw.into_iter().map(AccountId32::from).collect();
+
+            if validators.is_empty() {
+                return Err(parity_scale_codec::Error::from("no validators found in storage").into());
+            }
+
+            tracing::info!("Using Relay Chain validators ({} validators) for parachain block {}", validators.len(), block_number);
+            return Ok(validators);
+        }
+    }
+
+    get_ah_validators(state, block_number).await
+}
+
+async fn find_rc_block_for_ah_block(
+    state: &AppState,
+    ah_block_number: u64,
+) -> Option<u64> {
+    // Get extrinsics for this block
+    let client_at_block = state.client.at(ah_block_number).await.ok()?;
+    let extrinsics = client_at_block.extrinsics().fetch().await.ok()?;
+    
+    // Find the specific extrinsic using iterator
+    let target_extrinsic = extrinsics.iter().find(|ext| {
+        ext.call().pallet_name() == "ParachainSystem" 
+        && ext.call().name() == "set_validation_data"
+    })?;
+    
+    let args = target_extrinsic.call()
+        .fields()
+        .decode::<scale_value::Composite<()>>()
+        .ok()?;
+    
+    let data_value = get_field_from_composite(&args, &["data"], Some(0))?;
+    let data_composite = as_composite(data_value)?;
+    
+    let validation_data_value = get_field_from_composite(
+        data_composite,
+        &["validationData", "validation_data"],
+        Some(0)
+    )?;
+    let validation_data_composite = as_composite(validation_data_value)?;
+    
+    let relay_parent_number_value = get_field_from_composite(
+        validation_data_composite,
+        &["relayParentNumber", "relay_parent_number"],
+        Some(1) // Usually second field after parentHead
+    )?;
+    
+    serde_json::to_value(relay_parent_number_value)
+        .ok()
+        .and_then(|json| {
+            json.as_u64()
+                .or_else(|| json.as_array()?.first()?.as_u64())
+                .or_else(|| json.as_object()?.values().next()?.as_u64())
+        })
+        .map(|rc_block_number| {
+            tracing::info!(
+                "Found RC block {} from parachainSystem.setValidationData for AH block {}",
+                rc_block_number,
+                ah_block_number
+            );
+            rc_block_number
+        })
+}
+
+async fn get_ah_validators(
     state: &AppState,
     block_number: u64,
 ) -> Result<Vec<AccountId32>, GetBlockError> {
@@ -154,7 +358,6 @@ async fn get_validators_at_block(
     let storage_entry = client_at_block.storage().entry("Session", "Validators")?;
     let plain_entry = storage_entry.into_plain()?;
     let validators_value = plain_entry.fetch().await?.ok_or_else(|| {
-        // Use the parity_scale_codec::Error for missing validators which will be converted to StorageDecodeFailed
         parity_scale_codec::Error::from("validators storage not found")
     })?;
     let raw_bytes = validators_value.into_bytes();
@@ -168,7 +371,28 @@ async fn get_validators_at_block(
     Ok(validators)
 }
 
-/// Extract author ID from block header digest logs by mapping authority index to validator
+fn extract_engine_and_payload(log: &DigestLog) -> Option<(Vec<u8>, Vec<u8>)> {
+    let payload = log.original_bytes.clone().or_else(|| {
+        log.value.as_array()?
+            .get(1)?
+            .as_str()
+            .and_then(|s| hex::decode(s.strip_prefix("0x").unwrap_or(s)).ok())
+    })?;
+
+    let engine_id_bytes = log.value.as_array()?
+        .get(0)?
+        .as_str()
+        .and_then(|s| {
+            if s.starts_with("0x") {
+                hex::decode(s.strip_prefix("0x")?).ok()
+            } else {
+                Some(s.as_bytes().to_vec())
+            }
+        })?;
+
+    Some((engine_id_bytes, payload))
+}
+
 async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog]) -> Option<String> {
     use parity_scale_codec::{Compact, Decode};
     use sp_consensus_babe::digests::PreDigest;
@@ -177,160 +401,117 @@ async fn extract_author(state: &AppState, block_number: u64, logs: &[DigestLog])
     const AURA_ENGINE: &[u8] = b"aura";
     const POW_ENGINE: &[u8] = b"pow_";
 
-    // Fetch validators once for this block
     let validators = match get_validators_at_block(state, block_number).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::debug!("Failed to get validators for block {}: {}", block_number, e);
+        Ok(v) => {
+            tracing::info!(
+                "Fetched {} validators for block {}",
+                v.len(),
+                block_number
+            );
+            v
+        }
+        Err(_) => {
             return None;
         }
     };
 
     // Check PreRuntime logs for BABE/Aura
     for log in logs {
-        if log.log_type == "PreRuntime"
-            && let Some(arr) = log.value.as_array()
-            && arr.len() >= 2
-        {
-            let engine_id = arr[0].as_str()?;
-            let payload_hex = arr[1].as_str()?;
-            let payload = hex::decode(payload_hex.strip_prefix("0x")?).ok()?;
+        if log.log_type != "PreRuntime" {
+            continue;
+        }
 
-            match engine_id.as_bytes() {
-                BABE_ENGINE => {
-                    if payload.is_empty() {
-                        continue;
-                    }
-
-                    // The payload is wrapped in a compact-encoded Vec<u8>, so we need to skip the length prefix
-                    let mut cursor = &payload[..];
-                    // Decode and skip the length prefix
-                    let _length = Compact::<u32>::decode(&mut cursor).ok()?;
-                    // Now decode the PreDigest from the remaining bytes
-                    let pre_digest = PreDigest::decode(&mut cursor).ok()?;
-                    let authority_index = pre_digest.authority_index() as usize;
-                    let author = validators.get(authority_index)?;
-
-                    return Some(hex_with_prefix(author.as_ref() as &[u8]));
+        let (engine_id_bytes, payload) = extract_engine_and_payload(log)?;
+        
+        let engine_slice = engine_id_bytes.get(..4)?;
+        match engine_slice {
+            _ if engine_slice == BABE_ENGINE => {
+                if payload.is_empty() {
+                    continue;
                 }
-                AURA_ENGINE => {
-                    // Aura: slot_number (u64 LE), calculate index = slot % validator_count
-                    if payload.len() >= 8 {
-                        let slot = u64::from_le_bytes([
-                            payload[0], payload[1], payload[2], payload[3], payload[4], payload[5],
-                            payload[6], payload[7],
-                        ]) as usize;
 
-                        let index = slot % validators.len();
-                        let author = validators.get(index)?;
-                        return Some(hex_with_prefix(author.as_ref() as &[u8]));
-                    }
-                }
-                _ => continue,
+                let mut cursor = &payload[..];
+                let _length = Compact::<u32>::decode(&mut cursor).ok()?;
+                let pre_digest = PreDigest::decode(&mut cursor).ok()?;
+                let authority_index = pre_digest.authority_index() as usize;
+                let author = validators.get(authority_index)?;
+                return Some(author.to_ss58check());
             }
+            _ if engine_slice == AURA_ENGINE => {
+                let mut cursor = &payload[..];
+                
+                let slot = if let Ok(compact_slot) = Compact::<u64>::decode(&mut cursor) {
+                    compact_slot.0
+                } else {
+                    cursor = &payload[..];
+                    u64::decode(&mut cursor).ok()?
+                };
+
+                let index = (slot as usize) % validators.len();
+                tracing::info!(
+                    "Aura author extraction: block={}, slot={}, validator_count={}, index={}",
+                    block_number, slot, validators.len(), index
+                );
+                let author = validators.get(index)?;
+                let author_ss58 = author.to_ss58check();
+                tracing::info!("Extracted author: {} (validator at index {})", author_ss58, index);
+                return Some(author_ss58);
+            }
+            _ => continue,
         }
     }
 
-    // Check Consensus logs for PoW
     for log in logs {
-        if log.log_type == "Consensus"
-            && let Some(arr) = log.value.as_array()
-            && arr.len() >= 2
-        {
-            let engine_id = arr[0].as_str()?;
-            let payload_hex = arr[1].as_str()?;
+        if log.log_type != "Consensus" {
+            continue;
+        }
 
-            if engine_id.as_bytes() == POW_ENGINE {
-                // PoW: author is directly in payload (32-byte AccountId)
-                let payload = hex::decode(payload_hex.strip_prefix("0x")?).ok()?;
-                if payload.len() >= 32 {
-                    return Some(hex_with_prefix(&payload[..32]));
-                }
-            }
+        let (engine_id_bytes, payload) = extract_engine_and_payload(log)?;
+        
+        if engine_id_bytes.as_slice() == POW_ENGINE && payload.len() >= 32 {
+            let mut account_bytes = [0u8; 32];
+            account_bytes.copy_from_slice(&payload[..32]);
+            let account_id = AccountId32::from(account_bytes);
+            return Some(account_id.to_ss58check());
         }
     }
 
     None
 }
 
-/// Length of consensus engine ID in digest items (e.g., "BABE", "aura", "pow_")
-const CONSENSUS_ENGINE_ID_LEN: usize = 4;
 
-/// Format bytes as hex string with "0x" prefix
-fn hex_with_prefix(data: &[u8]) -> String {
-    format!("0x{}", hex::encode(data))
-}
-
-/// Decode a consensus digest item (PreRuntime, Consensus, or Seal)
-/// Format: [consensus_engine_id (4 bytes), payload_data]
-fn decode_consensus_digest(data: &[u8]) -> Option<Value> {
-    if data.len() < CONSENSUS_ENGINE_ID_LEN {
-        return None;
+pub(crate) fn to_camel_case(s: &str) -> String {
+    if s.is_empty() {
+        return String::new();
     }
-
-    let engine_id = String::from_utf8_lossy(&data[0..CONSENSUS_ENGINE_ID_LEN]).to_string();
-    let payload = hex_with_prefix(&data[CONSENSUS_ENGINE_ID_LEN..]);
-    Some(json!([engine_id, payload]))
-}
-
-/// Decode digest logs from hex-encoded strings in the JSON response
-/// Each hex string is a SCALE-encoded DigestItem
-fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
-    let logs = match header_json
-        .get("digest")
-        .and_then(|d| d.get("logs"))
-        .and_then(|l| l.as_array())
-    {
-        Some(logs) => logs,
-        None => return Vec::new(),
-    };
-
-    logs.iter()
-        .enumerate()
-        .filter_map(|(index, log_hex)| {
-            let hex_str = log_hex.as_str()?;
-            let hex_data = hex_str.strip_prefix("0x")?;
-            let bytes = hex::decode(hex_data).ok()?;
-
-            if bytes.is_empty() {
-                return None;
-            }
-
-            // The first byte is the digest item type discriminant
-            let discriminant_byte = bytes[0];
-            let data = &bytes[1..];
-
-            // Try to parse the discriminant into a known type
-            let discriminant = DigestItemDiscriminant::try_from(discriminant_byte)
-                .unwrap_or(DigestItemDiscriminant::Other);
-
-            let (log_type, value) = match discriminant {
-                // Consensus-related digests: PreRuntime, Consensus, Seal
-                // All have format: [consensus_engine_id (4 bytes), payload_data]
-                DigestItemDiscriminant::PreRuntime
-                | DigestItemDiscriminant::Consensus
-                | DigestItemDiscriminant::Seal => match decode_consensus_digest(data) {
-                    Some(val) => (discriminant.as_str().to_string(), val),
-                    None => ("Other".to_string(), json!(hex_with_prefix(&bytes))),
-                },
-                // RuntimeEnvironmentUpdated has no associated data
-                DigestItemDiscriminant::RuntimeEnvironmentUpdated => {
-                    (discriminant.as_str().to_string(), Value::Null)
-                }
-                // Other (includes unknown discriminants that were converted to Other)
-                DigestItemDiscriminant::Other => (
-                    discriminant.as_str().to_string(),
-                    json!(hex_with_prefix(data)),
-                ),
-            };
-
-            Some(DigestLog {
-                log_type,
-                index: index as u32,
-                value,
-            })
-        })
-        .collect()
+    
+    if s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+        let mut result = String::with_capacity(s.len());
+        let mut chars = s.chars();
+        if let Some(first) = chars.next() {
+            result.push(first.to_lowercase().next().unwrap_or(first));
+        }
+        for c in chars {
+            result.push(c);
+        }
+        return result;
+    }
+    
+    let mut result = String::with_capacity(s.len());
+    let mut capitalize_next = false;
+    
+    for c in s.chars() {
+        if c == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(c.to_uppercase().next().unwrap_or(c));
+            capitalize_next = false;
+        } else {
+            result.push(c);
+        }
+    }
+    
+    result
 }
 
 /// Method information for extrinsic calls
@@ -354,23 +535,18 @@ pub struct SignatureInfo {
 #[serde(rename_all = "camelCase")]
 pub struct ExtrinsicInfo {
     pub method: MethodInfo,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<SignatureInfo>,
-    /// Nonce - shown as null when extraction fails (matching sidecar behavior)
     pub nonce: Option<String>,
-    /// Args as a JSON object where bytes are hex-encoded and large numbers are strings
     pub args: serde_json::Map<String, Value>,
-    /// Tip - shown as null when extraction fails (matching sidecar behavior)
     pub tip: Option<String>,
     pub hash: String,
-    /// Runtime dispatch info (empty for now, populated later with proper weight and fees)
     pub info: serde_json::Map<String, Value>,
-    /// Transaction era/mortality information
     pub era: EraInfo,
-    // TODO: Add more fields (events, success, paysFee)
+    pub events: Vec<serde_json::Value>,
+    pub success: bool,
+    pub pays_fee: bool,
 }
 
-/// Basic block information
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockResponse {
@@ -383,130 +559,6 @@ pub struct BlockResponse {
     pub author_id: Option<String>,
     pub logs: Vec<DigestLog>,
     pub extrinsics: Vec<ExtrinsicInfo>,
-    // TODO: Add more fields (onInitialize, onFinalize, etc.)
-}
-
-/// Extract a numeric value from a JSON value as a string
-/// Handles direct numbers, nested objects, or string representations
-///
-/// Returns None if the value cannot be extracted, which will serialize as null
-/// in the JSON response (matching sidecar's behavior for missing/unextractable values)
-fn extract_numeric_string(value: &Value) -> Option<String> {
-    match value {
-        // Direct number
-        Value::Number(n) => Some(n.to_string()),
-        // Direct string
-        Value::String(s) => {
-            // Remove parentheses if present: "(23)" -> "23"
-            // This was present with Nonce values
-            Some(s.trim_matches(|c| c == '(' || c == ')').to_string())
-        }
-        // Object - might be {"primitive": 23} or similar
-        Value::Object(map) => {
-            // Try to find a numeric field
-            if let Some(val) = map.get("primitive") {
-                return extract_numeric_string(val);
-            }
-            // Try other common field names
-            for key in ["value", "0"] {
-                if let Some(val) = map.get(key) {
-                    return extract_numeric_string(val);
-                }
-            }
-            // Could not find expected numeric field
-            tracing::warn!(
-                "Could not extract numeric value from object with keys: {:?}",
-                map.keys().collect::<Vec<_>>()
-            );
-            None
-        }
-        // Array - take first element
-        Value::Array(arr) => {
-            if let Some(first) = arr.first() {
-                extract_numeric_string(first)
-            } else {
-                tracing::warn!("Cannot extract numeric value from empty array");
-                None
-            }
-        }
-        _ => {
-            tracing::warn!("Unexpected JSON type for numeric extraction: {:?}", value);
-            None
-        }
-    }
-}
-
-/// Convert JSON value, replacing byte arrays with hex strings and all numbers with strings recursively
-///
-/// This matches substrate-api-sidecar's behavior of returning all numeric values as strings
-/// for consistency across the API.
-fn convert_bytes_to_hex(value: Value) -> Value {
-    match value {
-        Value::Number(n) => {
-            // Convert all numbers to strings to match substrate-api-sidecar behavior
-            Value::String(n.to_string())
-        }
-        Value::Array(arr) => {
-            // Check if this is a byte array (all elements are numbers 0-255)
-            if arr
-                .iter()
-                .all(|v| matches!(v, Value::Number(n) if n.is_u64() && n.as_u64().unwrap() <= 255))
-            {
-                // Convert to hex string
-                let bytes: Vec<u8> = arr
-                    .iter()
-                    .filter_map(|v| v.as_u64().map(|n| n as u8))
-                    .collect();
-                Value::String(format!("0x{}", hex::encode(&bytes)))
-            } else {
-                // Recurse into array elements
-                let converted: Vec<Value> = arr.into_iter().map(convert_bytes_to_hex).collect();
-
-                // If array has single element, unwrap it (this handles cases like ["0x..."] -> "0x...")
-                // This is specific to how the data is formatted in substrate-api-sidecar
-                if converted.len() == 1 {
-                    converted.into_iter().next().unwrap()
-                } else {
-                    Value::Array(converted)
-                }
-            }
-        }
-        Value::Object(mut map) => {
-            // Check if this is a bitvec object (scale-value represents bitvecs specially)
-            if let Some(Value::Array(bits)) = map.get("__bitvec__values__") {
-                // Convert boolean array to bytes, then to hex
-                // BitVec uses LSB0 ordering (least significant bit first within each byte)
-                let mut bytes = Vec::new();
-                let mut current_byte = 0u8;
-
-                for (i, bit) in bits.iter().enumerate() {
-                    if let Some(true) = bit.as_bool() {
-                        current_byte |= 1 << (i % 8);
-                    }
-
-                    // Every 8 bits, push the byte and reset
-                    if (i + 1) % 8 == 0 {
-                        bytes.push(current_byte);
-                        current_byte = 0;
-                    }
-                }
-
-                // Push any remaining bits
-                if bits.len() % 8 != 0 {
-                    bytes.push(current_byte);
-                }
-
-                return Value::String(format!("0x{}", hex::encode(&bytes)));
-            }
-
-            // Recurse into object values
-            for (_, v) in map.iter_mut() {
-                *v = convert_bytes_to_hex(v.clone());
-            }
-            Value::Object(map)
-        }
-        other => other,
-    }
 }
 
 /// Extract extrinsics from a block using subxt-historic
@@ -519,8 +571,6 @@ async fn extract_extrinsics(
     let client_at_block = match state.client.at(block_number).await {
         Ok(client) => client,
         Err(e) => {
-            // This should never happen in production with real chains
-            // If it does, it indicates a serious issue with metadata or RPC
             tracing::warn!(
                 "Failed to get client at block {}: {:?}. Returning empty extrinsics. \
                  This is expected in tests with mock RPC, but should not happen in production.",
@@ -545,15 +595,46 @@ async fn extract_extrinsics(
         }
     };
 
+    // Fetch events for this block to associate with extrinsics
+    let all_events = match client_at_block.storage().entry("System", "Events") {
+        Ok(entry) => {
+            match entry.into_plain() {
+                Ok(plain_entry) => {
+                    match plain_entry.fetch().await {
+                        Ok(Some(events_value)) => {
+                            match events_value.decode::<scale_value::Value>() {
+                                Ok(decoded) => Some(decoded),
+                                Err(e) => {
+                                    tracing::warn!("Failed to decode events: {:?}", e);
+                                    None
+                                }
+                            }
+                        }
+                        Ok(None) => None,
+                        Err(e) => {
+                            tracing::warn!("Failed to fetch events: {:?}", e);
+                            None
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Events storage is not plain: {:?}", e);
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to get events storage entry: {:?}", e);
+            None
+        }
+    };
+
     let mut result = Vec::new();
 
     for extrinsic in extrinsics.iter() {
-        // Extract pallet and method name from the call
-        let pallet_name = extrinsic.call().pallet_name().to_string();
-        let method_name = extrinsic.call().name().to_string();
+        let pallet_name = to_camel_case(&extrinsic.call().pallet_name().to_string());
+        let method_name = to_camel_case(&extrinsic.call().name().to_string());
 
-        // Extract call arguments
-        // We decode into scale_value::Composite which can represent any SCALE type
         let args_composite = extrinsic
             .call()
             .fields()
@@ -562,103 +643,70 @@ async fn extract_extrinsics(
                 GetBlockError::ExtrinsicDecodeFailed(format!("Failed to decode args: {}", e))
             })?;
 
-        // Convert to JSON using serde
         let args_json = serde_json::to_value(&args_composite).map_err(|e| {
             GetBlockError::ExtrinsicDecodeFailed(format!("Failed to serialize args: {}", e))
         })?;
 
-        // Convert byte arrays to hex strings
-        let args_converted = convert_bytes_to_hex(args_json);
+        let args_converted = convert_args_to_sidecar_format(args_json);
 
         // Extract as map (should be an object from Composite)
-        let args_map = if let Value::Object(map) = args_converted {
+        let mut args_map = if let Value::Object(map) = args_converted {
             map
         } else {
-            // Fallback to empty map if not an object
             serde_json::Map::new()
         };
 
-        // Extract signature and signer (if signed)
-        let (signature_info, era_from_bytes) = if extrinsic.is_signed() {
-            let sig_bytes = extrinsic
-                .signature_bytes()
-                .ok_or(GetBlockError::MissingSignatureBytes)?;
-            let addr_bytes = extrinsic
-                .address_bytes()
-                .ok_or(GetBlockError::MissingAddressBytes)?;
+        if pallet_name == "parachainSystem" && method_name == "setValidationData" {
+            args_map = restructure_parachain_validation_data_args(args_map);
+        }
 
-            // Try to extract era from raw extrinsic bytes
-            // Era comes right after address and signature in the SignedExtra/TransactionExtension
-            let era_info = utils::extract_era_from_extrinsic_bytes(extrinsic.bytes());
-
-            (
+        let signature_info = if extrinsic.is_signed() {
+            if let (Some(sig_bytes), Some(addr_bytes)) = (
+                extrinsic.signature_bytes(),
+                extrinsic.address_bytes(),
+            ) {
                 Some(SignatureInfo {
                     signature: format!("0x{}", hex::encode(sig_bytes)),
                     signer: format!("0x{}", hex::encode(addr_bytes)),
-                }),
-                era_info,
-            )
+                })
+            } else {
+                None
+            }
         } else {
-            (None, None)
+            None
         };
 
-        // Extract nonce, tip, and era from transaction extensions (if present)
-        let (nonce, tip, era_info) = if let Some(extensions) = extrinsic.transaction_extensions() {
+        // Extract nonce, tip, and era from transaction extensions
+        use parity_scale_codec::Compact;
+        let extensions = extrinsic.transaction_extensions();
+        let (nonce, tip, era_info) = if let Some(extensions) = extensions {
             let mut nonce_value = None;
             let mut tip_value = None;
             let mut era_value = None;
 
-            tracing::trace!(
-                "Extrinsic {} has {} extensions",
-                extrinsic.index(),
-                extensions.iter().count()
-            );
-
             for ext in extensions.iter() {
-                let ext_name = ext.name();
-                tracing::trace!("Extension name: {}", ext_name);
-
-                match ext_name {
+                match ext.name() {
                     "CheckNonce" => {
-                        // Decode as a u64/u32 compact value, then serialize to JSON
-                        if let Ok(n) = ext.decode::<scale_value::Value>()
-                            && let Ok(json_val) = serde_json::to_value(&n)
-                        {
-                            // The value might be nested in an object, so we need to extract it
-                            // If extraction fails, nonce_value remains None (serialized as null)
-                            nonce_value = extract_numeric_string(&json_val);
+                        if let Ok(compact_nonce) = ext.decode::<Compact<u64>>() {
+                            nonce_value = Some(compact_nonce.0.to_string());
+                        } else if let Ok(nonce) = ext.decode::<u64>() {
+                            nonce_value = Some(nonce.to_string());
                         }
                     }
                     "ChargeTransactionPayment" | "ChargeAssetTxPayment" => {
-                        // The tip is typically a Compact<u128>
-                        if let Ok(t) = ext.decode::<scale_value::Value>()
-                            && let Ok(json_val) = serde_json::to_value(&t)
-                        {
-                            // If extraction fails, tip_value remains None (serialized as null)
-                            tip_value = extract_numeric_string(&json_val);
+                        if let Ok(compact_tip) = ext.decode::<Compact<u128>>() {
+                            tip_value = Some(compact_tip.0.to_string());
+                        } else if let Ok(tip) = ext.decode::<u128>() {
+                            tip_value = Some(tip.to_string());
                         }
                     }
                     "CheckMortality" | "CheckEra" => {
-                        // Era information - decode directly from raw bytes
-                        // The JSON representation is complex (e.g., "Mortal230") and harder to parse
                         let era_bytes = ext.bytes();
-                        tracing::debug!(
-                            "Found CheckMortality extension, raw bytes: {}",
-                            hex::encode(era_bytes)
-                        );
-
                         let mut offset = 0;
-                        if let Some(decoded_era) =
-                            utils::decode_era_from_bytes(era_bytes, &mut offset)
-                        {
-                            tracing::debug!("Decoded era: {:?}", decoded_era);
-
-                            // Create a JSON representation that parse_era_info can understand
-                            if let Some(ref mortal) = decoded_era.mortal_era {
-                                // Format: {"name": "Mortal", "values": [[period], [phase]]}
+                        if let Some(decoded_era) = utils::decode_era_from_bytes(era_bytes, &mut offset) {
+                            let era_json = if let Some(ref mortal) = decoded_era.mortal_era {
                                 let mut map = serde_json::Map::new();
                                 map.insert("name".to_string(), Value::String("Mortal".to_string()));
-
                                 let values = vec![
                                     Value::Array(vec![Value::Number(
                                         mortal[0].parse::<u64>().unwrap().into(),
@@ -668,32 +716,26 @@ async fn extract_extrinsics(
                                     )]),
                                 ];
                                 map.insert("values".to_string(), Value::Array(values));
-
-                                era_value = Some(Value::Object(map));
+                                Value::Object(map)
                             } else if decoded_era.immortal_era.is_some() {
                                 let mut map = serde_json::Map::new();
-                                map.insert(
-                                    "name".to_string(),
-                                    Value::String("Immortal".to_string()),
-                                );
-                                era_value = Some(Value::Object(map));
-                            }
+                                map.insert("name".to_string(), Value::String("Immortal".to_string()));
+                                Value::Object(map)
+                            } else {
+                                continue;
+                            };
+                            era_value = Some(era_json);
                         }
                     }
-                    _ => {
-                        // Silently skip other extensions
-                    }
+                    _ => {}
                 }
             }
 
             let era = if let Some(era_json) = era_value {
-                // Try to parse era information from extension
                 utils::parse_era_info(&era_json)
-            } else if let Some(era_parsed) = era_from_bytes {
-                // Use era extracted from raw bytes
+            } else if let Some(era_parsed) = utils::extract_era_from_extrinsic_bytes(extrinsic.bytes()) {
                 era_parsed
             } else {
-                // Default to immortal era for signed transactions without explicit era
                 EraInfo {
                     immortal_era: Some("0x00".to_string()),
                     mortal_era: None,
@@ -702,7 +744,6 @@ async fn extract_extrinsics(
 
             (nonce_value, tip_value, era)
         } else {
-            // Unsigned extrinsics are immortal
             (
                 None,
                 None,
@@ -717,6 +758,17 @@ async fn extract_extrinsics(
         let hash_bytes = BlakeTwo256::hash(extrinsic.bytes());
         let hash = format!("0x{}", hex::encode(hash_bytes.as_ref()));
 
+        // Extract events for this extrinsic from block events
+        let (extrinsic_events, success, mut pays_fee) = if let Some(ref events_value) = all_events {
+            extract_extrinsic_events(events_value, extrinsic.index() as u32, to_camel_case)
+        } else {
+            (Vec::new(), true, false)
+        };
+        
+        if !extrinsic.is_signed() {
+            pays_fee = false;
+        }
+
         result.push(ExtrinsicInfo {
             method: MethodInfo {
                 pallet: pallet_name,
@@ -729,6 +781,9 @@ async fn extract_extrinsics(
             hash,
             info: serde_json::Map::new(), // Empty for now, populated with events later
             era: era_info,
+            events: extrinsic_events,
+            success,
+            pays_fee,
         });
     }
 
@@ -744,12 +799,6 @@ pub struct GetBlockQueryParams {
 }
 
 /// Handler for GET /blocks/{blockId}
-///
-/// Returns block information for a given block identifier (hash or number)
-///
-/// Query Parameters:
-/// - `useRcBlock` (boolean, optional): When true, treats blockId as Relay Chain block number
-///   and returns array of Asset Hub blocks. When false/not set, treats blockId as Asset Hub block.
 pub async fn get_block(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
@@ -760,28 +809,11 @@ pub async fn get_block(
         return handle_rc_block_query(state, block_id).await;
     }
 
-    // Standard behavior: treat blockId as AH block
     handle_standard_block_query(state, block_id).await
 }
 
-/// Handle standard block query (single block response)
-async fn handle_standard_block_query(
-    state: AppState,
-    block_id: String,
-) -> Result<Response, GetBlockError> {
-    // Parse the block identifier
-    let block_id = block_id.parse::<utils::BlockId>()?;
 
-    // Resolve the block
-    let resolved_block = utils::resolve_block(&state, Some(block_id)).await?;
-
-    // Fetch the header JSON
-    let header_json = state
-        .get_header_json(&resolved_block.hash)
-        .await
-        .map_err(GetBlockError::HeaderFetchFailed)?;
-
-    // Extract header fields
+fn extract_header_fields(header_json: &serde_json::Value) -> Result<(String, String, String, Vec<DigestLog>), GetBlockError> {
     let parent_hash = header_json
         .get("parentHash")
         .and_then(|v| v.as_str())
@@ -800,8 +832,38 @@ async fn handle_standard_block_query(
         .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
         .to_string();
 
-    // Decode digest logs from hex strings into structured format
-    let logs = decode_digest_logs(&header_json);
+    let logs = decode_digest_logs(header_json);
+
+    Ok((parent_hash, state_root, extrinsics_root, logs))
+}
+
+/// Check if a block is finalized by comparing with finalized head
+async fn is_block_finalized(rpc_client: &subxt_rpcs::RpcClient, block_hash: &str) -> Result<bool, subxt_rpcs::Error> {
+    let finalized_hash = rpc_client
+        .request::<Option<String>>("chain_getFinalizedHead", rpc_params![])
+        .await?;
+    
+    Ok(finalized_hash.as_deref() == Some(block_hash))
+}
+
+async fn handle_standard_block_query(
+    state: AppState,
+    block_id: String,
+) -> Result<Response, GetBlockError> {
+    // Parse the block identifier
+    let block_id = block_id.parse::<utils::BlockId>()?;
+
+    // Resolve the block
+    let resolved_block = utils::resolve_block(&state, Some(block_id)).await?;
+
+    // Fetch the header JSON
+    let header_json = state
+        .get_header_json(&resolved_block.hash)
+        .await
+        .map_err(GetBlockError::HeaderFetchFailed)?;
+
+    // Extract header fields
+    let (parent_hash, state_root, extrinsics_root, logs) = extract_header_fields(&header_json)?;
 
     // Extract author from digest logs by mapping authority index to validator
     let author_id = extract_author(&state, resolved_block.number, &logs).await;
@@ -837,28 +899,16 @@ async fn handle_rc_block_query(
     // Get Asset Hub RPC client
     let ah_rpc_client = state.get_asset_hub_rpc_client().await?;
 
-    // Get RC block hash for reference
-    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
-    let rc_block_hash: Option<String> = rc_rpc_client
-        .request("chain_getBlockHash", rpc_params![rc_block_number])
-        .await
-        .map_err(|e| GetBlockError::RcBlockFailed(RcBlockError::AssetHubQueryFailed(e)))?;
-    let _rc_block_hash = rc_block_hash.ok_or_else(|| {
-        GetBlockError::RcBlockFailed(RcBlockError::HeaderFieldMissing(
-            format!("RC block {} not found", rc_block_number)
-        ))
-    })?;
-
-    // Get Relay Chain subxt client to query events
     let rc_client = state.get_relay_chain_subxt_client().await?;
-    
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+
     // Find Asset Hub blocks corresponding to this RC block number
     // This queries RC block events to find paraInclusion.CandidateIncluded events for Asset Hub
-    let ah_blocks = find_ah_blocks_by_rc_block(&rc_client, rc_block_number).await?;
+    let ah_blocks = find_ah_blocks_by_rc_block(&rc_client, &rc_rpc_client, rc_block_number).await?;
 
     // If no blocks found, return empty array
     if ah_blocks.is_empty() {
-        return Ok(Json::<Vec<RcBlockResponse<BlockResponse>>>(vec![]).into_response());
+        return Ok(Json::<Vec<BlockRcResponse>>(vec![]).into_response());
     }
 
     // Query each Asset Hub block and build response
@@ -875,69 +925,55 @@ async fn handle_rc_block_query(
         }
 
         // Extract header fields
-        let parent_hash = header_json
-            .get("parentHash")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| GetBlockError::HeaderFieldMissing("parentHash".to_string()))?
-            .to_string();
+        let (parent_hash, state_root, extrinsics_root, logs) = match extract_header_fields(&header_json) {
+            Ok(fields) => fields,
+            Err(e) => {
+                tracing::warn!("Failed to extract header fields: {:?}", e);
+                continue;
+            }
+        };
 
-        let state_root = header_json
-            .get("stateRoot")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| GetBlockError::HeaderFieldMissing("stateRoot".to_string()))?
-            .to_string();
-
-        let extrinsics_root = header_json
-            .get("extrinsicsRoot")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
-            .to_string();
-
-        // Decode digest logs
-        let logs = decode_digest_logs(&header_json);
-
-        // For author extraction, we'd need to query the AH block's state
-        // For now, we'll set it to None (can be enhanced later)
-        let author_id = None;
-
-        // For extrinsics, we'd need to query the full block
-        // For now, we'll return empty (can be enhanced later)
-        let extrinsics = Vec::new();
-
-        // Build BlockResponse
         let number_hex = header_json
             .get("number")
             .and_then(|v| v.as_str())
             .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))?;
+        
+        let block_number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
+            .map_err(|e| GetBlockError::HeaderFieldMissing(format!("Failed to parse block number: {}", e)))?;
+        
+        let number = block_number.to_string();
 
-        let data = BlockResponse {
-            number: number_hex
-                .strip_prefix("0x")
-                .unwrap_or(number_hex)
-                .to_string(),
+        let author_id = extract_author(&state, block_number, &logs).await;
+
+        let extrinsics = match extract_extrinsics(&state, block_number).await {
+            Ok(exts) => exts,
+            Err(e) => {
+                tracing::warn!("Failed to extract extrinsics for block {}: {:?}", block_number, e);
+                Vec::new()
+            }
+        };
+
+        let ah_timestamp = get_timestamp_from_storage(&ah_rpc_client, &ah_block.hash)
+            .await
+            .unwrap_or_else(|| "0".to_string());
+
+        let rc_response = BlockRcResponse {
+            number,
             hash: ah_block.hash.clone(),
             parent_hash,
             state_root,
             extrinsics_root,
             author_id,
             logs,
-            extrinsics,
-        };
-
-        // Extract timestamp from Asset Hub block
-        // TODO: Implement timestamp extraction using storage query
-        let ah_timestamp = "0".to_string();
-
-        // Build RcBlockResponse
-        let rc_response = RcBlockResponse {
-            at: BlockInfo {
-                hash: ah_block.hash,
-                height: number_hex
-                    .strip_prefix("0x")
-                    .unwrap_or(number_hex)
-                    .to_string(),
+            on_initialize: utils::rc_block::OnInitializeFinalize {
+                events: Vec::new(),
             },
-            data,
+            extrinsics,
+            on_finalize: utils::rc_block::OnInitializeFinalize {
+                events: Vec::new(),
+            },
+            finalized: is_block_finalized(&ah_rpc_client, &ah_block.hash).await.unwrap_or(false),
+            rc_block_hash: ah_block.rc_block_hash.clone(),
             rc_block_number: rc_block_number.to_string(),
             ah_timestamp,
         };
@@ -948,140 +984,180 @@ async fn handle_rc_block_query(
     Ok(Json(results).into_response())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::state::AppState;
-    use config::SidecarConfig;
-    use serde_json::json;
-    use std::sync::Arc;
-    use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
-    use subxt_rpcs::client::{MockRpcClient, RpcClient};
-
-    /// Helper to create a test AppState with mocked RPC responses
-    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
-        let config = SidecarConfig::default();
-        let rpc_client = Arc::new(RpcClient::new(mock_client));
-        let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
-        let chain_info = crate::state::ChainInfo {
-            chain_type: config::ChainType::Relay,
-            spec_name: "test".to_string(),
-            spec_version: 1,
-        };
-
-        AppState {
-            config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
-            legacy_rpc,
-            rpc_client,
-            chain_info,
+fn convert_args_to_sidecar_format(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Number(n) => serde_json::Value::String(n.to_string()),
+        serde_json::Value::Array(arr) => {
+            // Check if byte array (all numbers 0-255)
+            if arr.iter().all(|v| v.as_u64().map(|n| n <= 255).unwrap_or(false)) {
+                let bytes: Vec<u8> = arr.iter()
+                    .filter_map(|v| v.as_u64().map(|n| n as u8))
+                    .collect();
+                serde_json::Value::String(format!("0x{}", hex::encode(&bytes)))
+            } else {
+                let converted: Vec<serde_json::Value> = arr.into_iter()
+                    .map(convert_args_to_sidecar_format)
+                    .collect();
+                if converted.len() == 1 {
+                    converted.into_iter().next().unwrap()
+                } else {
+                    serde_json::Value::Array(converted)
+                }
+            }
         }
-    }
-
-    #[tokio::test]
-    async fn test_get_block_by_number() {
-        // Note: We don't mock state_getStorage here, so author_id will be None
-        // Full author extraction is tested against live chain
-        let mock_client = MockRpcClient::builder()
-            .method_handler("chain_getBlockHash", async |_params| {
-                MockJson("0x1234567890123456789012345678901234567890123456789012345678901234")
-            })
-            .method_handler("chain_getHeader", async |_params| {
-                MockJson(json!({
-                    "number": "0x64",
-                    "parentHash": "0xabcdef0000000000000000000000000000000000000000000000000000000000",
-                    "stateRoot": "0xdef0000000000000000000000000000000000000000000000000000000000000",
-                    "extrinsicsRoot": "0x1230000000000000000000000000000000000000000000000000000000000000",
-                    "digest": {
-                        "logs": [
-                            // PreRuntime log: discriminant (6) + engine_id ("BABE") + variant (01) + authority_index (03000000 = 3 in LE)
-                            "0x06424142450103000000"
-                        ]
-                    }
-                }))
-            })
-            // Mock archive_v1_body to return empty extrinsics array
-            .method_handler("archive_v1_body", async |_params| {
-                MockJson(json!([]))
-            })
-            .build();
-
-        let state = create_test_state_with_mock(mock_client);
-
-        let params = GetBlockQueryParams { use_rc_block: None };
-        let result = get_block(State(state), Path("100".to_string()), Query(params)).await;
-
-        assert!(result.is_ok());
-        // TODO: Update test to properly extract JSON from Response type
-        // For now, just verify the request succeeds
-    }
-
-    #[tokio::test]
-    async fn test_get_block_by_hash() {
-        let test_hash = "0xabcdef1234567890123456789012345678901234567890123456789012345678";
-
-        let mock_client = MockRpcClient::builder()
-            .method_handler("chain_getHeader", async |_params| {
-                MockJson(json!({
-                    "number": "0x64", // Block 100
-                    "parentHash": "0x9999990000000000000000000000000000000000000000000000000000000000",
-                    "stateRoot": "0x8888880000000000000000000000000000000000000000000000000000000000",
-                    "extrinsicsRoot": "0x7777770000000000000000000000000000000000000000000000000000000000",
-                    "digest": {
-                        "logs": []
-                    }
-                }))
-            })
-            // Mock archive_v1_body to return empty extrinsics array
-            .method_handler("archive_v1_body", async |_params| {
-                MockJson(json!([]))
-            })
-            .build();
-
-        let state = create_test_state_with_mock(mock_client);
-
-        let params = GetBlockQueryParams { use_rc_block: None };
-        let result = get_block(State(state), Path(test_hash.to_string()), Query(params)).await;
-
-        assert!(result.is_ok());
-        // TODO: Update test assertions to handle Response type
-    }
-
-    #[tokio::test]
-    async fn test_get_block_invalid_param() {
-        let mock_client = MockRpcClient::builder().build();
-        let state = create_test_state_with_mock(mock_client);
-
-        let params = GetBlockQueryParams { use_rc_block: None };
-        let result = get_block(State(state), Path("invalid".to_string()), Query(params)).await;
-
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            GetBlockError::InvalidBlockParam(_)
-        ));
-    }
-
-    #[tokio::test]
-    async fn test_get_block_not_found() {
-        let mock_client = MockRpcClient::builder()
-            .method_handler("chain_getBlockHash", async |_params| {
-                MockJson(serde_json::Value::Null)
-            })
-            .build();
-
-        let state = create_test_state_with_mock(mock_client);
-
-        let params = GetBlockQueryParams { use_rc_block: None };
-        let result = get_block(State(state), Path("999999".to_string()), Query(params)).await;
-
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            GetBlockError::BlockResolveFailed(_)
-        ));
+        serde_json::Value::Object(mut map) => {
+            map.values_mut().for_each(|v| *v = convert_args_to_sidecar_format(v.clone()));
+            serde_json::Value::Object(map)
+        }
+        other => other,
     }
 }
+
+fn convert_event_to_sidecar_format(
+    event_val: &ScaleValue,
+    to_camel_case_fn: impl Fn(&str) -> String,
+) -> serde_json::Value {
+    let event_json = serde_json::to_value(event_val).unwrap_or(serde_json::Value::Null);
+    
+    let pallet_name = event_json.get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    
+    let event_inner = event_json.get("values")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.get(0));
+    
+    if let Some(inner_val) = event_inner {
+        let event_name = inner_val.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        
+        let data = if event_name == "ExtrinsicSuccess" {
+            let dispatch_info = inner_val.get("values")
+                .and_then(|v| v.as_object())
+                .and_then(|obj| obj.get("dispatch_info"))
+                .and_then(|v| v.as_object());
+            
+            if let Some(dispatch_info) = dispatch_info {
+                let mut converted_data = serde_json::Map::new();
+                
+                dispatch_info.get("weight")
+                    .map(|w| w.as_u64().map(|n| n.to_string())
+                        .or_else(|| w.as_str().map(|s| s.to_string()))
+                        .unwrap_or_else(|| w.to_string()))
+                    .map(|s| converted_data.insert("weight".to_string(), serde_json::Value::String(s)));
+                
+                dispatch_info.get("class")
+                    .and_then(|v| v.as_object())
+                    .and_then(|obj| obj.get("name"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| converted_data.insert("class".to_string(), serde_json::Value::String(s.to_string())));
+                
+                dispatch_info.get("pays_fee")
+                    .and_then(|v| v.as_object())
+                    .and_then(|obj| obj.get("name"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| converted_data.insert("paysFee".to_string(), serde_json::Value::String(s.to_string())));
+                
+                if converted_data.is_empty() {
+                    vec![serde_json::to_value(inner_val).unwrap_or(serde_json::Value::Null)]
+                } else {
+                    vec![serde_json::Value::Object(converted_data)]
+                }
+            } else {
+                vec![serde_json::to_value(inner_val).unwrap_or(serde_json::Value::Null)]
+            }
+        } else {
+            vec![serde_json::to_value(inner_val).unwrap_or(serde_json::Value::Null)]
+        };
+        
+        json!({
+            "method": {
+                "pallet": to_camel_case_fn(pallet_name),
+                "method": event_name
+            },
+            "data": data
+        })
+    } else {
+        event_json
+    }
+}
+
+fn extract_extrinsic_events(
+    events_value: &ScaleValue,
+    extrinsic_index: u32,
+    to_camel_case_fn: impl Fn(&str) -> String,
+) -> (Vec<serde_json::Value>, bool, bool) {
+    let events_composite = match as_composite(events_value) {
+        Some(Composite::Unnamed(values)) => values,
+        _ => return (Vec::new(), true, false),
+    };
+    
+    let mut extrinsic_events = Vec::new();
+    let mut success = true;
+    let mut pays_fee = false;
+    
+    for event_record in events_composite.iter() {
+        let record_composite = match as_composite(event_record) {
+            Some(c) => c,
+            None => continue,
+        };
+        
+        let phase_value = get_field_from_composite(record_composite, &["phase"], Some(0));
+        
+        let is_our_extrinsic = phase_value
+            .and_then(|v| {
+                if let ValueDef::Variant(variant) = &v.value {
+                    if variant.name == "ApplyExtrinsic" {
+                        if let Composite::Unnamed(values) = &variant.values {
+                            return values.get(0)
+                                .and_then(|idx_val| serde_json::to_value(idx_val).ok())
+                                .and_then(|v| v.as_u64())
+                                .map(|idx| idx == extrinsic_index as u64);
+                        }
+                    }
+                }
+                None
+            })
+            .unwrap_or(false);
+        
+        if !is_our_extrinsic {
+            continue;
+        }
+        
+        // Extract event
+        let event_val = get_field_from_composite(record_composite, &["event"], Some(1));
+        
+        if let Some(event_val) = event_val {
+            let converted_event = convert_event_to_sidecar_format(event_val, &to_camel_case_fn);
+            
+            if let Some(method) = converted_event.get("method").and_then(|v| v.as_object()) {
+                let pallet = method.get("pallet").and_then(|v| v.as_str());
+                let method_name = method.get("method").and_then(|v| v.as_str());
+                
+                if pallet == Some("system") {
+                    match method_name {
+                        Some("ExtrinsicSuccess") => {
+                            success = true;
+                            pays_fee = converted_event.get("data")
+                                .and_then(|v| v.as_array())
+                                .and_then(|arr| arr.get(0))
+                                .and_then(|v| v.as_object())
+                                .and_then(|obj| obj.get("paysFee"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s == "Yes")
+                                .unwrap_or(false);
+                        }
+                        Some("ExtrinsicFailed") => success = false,
+                        _ => {}
+                    }
+                }
+            }
+            
+            extrinsic_events.push(converted_event);
+        }
+    }
+    
+    (extrinsic_events, success, pays_fee)
+}
+

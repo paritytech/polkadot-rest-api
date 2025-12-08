@@ -1,7 +1,8 @@
 use crate::state::AppState;
 use crate::utils::{
-    self, BlockInfo as UtilsBlockInfo, RcBlockError, RcBlockResponse,
-    find_ah_blocks_by_rc_block,
+    self, BlockInfo as UtilsBlockInfo, RcBlockError,
+    find_ah_blocks_by_rc_block, get_timestamp_from_storage,
+    RuntimeSpecRcResponse,
 };
 use axum::{
     Json,
@@ -194,30 +195,17 @@ async fn handle_rc_block_runtime_query(
     // Get Asset Hub RPC client
     let ah_rpc_client = state.get_asset_hub_rpc_client().await?;
 
-    // Get Relay Chain RPC client to get RC block hash and finalized status
-    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
-    
-    // Get RC block hash for reference
-    let rc_block_hash: Option<String> = rc_rpc_client
-        .request("chain_getBlockHash", rpc_params![rc_block_number])
-        .await
-        .map_err(|e| GetSpecError::RcBlockFailed(RcBlockError::AssetHubQueryFailed(e)))?;
-    let _rc_block_hash = rc_block_hash.ok_or_else(|| {
-        GetSpecError::RcBlockFailed(RcBlockError::HeaderFieldMissing(
-            format!("RC block {} not found", rc_block_number)
-        ))
-    })?;
-
-    // Get Relay Chain subxt client to query events
+    // Get Relay Chain clients
     let rc_client = state.get_relay_chain_subxt_client().await?;
-    
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+
     // Find Asset Hub blocks corresponding to this RC block number
     // This queries RC block events to find paraInclusion.CandidateIncluded events for Asset Hub
-    let ah_blocks = find_ah_blocks_by_rc_block(&rc_client, rc_block_number).await?;
+    let ah_blocks = find_ah_blocks_by_rc_block(&rc_client, &rc_rpc_client, rc_block_number).await?;
 
     // If no blocks found, return empty array
     if ah_blocks.is_empty() {
-        return Ok(Json::<Vec<RcBlockResponse<RuntimeSpecResponse>>>(vec![]).into_response());
+        return Ok(Json::<Vec<RuntimeSpecRcResponse>>(vec![]).into_response());
     }
 
     // Query runtime spec for each Asset Hub block
@@ -270,9 +258,13 @@ async fn handle_rc_block_runtime_query(
             .unwrap_or(0)
             .to_string();
 
-        // Build RuntimeSpecResponse
-        let data = RuntimeSpecResponse {
-            at: BlockInfo {
+        // Extract timestamp from Asset Hub block using Timestamp::Now storage query
+        let ah_timestamp = get_timestamp_from_storage(&ah_rpc_client, &ah_block.hash)
+            .await
+            .unwrap_or_else(|| "0".to_string());
+
+        let rc_response = RuntimeSpecRcResponse {
+            at: UtilsBlockInfo {
                 hash: ah_block.hash.clone(),
                 height: ah_block.number.to_string(),
             },
@@ -283,19 +275,7 @@ async fn handle_rc_block_runtime_query(
             spec_version,
             transaction_version,
             properties: serde_json::to_value(properties).unwrap_or(json!({})),
-        };
-
-        // Extract timestamp from Asset Hub block
-        // TODO: Implement timestamp extraction using storage query
-        let ah_timestamp = "0".to_string();
-
-        // Build RcBlockResponse
-        let rc_response = RcBlockResponse {
-            at: UtilsBlockInfo {
-                hash: ah_block.hash,
-                height: ah_block.number.to_string(),
-            },
-            data,
+            rc_block_hash: ah_block.rc_block_hash.clone(),
             rc_block_number: rc_block_number.to_string(),
             ah_timestamp,
         };
