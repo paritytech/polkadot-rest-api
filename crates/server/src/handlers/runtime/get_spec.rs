@@ -225,8 +225,6 @@ mod tests {
         let result = runtime_spec(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
-        // TODO: Update test to handle Response type properly
-        // For now, just verify it succeeds
     }
 
     #[tokio::test]
@@ -265,7 +263,6 @@ mod tests {
         let result = runtime_spec(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
-        // TODO: Update test to handle Response type properly
     }
 
     #[tokio::test]
@@ -303,7 +300,6 @@ mod tests {
         let result = runtime_spec(State(state), axum::extract::Query(params)).await;
 
         assert!(result.is_ok());
-        // TODO: Update test to handle Response type properly
     }
 
     #[tokio::test]

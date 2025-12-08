@@ -87,6 +87,22 @@ pub struct BlockHeaderRcResponse {
     pub ah_timestamp: String,
 }
 
+/// Response wrapper for useRcBlock=true with RC block info and parachains array
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcBlockWithParachainsResponse<T> {
+    pub rc_block_hash: String,
+    pub rc_block_parent_hash: String,
+    pub rc_block_number: String,
+    pub parachains: Vec<T>,
+}
+
+/// Type alias for header responses
+pub type RcBlockHeaderWithParachainsResponse = RcBlockWithParachainsResponse<BlockHeaderRcResponse>;
+
+/// Type alias for full block responses
+pub type RcBlockFullWithParachainsResponse = RcBlockWithParachainsResponse<BlockRcResponse>;
+
 /// Block response for useRcBlock=true
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -537,6 +553,42 @@ pub async fn get_ah_block_with_timestamp(
         timestamp,
         rc_block_hash: rc_block_hash.to_string(),
     })
+}
+
+/// Get Relay Chain block header information (hash, parent hash, number)
+pub async fn get_rc_block_header_info(
+    rc_rpc_client: &RpcClient,
+    rc_block_number: u64,
+) -> Result<(String, String, String), RcBlockError> {
+    // Get RC block hash
+    let rc_block_hash: Option<String> = rc_rpc_client
+        .request("chain_getBlockHash", rpc_params![rc_block_number])
+        .await
+        .map_err(RcBlockError::AssetHubQueryFailed)?;
+    
+    let rc_block_hash = rc_block_hash.ok_or_else(|| {
+        RcBlockError::HeaderFieldMissing(format!("RC block {} not found", rc_block_number))
+    })?;
+    
+    // Get RC block header to extract parent hash
+    let header_json: serde_json::Value = rc_rpc_client
+        .request("chain_getHeader", rpc_params![rc_block_hash.clone()])
+        .await
+        .map_err(RcBlockError::HeaderFetchFailed)?;
+    
+    let rc_block_parent_hash = header_json
+        .get("parentHash")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            RcBlockError::HeaderFieldMissing("parentHash".to_string())
+        })?
+        .to_string();
+    
+    Ok((
+        rc_block_hash,
+        rc_block_parent_hash,
+        rc_block_number.to_string(),
+    ))
 }
 
 /// Get timestamp from Timestamp::Now storage at a specific block

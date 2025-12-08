@@ -2,8 +2,10 @@ use crate::state::AppState;
 use crate::utils::{
     self, RcBlockError,
     find_ah_blocks_by_rc_block, get_timestamp_from_storage,
+    get_rc_block_header_info,
     BlockRcResponse,
 };
+use crate::utils::rc_block::RcBlockFullWithParachainsResponse;
 use crate::handlers::blocks::utils::{
     DigestLog, ExtrinsicInfo,
     extract_header_fields, extract_author, extract_extrinsics, is_block_finalized,
@@ -187,17 +189,16 @@ async fn handle_rc_block_query(
     let rc_client = state.get_relay_chain_subxt_client().await?;
     let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
 
+    // Get RC block header info (hash, parent hash, number)
+    let (rc_block_hash, rc_block_parent_hash, rc_block_number_str) = 
+        get_rc_block_header_info(&rc_rpc_client, rc_block_number).await?;
+
     // Find Asset Hub blocks corresponding to this RC block number
     // This queries RC block events to find paraInclusion.CandidateIncluded events for Asset Hub
     let ah_blocks = find_ah_blocks_by_rc_block(&rc_client, &rc_rpc_client, rc_block_number).await?;
 
-    // If no blocks found, return empty array
-    if ah_blocks.is_empty() {
-        return Ok(Json::<Vec<BlockRcResponse>>(vec![]).into_response());
-    }
-
     // Query each Asset Hub block and build response
-    let mut results = Vec::new();
+    let mut parachains = Vec::new();
     for ah_block in ah_blocks {
         // Get block header from Asset Hub
         let header_json: serde_json::Value = ah_rpc_client
@@ -263,10 +264,18 @@ async fn handle_rc_block_query(
             ah_timestamp,
         };
 
-        results.push(rc_response);
+        parachains.push(rc_response);
     }
 
-    Ok(Json(results).into_response())
+    // Always return object with RC block info and parachains array
+    let response = RcBlockFullWithParachainsResponse {
+        rc_block_hash,
+        rc_block_parent_hash,
+        rc_block_number: rc_block_number_str,
+        parachains,
+    };
+
+    Ok(Json(response).into_response())
 }
 
 
