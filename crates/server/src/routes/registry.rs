@@ -78,10 +78,38 @@ impl<S: Clone + Send + Sync + 'static> RegisterRoute<S> for Router<S> {
         method: &str,
         handler: MethodRouter<S>,
     ) -> Self {
-        // Add to registry with prefix
-        let full_path = format!("{}{}", prefix, path);
+        // Add to registry with prefix, converting :param to {param} for display
+        let display_path = convert_path_params_for_display(path);
+        let full_path = format!("{}{}", prefix, display_path);
         registry.add(&full_path, method);
         // Route without prefix (since routes are nested)
         self.route(path, handler)
     }
+}
+
+/// Convert Axum path parameters (:param) to OpenAPI style ({param}) for display
+fn convert_path_params_for_display(path: &str) -> String {
+    let mut result = String::new();
+    let mut chars = path.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == ':' {
+            // Collect the parameter name
+            let mut param = String::new();
+            while let Some(&next) = chars.peek() {
+                if next.is_alphanumeric() || next == '_' {
+                    param.push(chars.next().unwrap());
+                } else {
+                    break;
+                }
+            }
+            result.push('{');
+            result.push_str(&param);
+            result.push('}');
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
 }
