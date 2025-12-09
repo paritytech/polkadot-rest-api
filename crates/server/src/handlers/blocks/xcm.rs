@@ -87,10 +87,11 @@ impl<'a> XcmDecoder<'a> {
                     .unwrap_or("0");
 
                 // Apply paraId filter if specified
-                if let Some(filter) = self.para_id_filter {
-                    if para_id != filter.to_string() {
-                        continue;
-                    }
+                if self
+                    .para_id_filter
+                    .is_some_and(|filter| para_id != filter.to_string())
+                {
+                    continue;
                 }
 
                 let Some(commitments) = candidate_obj.get("commitments") else {
@@ -102,13 +103,13 @@ impl<'a> XcmDecoder<'a> {
                     commitments.get("upwardMessages").and_then(|v| v.as_array())
                 {
                     for msg in upward_msgs {
-                        if let Some(msg_data) = msg.as_str() {
-                            if !msg_data.is_empty() {
-                                messages.upward_messages.push(UpwardMessage {
-                                    origin_para_id: para_id.to_string(),
-                                    data: decode_xcm_message(msg_data),
-                                });
-                            }
+                        if let Some(msg_data) = msg.as_str()
+                            && !msg_data.is_empty()
+                        {
+                            messages.upward_messages.push(UpwardMessage {
+                                origin_para_id: para_id.to_string(),
+                                data: decode_xcm_message(msg_data),
+                            });
                         }
                     }
                 }
@@ -208,10 +209,11 @@ impl<'a> XcmDecoder<'a> {
                             .to_string();
 
                         // Apply paraId filter if specified
-                        if let Some(filter) = self.para_id_filter {
-                            if origin_para_id != filter.to_string() {
-                                continue;
-                            }
+                        if self
+                            .para_id_filter
+                            .is_some_and(|filter| origin_para_id != filter.to_string())
+                        {
+                            continue;
                         }
 
                         if !msg_data.is_empty() {
