@@ -1,7 +1,17 @@
 use axum::{Router, routing::get};
 
-use crate::{handlers::ahm, state::AppState};
+use crate::{
+    handlers::ahm,
+    routes::{API_VERSION, RegisterRoute, RouteRegistry},
+    state::AppState,
+};
 
-pub fn routes() -> Router<AppState> {
-    Router::new().route("/ahm-info", get(ahm::ahm_info))
+pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
+    Router::new().route_registered(
+        registry,
+        API_VERSION,
+        "/ahm-info",
+        "get",
+        get(ahm::ahm_info),
+    )
 }
