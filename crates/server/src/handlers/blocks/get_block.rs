@@ -171,19 +171,17 @@ async fn handle_standard_block_query(
     // Use decode_digest_logs from common.rs (returns DigestLog from types.rs)
     let logs = decode_digest_logs(&header_json);
 
-    if queried_by_hash {
-        if let Ok(Some(canonical_hash)) =
+    if queried_by_hash
+        && let Ok(Some(canonical_hash)) =
             get_canonical_hash_at_number(&state, resolved_block.number).await
-        {
-            if canonical_hash != resolved_block.hash {
-                tracing::warn!(
-                    "Block {} queried by hash {} is not on canonical chain (canonical: {})",
-                    resolved_block.number,
-                    resolved_block.hash,
-                    canonical_hash
-                );
-            }
-        }
+        && canonical_hash != resolved_block.hash
+    {
+        tracing::warn!(
+            "Block {} queried by hash {} is not on canonical chain (canonical: {})",
+            resolved_block.number,
+            resolved_block.hash,
+            canonical_hash
+        );
     }
 
     // Create client_at_block once and reuse for all operations
@@ -232,7 +230,10 @@ async fn handle_standard_block_query(
     let finalized = match get_finalized_block_number(&state).await {
         Ok(finalized_number) => resolved_block.number <= finalized_number,
         Err(e) => {
-            tracing::warn!("Failed to get finalized block number: {:?}, defaulting to false", e);
+            tracing::warn!(
+                "Failed to get finalized block number: {:?}, defaulting to false",
+                e
+            );
             false
         }
     };
@@ -249,7 +250,7 @@ async fn handle_standard_block_query(
     {
         extrinsic.events = extrinsic_events.clone();
         extrinsic.success = outcome.success;
-       if extrinsic.signature.is_some() {
+        if extrinsic.signature.is_some() {
             extrinsic.pays_fee = outcome.pays_fee;
         }
     }
@@ -264,22 +265,21 @@ async fn handle_standard_block_query(
         .unwrap_or(state.chain_info.spec_version);
 
     for (idx, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
-        if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
-            if let (Some(extrinsic_events), Some(outcome)) = (
-                per_extrinsic_events.get(idx),
-                extrinsic_outcomes.get(idx),
-            ) {
-                let fee_info = extract_fee_info_for_extrinsic(
-                    &state,
-                    &extrinsic.raw_hex,
-                    extrinsic_events,
-                    Some(outcome),
-                    &parent_hash,
-                    spec_version,
-                )
-                .await;
-                extrinsic.info = fee_info;
-            }
+        if extrinsic.signature.is_some()
+            && extrinsic.pays_fee == Some(true)
+            && let (Some(extrinsic_events), Some(outcome)) =
+                (per_extrinsic_events.get(idx), extrinsic_outcomes.get(idx))
+        {
+            let fee_info = extract_fee_info_for_extrinsic(
+                &state,
+                &extrinsic.raw_hex,
+                extrinsic_events,
+                Some(outcome),
+                &parent_hash,
+                spec_version,
+            )
+            .await;
+            extrinsic.info = fee_info;
         }
     }
 
@@ -402,11 +402,7 @@ async fn handle_rc_block_query(
         let client_at_block = match state.client.at(block_number).await {
             Ok(client) => client,
             Err(e) => {
-                tracing::warn!(
-                    "Failed to get client at block {}: {:?}",
-                    block_number,
-                    e
-                );
+                tracing::warn!("Failed to get client at block {}: {:?}", block_number, e);
                 continue;
             }
         };

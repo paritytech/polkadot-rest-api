@@ -7,7 +7,7 @@ mod transform;
 mod type_name_visitor;
 pub mod types;
 
+pub use common::{extract_digest_from_header, extract_fee_info_for_extrinsic};
 pub use get_block::get_block;
 pub use get_blocks_head_header::get_blocks_head_header;
-pub use common::{extract_digest_from_header, extract_fee_info_for_extrinsic};
 pub use types::ExtrinsicOutcome;
