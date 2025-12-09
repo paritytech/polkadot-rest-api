@@ -9,10 +9,7 @@ use staging_xcm::VersionedXcm;
 /// Decode a hex-encoded XCM message into a JSON value.
 /// Returns the decoded XCM instructions if successful, or the raw hex string if decoding fails.
 fn decode_xcm_message(hex_str: &str) -> Value {
-    // Strip 0x prefix if present
     let hex_clean = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-
-    // Convert hex to bytes
     let Ok(bytes) = hex::decode(hex_clean) else {
         return Value::String(hex_str.to_string());
     };
@@ -79,14 +76,12 @@ impl<'a> XcmDecoder<'a> {
                     continue;
                 };
 
-                // Get paraId from descriptor
                 let para_id = candidate_obj
                     .get("descriptor")
                     .and_then(|d| d.get("paraId"))
                     .and_then(|p| p.as_str())
                     .unwrap_or("0");
 
-                // Apply paraId filter if specified
                 if self
                     .para_id_filter
                     .is_some_and(|filter| para_id != filter.to_string())
@@ -156,14 +151,12 @@ impl<'a> XcmDecoder<'a> {
                 continue;
             };
 
-            // Get inbound_messages_data (polkadot-rest-api structure)
             let Some(inbound_data) = data.get("inbound_messages_data") else {
                 continue;
             };
 
             // Extract downward messages
             if let Some(downward) = inbound_data.get("downwardMessages") {
-                // Check fullMessages array
                 if let Some(full_msgs) = downward.get("fullMessages").and_then(|v| v.as_array()) {
                     for msg in full_msgs {
                         let sent_at = msg
@@ -190,7 +183,6 @@ impl<'a> XcmDecoder<'a> {
 
             // Extract horizontal messages
             if let Some(horizontal) = inbound_data.get("horizontalMessages") {
-                // Check fullMessages array
                 if let Some(full_msgs) = horizontal.get("fullMessages").and_then(|v| v.as_array()) {
                     for msg in full_msgs {
                         let sent_at = msg
