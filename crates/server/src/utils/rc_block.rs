@@ -1,6 +1,7 @@
 use parity_scale_codec::{Compact, Decode};
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashMap;
 use subxt_historic::{OnlineClient, SubstrateConfig};
 use subxt_rpcs::{RpcClient, rpc_params};
 use thiserror::Error;
@@ -118,9 +119,9 @@ pub struct BlockRcResponse {
     pub extrinsics_root: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author_id: Option<String>,
-    pub logs: Vec<crate::handlers::blocks::DigestLog>,
+    pub logs: Vec<crate::handlers::blocks::types::DigestLog>,
     pub on_initialize: OnInitializeFinalize,
-    pub extrinsics: Vec<crate::handlers::blocks::ExtrinsicInfo>,
+    pub extrinsics: Vec<crate::handlers::blocks::types::ExtrinsicInfo>,
     pub on_finalize: OnInitializeFinalize,
     pub finalized: bool,
     pub ah_timestamp: String,
@@ -148,17 +149,38 @@ pub struct DigestInfo {
     pub logs: Vec<DigestLog>,
 }
 
+/// DigestLog with dynamic key based on log type (preRuntime, consensus, seal, other)
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct DigestLog {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pre_runtime: Option<(String, String)>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub consensus: Option<(String, String)>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub seal: Option<(String, String)>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub other: Option<String>,
+    #[serde(flatten)]
+    pub inner: HashMap<String, serde_json::Value>,
+}
+
+impl DigestLog {
+    /// Create a new DigestLog with a tuple value (for preRuntime, consensus, seal)
+    pub fn with_tuple(log_type: &str, engine_id: String, data: String) -> Self {
+        let key = to_camel_case(log_type);
+        let mut inner = HashMap::new();
+        inner.insert(key, serde_json::json!([engine_id, data]));
+        Self { inner }
+    }
+
+    /// Create a new DigestLog with a single value (for other)
+    pub fn with_value(log_type: &str, data: String) -> Self {
+        let key = to_camel_case(log_type);
+        let mut inner = HashMap::new();
+        inner.insert(key, serde_json::json!(data));
+        Self { inner }
+    }
+}
+
+/// Convert PascalCase to camelCase
+fn to_camel_case(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => c.to_lowercase().collect::<String>() + chars.as_str(),
+    }
 }
 
 /// Find Asset Hub blocks that correspond to a specific Relay Chain block number
@@ -491,10 +513,10 @@ fn extract_bytes_from_json(json: &serde_json::Value) -> Option<Vec<u8>> {
         }
         serde_json::Value::Object(map) => {
             for field_name in ["data", "bytes", "0"] {
-                if let Some(field_value) = map.get(field_name) {
-                    if let Some(bytes) = extract_bytes_from_json(field_value) {
-                        return Some(bytes);
-                    }
+                if let Some(field_value) = map.get(field_name)
+                    && let Some(bytes) = extract_bytes_from_json(field_value)
+                {
+                    return Some(bytes);
                 }
             }
             map.values().next().and_then(extract_bytes_from_json)
@@ -506,7 +528,7 @@ fn extract_bytes_from_json(json: &serde_json::Value) -> Option<Vec<u8>> {
 fn extract_block_number_from_header(header_bytes: &[u8]) -> Option<u64> {
     use sp_core::H256;
 
-    let mut cursor = &header_bytes[..];
+    let mut cursor = header_bytes;
 
     let _parent_hash = H256::decode(&mut cursor).ok()?;
 

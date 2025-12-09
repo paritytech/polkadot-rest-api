@@ -2,11 +2,13 @@
 //!
 //! This module provides the main handler for fetching block information.
 
-use crate::handlers::blocks::common::{categorize_events, fetch_block_events};
-use crate::handlers::blocks::utils::{
-    DigestLog, ExtrinsicInfo, extract_author, extract_extrinsics, extract_header_fields,
-    is_block_finalized,
+use crate::handlers::blocks::common::{
+    add_docs_to_events, categorize_events, decode_digest_logs, extract_author, extract_extrinsics,
+    extract_fee_info_for_extrinsic, fetch_block_events, get_canonical_hash_at_number,
+    get_finalized_block_number,
 };
+use crate::handlers::blocks::docs::Docs;
+use crate::handlers::blocks::types::{BlockQueryParams, DigestLog, ExtrinsicInfo};
 use crate::state::AppState;
 use crate::utils::rc_block::RcBlockFullWithParachainsResponse;
 use crate::utils::{
@@ -19,7 +21,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use serde::Deserialize;
+use heck::{ToSnakeCase, ToUpperCamelCase};
 use serde::Serialize;
 use serde_json::json;
 use subxt_historic::error::{OnlineClientAtBlockError, StorageEntryIsNotAPlainValue, StorageError};
@@ -114,22 +116,19 @@ pub struct BlockResponse {
     pub finalized: bool,
 }
 
-/// Query parameters for /blocks/{blockId} endpoint
-#[derive(Debug, Deserialize)]
-pub struct GetBlockQueryParams {
-    /// When true, query Asset Hub blocks by Relay Chain block number
-    #[serde(default, rename = "useRcBlock")]
-    pub use_rc_block: Option<bool>,
-}
-
 /// Handler for GET /blocks/{blockId}
+///
+/// Query Parameters:
+/// - `eventDocs` (boolean, default: false): Include documentation for events
+/// - `extrinsicDocs` (boolean, default: false): Include documentation for extrinsics
+/// - `useRcBlock` (boolean, default: false): Query Asset Hub blocks by Relay Chain block number
 pub async fn get_block(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
-    Query(params): Query<GetBlockQueryParams>,
+    Query(params): Query<BlockQueryParams>,
 ) -> Result<Response, GetBlockError> {
     // Check if useRcBlock is enabled
-    if params.use_rc_block == Some(true) && state.has_asset_hub() {
+    if params.use_rc_block && state.has_asset_hub() {
         return handle_rc_block_query(state, block_id).await;
     }
 
@@ -141,28 +140,81 @@ async fn handle_standard_block_query(
     block_id: String,
 ) -> Result<Response, GetBlockError> {
     // Parse the block identifier
-    let block_id = block_id.parse::<utils::BlockId>()?;
-    // Track if the block was queried by hash (needed for canonical chain check)
-    let queried_by_hash = matches!(block_id, utils::BlockId::Hash(_));
-    let resolved_block = utils::resolve_block(&state, Some(block_id)).await?;
+    let block_id_parsed = block_id.parse::<utils::BlockId>()?;
+    let queried_by_hash = matches!(block_id_parsed, utils::BlockId::Hash(_));
+    let resolved_block = utils::resolve_block(&state, Some(block_id_parsed)).await?;
     let header_json = state
         .get_header_json(&resolved_block.hash)
         .await
         .map_err(GetBlockError::HeaderFetchFailed)?;
 
     // Extract header fields
-    let (parent_hash, state_root, extrinsics_root, logs) = extract_header_fields(&header_json)?;
+    let parent_hash = header_json
+        .get("parentHash")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("parentHash".to_string()))?
+        .to_string();
+
+    let state_root = header_json
+        .get("stateRoot")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("stateRoot".to_string()))?
+        .to_string();
+
+    let extrinsics_root = header_json
+        .get("extrinsicsRoot")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
+        .to_string();
+
+    // Use decode_digest_logs from common.rs (returns DigestLog from types.rs)
+    let logs = decode_digest_logs(&header_json);
+
+    if queried_by_hash {
+        if let Ok(Some(canonical_hash)) =
+            get_canonical_hash_at_number(&state, resolved_block.number).await
+        {
+            if canonical_hash != resolved_block.hash {
+                tracing::warn!(
+                    "Block {} queried by hash {} is not on canonical chain (canonical: {})",
+                    resolved_block.number,
+                    resolved_block.hash,
+                    canonical_hash
+                );
+            }
+        }
+    }
 
     // Create client_at_block once and reuse for all operations
     let client_at_block = state.client.at(resolved_block.number).await?;
 
     let (author_id, extrinsics_result, events_result) = tokio::join!(
-        extract_author(&state, resolved_block.number, &logs),
-        extract_extrinsics(&state, resolved_block.number),
+        extract_author(&state, &client_at_block, &logs, resolved_block.number),
+        extract_extrinsics(&state, &client_at_block, resolved_block.number),
         fetch_block_events(&state, &client_at_block, resolved_block.number),
     );
 
-    let extrinsics = extrinsics_result?;
+    let extrinsics = extrinsics_result.map_err(|e| match e {
+        crate::handlers::blocks::types::GetBlockError::StorageDecodeFailed(err) => {
+            GetBlockError::StorageDecodeFailed(err)
+        }
+        crate::handlers::blocks::types::GetBlockError::StorageFetchFailed(err) => {
+            GetBlockError::StorageFetchFailed(err)
+        }
+        crate::handlers::blocks::types::GetBlockError::ExtrinsicsFetchFailed(msg) => {
+            GetBlockError::ExtrinsicsFetchFailed(msg)
+        }
+        crate::handlers::blocks::types::GetBlockError::MissingSignatureBytes => {
+            GetBlockError::MissingSignatureBytes
+        }
+        crate::handlers::blocks::types::GetBlockError::MissingAddressBytes => {
+            GetBlockError::MissingAddressBytes
+        }
+        crate::handlers::blocks::types::GetBlockError::ExtrinsicDecodeFailed(msg) => {
+            GetBlockError::ExtrinsicDecodeFailed(msg)
+        }
+        _ => GetBlockError::ExtrinsicsFetchFailed(format!("Failed to extract extrinsics: {:?}", e)),
+    })?;
     let block_events = events_result.map_err(|e| match e {
         crate::handlers::blocks::types::GetBlockError::StorageDecodeFailed(err) => {
             GetBlockError::StorageDecodeFailed(err)
@@ -175,35 +227,29 @@ async fn handle_standard_block_query(
         )),
     })?;
 
-    // Determine if the block is finalized
-    let finalized = is_block_finalized(&state.rpc_client, &resolved_block.hash)
-        .await
-        .unwrap_or(false);
+    // Determine if the block is finalized by comparing block number with finalized block number
+    let finalized = match get_finalized_block_number(&state).await {
+        Ok(finalized_number) => resolved_block.number <= finalized_number,
+        Err(e) => {
+            tracing::warn!("Failed to get finalized block number: {:?}, defaulting to false", e);
+            false
+        }
+    };
 
     // Categorize events by phase and extract extrinsic outcomes (success, paysFee)
     let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
         categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
-    for (i, (extrinsic_events, outcome)) in per_extrinsic_events
+    for ((extrinsic_events, outcome), extrinsic) in per_extrinsic_events
         .iter()
         .zip(extrinsic_outcomes.iter())
-        .enumerate()
+        .zip(extrinsics_with_events.iter_mut())
     {
-        if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            extrinsic.events = extrinsic_events
-                .iter()
-                .map(|e| serde_json::to_value(e).unwrap_or(serde_json::Value::Null))
-                .collect();
-            extrinsic.success = outcome.success;
-            // Only update pays_fee from events if the extrinsic is SIGNED.
-            // Unsigned extrinsics (inherents) never pay fees, regardless of what
-            // DispatchInfo.paysFee says in the event. The event's paysFee indicates
-            // whether the call *would* pay a fee if called as a transaction, but
-            // inherents are inserted by block authors and don't actually pay fees.
-            if extrinsic.signature.is_some() {
-                extrinsic.pays_fee = outcome.pays_fee.unwrap_or(false);
-            }
+        extrinsic.events = extrinsic_events.clone();
+        extrinsic.success = outcome.success;
+       if extrinsic.signature.is_some() {
+            extrinsic.pays_fee = outcome.pays_fee;
         }
     }
 
@@ -216,10 +262,23 @@ async fn handle_standard_block_query(
         .map(|v| v as u32)
         .unwrap_or(state.chain_info.spec_version);
 
-    for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
-        if extrinsic.signature.is_some() && extrinsic.pays_fee {
-            // Fee info extraction would go here if needed
-            // For now, leaving it empty as extract_fee_info_for_extrinsic is not available
+    for (idx, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
+        if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
+            if let (Some(extrinsic_events), Some(outcome)) = (
+                per_extrinsic_events.get(idx),
+                extrinsic_outcomes.get(idx),
+            ) {
+                let fee_info = extract_fee_info_for_extrinsic(
+                    &state,
+                    &extrinsic.raw_hex,
+                    extrinsic_events,
+                    Some(outcome),
+                    &parent_hash,
+                    spec_version,
+                )
+                .await;
+                extrinsic.info = fee_info;
+            }
         }
     }
 
@@ -271,21 +330,31 @@ async fn handle_rc_block_query(
         let header_json: serde_json::Value = ah_rpc_client
             .request("chain_getHeader", rpc_params![ah_block.hash.clone()])
             .await
-            .map_err(|e| GetBlockError::HeaderFetchFailed(e))?;
+            .map_err(GetBlockError::HeaderFetchFailed)?;
 
         if header_json.is_null() {
             continue;
         }
 
-        // Extract header fields
-        let (parent_hash, state_root, extrinsics_root, logs) =
-            match extract_header_fields(&header_json) {
-                Ok(fields) => fields,
-                Err(e) => {
-                    tracing::warn!("Failed to extract header fields: {:?}", e);
-                    continue;
-                }
-            };
+        let parent_hash = header_json
+            .get("parentHash")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| GetBlockError::HeaderFieldMissing("parentHash".to_string()))?
+            .to_string();
+
+        let state_root = header_json
+            .get("stateRoot")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| GetBlockError::HeaderFieldMissing("stateRoot".to_string()))?
+            .to_string();
+
+        let extrinsics_root = header_json
+            .get("extrinsicsRoot")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
+            .to_string();
+
+        let logs = decode_digest_logs(&header_json);
 
         let number_hex = header_json
             .get("number")
@@ -299,9 +368,21 @@ async fn handle_rc_block_query(
 
         let number = block_number.to_string();
 
-        let author_id = extract_author(&state, block_number, &logs).await;
+        let client_at_block = match state.client.at(block_number).await {
+            Ok(client) => client,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to get client at block {}: {:?}",
+                    block_number,
+                    e
+                );
+                continue;
+            }
+        };
 
-        let extrinsics = match extract_extrinsics(&state, block_number).await {
+        let author_id = extract_author(&state, &client_at_block, &logs, block_number).await;
+
+        let extrinsics = match extract_extrinsics(&state, &client_at_block, block_number).await {
             Ok(exts) => exts,
             Err(e) => {
                 tracing::warn!(
@@ -317,32 +398,14 @@ async fn handle_rc_block_query(
             .await
             .unwrap_or_else(|| "0".to_string());
 
-        let finalized = {
-            let finalized_head: Option<String> = ah_rpc_client
-                .request("chain_getFinalizedHead", rpc_params![])
-                .await
-                .ok();
-
-            if let Some(finalized_hash) = finalized_head {
-                let finalized_header: Option<serde_json::Value> = ah_rpc_client
-                    .request("chain_getHeader", rpc_params![finalized_hash])
-                    .await
-                    .ok();
-
-                if let Some(header) = finalized_header {
-                    let finalized_number = header
-                        .get("number")
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| {
-                            u64::from_str_radix(s.strip_prefix("0x").unwrap_or(s), 16).ok()
-                        })
-                        .unwrap_or(0);
-
-                    block_number <= finalized_number
-                } else {
-                    false
-                }
-            } else {
+        let finalized = match get_finalized_block_number(&state).await {
+            Ok(finalized_number) => block_number <= finalized_number,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to get finalized block number for block {}: {:?}, defaulting to false",
+                    block_number,
+                    e
+                );
                 false
             }
         };
@@ -464,7 +527,7 @@ mod tests {
 
         let state = create_test_state_with_mock(mock_client);
         let block_id = "100".to_string();
-        let params = BlockQueryParams::default();
+        let params = GetBlockQueryParams::default();
 
         // Attempt to get the block - this will fail at metadata fetch in current setup
         // but validates the handler flow up to that point

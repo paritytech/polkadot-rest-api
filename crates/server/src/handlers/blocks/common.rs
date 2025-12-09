@@ -9,6 +9,7 @@ use heck::{ToLowerCamelCase, ToUpperCamelCase};
 use parity_scale_codec::Decode;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
+use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash as HashT;
 use subxt_historic::SubstrateConfig;
@@ -111,6 +112,63 @@ pub fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
             })
         })
         .collect()
+}
+
+/// Extract digest from header JSON for RC-specific responses
+/// This is used by get_blocks_head_header for useRcBlock=true responses
+pub fn extract_digest_from_header(header_json: &serde_json::Value) -> crate::utils::DigestInfo {
+    use crate::utils::DigestLog as RcDigestLog;
+
+    let logs = header_json
+        .get("digest")
+        .and_then(|d| d.get("logs"))
+        .and_then(|l| l.as_array())
+        .map(|logs_arr| {
+            logs_arr
+                .iter()
+                .filter_map(|log_hex| {
+                    let hex_str = log_hex.as_str()?;
+                    let hex_data = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+                    let bytes = hex::decode(hex_data).ok()?;
+
+                    if bytes.is_empty() {
+                        return None;
+                    }
+
+                    let mut cursor = &bytes[..];
+                    let digest_item = match DigestItem::decode(&mut cursor) {
+                        Ok(item) => item,
+                        Err(_) => return None,
+                    };
+
+                    match digest_item {
+                        DigestItem::PreRuntime(engine_id, data) => Some(RcDigestLog::with_tuple(
+                            "PreRuntime",
+                            format!("0x{}", hex::encode(engine_id)),
+                            format!("0x{}", hex::encode(data)),
+                        )),
+                        DigestItem::Consensus(engine_id, data) => Some(RcDigestLog::with_tuple(
+                            "Consensus",
+                            format!("0x{}", hex::encode(engine_id)),
+                            format!("0x{}", hex::encode(data)),
+                        )),
+                        DigestItem::Seal(engine_id, data) => Some(RcDigestLog::with_tuple(
+                            "Seal",
+                            format!("0x{}", hex::encode(engine_id)),
+                            format!("0x{}", hex::encode(data)),
+                        )),
+                        DigestItem::Other(data) => Some(RcDigestLog::with_value(
+                            "Other",
+                            format!("0x{}", hex::encode(data)),
+                        )),
+                        DigestItem::RuntimeEnvironmentUpdated => None,
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    crate::utils::DigestInfo { logs }
 }
 
 // ================================================================================================

@@ -37,6 +37,9 @@ pub struct BlockQueryParams {
     /// When true, include finalized status in response. When false, omit finalized field.
     #[serde(default = "default_true")]
     pub finalized_key: bool,
+    /// When true, query Asset Hub blocks by Relay Chain block number
+    #[serde(default)]
+    pub use_rc_block: bool,
 }
 
 fn default_true() -> bool {
@@ -50,6 +53,7 @@ impl Default for BlockQueryParams {
             extrinsic_docs: false,
             no_fees: false,
             finalized_key: true,
+            use_rc_block: false,
         }
     }
 }

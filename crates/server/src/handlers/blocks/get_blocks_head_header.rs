@@ -1,4 +1,4 @@
-use crate::handlers::blocks::utils::extract_digest_from_header;
+use crate::handlers::blocks::common::extract_digest_from_header;
 use crate::state::AppState;
 use crate::types::BlockHash;
 use crate::utils::rc_block::RcBlockHeaderWithParachainsResponse;
@@ -247,7 +247,7 @@ async fn handle_rc_block_query(
         let header_json: serde_json::Value = ah_rpc_client
             .request("chain_getHeader", rpc_params![ah_block.hash.clone()])
             .await
-            .map_err(|e| GetBlockHeadHeaderError::HeaderFetchFailed(e))?;
+            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
 
         if header_json.is_null() {
             continue;
