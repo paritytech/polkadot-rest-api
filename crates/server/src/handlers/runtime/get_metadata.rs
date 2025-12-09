@@ -4,7 +4,7 @@
 
 use crate::state::AppState;
 use crate::utils;
-use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
+use axum::{Json, extract::Path, extract::State, http::StatusCode, response::IntoResponse};
 use frame_metadata::v14 as v14_types;
 use frame_metadata::v15 as v15_types;
 use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
@@ -37,12 +37,26 @@ pub enum GetMetadataError {
 
     #[error("Unsupported metadata version")]
     UnsupportedVersion,
+
+    #[error(
+        "Invalid version format: {0}. Expected format 'vX' where X is a number (e.g., 'v14', 'v15')"
+    )]
+    InvalidVersionFormat(String),
+
+    #[error("Metadata version {0} is not available")]
+    VersionNotAvailable(u32),
+
+    #[error("Function 'metadata.metadataVersions()' is not available at this block height")]
+    MetadataVersionsNotAvailable,
 }
 
 impl IntoResponse for GetMetadataError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
-            GetMetadataError::InvalidBlockParam(_) | GetMetadataError::BlockResolveFailed(_) => {
+            GetMetadataError::InvalidBlockParam(_)
+            | GetMetadataError::BlockResolveFailed(_)
+            | GetMetadataError::InvalidVersionFormat(_)
+            | GetMetadataError::VersionNotAvailable(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
@@ -99,6 +113,156 @@ pub async fn runtime_metadata(
     );
 
     let metadata_prefixed = RuntimeMetadataPrefixed::decode(&mut &metadata_bytes[..])
+        .map_err(GetMetadataError::ScaleDecodeFailed)?;
+
+    let metadata = convert_metadata(&metadata_prefixed.1)?;
+
+    Ok(Json(RuntimeMetadataResponse {
+        magic_number: magic_number.to_string(),
+        metadata,
+    }))
+}
+
+/// Handler for GET /runtime/metadata/versions
+///
+/// Returns the available metadata versions at a given block.
+pub async fn runtime_metadata_versions(
+    State(state): State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+) -> Result<Json<Vec<String>>, GetMetadataError> {
+    let block_id = params
+        .at
+        .map(|s| s.parse::<crate::utils::BlockId>())
+        .transpose()?;
+    let resolved_block = utils::resolve_block(&state, block_id).await?;
+
+    // Call state_call with Metadata_metadata_versions
+    // The call takes no parameters, so we just encode empty bytes
+    let call_data = "0x".to_string();
+
+    let result: String = state
+        .rpc_client
+        .request(
+            "state_call",
+            rpc_params![
+                "Metadata_metadata_versions",
+                &call_data,
+                &resolved_block.hash
+            ],
+        )
+        .await
+        .map_err(|_| GetMetadataError::MetadataVersionsNotAvailable)?;
+
+    // Decode the result - it's a Vec<u32>
+    let hex_str = result.strip_prefix("0x").unwrap_or(&result);
+    let bytes = hex::decode(hex_str).map_err(GetMetadataError::HexDecodeFailed)?;
+
+    let versions: Vec<u32> =
+        Vec::<u32>::decode(&mut &bytes[..]).map_err(GetMetadataError::ScaleDecodeFailed)?;
+
+    // Convert to "vX" format matching Sidecar output
+    let version_strings: Vec<String> = versions.iter().map(|v| format!("{}", v)).collect();
+
+    Ok(Json(version_strings))
+}
+
+/// Handler for GET /runtime/metadata/{version}
+///
+/// Returns the metadata at a specific version.
+/// The version parameter should be in "vX" format (e.g., "v14", "v15").
+pub async fn runtime_metadata_versioned(
+    State(state): State<AppState>,
+    Path(version): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+) -> Result<Json<RuntimeMetadataResponse>, GetMetadataError> {
+    // Validate version format: must be vX or VX where X is a number
+    let version_regex = regex::Regex::new(r"^[vV](\d+)$").unwrap();
+    let version_num: u32 = match version_regex.captures(&version) {
+        Some(caps) => caps
+            .get(1)
+            .unwrap()
+            .as_str()
+            .parse()
+            .map_err(|_| GetMetadataError::InvalidVersionFormat(version.clone()))?,
+        None => return Err(GetMetadataError::InvalidVersionFormat(version.clone())),
+    };
+
+    let block_id = params
+        .at
+        .map(|s| s.parse::<crate::utils::BlockId>())
+        .transpose()?;
+    let resolved_block = utils::resolve_block(&state, block_id).await?;
+
+    // First, check if the version is available
+    let versions_call_data = "0x".to_string();
+    let versions_result: String = state
+        .rpc_client
+        .request(
+            "state_call",
+            rpc_params![
+                "Metadata_metadata_versions",
+                &versions_call_data,
+                &resolved_block.hash
+            ],
+        )
+        .await
+        .map_err(|_| GetMetadataError::MetadataVersionsNotAvailable)?;
+
+    let versions_hex = versions_result
+        .strip_prefix("0x")
+        .unwrap_or(&versions_result);
+    let versions_bytes = hex::decode(versions_hex).map_err(GetMetadataError::HexDecodeFailed)?;
+    let available_versions: Vec<u32> = Vec::<u32>::decode(&mut &versions_bytes[..])
+        .map_err(GetMetadataError::ScaleDecodeFailed)?;
+
+    if !available_versions.contains(&version_num) {
+        return Err(GetMetadataError::VersionNotAvailable(version_num));
+    }
+
+    // Call state_call with Metadata_metadata_at_version
+    // The parameter is a u32 encoded as SCALE
+    let version_encoded = parity_scale_codec::Encode::encode(&version_num);
+    let call_data = format!("0x{}", hex::encode(&version_encoded));
+
+    let result: String = state
+        .rpc_client
+        .request(
+            "state_call",
+            rpc_params![
+                "Metadata_metadata_at_version",
+                &call_data,
+                &resolved_block.hash
+            ],
+        )
+        .await
+        .map_err(GetMetadataError::RpcFailed)?;
+
+    // Decode the result - it's an Option<OpaqueMetadata>
+    let hex_str = result.strip_prefix("0x").unwrap_or(&result);
+    let bytes = hex::decode(hex_str).map_err(GetMetadataError::HexDecodeFailed)?;
+
+    // The result is Option<OpaqueMetadata> where OpaqueMetadata is Vec<u8>
+    // Option encoding: 0x00 = None, 0x01 + data = Some
+    if bytes.is_empty() || bytes[0] == 0 {
+        return Err(GetMetadataError::VersionNotAvailable(version_num));
+    }
+
+    // Skip the Option Some byte (0x01) and decode the inner Vec<u8>
+    let opaque_metadata: Vec<u8> =
+        Vec::<u8>::decode(&mut &bytes[1..]).map_err(GetMetadataError::ScaleDecodeFailed)?;
+
+    if opaque_metadata.len() < 4 {
+        return Err(GetMetadataError::MetadataTooShort);
+    }
+
+    // Magic number is the first 4 bytes as little-endian u32
+    let magic_number = u32::from_le_bytes(
+        opaque_metadata[0..4]
+            .try_into()
+            .map_err(|_| GetMetadataError::MetadataTooShort)?,
+    );
+
+    let metadata_prefixed = RuntimeMetadataPrefixed::decode(&mut &opaque_metadata[..])
         .map_err(GetMetadataError::ScaleDecodeFailed)?;
 
     let metadata = convert_metadata(&metadata_prefixed.1)?;
@@ -317,12 +481,7 @@ fn decode_constant_value(bytes: &[u8], type_id: u32, registry: &PortableRegistry
             }
             TypeDef::Composite(c) => {
                 // Handle specific newtype patterns that should be decoded to decimal
-                let type_name = ty
-                    .path
-                    .segments
-                    .last()
-                    .map(|s| s.as_str())
-                    .unwrap_or("");
+                let type_name = ty.path.segments.last().map(|s| s.as_str()).unwrap_or("");
 
                 // Decode single-field composite types:
                 // 1. ID-like types (ParaId, CoreIndex, etc.)
