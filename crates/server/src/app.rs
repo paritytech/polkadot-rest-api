@@ -1,18 +1,20 @@
 use crate::{logging::http_logger_middleware, routes, state::AppState};
-use axum::{Router, middleware};
+use axum::{Router, middleware, routing::get};
 use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
 
 pub fn create_app(state: AppState) -> Router {
     let request_limit = state.config.express.request_limit;
     let metrics_enabled = state.config.metrics.enabled;
+    let registry = &state.route_registry;
 
-    // Create v1 API router
+    // Create v1 API router with route registration
     let v1_routes = Router::new()
-        .merge(routes::ahm::routes())
-        .merge(routes::blocks::blocks_routes())
-        .merge(routes::health::routes())
-        .merge(routes::runtime::routes())
-        .merge(routes::version::routes())
+        .route("/", get(routes::root::root_handler))
+        .merge(routes::ahm::routes(registry))
+        .merge(routes::blocks::blocks_routes(registry))
+        .merge(routes::health::routes(registry))
+        .merge(routes::runtime::routes(registry))
+        .merge(routes::version::routes(registry))
         .with_state(state.clone());
 
     // Apply metrics middleware if enabled (needs to be after with_state)

@@ -312,6 +312,7 @@ mod tests {
             rpc_client,
             chain_info,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
+            route_registry: crate::routes::RouteRegistry::new(),
         }
     }
 
