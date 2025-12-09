@@ -317,12 +317,24 @@ fn decode_constant_value(bytes: &[u8], type_id: u32, registry: &PortableRegistry
             }
             TypeDef::Composite(c) => {
                 // Handle specific newtype patterns that should be decoded to decimal
-                // Only decode if this is a known "ID-like" type, not percentages like Permill/Perbill
-                let should_decode = ty.path.segments.iter().any(|s| {
+                let type_name = ty
+                    .path
+                    .segments
+                    .last()
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+
+                // Decode single-field composite types:
+                // 1. ID-like types (ParaId, CoreIndex, etc.)
+                // 2. Fixed-point types (FixedU128, etc.) - Sidecar decodes these to decimal strings
+                let is_id_type = ty.path.segments.iter().any(|s| {
                     let seg = s.as_str();
-                    // ParaId, CoreIndex, and similar ID types should be decoded
                     seg == "Id" || seg.ends_with("Id") || seg.ends_with("Index")
                 });
+
+                let is_fixed_point = type_name.starts_with("Fixed");
+
+                let should_decode = is_id_type || is_fixed_point;
 
                 if should_decode && c.fields.len() == 1 {
                     let field = &c.fields[0];
