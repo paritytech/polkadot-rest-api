@@ -156,66 +156,66 @@ impl<'a> XcmDecoder<'a> {
             };
 
             // Extract downward messages
-            if let Some(downward) = inbound_data.get("downwardMessages") {
-                if let Some(full_msgs) = downward.get("fullMessages").and_then(|v| v.as_array()) {
-                    for msg in full_msgs {
-                        let sent_at = msg
-                            .get("sentAt")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("0")
-                            .to_string();
-                        let msg_hex = msg
-                            .get("msg")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
+            if let Some(downward) = inbound_data.get("downwardMessages")
+                && let Some(full_msgs) = downward.get("fullMessages").and_then(|v| v.as_array())
+            {
+                for msg in full_msgs {
+                    let sent_at = msg
+                        .get("sentAt")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("0")
+                        .to_string();
+                    let msg_hex = msg
+                        .get("msg")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
 
-                        if !msg_hex.is_empty() {
-                            messages.downward_messages.push(DownwardMessage {
-                                sent_at,
-                                msg: msg_hex.clone(),
-                                data: decode_xcm_message(&msg_hex),
-                            });
-                        }
+                    if !msg_hex.is_empty() {
+                        messages.downward_messages.push(DownwardMessage {
+                            sent_at,
+                            msg: msg_hex.clone(),
+                            data: decode_xcm_message(&msg_hex),
+                        });
                     }
                 }
             }
 
             // Extract horizontal messages
-            if let Some(horizontal) = inbound_data.get("horizontalMessages") {
-                if let Some(full_msgs) = horizontal.get("fullMessages").and_then(|v| v.as_array()) {
-                    for msg in full_msgs {
-                        let sent_at = msg
-                            .get("sentAt")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string());
-                        let origin_para_id = msg
-                            .get("originParaId")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("0")
-                            .to_string();
-                        let msg_data = msg
-                            .get("data")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
+            if let Some(horizontal) = inbound_data.get("horizontalMessages")
+                && let Some(full_msgs) = horizontal.get("fullMessages").and_then(|v| v.as_array())
+            {
+                for msg in full_msgs {
+                    let sent_at = msg
+                        .get("sentAt")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let origin_para_id = msg
+                        .get("originParaId")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("0")
+                        .to_string();
+                    let msg_data = msg
+                        .get("data")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
 
-                        // Apply paraId filter if specified
-                        if self
-                            .para_id_filter
-                            .is_some_and(|filter| origin_para_id != filter.to_string())
-                        {
-                            continue;
-                        }
+                    // Apply paraId filter if specified
+                    if self
+                        .para_id_filter
+                        .is_some_and(|filter| origin_para_id != filter.to_string())
+                    {
+                        continue;
+                    }
 
-                        if !msg_data.is_empty() {
-                            messages.horizontal_messages.push(HorizontalMessage {
-                                origin_para_id,
-                                destination_para_id: None, // Not available for parachain perspective
-                                sent_at,
-                                data: decode_xcm_message(&msg_data),
-                            });
-                        }
+                    if !msg_data.is_empty() {
+                        messages.horizontal_messages.push(HorizontalMessage {
+                            origin_para_id,
+                            destination_para_id: None, // Not available for parachain perspective
+                            sent_at,
+                            data: decode_xcm_message(&msg_data),
+                        });
                     }
                 }
             }
