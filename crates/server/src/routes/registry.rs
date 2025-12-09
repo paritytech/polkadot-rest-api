@@ -35,17 +35,18 @@ impl RouteRegistry {
 
     /// Add a route to the registry.
     pub fn add(&self, path: &str, method: &str) {
-        if let Ok(mut routes) = self.0.write() {
-            routes.push(RouteInfo {
+        self.0
+            .write()
+            .expect("RouteRegistry lock poisoned")
+            .push(RouteInfo {
                 path: path.to_string(),
                 method: method.to_string(),
             });
-        }
     }
 
     /// Get all registered routes.
     pub fn routes(&self) -> Vec<RouteInfo> {
-        self.0.read().map(|r| r.clone()).unwrap_or_default()
+        self.0.read().expect("RouteRegistry lock poisoned").clone()
     }
 }
 
