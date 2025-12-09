@@ -7,11 +7,19 @@ use crate::{
 };
 
 pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
-    Router::new().route_registered(
-        registry,
-        API_VERSION,
-        "/runtime/spec",
-        "get",
-        get(runtime::runtime_spec),
-    )
+    Router::new()
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/runtime/spec",
+            "get",
+            get(runtime::runtime_spec),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/runtime/metadata",
+            "get",
+            get(runtime::runtime_metadata),
+        )
 }
