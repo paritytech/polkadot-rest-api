@@ -72,7 +72,10 @@ pub async fn runtime_code(
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
 ) -> Result<Json<RuntimeCodeResponse>, GetCodeError> {
     // Parse and resolve the block identifier
-    let block_id = params.at.map(|s| s.parse::<crate::utils::BlockId>()).transpose()?;
+    let block_id = params
+        .at
+        .map(|s| s.parse::<crate::utils::BlockId>())
+        .transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
 
     // Get the runtime code from storage using the well-known :code key
@@ -145,7 +148,9 @@ mod tests {
 
         let state = create_test_state_with_mock(mock_client);
         let params = AtBlockParam {
-            at: Some("0x1234567890123456789012345678901234567890123456789012345678901234".to_string()),
+            at: Some(
+                "0x1234567890123456789012345678901234567890123456789012345678901234".to_string(),
+            ),
         };
 
         let result = runtime_code(State(state), Query(params)).await;
@@ -182,7 +187,10 @@ mod tests {
 
         let response = result.unwrap().0;
         assert_eq!(response.at.height, "10000");
-        assert_eq!(response.at.hash, "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
+        assert_eq!(
+            response.at.hash,
+            "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        );
         assert_eq!(response.code, "0x0061736d0100000001");
     }
 
