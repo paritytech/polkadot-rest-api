@@ -129,15 +129,16 @@ pub async fn get_block(
 ) -> Result<Response, GetBlockError> {
     // Check if useRcBlock is enabled
     if params.use_rc_block && state.has_asset_hub() {
-        return handle_rc_block_query(state, block_id).await;
+        return handle_rc_block_query(state, block_id, params).await;
     }
 
-    handle_standard_block_query(state, block_id).await
+    handle_standard_block_query(state, block_id, params).await
 }
 
 async fn handle_standard_block_query(
     state: AppState,
     block_id: String,
+    params: BlockQueryParams,
 ) -> Result<Response, GetBlockError> {
     // Parse the block identifier
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
@@ -282,6 +283,35 @@ async fn handle_standard_block_query(
         }
     }
 
+    // Optionally populate documentation for events and extrinsics
+    let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
+
+    if params.event_docs || params.extrinsic_docs {
+        // Reuse the client_at_block we created earlier
+        let metadata = client_at_block.metadata();
+
+        if params.event_docs {
+            add_docs_to_events(&mut on_initialize.events, metadata);
+            add_docs_to_events(&mut on_finalize.events, metadata);
+
+            for extrinsic in extrinsics_with_events.iter_mut() {
+                add_docs_to_events(&mut extrinsic.events, metadata);
+            }
+        }
+
+        if params.extrinsic_docs {
+            for extrinsic in extrinsics_with_events.iter_mut() {
+                // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
+                // We need to convert back: "system" -> "System", "balances" -> "Balances"
+                // Method names in metadata are snake_case, but our method names are lowerCamelCase
+                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
+                let method_name = extrinsic.method.method.to_snake_case();
+                extrinsic.docs =
+                    Docs::for_call(metadata, &pallet_name, &method_name).map(|d| d.to_string());
+            }
+        }
+    }
+
     let response = BlockResponse {
         number: resolved_block.number.to_string(),
         hash: resolved_block.hash,
@@ -303,6 +333,7 @@ async fn handle_standard_block_query(
 async fn handle_rc_block_query(
     state: AppState,
     block_id: String,
+    _params: BlockQueryParams,
 ) -> Result<Response, GetBlockError> {
     // Parse blockId as RC block number
     let rc_block_number = block_id.parse::<u64>().map_err(|e| {
@@ -527,7 +558,7 @@ mod tests {
 
         let state = create_test_state_with_mock(mock_client);
         let block_id = "100".to_string();
-        let params = GetBlockQueryParams::default();
+        let params = BlockQueryParams::default();
 
         // Attempt to get the block - this will fail at metadata fetch in current setup
         // but validates the handler flow up to that point
