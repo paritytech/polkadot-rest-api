@@ -139,9 +139,9 @@ mod tests {
     fn test_default_log_config() {
         let config = LogConfig::default();
         assert_eq!(config.level, "info");
-        assert_eq!(config.json, false);
-        assert_eq!(config.strip_ansi, false);
-        assert_eq!(config.write, false);
+        assert!(!config.json);
+        assert!(!config.strip_ansi);
+        assert!(!config.write);
         assert_eq!(config.write_path, "./logs");
         assert_eq!(config.write_max_file_size, 5_242_880);
         assert_eq!(config.write_max_files, 5);
@@ -173,7 +173,7 @@ mod tests {
             strip_ansi: true,
             ..Default::default()
         };
-        assert_eq!(config.strip_ansi, true);
+        assert!(config.strip_ansi);
         assert!(config.validate().is_ok());
     }
 
@@ -183,7 +183,7 @@ mod tests {
             strip_ansi: false,
             ..Default::default()
         };
-        assert_eq!(config.strip_ansi, false);
+        assert!(!config.strip_ansi);
         assert!(config.validate().is_ok());
     }
 
@@ -193,7 +193,7 @@ mod tests {
             write: true,
             ..Default::default()
         };
-        assert_eq!(config.write, true);
+        assert!(config.write);
         assert!(config.validate().is_ok());
     }
 
@@ -203,7 +203,7 @@ mod tests {
             write: false,
             ..Default::default()
         };
-        assert_eq!(config.write, false);
+        assert!(!config.write);
         assert!(config.validate().is_ok());
     }
 

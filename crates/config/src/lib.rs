@@ -261,7 +261,7 @@ mod tests {
         assert_eq!(config.express.bind_host, "127.0.0.1");
         assert_eq!(config.express.port, 8080);
         assert_eq!(config.log.level, "info");
-        assert_eq!(config.log.json, false);
+        assert!(!config.log.json);
         assert_eq!(config.substrate.url, "ws://127.0.0.1:9944");
         assert_eq!(config.substrate.multi_chain_urls.len(), 0);
     }
