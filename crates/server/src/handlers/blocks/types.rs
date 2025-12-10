@@ -343,11 +343,8 @@ pub struct BlockResponse {
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct XcmMessages {
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub horizontal_messages: Vec<HorizontalMessage>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub downward_messages: Vec<DownwardMessage>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub upward_messages: Vec<UpwardMessage>,
 }
 
