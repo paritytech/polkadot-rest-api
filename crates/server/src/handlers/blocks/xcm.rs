@@ -2,18 +2,27 @@
 
 use super::types::{DownwardMessage, ExtrinsicInfo, HorizontalMessage, UpwardMessage, XcmMessages};
 use config::ChainType;
-use scale_info::PortableRegistry;
+use scale_info::{PortableRegistry, TypeDef};
 use scale_value::scale::decode_as_type;
 use serde_json::Value;
 
+/// Check if a type_id refers to a sequence type in the registry
+fn is_sequence_type(type_id: u32, registry: &PortableRegistry) -> bool {
+    registry
+        .resolve(type_id)
+        .is_some_and(|ty| matches!(ty.type_def, TypeDef::Sequence(_)))
+}
+
 /// Check if an array of values looks like a byte array (all u8 values 0-255)
+/// Requires at least 2 elements to avoid treating single compact integers as byte arrays
 fn is_byte_array(values: &[scale_value::Value<u32>]) -> bool {
-    values.iter().all(|v| {
-        matches!(
-            &v.value,
-            scale_value::ValueDef::Primitive(scale_value::Primitive::U128(n)) if *n <= 255
-        )
-    })
+    values.len() >= 2
+        && values.iter().all(|v| {
+            matches!(
+                &v.value,
+                scale_value::ValueDef::Primitive(scale_value::Primitive::U128(n)) if *n <= 255
+            )
+        })
 }
 
 /// Convert byte array to hex string
@@ -34,13 +43,23 @@ fn is_junction_variant(name: &str) -> bool {
 }
 
 /// Convert a scale_value::Value to serde_json::Value
-fn scale_value_to_json(value: scale_value::Value<u32>) -> Value {
+/// Uses the registry to distinguish between newtype wrappers (should unwrap)
+/// and sequence types like Vec<T> (should keep as array even with one element)
+fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRegistry) -> Value {
+    let type_id = value.context;
+    let is_sequence = is_sequence_type(type_id, registry);
+
     match value.value {
         scale_value::ValueDef::Composite(composite) => match composite {
             scale_value::Composite::Named(fields) => {
                 let map: serde_json::Map<String, Value> = fields
                     .into_iter()
-                    .map(|(name, val)| (to_lower_camel_case(&name), scale_value_to_json(val)))
+                    .map(|(name, val)| {
+                        (
+                            to_lower_camel_case(&name),
+                            scale_value_to_json(val, registry),
+                        )
+                    })
                     .collect();
                 Value::Object(map)
             }
@@ -49,15 +68,29 @@ fn scale_value_to_json(value: scale_value::Value<u32>) -> Value {
                 // Check if this looks like a byte array
                 if !fields_vec.is_empty() && is_byte_array(&fields_vec) {
                     Value::String(bytes_to_hex(&fields_vec))
-                } else if fields_vec.len() == 1 {
-                    // Single unnamed field - unwrap it
-                    scale_value_to_json(fields_vec.into_iter().next().unwrap())
+                } else if fields_vec.len() == 1 && !is_sequence {
+                    // Single unnamed field that's NOT a sequence - unwrap it (newtype wrapper)
+                    scale_value_to_json(fields_vec.into_iter().next().unwrap(), registry)
                 } else {
-                    Value::Array(fields_vec.into_iter().map(scale_value_to_json).collect())
+                    // Sequence type or multiple elements - keep as array
+                    Value::Array(
+                        fields_vec
+                            .into_iter()
+                            .map(|v| scale_value_to_json(v, registry))
+                            .collect(),
+                    )
                 }
             }
         },
         scale_value::ValueDef::Variant(variant) => {
+            // TODO: This is a temporary patch for Option::None handling.
+            // The broader enum serialization issue is being addressed separately.
+            // Once that's resolved, this special case can be removed.
+            // ref: https://github.com/paritytech/polkadot-rest-api/issues/79
+            if variant.name == "None" {
+                return Value::Null;
+            }
+
             let name = to_lower_camel_case(&variant.name);
             let is_junction = is_junction_variant(&variant.name);
 
@@ -65,20 +98,31 @@ fn scale_value_to_json(value: scale_value::Value<u32>) -> Value {
                 scale_value::Composite::Named(fields) if !fields.is_empty() => {
                     let map: serde_json::Map<String, Value> = fields
                         .into_iter()
-                        .map(|(n, v)| (to_lower_camel_case(&n), scale_value_to_json(v)))
+                        .map(|(n, v)| (to_lower_camel_case(&n), scale_value_to_json(v, registry)))
                         .collect();
                     Value::Object(map)
                 }
                 scale_value::Composite::Unnamed(fields) if !fields.is_empty() => {
                     let fields_vec: Vec<_> = fields.into_iter().collect();
-                    // Check if this looks like a byte array
                     if !fields_vec.is_empty() && is_byte_array(&fields_vec) {
                         Value::String(bytes_to_hex(&fields_vec))
                     } else if fields_vec.len() == 1 && !is_junction {
-                        scale_value_to_json(fields_vec.into_iter().next().unwrap())
+                        let inner_type_id = fields_vec[0].context;
+                        if is_sequence_type(inner_type_id, registry) {
+                            // It's a sequence, keep recursing but don't unwrap here
+                            scale_value_to_json(fields_vec.into_iter().next().unwrap(), registry)
+                        } else {
+                            // Not a sequence, unwrap the newtype wrapper
+                            scale_value_to_json(fields_vec.into_iter().next().unwrap(), registry)
+                        }
                     } else {
-                        // For junctions (X1, X2, etc), always output as array
-                        Value::Array(fields_vec.into_iter().map(scale_value_to_json).collect())
+                        // For junctions (X1, X2, etc) or multi-element, output as array
+                        Value::Array(
+                            fields_vec
+                                .into_iter()
+                                .map(|v| scale_value_to_json(v, registry))
+                                .collect(),
+                        )
                     }
                 }
                 _ => Value::Null,
@@ -162,7 +206,7 @@ fn decode_xcm_message(hex_str: &str) -> Value {
     match decode_as_type(&mut &bytes[..], type_id, &registry) {
         Ok(value) => {
             // Wrap in array to match sidecar format: "data": [{ "v4": [...] }]
-            Value::Array(vec![scale_value_to_json(value)])
+            Value::Array(vec![scale_value_to_json(value, &registry)])
         }
         Err(_) => Value::String(hex_str.to_string()),
     }
