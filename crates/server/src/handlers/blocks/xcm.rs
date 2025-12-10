@@ -2,9 +2,150 @@
 
 use super::types::{DownwardMessage, ExtrinsicInfo, HorizontalMessage, UpwardMessage, XcmMessages};
 use config::ChainType;
-use parity_scale_codec::Decode;
+use scale_info::PortableRegistry;
+use scale_value::scale::decode_as_type;
 use serde_json::Value;
-use staging_xcm::VersionedXcm;
+
+/// Check if an array of values looks like a byte array (all u8 values 0-255)
+fn is_byte_array(values: &[scale_value::Value<u32>]) -> bool {
+    values.iter().all(|v| {
+        matches!(
+            &v.value,
+            scale_value::ValueDef::Primitive(scale_value::Primitive::U128(n)) if *n <= 255
+        )
+    })
+}
+
+/// Convert byte array to hex string
+fn bytes_to_hex(values: &[scale_value::Value<u32>]) -> String {
+    let bytes: Vec<u8> = values
+        .iter()
+        .filter_map(|v| match &v.value {
+            scale_value::ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n as u8),
+            _ => None,
+        })
+        .collect();
+    format!("0x{}", hex::encode(bytes))
+}
+
+/// Check if variant name is an X1, X2, etc junction
+fn is_junction_variant(name: &str) -> bool {
+    matches!(name, "X1" | "X2" | "X3" | "X4" | "X5" | "X6" | "X7" | "X8")
+}
+
+/// Convert a scale_value::Value to serde_json::Value
+fn scale_value_to_json(value: scale_value::Value<u32>) -> Value {
+    match value.value {
+        scale_value::ValueDef::Composite(composite) => match composite {
+            scale_value::Composite::Named(fields) => {
+                let map: serde_json::Map<String, Value> = fields
+                    .into_iter()
+                    .map(|(name, val)| (to_lower_camel_case(&name), scale_value_to_json(val)))
+                    .collect();
+                Value::Object(map)
+            }
+            scale_value::Composite::Unnamed(fields) => {
+                let fields_vec: Vec<_> = fields.into_iter().collect();
+                // Check if this looks like a byte array
+                if !fields_vec.is_empty() && is_byte_array(&fields_vec) {
+                    Value::String(bytes_to_hex(&fields_vec))
+                } else if fields_vec.len() == 1 {
+                    // Single unnamed field - unwrap it
+                    scale_value_to_json(fields_vec.into_iter().next().unwrap())
+                } else {
+                    Value::Array(fields_vec.into_iter().map(scale_value_to_json).collect())
+                }
+            }
+        },
+        scale_value::ValueDef::Variant(variant) => {
+            let name = to_lower_camel_case(&variant.name);
+            let is_junction = is_junction_variant(&variant.name);
+
+            let inner = match variant.values {
+                scale_value::Composite::Named(fields) if !fields.is_empty() => {
+                    let map: serde_json::Map<String, Value> = fields
+                        .into_iter()
+                        .map(|(n, v)| (to_lower_camel_case(&n), scale_value_to_json(v)))
+                        .collect();
+                    Value::Object(map)
+                }
+                scale_value::Composite::Unnamed(fields) if !fields.is_empty() => {
+                    let fields_vec: Vec<_> = fields.into_iter().collect();
+                    // Check if this looks like a byte array
+                    if !fields_vec.is_empty() && is_byte_array(&fields_vec) {
+                        Value::String(bytes_to_hex(&fields_vec))
+                    } else if fields_vec.len() == 1 && !is_junction {
+                        scale_value_to_json(fields_vec.into_iter().next().unwrap())
+                    } else {
+                        // For junctions (X1, X2, etc), always output as array
+                        Value::Array(fields_vec.into_iter().map(scale_value_to_json).collect())
+                    }
+                }
+                _ => Value::Null,
+            };
+            let mut map = serde_json::Map::new();
+            map.insert(name, inner);
+            Value::Object(map)
+        }
+        scale_value::ValueDef::Primitive(prim) => match prim {
+            scale_value::Primitive::Bool(b) => Value::Bool(b),
+            scale_value::Primitive::Char(c) => Value::String(c.to_string()),
+            scale_value::Primitive::String(s) => Value::String(s),
+            scale_value::Primitive::U128(n) => Value::String(n.to_string()),
+            scale_value::Primitive::I128(n) => Value::String(n.to_string()),
+            scale_value::Primitive::U256(n) => Value::String(format!("{:?}", n)),
+            scale_value::Primitive::I256(n) => Value::String(format!("{:?}", n)),
+        },
+        scale_value::ValueDef::BitSequence(bits) => {
+            // Convert bit sequence to hex string
+            let bytes: Vec<u8> = bits
+                .iter()
+                .collect::<Vec<_>>()
+                .chunks(8)
+                .map(|chunk| {
+                    chunk
+                        .iter()
+                        .enumerate()
+                        .fold(0u8, |acc, (i, &bit)| acc | ((bit as u8) << i))
+                })
+                .collect();
+            Value::String(format!("0x{}", hex::encode(bytes)))
+        }
+    }
+}
+
+/// Convert to lowerCamelCase (first letter lowercase, preserve rest)
+/// Examples: "WithdrawAsset" -> "withdrawAsset", "V4" -> "v4", "AccountKey20" -> "accountKey20"
+fn to_lower_camel_case(s: &str) -> String {
+    let mut result = String::new();
+    let mut chars = s.chars().peekable();
+    let mut first = true;
+
+    while let Some(c) = chars.next() {
+        if c == '_' {
+            // Skip underscore, capitalize next char
+            if let Some(&next) = chars.peek() {
+                chars.next();
+                result.push(next.to_ascii_uppercase());
+            }
+        } else if first {
+            // First character is always lowercase
+            result.push(c.to_ascii_lowercase());
+            first = false;
+        } else {
+            // Preserve original case for rest
+            result.push(c);
+        }
+    }
+    result
+}
+
+/// Build a portable registry containing just the VersionedXcm type
+fn build_xcm_registry() -> (PortableRegistry, u32) {
+    let mut registry = scale_info::Registry::new();
+    let type_id = registry.register_type(&scale_info::meta_type::<staging_xcm::VersionedXcm<()>>());
+    (registry.into(), type_id.id)
+}
 
 /// Decode a hex-encoded XCM message into a JSON value.
 /// Returns the decoded XCM instructions if successful, or the raw hex string if decoding fails.
@@ -14,12 +155,14 @@ fn decode_xcm_message(hex_str: &str) -> Value {
         return Value::String(hex_str.to_string());
     };
 
-    // Try to decode as VersionedXcm
-    // Note: VersionedXcm<()> uses () as the Call type since we don't need to decode calls
-    match VersionedXcm::<()>::decode(&mut &bytes[..]) {
-        Ok(xcm) => {
-            // Format the XCM as a debug string since VersionedXcm doesn't implement Serialize
-            Value::String(format!("{:?}", xcm))
+    // Build registry with VersionedXcm type
+    let (registry, type_id) = build_xcm_registry();
+
+    // Decode using scale-value for proper JSON serialization
+    match decode_as_type(&mut &bytes[..], type_id, &registry) {
+        Ok(value) => {
+            // Wrap in array to match sidecar format: "data": [{ "v4": [...] }]
+            Value::Array(vec![scale_value_to_json(value)])
         }
         Err(_) => Value::String(hex_str.to_string()),
     }
@@ -66,6 +209,7 @@ impl<'a> XcmDecoder<'a> {
             let Some(data) = extrinsic.args.get("data") else {
                 continue;
             };
+
             let Some(backed_candidates) = data.get("backedCandidates").and_then(|v| v.as_array())
             else {
                 continue;
@@ -94,17 +238,29 @@ impl<'a> XcmDecoder<'a> {
                 };
 
                 // Extract upward messages
-                if let Some(upward_msgs) =
-                    commitments.get("upwardMessages").and_then(|v| v.as_array())
-                {
-                    for msg in upward_msgs {
-                        if let Some(msg_data) = msg.as_str()
-                            && !msg_data.is_empty()
-                        {
+                // upwardMessages can be either:
+                // 1. An array of hex strings (when there are multiple messages or empty)
+                // 2. A single hex string (when there's one message - this is how subxt decodes it)
+                if let Some(upward_value) = commitments.get("upwardMessages") {
+                    if let Some(msg_data) = upward_value.as_str() {
+                        // Single hex string - decode it directly
+                        if !msg_data.is_empty() && msg_data != "0x" {
                             messages.upward_messages.push(UpwardMessage {
                                 origin_para_id: para_id.to_string(),
                                 data: decode_xcm_message(msg_data),
                             });
+                        }
+                    } else if let Some(upward_msgs) = upward_value.as_array() {
+                        // Array of hex strings
+                        for msg in upward_msgs {
+                            if let Some(msg_data) = msg.as_str()
+                                && !msg_data.is_empty()
+                            {
+                                messages.upward_messages.push(UpwardMessage {
+                                    origin_para_id: para_id.to_string(),
+                                    data: decode_xcm_message(msg_data),
+                                });
+                            }
                         }
                     }
                 }
