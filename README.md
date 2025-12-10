@@ -6,6 +6,24 @@
 
 Logging levels supported are ```race, debug, info, http, warn, error```. **http** level allows for the emission of http information logging (method, route, elapsed time, success code). However currently tracing does not support *http*.  To mitigate this, **http** level falls back to *debug* for successful logs, *warn* for 4** request logs, and *error* for 5**
 
+## Metrics and Monitoring
+
+The API exposes Prometheus metrics at `/metrics`. To enable metrics collection, set:
+
+```bash
+export SAS_METRICS_ENABLED=true
+```
+
+A sample Grafana dashboard is provided in `metrics/grafana/provisioning/dashboards/` for visualizing metrics.
+
+### docker compose
+
+When running locally with `docker compose`, the Grafana dashboard is accessible at http://localhost:3000/d/polkadot-rest-api
+
+If needed, the login and password for grafana are set to "admin" and "admin" respectfully.
+
+Prometheus is accessible at http://localhost:9090/
+
 ## Benchmarks
 
 ### Benchmark Workflows
