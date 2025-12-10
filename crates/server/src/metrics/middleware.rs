@@ -1,9 +1,11 @@
 use axum::{
+    body::Body,
     extract::{MatchedPath, Request, State},
     http::StatusCode,
     middleware::Next,
     response::Response,
 };
+use http_body_util::BodyExt;
 use std::time::Instant;
 
 use crate::state::AppState;
@@ -115,13 +117,14 @@ pub async fn metrics_middleware(
         .with_label_values(&[&method, &route, &status_code])
         .observe(duration);
 
-    // Try to get response size from content-length header
-    let response_size = response
-        .headers()
-        .get("content-length")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.parse::<f64>().ok())
-        .unwrap_or(0.0);
+    // Collect the response body to measure its size
+    let (parts, body) = response.into_parts();
+    let bytes = body
+        .collect()
+        .await
+        .map(|collected| collected.to_bytes())
+        .unwrap_or_default();
+    let response_size = bytes.len() as f64;
 
     if response_size > 0.0 {
         // Record response size
@@ -138,7 +141,8 @@ pub async fn metrics_middleware(
         }
     }
 
-    Ok(response)
+    // Reconstruct the response with the collected body
+    Ok(Response::from_parts(parts, Body::from(bytes)))
 }
 
 /// Extension trait for recording block-specific metrics in handlers
