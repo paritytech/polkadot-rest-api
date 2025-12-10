@@ -836,7 +836,7 @@ pub async fn extract_extrinsics(
         for field in fields.iter() {
             let field_name = field.name();
             // Keep field names as-is (snake_case from SCALE metadata)
-            // Only nested object keys are transformed to camelCase via transform_json_unified
+            // Only nested object keys are transformed to camelCase via 
             let field_key = field_name.to_string();
 
             // Use the visitor pattern to get type information
@@ -901,18 +901,32 @@ pub async fn extract_extrinsics(
                 // If we failed to decode as account types, fall through to Value<()> decoding
             }
 
-            // For non-account fields (or account fields that failed to decode), use the ToPjsOutputVisitor
+            // For non-account fields use the ToPjsOutputVisitor
             // This properly handles basic vs non-basic enum serialization
             use super::enum_visitor::ToPjsOutputVisitor;
 
             match field.visit(ToPjsOutputVisitor::new(
-                &resolver,
-                state.chain_info.ss58_prefix,
+                &resolver
             )) {
                 Ok(json_value) => {
+                    // tracing::error!(
+                    //     "Field '{}' in {}.{} decoded as JSON: {:?}",
+                    //     field_key,
+                    //     pallet_name,
+                    //     method_name,
+                    //     json_value
+                    // );
+
                     args_map.insert(field_key, json_value);
-                }
+                },
                 Err(_e) => {
+                    tracing::error!(
+                        "Failed to decode field '{}' in {}.{} using ToPjsOutputVisitor: {:?}",
+                        field_name,
+                        pallet_name,
+                        method_name,
+                        _e
+                    );
                     // If we failed to decode as enum types, fall through to Value<()> decoding
                     match field.decode_as::<scale_value::Value<()>>() {
                         Ok(value) => {
