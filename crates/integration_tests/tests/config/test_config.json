@@ -12,7 +12,7 @@
       "test_accounts": [],
       "extra": {}
     },
-    {
+    { 
       "name": "westend",
       "api_url": "http://localhost:8080",
       "test_accounts": [],
@@ -105,6 +105,14 @@
     ],
     "kusama": [
       {
+        "endpoint": "/v1/runtime/spec",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "5000000" },
+        "fixture_path": "kusama/runtime_spec_5000000.json",
+        "description": "Test runtime spec at Kusama block 5,000,000"
+      },
+      {
         "endpoint": "/v1/runtime/code",
         "block_height": null,
         "account_id": null,
@@ -122,6 +130,14 @@
       }
     ],
     "asset-hub-polkadot": [
+      {
+        "endpoint": "/v1/runtime/spec",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "10260000" },
+        "fixture_path": "asset-hub-polkadot/runtime_spec_10260000.json",
+        "description": "Test runtime spec at Asset Hub Polkadot block 10,260,000"
+      },
       {
         "endpoint": "/v1/runtime/code",
         "block_height": null,
@@ -148,6 +164,14 @@
       }
     ],
     "asset-hub-kusama": [
+      {
+        "endpoint": "/v1/runtime/spec",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "11152000" },
+        "fixture_path": "asset-hub-kusama/runtime_spec_11152000.json",
+        "description": "Test runtime spec at Asset Hub Kusama block 11,152,000"
+      },
       {
         "endpoint": "/v1/runtime/code",
         "block_height": null,

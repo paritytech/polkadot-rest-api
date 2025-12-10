@@ -1,0 +1,24 @@
+{
+	"at": {
+		"height": "5000000",
+		"hash": "0xe360cc614f6de435a6e1e2598795aca7ca9dfc658b84ecf8e7139b89d7a161e3"
+	},
+	"authoringVersion": "2",
+	"transactionVersion": "3",
+	"implVersion": "0",
+	"specName": "kusama",
+	"specVersion": "2026",
+	"chainType": {
+		"live": null
+	},
+	"properties": {
+		"isEthereum": false,
+		"ss58Format": "2",
+		"tokenDecimals": [
+			"12"
+		],
+		"tokenSymbol": [
+			"KSM"
+		]
+	}
+}
