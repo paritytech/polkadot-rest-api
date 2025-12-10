@@ -20,8 +20,17 @@ services:
       SAS_SUBSTRATE_URL: ws://polkadot:9944
       # SAS_SUBSTRATE_URL: wss://rpc.polkadot.io
       SAS_METRICS_ENABLED: "true"
+      SAS_METRICS_LOKI_HOST: loki
     depends_on:
       - polkadot
+      - loki
+
+  loki:
+    container_name: loki
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
 
   prometheus:
     container_name: prometheus

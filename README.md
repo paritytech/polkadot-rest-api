@@ -24,6 +24,8 @@ If needed, the login and password for grafana are set to "admin" and "admin" res
 
 Prometheus is accessible at http://localhost:9090/
 
+Loki logs can be viewed in Grafana at Explore > Loki (select Loki as the datasource and query with `{service_name="polkadot-rest-api"}`)
+
 ## Benchmarks
 
 ### Benchmark Workflows
