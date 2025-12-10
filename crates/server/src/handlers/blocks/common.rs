@@ -901,21 +901,12 @@ pub async fn extract_extrinsics(
                 // If we failed to decode as account types, fall through to Value<()> decoding
             }
 
-            // For non-account fields use the ToPjsOutputVisitor
-            // This properly handles basic vs non-basic enum serialization
             use super::enum_visitor::ToPjsOutputVisitor;
 
             match field.visit(ToPjsOutputVisitor::new(
                 &resolver
             )) {
                 Ok(json_value) => {
-                    // tracing::error!(
-                    //     "Field '{}' in {}.{} decoded as JSON: {:?}",
-                    //     field_key,
-                    //     pallet_name,
-                    //     method_name,
-                    //     json_value
-                    // );
 
                     args_map.insert(field_key, json_value);
                 },
