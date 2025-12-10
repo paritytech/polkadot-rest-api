@@ -2,6 +2,7 @@
 
 use super::types::{DownwardMessage, ExtrinsicInfo, HorizontalMessage, UpwardMessage, XcmMessages};
 use config::ChainType;
+use heck::ToLowerCamelCase;
 use scale_info::{PortableRegistry, TypeDef};
 use scale_value::scale::decode_as_type;
 use serde_json::Value;
@@ -56,7 +57,7 @@ fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRegist
                     .into_iter()
                     .map(|(name, val)| {
                         (
-                            to_lower_camel_case(&name),
+                            name.to_lower_camel_case(),
                             scale_value_to_json(val, registry),
                         )
                     })
@@ -91,14 +92,14 @@ fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRegist
                 return Value::Null;
             }
 
-            let name = to_lower_camel_case(&variant.name);
+            let name = variant.name.to_lower_camel_case();
             let is_junction = is_junction_variant(&variant.name);
 
             let inner = match variant.values {
                 scale_value::Composite::Named(fields) if !fields.is_empty() => {
                     let map: serde_json::Map<String, Value> = fields
                         .into_iter()
-                        .map(|(n, v)| (to_lower_camel_case(&n), scale_value_to_json(v, registry)))
+                        .map(|(n, v)| (n.to_lower_camel_case(), scale_value_to_json(v, registry)))
                         .collect();
                     Value::Object(map)
                 }
@@ -156,32 +157,6 @@ fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRegist
             Value::String(format!("0x{}", hex::encode(bytes)))
         }
     }
-}
-
-/// Convert to lowerCamelCase (first letter lowercase, preserve rest)
-/// Examples: "WithdrawAsset" -> "withdrawAsset", "V4" -> "v4", "AccountKey20" -> "accountKey20"
-fn to_lower_camel_case(s: &str) -> String {
-    let mut result = String::new();
-    let mut chars = s.chars().peekable();
-    let mut first = true;
-
-    while let Some(c) = chars.next() {
-        if c == '_' {
-            // Skip underscore, capitalize next char
-            if let Some(&next) = chars.peek() {
-                chars.next();
-                result.push(next.to_ascii_uppercase());
-            }
-        } else if first {
-            // First character is always lowercase
-            result.push(c.to_ascii_lowercase());
-            first = false;
-        } else {
-            // Preserve original case for rest
-            result.push(c);
-        }
-    }
-    result
 }
 
 /// Build a portable registry containing just the VersionedXcm type
