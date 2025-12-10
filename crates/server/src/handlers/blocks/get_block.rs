@@ -204,16 +204,7 @@ pub async fn get_block(
             &extrinsics_with_events,
             params.para_id,
         );
-        let messages = decoder.decode();
-        // Only include if there are any messages
-        if messages.upward_messages.is_empty()
-            && messages.downward_messages.is_empty()
-            && messages.horizontal_messages.is_empty()
-        {
-            None
-        } else {
-            Some(messages)
-        }
+        Some(decoder.decode())
     } else {
         None
     };
