@@ -272,64 +272,12 @@ pub fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
                 // Fall through to regular object handling
             }
 
-            // Detect if this object is a "commitments" context by checking for characteristic sibling keys.
-            let is_commitments_context = map.contains_key("upward_messages")
-                || map.contains_key("upwardMessages")
-                || map.contains_key("hrmp_watermark")
-                || map.contains_key("hrmpWatermark")
-                || map.contains_key("head_data")
-                || map.contains_key("headData")
-                || map.contains_key("processed_downward_messages")
-                || map.contains_key("processedDownwardMessages");
-
             // Regular object: transform keys from snake_case to camelCase and recurse
             let transformed: serde_json::Map<String, Value> = map
                 .into_iter()
                 .map(|(key, val)| {
                     let camel_key = key.to_lower_camel_case();
-                    let mut transformed_val = transform_json_unified(val, ss58_prefix);
-                    // horizontalMessages can be either:
-                    // 1. A Map (object) in inherent data (extrinsics[].args.data.horizontalMessages) - scale_value represents as [] or [[key, value], ...]
-                    // 2. A Vec (array) in CandidateCommitments (candidate.commitments.horizontalMessages) - should remain as array
-                    // 3. An Array in decoded XCM messages (decodedXcmMsgs.horizontalMessages) - should remain as array
-                    //
-                    // We detect the context:
-                    // - If in commitments context (has sibling keys like upwardMessages, hrmpWatermark), keep as array
-                    // - If array of tuples [[key, value], ...], it's a Map and should be converted to object
-                    // - If empty array in inherent data context (ss58_prefix.is_some() and not commitments), convert to {}
-                    if camel_key == "horizontalMessages"
-                        && !is_commitments_context
-                        && let Value::Array(arr) = &transformed_val
-                    {
-                        let is_map_format = !arr.is_empty()
-                            && arr.iter().any(
-                                |item| matches!(item, Value::Array(tuple) if tuple.len() == 2),
-                            );
-
-                        if is_map_format {
-                            let mut obj = serde_json::Map::new();
-                            for item in arr {
-                                if let Value::Array(tuple) = item
-                                    && tuple.len() == 2
-                                {
-                                    let key = match &tuple[0] {
-                                        Value::String(s) => s.clone(),
-                                        Value::Number(n) => n.to_string(),
-                                        _ => continue,
-                                    };
-                                    obj.insert(
-                                        key,
-                                        transform_json_unified(tuple[1].clone(), ss58_prefix),
-                                    );
-                                }
-                            }
-                            transformed_val = Value::Object(obj);
-                        } else if arr.is_empty() && ss58_prefix.is_some() {
-                            transformed_val = Value::Object(serde_json::Map::new());
-                        }
-                        // If array is not empty and not Map format, leave as array (decodedXcmMsgs or commitments)
-                    }
-                    (camel_key, transformed_val)
+                    (camel_key, transform_json_unified(val, ss58_prefix))
                 })
                 .collect();
             Value::Object(transformed)
