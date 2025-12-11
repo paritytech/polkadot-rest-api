@@ -5,3 +5,6 @@ CLAUDE.md
 
 ## DS_Store
 **/.DS_Store
+
+# Grafana runtime data
+metrics/grafana/data/

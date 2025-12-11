@@ -42,6 +42,7 @@ lazy_static = "1.4"
 regex = "1.10"
 tracing-loki = "0.2"
 url = "2.5"
+http-body-util = "0.1"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
