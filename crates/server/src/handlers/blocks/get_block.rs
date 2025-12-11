@@ -89,10 +89,7 @@ async fn handle_use_rc_block(
         .await
         .map_err(|e| {
             GetBlockError::HeaderFetchFailed(subxt_rpcs::Error::Client(Box::new(
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to find Asset Hub blocks: {}", e),
-                ),
+                std::io::Error::other(format!("Failed to find Asset Hub blocks: {}", e)),
             )))
         })?;
 
@@ -105,27 +102,22 @@ async fn handle_use_rc_block(
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {
-        let mut response = build_block_response_for_hash(
-            &state,
-            &ah_block.hash,
-            ah_block.number,
-            true,
-            &params,
-        )
-        .await?;
+        let mut response =
+            build_block_response_for_hash(&state, &ah_block.hash, ah_block.number, true, &params)
+                .await?;
 
         response.rc_block_hash = Some(rc_block_hash.clone());
         response.rc_block_number = Some(rc_block_number.clone());
 
         let client_at_block = state.client.at(ah_block.number).await?;
-        if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now") {
-            if let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await {
-                // Timestamp is a u64 (milliseconds) - decode from storage value
-                let timestamp_bytes = timestamp.into_bytes();
-                let mut cursor = &timestamp_bytes[..];
-                if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                    response.ah_timestamp = Some(timestamp_value.to_string());
-                }
+        if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
+            && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
+        {
+            // Timestamp is a u64 (milliseconds) - decode from storage value
+            let timestamp_bytes = timestamp.into_bytes();
+            let mut cursor = &timestamp_bytes[..];
+            if let Ok(timestamp_value) = u64::decode(&mut cursor) {
+                response.ah_timestamp = Some(timestamp_value.to_string());
             }
         }
 
@@ -189,13 +181,13 @@ async fn build_block_response_for_hash(
     let client_at_block = state.client.at(block_number).await?;
 
     let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
-        extract_author(&state, &client_at_block, &logs, block_number),
-        extract_extrinsics(&state, &client_at_block, block_number),
-        fetch_block_events(&state, &client_at_block, block_number),
+        extract_author(state, &client_at_block, &logs, block_number),
+        extract_extrinsics(state, &client_at_block, block_number),
+        fetch_block_events(state, &client_at_block, block_number),
         // Only fetch canonical hash if queried by hash (needed for fork detection)
         async {
             if params.finalized_key {
-                Some(get_finalized_block_number(&state).await)
+                Some(get_finalized_block_number(state).await)
             } else {
                 None
             }
@@ -203,7 +195,7 @@ async fn build_block_response_for_hash(
         // Only fetch canonical hash if queried by hash AND finalizedKey=true
         async {
             if queried_by_hash && params.finalized_key {
-                Some(get_canonical_hash_at_number(&state, block_number).await)
+                Some(get_canonical_hash_at_number(state, block_number).await)
             } else {
                 None
             }
@@ -277,7 +269,7 @@ async fn build_block_response_for_hash(
         for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
             if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
                 extrinsic.info = extract_fee_info_for_extrinsic(
-                    &state,
+                    state,
                     &extrinsic.raw_hex,
                     &extrinsic.events,
                     extrinsic_outcomes.get(i),

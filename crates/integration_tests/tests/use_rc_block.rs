@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
-use integration_tests::{client::TestClient, constants::API_READY_TIMEOUT_SECONDS, utils::compare_json};
+use integration_tests::{
+    client::TestClient, constants::API_READY_TIMEOUT_SECONDS, utils::compare_json,
+};
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -28,7 +30,12 @@ async fn test_use_rc_block_comparison() -> Result<()> {
     );
     println!("{}", "═".repeat(80).bright_white());
 
-    println!("{} Fetching from local API: {}{}", "→".cyan(), local_client.base_url(), endpoint);
+    println!(
+        "{} Fetching from local API: {}{}",
+        "→".cyan(),
+        local_client.base_url(),
+        endpoint
+    );
     let (local_status, local_json) = local_client
         .get_json(&format!("/v1{}", endpoint))
         .await
@@ -40,7 +47,10 @@ async fn test_use_rc_block_comparison() -> Result<()> {
 
     println!("{} Local API response: {}", "✓".green(), "OK".green());
 
-    println!("{} Loading expected response from sidecar fixture", "→".cyan());
+    println!(
+        "{} Loading expected response from sidecar fixture",
+        "→".cyan()
+    );
     let fixture_path = get_fixture_path("use_rc_block_10554957.json")?;
     let fixture_content = fs::read_to_string(&fixture_path)
         .with_context(|| format!("Failed to read fixture file: {:?}", fixture_path))?;
@@ -84,7 +94,7 @@ async fn test_use_rc_block_comparison() -> Result<()> {
 
     println!("\n{} Comparing JSON responses...", "→".cyan().bold());
     let comparison_result = compare_json(&local_json, &sidecar_json, &[])?;
-    
+
     if comparison_result.is_match() {
         println!("{} All JSON responses match!", "✓".green().bold());
         println!("{}", "═".repeat(80).bright_white());
@@ -121,7 +131,12 @@ async fn test_use_rc_block_head_header() -> Result<()> {
     );
     println!("{}", "═".repeat(80).bright_white());
 
-    println!("{} Fetching from local API: {}{}", "→".cyan(), local_client.base_url(), endpoint);
+    println!(
+        "{} Fetching from local API: {}{}",
+        "→".cyan(),
+        local_client.base_url(),
+        endpoint
+    );
     let (local_status, local_json) = local_client
         .get_json(&format!("/v1{}", endpoint))
         .await
@@ -141,7 +156,10 @@ async fn test_use_rc_block_head_header() -> Result<()> {
         .context("Failed to parse expected structure from fixture")?;
     println!("{} Expected structure loaded from fixture", "✓".green());
 
-    println!("\n{} Validating response structure and types...", "→".cyan().bold());
+    println!(
+        "\n{} Validating response structure and types...",
+        "→".cyan().bold()
+    );
 
     let local_array = local_json
         .as_array()
@@ -175,7 +193,7 @@ fn validate_block_structure(local: &Value, expected: &Value) -> Result<()> {
     let expected_obj = expected
         .as_object()
         .context("Expected structure is not an object")?;
-    
+
     let local_obj = local
         .as_object()
         .context("Local response is not an object")?;
@@ -194,7 +212,12 @@ fn validate_block_structure(local: &Value, expected: &Value) -> Result<()> {
                         value_type_name(expected_value)
                     ));
                 } else {
-                    println!("  {} {}: {} (type matches)", "✓".green(), field, value_type_name(local_value));
+                    println!(
+                        "  {} {}: {} (type matches)",
+                        "✓".green(),
+                        field,
+                        value_type_name(local_value)
+                    );
                 }
             }
             None => {
@@ -245,11 +268,11 @@ fn get_fixture_path(filename: &str) -> Result<PathBuf> {
         .join("tests")
         .join("fixtures")
         .join(filename);
-    
+
     if !fixture_path.exists() {
         anyhow::bail!("Fixture file not found: {:?}", fixture_path);
     }
-    
+
     Ok(fixture_path)
 }
 

@@ -1,8 +1,8 @@
+use crate::handlers::blocks::common::decode_digest_logs;
+use crate::handlers::blocks::types::DigestLog;
 use crate::state::AppState;
 use crate::types::BlockHash;
 use crate::utils::{compute_block_hash_from_header_json, find_ah_blocks_in_rc_block};
-use crate::handlers::blocks::common::decode_digest_logs;
-use crate::handlers::blocks::types::DigestLog;
 use axum::{
     Json,
     extract::{Query, State},
@@ -230,12 +230,9 @@ async fn handle_use_rc_block(
             let number = crate::utils::get_block_number_from_hash_with_rpc(rc_rpc, &hash_str)
                 .await
                 .map_err(|e| {
-                    GetBlockHeadHeaderError::HeaderFetchFailed(subxt_rpcs::Error::Client(
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to get RC block number: {}", e),
-                        )),
-                    ))
+                    GetBlockHeadHeaderError::HeaderFetchFailed(subxt_rpcs::Error::Client(Box::new(
+                        std::io::Error::other(format!("Failed to get RC block number: {}", e)),
+                    )))
                 })?;
             crate::utils::ResolvedBlock {
                 hash: hash_str,
@@ -249,16 +246,14 @@ async fn handle_use_rc_block(
             let number_hex = header_json
                 .get("number")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| {
-                    GetBlockHeadHeaderError::HeaderFieldMissing("number".to_string())
-                })?;
-            let number = u64::from_str_radix(
-                number_hex.strip_prefix("0x").unwrap_or(number_hex),
-                16,
-            )
-            .map_err(|_| {
-                GetBlockHeadHeaderError::HeaderFieldMissing("number (invalid format)".to_string())
-            })?;
+                .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("number".to_string()))?;
+            let number =
+                u64::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16)
+                    .map_err(|_| {
+                        GetBlockHeadHeaderError::HeaderFieldMissing(
+                            "number (invalid format)".to_string(),
+                        )
+                    })?;
             let hash = compute_block_hash_from_header_json(&header_json)?;
             crate::utils::ResolvedBlock {
                 hash: hash.to_string(),
@@ -278,10 +273,7 @@ async fn handle_use_rc_block(
         .await
         .map_err(|e| {
             GetBlockHeadHeaderError::HeaderFetchFailed(subxt_rpcs::Error::Client(Box::new(
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to find Asset Hub blocks: {}", e),
-                ),
+                std::io::Error::other(format!("Failed to find Asset Hub blocks: {}", e)),
             )))
         })?;
 
@@ -307,9 +299,7 @@ async fn handle_use_rc_block(
         let parent_hash = header_json
             .get("parentHash")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                GetBlockHeadHeaderError::HeaderFieldMissing("parentHash".to_string())
-            })?
+            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("parentHash".to_string()))?
             .to_string();
 
         let state_root = header_json
@@ -332,19 +322,16 @@ async fn handle_use_rc_block(
         let mut ah_timestamp = None;
         let client_at_block = state.client.at(ah_block.number).await.map_err(|e| {
             GetBlockHeadHeaderError::HeaderFetchFailed(subxt_rpcs::Error::Client(Box::new(
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to get client at block: {}", e),
-                ),
+                std::io::Error::other(format!("Failed to get client at block: {}", e)),
             )))
         })?;
-        if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now") {
-            if let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await {
-                let timestamp_bytes = timestamp.into_bytes();
-                let mut cursor = &timestamp_bytes[..];
-                if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                    ah_timestamp = Some(timestamp_value.to_string());
-                }
+        if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
+            && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
+        {
+            let timestamp_bytes = timestamp.into_bytes();
+            let mut cursor = &timestamp_bytes[..];
+            if let Ok(timestamp_value) = u64::decode(&mut cursor) {
+                ah_timestamp = Some(timestamp_value.to_string());
             }
         }
 

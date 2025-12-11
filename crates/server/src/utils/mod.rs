@@ -5,7 +5,10 @@ pub mod format;
 pub mod hash;
 pub mod rc_block;
 
-pub use block::{BlockId, BlockIdParseError, BlockResolveError, ResolvedBlock, resolve_block, resolve_block_with_rpc, get_block_number_from_hash_with_rpc};
+pub use block::{
+    BlockId, BlockIdParseError, BlockResolveError, ResolvedBlock,
+    get_block_number_from_hash_with_rpc, resolve_block, resolve_block_with_rpc,
+};
 pub use extrinsic::{
     EraInfo, decode_era_from_bytes, extract_era_from_extrinsic_bytes, parse_era_info,
 };
@@ -16,4 +19,4 @@ pub use fee::{
 };
 pub use format::{decode_address_to_ss58, hex_with_prefix, lowercase_first_char};
 pub use hash::{HashError, compute_block_hash_from_header_json};
-pub use rc_block::{find_ah_blocks_in_rc_block, AhBlockInfo, RcBlockError};
+pub use rc_block::{AhBlockInfo, RcBlockError, find_ah_blocks_in_rc_block};

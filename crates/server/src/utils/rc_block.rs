@@ -4,7 +4,8 @@ use subxt_historic::SubstrateConfig;
 use subxt_historic::client::{ClientAtBlock, OnlineClientAtBlock};
 use thiserror::Error;
 
-pub type RcBlockClient<'a> = ClientAtBlock<OnlineClientAtBlock<'a, SubstrateConfig>, SubstrateConfig>;
+pub type RcBlockClient<'a> =
+    ClientAtBlock<OnlineClientAtBlock<'a, SubstrateConfig>, SubstrateConfig>;
 
 const ASSET_HUB_PARA_ID: u32 = 1000;
 
@@ -88,12 +89,10 @@ pub async fn find_ah_blocks_in_rc_block(
         };
 
         let event_value = match record_composite {
-            scale_value::Composite::Named(fields) => {
-                fields
-                    .iter()
-                    .find(|(name, _)| name == "event")
-                    .map(|(_, v)| v)
-            }
+            scale_value::Composite::Named(fields) => fields
+                .iter()
+                .find(|(name, _)| name == "event")
+                .map(|(_, v)| v),
             scale_value::Composite::Unnamed(values) => values.get(1),
         };
 
@@ -151,10 +150,9 @@ pub async fn find_ah_blocks_in_rc_block(
             event_name
         );
 
-        if let Some(ah_block) = extract_ah_block_from_candidate_included(
-            event_data,
-            ASSET_HUB_PARA_ID,
-        ) {
+        if let Some(ah_block) =
+            extract_ah_block_from_candidate_included(event_data, ASSET_HUB_PARA_ID)
+        {
             tracing::warn!(
                 "Extracted AH block: number={}, hash={}",
                 ah_block.number,
@@ -191,11 +189,18 @@ fn extract_ah_block_from_candidate_included(
     };
 
     if para_id != target_para_id {
-        tracing::warn!("Skipping paraId {} (not Asset Hub, looking for {})", para_id, target_para_id);
+        tracing::warn!(
+            "Skipping paraId {} (not Asset Hub, looking for {})",
+            para_id,
+            target_para_id
+        );
         return None;
     }
 
-    tracing::warn!("Found CandidateIncluded for target para_id {}", target_para_id);
+    tracing::warn!(
+        "Found CandidateIncluded for target para_id {}",
+        target_para_id
+    );
 
     let head_data = values.get(1)?;
 
@@ -258,13 +263,13 @@ fn extract_bytes_from_json(json: &serde_json::Value) -> Option<Vec<u8>> {
 
 fn extract_block_number_from_header(header_bytes: &[u8]) -> Option<u64> {
     use parity_scale_codec::Decode;
-    
+
     if header_bytes.len() < 32 {
         return None;
     }
-    
+
     let mut cursor = &header_bytes[32..];
-    
+
     let number_compact = parity_scale_codec::Compact::<u32>::decode(&mut cursor).ok()?;
     Some(number_compact.0 as u64)
 }
@@ -311,12 +316,13 @@ fn extract_para_id_from_candidate_receipt(
         }
     };
 
-    let para_id_value = get_field_from_composite(descriptor_composite, &["para_id", "paraId"], Some(0))
-        .ok_or_else(|| {
-            RcBlockError::ParaIdDecodeFailed(parity_scale_codec::Error::from(
-                "para_id field not found",
-            ))
-        })?;
+    let para_id_value =
+        get_field_from_composite(descriptor_composite, &["para_id", "paraId"], Some(0))
+            .ok_or_else(|| {
+                RcBlockError::ParaIdDecodeFailed(parity_scale_codec::Error::from(
+                    "para_id field not found",
+                ))
+            })?;
 
     let para_id = serde_json::to_value(para_id_value)
         .ok()
@@ -344,5 +350,3 @@ fn extract_para_id_from_candidate_receipt(
 
     Ok(para_id)
 }
-
-
