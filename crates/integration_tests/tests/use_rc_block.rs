@@ -41,9 +41,11 @@ async fn test_use_rc_block_comparison() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    if !local_status.is_success() {
-        anyhow::bail!("Local API returned status {}", local_status);
-    }
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
     println!("{} Local API response: {}", "✓".green(), "OK".green());
 
@@ -62,10 +64,10 @@ async fn test_use_rc_block_comparison() -> Result<()> {
 
     let local_array = local_json
         .as_array()
-        .context("Local response is not an array")?;
+        .expect("Local response is not an array");
     let sidecar_array = sidecar_json
         .as_array()
-        .context("Sidecar response is not an array")?;
+        .expect("Sidecar response is not an array");
 
     println!(
         "  {} Local response contains {} block(s)",
@@ -78,13 +80,13 @@ async fn test_use_rc_block_comparison() -> Result<()> {
         sidecar_array.len()
     );
 
-    if local_array.len() != sidecar_array.len() {
-        anyhow::bail!(
-            "Block count mismatch: local={}, sidecar={}",
-            local_array.len(),
-            sidecar_array.len()
-        );
-    }
+    assert_eq!(
+        local_array.len(),
+        sidecar_array.len(),
+        "Block count mismatch: local={}, sidecar={}",
+        local_array.len(),
+        sidecar_array.len()
+    );
 
     println!(
         "  {} Block counts match: {}",
@@ -95,20 +97,83 @@ async fn test_use_rc_block_comparison() -> Result<()> {
     println!("\n{} Comparing JSON responses...", "→".cyan().bold());
     let comparison_result = compare_json(&local_json, &sidecar_json, &[])?;
 
-    if comparison_result.is_match() {
-        println!("{} All JSON responses match!", "✓".green().bold());
-        println!("{}", "═".repeat(80).bright_white());
-        Ok(())
-    } else {
+    if !comparison_result.is_match() {
         println!("{} JSON responses differ:", "✗".red().bold());
         let diff_output = comparison_result.format_diff(&sidecar_json, &local_json);
         println!("{}", diff_output);
         println!("{}", "═".repeat(80).bright_white());
-        anyhow::bail!(
-            "Found {} difference(s) between local and expected responses",
-            comparison_result.differences().len()
-        );
     }
+
+    assert!(
+        comparison_result.is_match(),
+        "Found {} difference(s) between local and expected responses",
+        comparison_result.differences().len()
+    );
+
+    println!("{} All JSON responses match!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_use_rc_block_empty_response() -> Result<()> {
+    init_tracing();
+
+    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let local_client = TestClient::new(api_url);
+
+    local_client
+        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
+        .await
+        .context("Local API is not ready")?;
+
+    // Block 10554958 is a Relay Chain block that doesn't include any Asset Hub blocks
+    let rc_block_number = 10554958;
+    let endpoint = format!("/blocks/{}?useRcBlock=true", rc_block_number);
+
+    println!(
+        "\n{} Testing useRcBlock returns empty array for RC block {} (no AH blocks)",
+        "Testing".cyan().bold(),
+        rc_block_number.to_string().yellow()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    println!(
+        "{} Fetching from local API: {}{}",
+        "→".cyan(),
+        local_client.base_url(),
+        endpoint
+    );
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    println!("{} Local API response: {}", "✓".green(), "OK".green());
+
+    let local_array = local_json
+        .as_array()
+        .expect("Local response is not an array");
+
+    assert!(
+        local_array.is_empty(),
+        "Expected empty array for RC block {}, but got {} block(s)",
+        rc_block_number,
+        local_array.len()
+    );
+
+    println!(
+        "{} Response is empty array as expected",
+        "✓".green().bold()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
 }
 
 #[tokio::test]
@@ -142,9 +207,11 @@ async fn test_use_rc_block_head_header() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    if !local_status.is_success() {
-        anyhow::bail!("Local API returned status {}", local_status);
-    }
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
     println!("{} Local API response: {}", "✓".green(), "OK".green());
 
@@ -163,10 +230,10 @@ async fn test_use_rc_block_head_header() -> Result<()> {
 
     let local_array = local_json
         .as_array()
-        .context("Local response is not an array")?;
+        .expect("Local response is not an array");
     let expected_array = expected_structure
         .as_array()
-        .context("Expected structure is not an array")?;
+        .expect("Expected structure is not an array");
 
     println!(
         "  {} Local response contains {} block(s)",
@@ -174,29 +241,26 @@ async fn test_use_rc_block_head_header() -> Result<()> {
         local_array.len()
     );
 
-    if local_array.is_empty() {
-        anyhow::bail!("Local response is empty");
-    }
+    assert!(!local_array.is_empty(), "Local response is empty");
 
     let local_block = &local_array[0];
     let expected_block = &expected_array[0];
 
-    validate_block_structure(local_block, expected_block)?;
+    validate_block_structure(local_block, expected_block);
 
     println!("\n{} Structure validation passed!", "✓".green().bold());
     println!("{}", "═".repeat(80).bright_white());
-
     Ok(())
 }
 
-fn validate_block_structure(local: &Value, expected: &Value) -> Result<()> {
+fn validate_block_structure(local: &Value, expected: &Value) {
     let expected_obj = expected
         .as_object()
-        .context("Expected structure is not an object")?;
+        .expect("Expected structure is not an object");
 
     let local_obj = local
         .as_object()
-        .context("Local response is not an object")?;
+        .expect("Local response is not an object");
 
     let mut errors = Vec::new();
 
@@ -245,10 +309,9 @@ fn validate_block_structure(local: &Value, expected: &Value) -> Result<()> {
         for error in &errors {
             println!("{}", error);
         }
-        anyhow::bail!("Found {} structure error(s)", errors.len());
     }
 
-    Ok(())
+    assert!(errors.is_empty(), "Found {} structure error(s)", errors.len());
 }
 
 fn value_type_name(v: &Value) -> &'static str {
