@@ -277,7 +277,27 @@ pub fn transform_json_unified(value: Value, ss58_prefix: Option<u16>) -> Value {
                 .into_iter()
                 .map(|(key, val)| {
                     let camel_key = key.to_lower_camel_case();
-                    (camel_key, transform_json_unified(val, ss58_prefix))
+                    let mut transformed_val = transform_json_unified(val, ss58_prefix);
+                    // horizontalMessages is a map - scale_value represents maps as [] or [[key, value], ...]
+                    if camel_key == "horizontalMessages" {
+                        if let Value::Array(arr) = transformed_val {
+                            let mut obj = serde_json::Map::new();
+                            for item in arr {
+                                if let Value::Array(tuple) = item {
+                                    if tuple.len() == 2 {
+                                        let key = match &tuple[0] {
+                                            Value::String(s) => s.clone(),
+                                            Value::Number(n) => n.to_string(),
+                                            _ => continue,
+                                        };
+                                        obj.insert(key, transform_json_unified(tuple[1].clone(), ss58_prefix));
+                                    }
+                                }
+                            }
+                            transformed_val = Value::Object(obj);
+                        }
+                    }
+                    (camel_key, transformed_val)
                 })
                 .collect();
             Value::Object(transformed)

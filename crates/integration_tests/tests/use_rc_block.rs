@@ -1,0 +1,260 @@
+use anyhow::{Context, Result};
+use colored::Colorize;
+use integration_tests::{client::TestClient, constants::API_READY_TIMEOUT_SECONDS, utils::compare_json};
+use serde_json::Value;
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+
+#[tokio::test]
+async fn test_use_rc_block_comparison() -> Result<()> {
+    init_tracing();
+
+    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let local_client = TestClient::new(api_url);
+
+    local_client
+        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
+        .await
+        .context("Local API is not ready")?;
+
+    let rc_block_number = 10554957;
+    let endpoint = format!("/blocks/{}?useRcBlock=true", rc_block_number);
+
+    println!(
+        "\n{} Comparing useRcBlock responses for RC block {}",
+        "Testing".cyan().bold(),
+        rc_block_number.to_string().yellow()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    println!("{} Fetching from local API: {}{}", "→".cyan(), local_client.base_url(), endpoint);
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    if !local_status.is_success() {
+        anyhow::bail!("Local API returned status {}", local_status);
+    }
+
+    println!("{} Local API response: {}", "✓".green(), "OK".green());
+
+    println!("{} Loading expected response from sidecar fixture", "→".cyan());
+    let fixture_path = get_fixture_path("use_rc_block_10554957.json")?;
+    let fixture_content = fs::read_to_string(&fixture_path)
+        .with_context(|| format!("Failed to read fixture file: {:?}", fixture_path))?;
+    let sidecar_json: Value = serde_json::from_str(&fixture_content)
+        .context("Failed to parse expected sidecar response from fixture")?;
+    println!("{} Expected response loaded from fixture", "✓".green());
+
+    println!("\n{} Validating responses...", "→".cyan().bold());
+
+    let local_array = local_json
+        .as_array()
+        .context("Local response is not an array")?;
+    let sidecar_array = sidecar_json
+        .as_array()
+        .context("Sidecar response is not an array")?;
+
+    println!(
+        "  {} Local response contains {} block(s)",
+        "✓".green(),
+        local_array.len()
+    );
+    println!(
+        "  {} Sidecar response contains {} block(s)",
+        "✓".green(),
+        sidecar_array.len()
+    );
+
+    if local_array.len() != sidecar_array.len() {
+        anyhow::bail!(
+            "Block count mismatch: local={}, sidecar={}",
+            local_array.len(),
+            sidecar_array.len()
+        );
+    }
+
+    println!(
+        "  {} Block counts match: {}",
+        "✓".green(),
+        local_array.len()
+    );
+
+    println!("\n{} Comparing JSON responses...", "→".cyan().bold());
+    let comparison_result = compare_json(&local_json, &sidecar_json, &[])?;
+    
+    if comparison_result.is_match() {
+        println!("{} All JSON responses match!", "✓".green().bold());
+        println!("{}", "═".repeat(80).bright_white());
+        Ok(())
+    } else {
+        println!("{} JSON responses differ:", "✗".red().bold());
+        let diff_output = comparison_result.format_diff(&sidecar_json, &local_json);
+        println!("{}", diff_output);
+        println!("{}", "═".repeat(80).bright_white());
+        anyhow::bail!(
+            "Found {} difference(s) between local and expected responses",
+            comparison_result.differences().len()
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_use_rc_block_head_header() -> Result<()> {
+    init_tracing();
+
+    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let local_client = TestClient::new(api_url);
+
+    local_client
+        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
+        .await
+        .context("Local API is not ready")?;
+
+    let endpoint = "/blocks/head/header?useRcBlock=true";
+
+    println!(
+        "\n{} Testing useRcBlock for /blocks/head/header",
+        "Testing".cyan().bold()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    println!("{} Fetching from local API: {}{}", "→".cyan(), local_client.base_url(), endpoint);
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    if !local_status.is_success() {
+        anyhow::bail!("Local API returned status {}", local_status);
+    }
+
+    println!("{} Local API response: {}", "✓".green(), "OK".green());
+
+    println!("{} Loading expected structure from fixture", "→".cyan());
+    let fixture_path = get_fixture_path("use_rc_block_head_header_structure.json")?;
+    let fixture_content = fs::read_to_string(&fixture_path)
+        .with_context(|| format!("Failed to read fixture file: {:?}", fixture_path))?;
+    let expected_structure: Value = serde_json::from_str(&fixture_content)
+        .context("Failed to parse expected structure from fixture")?;
+    println!("{} Expected structure loaded from fixture", "✓".green());
+
+    println!("\n{} Validating response structure and types...", "→".cyan().bold());
+
+    let local_array = local_json
+        .as_array()
+        .context("Local response is not an array")?;
+    let expected_array = expected_structure
+        .as_array()
+        .context("Expected structure is not an array")?;
+
+    println!(
+        "  {} Local response contains {} block(s)",
+        "✓".green(),
+        local_array.len()
+    );
+
+    if local_array.is_empty() {
+        anyhow::bail!("Local response is empty");
+    }
+
+    let local_block = &local_array[0];
+    let expected_block = &expected_array[0];
+
+    validate_block_structure(local_block, expected_block)?;
+
+    println!("\n{} Structure validation passed!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+
+    Ok(())
+}
+
+fn validate_block_structure(local: &Value, expected: &Value) -> Result<()> {
+    let expected_obj = expected
+        .as_object()
+        .context("Expected structure is not an object")?;
+    
+    let local_obj = local
+        .as_object()
+        .context("Local response is not an object")?;
+
+    let mut errors = Vec::new();
+
+    for (field, expected_value) in expected_obj.iter() {
+        match local_obj.get(field) {
+            Some(local_value) => {
+                if std::mem::discriminant(local_value) != std::mem::discriminant(expected_value) {
+                    errors.push(format!(
+                        "  {} {}: type mismatch - local={}, expected={}",
+                        "✗".red(),
+                        field,
+                        value_type_name(local_value),
+                        value_type_name(expected_value)
+                    ));
+                } else {
+                    println!("  {} {}: {} (type matches)", "✓".green(), field, value_type_name(local_value));
+                }
+            }
+            None => {
+                errors.push(format!(
+                    "  {} {}: missing in local but present in expected structure",
+                    "✗".red(),
+                    field
+                ));
+            }
+        }
+    }
+
+    for field in local_obj.keys() {
+        if !expected_obj.contains_key(field) {
+            errors.push(format!(
+                "  {} {}: present in local but not in expected structure",
+                "✗".red(),
+                field
+            ));
+        }
+    }
+
+    if !errors.is_empty() {
+        println!("\n{} Structure validation errors:", "✗".red().bold());
+        for error in &errors {
+            println!("{}", error);
+        }
+        anyhow::bail!("Found {} structure error(s)", errors.len());
+    }
+
+    Ok(())
+}
+
+fn value_type_name(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+fn get_fixture_path(filename: &str) -> Result<PathBuf> {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let fixture_path = PathBuf::from(manifest_dir)
+        .join("tests")
+        .join("fixtures")
+        .join(filename);
+    
+    if !fixture_path.exists() {
+        anyhow::bail!("Fixture file not found: {:?}", fixture_path);
+    }
+    
+    Ok(fixture_path)
+}
+
+fn init_tracing() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init();
+}

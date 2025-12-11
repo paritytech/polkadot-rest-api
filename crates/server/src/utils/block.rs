@@ -1,6 +1,7 @@
 use crate::state::AppState;
 use primitive_types::H256;
 use std::str::FromStr;
+use subxt_rpcs::{LegacyRpcMethods, RpcClient, rpc_params};
 use thiserror::Error;
 
 /// Represents a block identifier that can be either a hash or a number
@@ -107,6 +108,79 @@ async fn get_block_number_from_hash(
     Ok(number)
 }
 
+async fn get_header_json_with_rpc(
+    rpc_client: &RpcClient,
+    hash: &str,
+) -> Result<serde_json::Value, BlockResolveError> {
+    rpc_client
+        .request("chain_getHeader", rpc_params![hash])
+        .await
+        .map_err(BlockResolveError::RpcError)
+}
+
+pub async fn get_block_number_from_hash_with_rpc(
+    rpc_client: &RpcClient,
+    hash: &str,
+) -> Result<u64, BlockResolveError> {
+    let header_json = get_header_json_with_rpc(rpc_client, hash).await?;
+
+    if header_json.is_null() {
+        return Err(BlockResolveError::NotFound(format!(
+            "Block with hash {} not found",
+            hash
+        )));
+    }
+
+    let number_hex = header_json
+        .get("number")
+        .and_then(|v| v.as_str())
+        .ok_or(BlockResolveError::BlockNumberNotFound)?;
+
+    let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
+        .map_err(BlockResolveError::BlockNumberParseFailed)?;
+
+    Ok(number)
+}
+
+pub async fn resolve_block_with_rpc(
+    rpc_client: &RpcClient,
+    legacy_rpc: &LegacyRpcMethods<subxt_historic::SubstrateConfig>,
+    at: Option<BlockId>,
+) -> Result<ResolvedBlock, BlockResolveError> {
+    match at {
+        None => {
+            let hash = legacy_rpc
+                .chain_get_finalized_head()
+                .await
+                .map_err(BlockResolveError::FinalizedHeadFailed)?;
+            let hash_str = format!("{:#x}", hash);
+            let number = get_block_number_from_hash_with_rpc(rpc_client, &hash_str).await?;
+            Ok(ResolvedBlock {
+                hash: hash_str,
+                number,
+            })
+        }
+        Some(BlockId::Hash(hash)) => {
+            let hash_str = format!("{:#x}", hash);
+            let number = get_block_number_from_hash_with_rpc(rpc_client, &hash_str).await?;
+            Ok(ResolvedBlock {
+                hash: hash_str,
+                number,
+            })
+        }
+        Some(BlockId::Number(number)) => {
+            let hash: Option<String> = rpc_client
+                .request("chain_getBlockHash", rpc_params![number])
+                .await
+                .map_err(BlockResolveError::BlockHashFailed)?;
+            let hash = hash.ok_or_else(|| {
+                BlockResolveError::NotFound(format!("Block at height {} not found", number))
+            })?;
+            Ok(ResolvedBlock { hash, number })
+        }
+    }
+}
+
 /// Resolves a block from an optional block identifier
 ///
 /// # Arguments
@@ -133,7 +207,7 @@ pub async fn resolve_block(
                 .await
                 .map_err(BlockResolveError::FinalizedHeadFailed)?;
 
-            let hash_str = format!("{:?}", hash);
+            let hash_str = format!("{:#x}", hash);
             let number = get_block_number_from_hash(state, &hash_str).await?;
 
             Ok(ResolvedBlock {
@@ -313,6 +387,9 @@ mod tests {
             chain_info,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
             route_registry: crate::routes::RouteRegistry::new(),
+            relay_chain_client: None,
+            relay_chain_rpc: None,
+            relay_chain_rpc_client: None,
         }
     }
 

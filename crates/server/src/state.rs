@@ -55,6 +55,12 @@ pub struct AppState {
     pub fee_details_cache: Arc<QueryFeeDetailsCache>,
     /// Registry of all available routes for introspection
     pub route_registry: RouteRegistry,
+    /// Relay Chain client (only present when multi-chain is configured with a relay chain)
+    pub relay_chain_client: Option<Arc<OnlineClient<SubstrateConfig>>>,
+    /// Relay Chain RPC client (only present when multi-chain is configured with a relay chain)
+    pub relay_chain_rpc: Option<Arc<LegacyRpcMethods<SubstrateConfig>>>,
+    /// Relay Chain RPC client for raw requests (only present when multi-chain is configured with a relay chain)
+    pub relay_chain_rpc_client: Option<Arc<RpcClient>>,
 }
 
 impl AppState {
@@ -101,6 +107,40 @@ impl AppState {
 
         let client = OnlineClient::from_rpc_client(subxt_config, rpc_client.clone());
 
+        let (relay_chain_client, relay_chain_rpc, relay_chain_rpc_client) =
+            if let Some(relay_url) = config
+                .substrate
+                .multi_chain_urls
+                .iter()
+                .find(|chain_url| chain_url.chain_type == ChainType::Relay)
+                .map(|chain_url| &chain_url.url)
+            {
+                match RpcClient::from_insecure_url(relay_url).await {
+                    Ok(rc_rpc_client) => {
+                        let rc_legacy_rpc = LegacyRpcMethods::new(rc_rpc_client.clone());
+                        let rc_subxt_config = SubstrateConfig::new()
+                            .set_legacy_types(subxt_historic::config::polkadot::legacy_types());
+                        let rc_client =
+                            OnlineClient::from_rpc_client(rc_subxt_config, rc_rpc_client.clone());
+                        (
+                            Some(Arc::new(rc_client)),
+                            Some(Arc::new(rc_legacy_rpc)),
+                            Some(Arc::new(rc_rpc_client)),
+                        )
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to connect to relay chain at {}: {}. useRcBlock will not be available.",
+                            relay_url,
+                            e
+                        );
+                        (None, None, None)
+                    }
+                }
+            } else {
+                (None, None, None)
+            };
+
         Ok(Self {
             config,
             client: Arc::new(client),
@@ -109,7 +149,24 @@ impl AppState {
             chain_info,
             fee_details_cache: Arc::new(QueryFeeDetailsCache::new()),
             route_registry: RouteRegistry::new(),
+            relay_chain_client,
+            relay_chain_rpc,
+            relay_chain_rpc_client,
         })
+    }
+
+    pub fn get_relay_chain_client(
+        &self,
+    ) -> Option<&Arc<OnlineClient<SubstrateConfig>>> {
+        self.relay_chain_client.as_ref()
+    }
+
+    pub fn get_relay_chain_rpc(&self) -> Option<&Arc<LegacyRpcMethods<SubstrateConfig>>> {
+        self.relay_chain_rpc.as_ref()
+    }
+
+    pub fn get_relay_chain_rpc_client(&self) -> Option<&Arc<RpcClient>> {
+        self.relay_chain_rpc_client.as_ref()
     }
 
     /// Make a raw JSON-RPC call to get a header and return the result as a Value

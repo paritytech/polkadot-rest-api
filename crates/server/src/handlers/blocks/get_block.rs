@@ -3,12 +3,16 @@
 //! This module provides the main handler for fetching block information.
 
 use crate::state::AppState;
-use crate::utils;
+use crate::utils::{self, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
     extract::{Path, Query, State},
+    response::{IntoResponse, Response},
 };
+use config::ChainType;
 use heck::{ToSnakeCase, ToUpperCamelCase};
+use parity_scale_codec::Decode;
+use serde_json::json;
 
 use super::common::{
     add_docs_to_events, categorize_events, decode_digest_logs, extract_author, extract_extrinsics,
@@ -29,17 +33,135 @@ use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
 /// Query Parameters:
 /// - `eventDocs` (boolean, default: false): Include documentation for events
 /// - `extrinsicDocs` (boolean, default: false): Include documentation for extrinsics
+/// - `useRcBlock` (boolean, default: false): When true, treat blockId as Relay Chain block and return Asset Hub blocks
 pub async fn get_block(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
     Query(params): Query<BlockQueryParams>,
-) -> Result<Json<BlockResponse>, GetBlockError> {
-    let block_id = block_id.parse::<utils::BlockId>()?;
-    // Track if the block was queried by hash (needed for canonical chain check)
-    let queried_by_hash = matches!(block_id, utils::BlockId::Hash(_));
-    let resolved_block = utils::resolve_block(&state, Some(block_id)).await?;
+) -> Result<Response, GetBlockError> {
+    if params.use_rc_block {
+        return handle_use_rc_block(state, block_id, params).await;
+    }
+
+    let response = build_block_response(&state, block_id, &params).await?;
+    Ok(Json(response).into_response())
+}
+
+async fn handle_use_rc_block(
+    state: AppState,
+    block_id: String,
+    params: BlockQueryParams,
+) -> Result<Response, GetBlockError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(GetBlockError::HeaderFetchFailed(subxt_rpcs::Error::Client(
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "useRcBlock parameter is only supported for Asset Hub endpoints",
+            )),
+        )));
+    }
+
+    if state.get_relay_chain_client().is_none() {
+        return Err(GetBlockError::HeaderFetchFailed(subxt_rpcs::Error::Client(
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL",
+            )),
+        )));
+    }
+
+    let rc_block_id = block_id.parse::<utils::BlockId>()?;
+    let rc_resolved_block = if let (Some(rc_rpc), Some(rc_legacy_rpc)) = (
+        state.get_relay_chain_rpc_client(),
+        state.get_relay_chain_rpc(),
+    ) {
+        utils::resolve_block_with_rpc(rc_rpc, rc_legacy_rpc, Some(rc_block_id)).await?
+    } else {
+        return Err(GetBlockError::HeaderFetchFailed(subxt_rpcs::Error::Client(
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Relay Chain RPC client not available",
+            )),
+        )));
+    };
+
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
+        .await
+        .map_err(|e| {
+            GetBlockError::HeaderFetchFailed(subxt_rpcs::Error::Client(Box::new(
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to find Asset Hub blocks: {}", e),
+                ),
+            )))
+        })?;
+
+    if ah_blocks.is_empty() {
+        return Ok(Json(json!([])).into_response());
+    }
+
+    let rc_block_number = rc_resolved_block.number.to_string();
+    let rc_block_hash = rc_resolved_block.hash.clone();
+
+    let mut results = Vec::new();
+    for ah_block in ah_blocks {
+        let mut response = build_block_response_for_hash(
+            &state,
+            &ah_block.hash,
+            ah_block.number,
+            true,
+            &params,
+        )
+        .await?;
+
+        response.rc_block_hash = Some(rc_block_hash.clone());
+        response.rc_block_number = Some(rc_block_number.clone());
+
+        let client_at_block = state.client.at(ah_block.number).await?;
+        if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now") {
+            if let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await {
+                // Timestamp is a u64 (milliseconds) - decode from storage value
+                let timestamp_bytes = timestamp.into_bytes();
+                let mut cursor = &timestamp_bytes[..];
+                if let Ok(timestamp_value) = u64::decode(&mut cursor) {
+                    response.ah_timestamp = Some(timestamp_value.to_string());
+                }
+            }
+        }
+
+        results.push(response);
+    }
+
+    Ok(Json(json!(results)).into_response())
+}
+
+async fn build_block_response(
+    state: &AppState,
+    block_id: String,
+    params: &BlockQueryParams,
+) -> Result<BlockResponse, GetBlockError> {
+    let block_id_parsed = block_id.parse::<utils::BlockId>()?;
+    let queried_by_hash = matches!(block_id_parsed, utils::BlockId::Hash(_));
+    let resolved_block = utils::resolve_block(state, Some(block_id_parsed)).await?;
+    build_block_response_for_hash(
+        state,
+        &resolved_block.hash,
+        resolved_block.number,
+        queried_by_hash,
+        params,
+    )
+    .await
+}
+
+async fn build_block_response_for_hash(
+    state: &AppState,
+    block_hash: &str,
+    block_number: u64,
+    queried_by_hash: bool,
+    params: &BlockQueryParams,
+) -> Result<BlockResponse, GetBlockError> {
     let header_json = state
-        .get_header_json(&resolved_block.hash)
+        .get_header_json(block_hash)
         .await
         .map_err(GetBlockError::HeaderFetchFailed)?;
 
@@ -64,12 +186,12 @@ pub async fn get_block(
     let logs = decode_digest_logs(&header_json);
 
     // Create client_at_block once and reuse for all operations
-    let client_at_block = state.client.at(resolved_block.number).await?;
+    let client_at_block = state.client.at(block_number).await?;
 
     let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
-        extract_author(&state, &client_at_block, &logs, resolved_block.number),
-        extract_extrinsics(&state, &client_at_block, resolved_block.number),
-        fetch_block_events(&state, &client_at_block, resolved_block.number),
+        extract_author(&state, &client_at_block, &logs, block_number),
+        extract_extrinsics(&state, &client_at_block, block_number),
+        fetch_block_events(&state, &client_at_block, block_number),
         // Only fetch canonical hash if queried by hash (needed for fork detection)
         async {
             if params.finalized_key {
@@ -81,11 +203,11 @@ pub async fn get_block(
         // Only fetch canonical hash if queried by hash AND finalizedKey=true
         async {
             if queried_by_hash && params.finalized_key {
-                Some(get_canonical_hash_at_number(&state, resolved_block.number).await)
+                Some(get_canonical_hash_at_number(&state, block_number).await)
             } else {
                 None
             }
-        }
+        },
     );
 
     let extrinsics = extrinsics_result?;
@@ -97,11 +219,11 @@ pub async fn get_block(
         // 1. Block number must be <= finalized head number
         // 2. If queried by hash, the hash must match the canonical chain hash
         //    (to detect blocks on forked/orphaned chains)
-        let is_finalized = if resolved_block.number <= finalized_head_number {
+        let is_finalized = if block_number <= finalized_head_number {
             if let Some(canonical_result) = canonical_hash_result {
                 // Queried by hash - verify it's on the canonical chain
                 match canonical_result? {
-                    Some(canonical_hash) => canonical_hash == resolved_block.hash,
+                    Some(canonical_hash) => canonical_hash == block_hash,
                     // If canonical hash not found, block is not finalized
                     None => false,
                 }
@@ -145,7 +267,7 @@ pub async fn get_block(
     // Populate fee info for signed extrinsics that pay fees (unless noFees=true)
     if !params.no_fees {
         let spec_version = state
-            .get_runtime_version_at_hash(&resolved_block.hash)
+            .get_runtime_version_at_hash(block_hash)
             .await
             .ok()
             .and_then(|v| v.get("specVersion").and_then(|sv| sv.as_u64()))
@@ -196,9 +318,9 @@ pub async fn get_block(
         }
     }
 
-    let response = BlockResponse {
-        number: resolved_block.number.to_string(),
-        hash: resolved_block.hash,
+    Ok(BlockResponse {
+        number: block_number.to_string(),
+        hash: block_hash.to_string(),
         parent_hash,
         state_root,
         extrinsics_root,
@@ -208,9 +330,10 @@ pub async fn get_block(
         extrinsics: extrinsics_with_events,
         on_finalize,
         finalized,
-    };
-
-    Ok(Json(response))
+        rc_block_hash: None,
+        rc_block_number: None,
+        ah_timestamp: None,
+    })
 }
 
 // ================================================================================================
@@ -250,6 +373,9 @@ mod tests {
             chain_info,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
             route_registry: crate::routes::RouteRegistry::new(),
+            relay_chain_client: None,
+            relay_chain_rpc: None,
+            relay_chain_rpc_client: None,
         }
     }
 

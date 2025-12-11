@@ -37,6 +37,9 @@ pub struct BlockQueryParams {
     /// When true, include finalized status in response. When false, omit finalized field.
     #[serde(default = "default_true")]
     pub finalized_key: bool,
+    /// When true, treat block identifier as Relay Chain block and return Asset Hub blocks included in it
+    #[serde(default)]
+    pub use_rc_block: bool,
 }
 
 fn default_true() -> bool {
@@ -50,6 +53,7 @@ impl Default for BlockQueryParams {
             extrinsic_docs: false,
             no_fees: false,
             finalized_key: true,
+            use_rc_block: false,
         }
     }
 }
@@ -322,6 +326,15 @@ pub struct BlockResponse {
     /// Whether this block has been finalized (omitted when finalizedKey=false)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finalized: Option<bool>,
+    /// Relay Chain block hash (only present when useRcBlock=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    /// Relay Chain block number (only present when useRcBlock=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    /// Asset Hub block timestamp (only present when useRcBlock=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
 }
 
 // ================================================================================================
