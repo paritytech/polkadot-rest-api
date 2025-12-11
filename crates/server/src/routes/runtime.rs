@@ -1,4 +1,4 @@
-use axum::{Router, routing::get};
+use axum::{routing::get, Router};
 
 use crate::{
     handlers::runtime,
@@ -14,6 +14,13 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             "/runtime/spec",
             "get",
             get(runtime::runtime_spec),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/runtime/code",
+            "get",
+            get(runtime::runtime_code),
         )
         .route_registered(
             registry,

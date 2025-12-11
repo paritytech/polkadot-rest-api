@@ -3,9 +3,30 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use thiserror::Error;
 
+/// Validates that a string is a valid host (IP address or hostname)
+fn is_valid_host(host: &str) -> bool {
+    // Check if it's a valid IP address
+    if IpAddr::from_str(host).is_ok() {
+        return true;
+    }
+
+    // Check if it's a valid hostname (RFC 1123)
+    if host.is_empty() || host.len() > 253 {
+        return false;
+    }
+
+    host.split('.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+    })
+}
+
 #[derive(Debug, Error)]
 pub enum MetricsError {
-    #[error("Invalid host address: {0}")]
+    #[error("Invalid host address or hostname: {0}")]
     InvalidHost(String),
 
     #[error("Port must be between 1 and 65535, got {0}")]
@@ -58,8 +79,8 @@ impl Default for MetricsConfig {
 
 impl MetricsConfig {
     pub fn validate(&self) -> Result<(), MetricsError> {
-        // Validate prom_host is a valid IP address
-        if IpAddr::from_str(&self.prom_host).is_err() {
+        // Validate prom_host is a valid IP address or hostname
+        if !is_valid_host(&self.prom_host) {
             return Err(MetricsError::InvalidHost(self.prom_host.clone()));
         }
 
@@ -88,8 +109,8 @@ impl MetricsConfig {
             }
         }
 
-        // Validate loki_host is a valid IP address
-        if IpAddr::from_str(&self.loki_host).is_err() {
+        // Validate loki_host is a valid IP address or hostname
+        if !is_valid_host(&self.loki_host) {
             return Err(MetricsError::InvalidHost(self.loki_host.clone()));
         }
 
@@ -134,27 +155,55 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_prom_host() {
+    fn test_valid_prom_hostname() {
         let config = MetricsConfig {
             enabled: true,
-            prom_host: "not-an-ip".to_string(),
+            prom_host: "prometheus".to_string(),
             prom_port: 9100,
             prometheus_prefix: "test".to_string(),
             loki_host: "127.0.0.1".to_string(),
             loki_port: 3100,
             include_queryparams: false,
         };
-        assert!(config.validate().is_err());
+        assert!(config.validate().is_ok());
     }
 
     #[test]
-    fn test_invalid_loki_host() {
+    fn test_valid_loki_hostname() {
         let config = MetricsConfig {
             enabled: true,
             prom_host: "127.0.0.1".to_string(),
             prom_port: 9100,
             prometheus_prefix: "test".to_string(),
-            loki_host: "not-an-ip".to_string(),
+            loki_host: "loki".to_string(),
+            loki_port: 3100,
+            include_queryparams: false,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_valid_fqdn_hostname() {
+        let config = MetricsConfig {
+            enabled: true,
+            prom_host: "prometheus.monitoring.svc.cluster.local".to_string(),
+            prom_port: 9100,
+            prometheus_prefix: "test".to_string(),
+            loki_host: "loki.monitoring.svc.cluster.local".to_string(),
+            loki_port: 3100,
+            include_queryparams: false,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_invalid_hostname_starting_with_hyphen() {
+        let config = MetricsConfig {
+            enabled: true,
+            prom_host: "-invalid".to_string(),
+            prom_port: 9100,
+            prometheus_prefix: "test".to_string(),
+            loki_host: "127.0.0.1".to_string(),
             loki_port: 3100,
             include_queryparams: false,
         };

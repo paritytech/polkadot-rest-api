@@ -33,6 +33,7 @@ parity-scale-codec = { version = "3.0", features = ["derive"] }
 sp-core = "34"
 sp-runtime = "39"
 sp-consensus-babe = "0.40"
+staging-xcm = { version = "14", default-features = false, features = ["std"] }
 scale-value = "0.18"
 scale-decode = { version = "0.16", features = ["derive"] }
 scale-type-resolver = { version = "0.2.0", features = ["visitor"] }
@@ -42,6 +43,7 @@ lazy_static = "1.4"
 regex = "1.10"
 tracing-loki = "0.2"
 url = "2.5"
+http-body-util = "0.1"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

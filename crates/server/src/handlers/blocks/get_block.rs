@@ -17,6 +17,7 @@ use super::common::{
 };
 use super::docs::Docs;
 use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
+use super::xcm::XcmDecoder;
 
 // ================================================================================================
 // Main Handler
@@ -196,6 +197,18 @@ pub async fn get_block(
         }
     }
 
+    // Decode XCM messages if requested
+    let decoded_xcm_msgs = if params.decoded_xcm_msgs {
+        let decoder = XcmDecoder::new(
+            state.chain_info.chain_type.clone(),
+            &extrinsics_with_events,
+            params.para_id,
+        );
+        Some(decoder.decode())
+    } else {
+        None
+    };
+
     let response = BlockResponse {
         number: resolved_block.number.to_string(),
         hash: resolved_block.hash,
@@ -208,6 +221,7 @@ pub async fn get_block(
         extrinsics: extrinsics_with_events,
         on_finalize,
         finalized,
+        decoded_xcm_msgs,
     };
 
     Ok(Json(response))
