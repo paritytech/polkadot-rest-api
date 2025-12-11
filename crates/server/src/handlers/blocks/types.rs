@@ -40,6 +40,12 @@ pub struct BlockQueryParams {
     /// When true, treat block identifier as Relay Chain block and return Asset Hub blocks included in it
     #[serde(default)]
     pub use_rc_block: bool,
+    /// When true, decode and include XCM messages from the block's extrinsics
+    #[serde(default)]
+    pub decoded_xcm_msgs: bool,
+    /// Filter decoded XCM messages by parachain ID (only used when decodedXcmMsgs=true)
+    #[serde(default)]
+    pub para_id: Option<u32>,
 }
 
 fn default_true() -> bool {
@@ -54,6 +60,8 @@ impl Default for BlockQueryParams {
             no_fees: false,
             finalized_key: true,
             use_rc_block: false,
+            decoded_xcm_msgs: false,
+            para_id: None,
         }
     }
 }
@@ -335,6 +343,52 @@ pub struct BlockResponse {
     /// Asset Hub block timestamp (only present when useRcBlock=true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ah_timestamp: Option<String>,
+    /// Decoded XCM messages (omitted when decodedXcmMsgs=false)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decoded_xcm_msgs: Option<XcmMessages>,
+}
+
+// ================================================================================================
+// XCM Message Types
+// ================================================================================================
+
+/// Container for decoded XCM messages from a block
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct XcmMessages {
+    pub horizontal_messages: Vec<HorizontalMessage>,
+    pub downward_messages: Vec<DownwardMessage>,
+    pub upward_messages: Vec<UpwardMessage>,
+}
+
+/// Upward message from a parachain to the relay chain
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpwardMessage {
+    pub origin_para_id: String,
+    pub data: Value,
+}
+
+/// Downward message from the relay chain to a parachain
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownwardMessage {
+    pub sent_at: String,
+    pub msg: String,
+    pub data: Value,
+}
+
+/// Horizontal message between parachains
+/// Format differs slightly between relay chain and parachain perspective
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HorizontalMessage {
+    pub origin_para_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_para_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sent_at: Option<String>,
+    pub data: Value,
 }
 
 // ================================================================================================

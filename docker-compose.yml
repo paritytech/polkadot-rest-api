@@ -6,7 +6,7 @@ services:
       - polkadot-data:/data
     ports:
       - "9944:9944"
-    command: --base-path /data --chain polkadot --sync warp --state-pruning 256 --database paritydb --unsafe-rpc-external --rpc-cors=all
+    command: --base-path /data --chain polkadot --sync warp --state-pruning 256 --blocks-pruning 256 --database paritydb --unsafe-rpc-external --rpc-cors=all
 
   rest-api:
     container_name: rest-api
