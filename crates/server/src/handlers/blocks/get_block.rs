@@ -310,7 +310,7 @@ async fn build_block_response_for_hash(
             }
         }
     }
-  
+
     // Decode XCM messages if requested
     let decoded_xcm_msgs = if params.decoded_xcm_msgs {
         let decoder = XcmDecoder::new(

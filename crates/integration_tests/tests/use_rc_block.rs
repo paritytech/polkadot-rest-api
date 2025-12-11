@@ -168,10 +168,7 @@ async fn test_use_rc_block_empty_response() -> Result<()> {
         local_array.len()
     );
 
-    println!(
-        "{} Response is empty array as expected",
-        "✓".green().bold()
-    );
+    println!("{} Response is empty array as expected", "✓".green().bold());
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }
@@ -258,9 +255,7 @@ fn validate_block_structure(local: &Value, expected: &Value) {
         .as_object()
         .expect("Expected structure is not an object");
 
-    let local_obj = local
-        .as_object()
-        .expect("Local response is not an object");
+    let local_obj = local.as_object().expect("Local response is not an object");
 
     let mut errors = Vec::new();
 
@@ -311,7 +306,11 @@ fn validate_block_structure(local: &Value, expected: &Value) {
         }
     }
 
-    assert!(errors.is_empty(), "Found {} structure error(s)", errors.len());
+    assert!(
+        errors.is_empty(),
+        "Found {} structure error(s)",
+        errors.len()
+    );
 }
 
 fn value_type_name(v: &Value) -> &'static str {
