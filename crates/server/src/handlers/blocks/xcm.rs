@@ -38,7 +38,12 @@ fn bytes_to_hex(values: &[scale_value::Value<u32>]) -> String {
     format!("0x{}", hex::encode(bytes))
 }
 
-/// Check if variant name is an X1, X2, etc junction
+/// Check if variant name is an X1, X2, etc junction.
+/// These variants need special handling to preserve array output format.
+///
+/// TODO: Instead of hardcoding variant names, we could check if the parent type
+/// is `Junctions` by looking up the type in the registry. This would be more
+/// robust and wouldn't require updating if XCM adds new junction variants.
 fn is_junction_variant(name: &str) -> bool {
     matches!(name, "X1" | "X2" | "X3" | "X4" | "X5" | "X6" | "X7" | "X8")
 }
