@@ -131,6 +131,9 @@ mod tests {
             chain_info,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
             route_registry: crate::routes::RouteRegistry::new(),
+            relay_chain_client: None,
+            relay_chain_rpc: None,
+            relay_chain_rpc_client: None,
         }
     }
 
