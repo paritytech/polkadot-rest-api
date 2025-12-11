@@ -2,6 +2,7 @@
   {
     "parentHash": "0x76cd327b92f56f31e9dd07318a9793dc5943e60fd6b2cdc096f31a84ae562289",
     "number": "10554981",
+    "hash": "0xe2fbe60df2940dd2ae8585b166d7c55def532849b193e93e5a9a4a0def827782",
     "stateRoot": "0x4ada77d75a8e7380685115b3edbd53228da52d696a3f99e9c4cbef869e597433",
     "extrinsicsRoot": "0x0ebf421f78b267b7ec29b126e4d4d4f64b0d5cf9f695be9b76be7e6cca6955cc",
     "digest": {
