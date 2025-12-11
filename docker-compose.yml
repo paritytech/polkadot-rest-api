@@ -32,6 +32,17 @@ services:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
 
+  cadvisor:
+    container_name: cadvisor
+    image: gcr.io/cadvisor/cadvisor:latest
+    privileged: true
+    ports:
+      - "8081:8080"
+    volumes:
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+
   prometheus:
     container_name: prometheus
     image: prom/prometheus:latest
@@ -44,6 +55,7 @@ services:
       - "--storage.tsdb.path=/prometheus"
     depends_on:
       - rest-api
+      - cadvisor
 
   grafana:
     container_name: grafana
