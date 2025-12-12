@@ -179,13 +179,12 @@ where
             let mut bytes = Vec::with_capacity(items.len());
 
             for item in &items {
-                if let Value::String(s) = item {
-                    if let Ok(n) = s.parse::<u64>() {
-                        if n <= 255 {
-                            bytes.push(n as u8);
-                            continue;
-                        }
-                    }
+                if let Value::String(s) = item
+                    && let Ok(n) = s.parse::<u64>()
+                    && n <= 255
+                {
+                    bytes.push(n as u8);
+                    continue;
                 }
                 is_byte_sequence = false;
                 break;
@@ -308,7 +307,7 @@ where
         if name == "None" {
             // Consume the fields even though we're returning null
             for field in value.fields() {
-                let _ = field?.decode_with_visitor(SkipVisitor::<R>::new())?;
+                field?.decode_with_visitor(SkipVisitor::<R>::new())?;
             }
             return Ok(Value::Null);
         }
@@ -368,13 +367,12 @@ where
             let mut bytes = Vec::with_capacity(items.len());
 
             for item in &items {
-                if let Value::String(s) = item {
-                    if let Ok(n) = s.parse::<u64>() {
-                        if n <= 255 {
-                            bytes.push(n as u8);
-                            continue;
-                        }
-                    }
+                if let Value::String(s) = item
+                    && let Ok(n) = s.parse::<u64>()
+                    && n <= 255
+                {
+                    bytes.push(n as u8);
+                    continue;
                 }
                 is_byte_array = false;
                 break;
@@ -421,7 +419,7 @@ where
         let bits: Vec<bool> = value
             .decode()?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| scale_decode::Error::custom(e))?;
+            .map_err(scale_decode::Error::custom)?;
         let bytes: Vec<u8> = bits
             .chunks(8)
             .map(|chunk| {
