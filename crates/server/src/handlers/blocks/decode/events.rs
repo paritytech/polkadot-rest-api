@@ -744,7 +744,10 @@ pub fn convert_bytes_to_hex(value: JsonValue) -> JsonValue {
                 // If array has single element, unwrap it (this handles cases like ["0x..."] -> "0x...")
                 // This is specific to how the data is formatted in substrate-api-sidecar
                 match converted.len() {
-                    1 => converted.into_iter().next().unwrap(),
+                    1 => match converted.into_iter().next() {
+                        Some(v) => v,
+                        None => JsonValue::Array(vec![]),
+                    },
                     _ => JsonValue::Array(converted),
                 }
             }
@@ -830,7 +833,10 @@ pub fn transform_json_unified(value: JsonValue, ss58_prefix: Option<u16>) -> Jso
 
                 // If array has single element, unwrap it
                 match converted.len() {
-                    1 => converted.into_iter().next().unwrap(),
+                    1 => match converted.into_iter().next() {
+                        Some(v) => v,
+                        None => JsonValue::Array(vec![]),
+                    },
                     _ => JsonValue::Array(converted),
                 }
             }

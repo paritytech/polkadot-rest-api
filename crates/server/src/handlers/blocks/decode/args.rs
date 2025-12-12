@@ -251,9 +251,11 @@ where
             // Deal with named fields and return a JSON object
             let mut map = serde_json::Map::new();
             for field in fields {
-                let key = field.name().unwrap().to_lower_camel_case();
-                let val = field.decode_with_visitor(JsonVisitor::new(self.ss58_prefix))?;
-                map.insert(key, val);
+                if let Some(name) = field.name() {
+                    let key = name.to_lower_camel_case();
+                    let val = field.decode_with_visitor(JsonVisitor::new(self.ss58_prefix))?;
+                    map.insert(key, val);
+                }
             }
             Ok(Value::Object(map))
         } else {
@@ -283,11 +285,11 @@ where
             // We deal with a single unnamed field.
             // Note: We already handled sequences in visit_sequence, so this is safe
             if field_count == 1 {
-                return fields
-                    .into_iter()
-                    .next()
-                    .unwrap()
-                    .decode_with_visitor(JsonVisitor::new(self.ss58_prefix));
+                if let Some(field) = fields.into_iter().next() {
+                    return field.decode_with_visitor(JsonVisitor::new(self.ss58_prefix));
+                }
+                // Fallback: return empty array if iterator unexpectedly empty
+                return Ok(Value::Array(vec![]));
             }
 
             // Deal with multiple unnamed fields
@@ -326,18 +328,19 @@ where
             // Deal with named fields
             let mut map = serde_json::Map::new();
             for field in fields {
-                let key = field.name().unwrap().to_lower_camel_case();
-                let val = field.decode_with_visitor(JsonVisitor::new(self.ss58_prefix))?;
-                map.insert(key, val);
+                if let Some(name) = field.name() {
+                    let key = name.to_lower_camel_case();
+                    let val = field.decode_with_visitor(JsonVisitor::new(self.ss58_prefix))?;
+                    map.insert(key, val);
+                }
             }
             Value::Object(map)
         } else if fields.len() == 1 && !is_junction {
             // Deal with a single unnamed field
-            fields
-                .into_iter()
-                .next()
-                .unwrap()
-                .decode_with_visitor(JsonVisitor::new(self.ss58_prefix))?
+            match fields.into_iter().next() {
+                Some(field) => field.decode_with_visitor(JsonVisitor::new(self.ss58_prefix))?,
+                None => Value::Array(vec![]), // Fallback
+            }
         } else {
             // Deal with multiple unnamed fields or Junction types
             let arr: Result<Vec<_>, _> = fields
@@ -400,7 +403,11 @@ where
         }
 
         if items.len() == 1 {
-            return Ok(items.into_iter().next().unwrap());
+            if let Some(item) = items.into_iter().next() {
+                return Ok(item);
+            }
+            // Fallback: return empty array if iterator unexpectedly empty
+            return Ok(Value::Array(vec![]));
         }
 
         Ok(Value::Array(items))

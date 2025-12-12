@@ -93,7 +93,10 @@ pub fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRe
                     Value::String(bytes_to_hex_scale_value(&fields_vec))
                 } else if fields_vec.len() == 1 && !is_sequence {
                     // Single unnamed field that's NOT a sequence - unwrap it (newtype wrapper)
-                    scale_value_to_json(fields_vec.into_iter().next().unwrap(), registry)
+                    match fields_vec.into_iter().next() {
+                        Some(field) => scale_value_to_json(field, registry),
+                        None => Value::Null,
+                    }
                 } else {
                     // Sequence type or multiple elements - keep as array
                     Value::Array(
@@ -127,13 +130,10 @@ pub fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRe
                     if !fields_vec.is_empty() && is_byte_array_scale_value(&fields_vec) {
                         Value::String(bytes_to_hex_scale_value(&fields_vec))
                     } else if fields_vec.len() == 1 && !is_junction {
-                        let inner_type_id = fields_vec[0].context;
-                        if is_sequence_type(inner_type_id, registry) {
-                            // It's a sequence, keep recursing but don't unwrap here
-                            scale_value_to_json(fields_vec.into_iter().next().unwrap(), registry)
-                        } else {
-                            // Not a sequence, unwrap the newtype wrapper
-                            scale_value_to_json(fields_vec.into_iter().next().unwrap(), registry)
+                        // Single unnamed field - recurse into it
+                        match fields_vec.into_iter().next() {
+                            Some(field) => scale_value_to_json(field, registry),
+                            None => Value::Null,
                         }
                     } else {
                         // For junctions (X1, X2, etc) or multi-element, output as array
