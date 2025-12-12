@@ -19,16 +19,18 @@ use subxt_historic::client::{ClientAtBlock, OnlineClientAtBlock};
 /// storage, extrinsics, and metadata for that block.
 pub type BlockClient<'a> = ClientAtBlock<OnlineClientAtBlock<'a, SubstrateConfig>, SubstrateConfig>;
 
-use super::docs::Docs;
-use super::transform::{
-    actual_weight_to_json, convert_bytes_to_hex, extract_number_as_string, extract_numeric_string,
-    transform_fee_info, transform_json_unified, try_convert_accountid_to_ss58,
+use super::decode::{
+    GetTypeName, JsonVisitor, convert_bytes_to_hex, transform_json_unified,
+    try_convert_accountid_to_ss58,
 };
-use super::type_name_visitor::GetTypeName;
+use super::docs::Docs;
 use super::types::{
     ActualWeight, CONSENSUS_ENGINE_ID_LEN, DigestItemDiscriminant, DigestLog, Event, EventPhase,
     ExtrinsicInfo, ExtrinsicOutcome, GetBlockError, MethodInfo, MultiAddress, OnFinalize,
     OnInitialize, ParsedEvent, SignatureInfo, SignerId,
+};
+use super::utils::{
+    actual_weight_to_json, extract_number_as_string, extract_numeric_string, transform_fee_info,
 };
 
 // ================================================================================================
@@ -456,7 +458,7 @@ pub async fn fetch_block_events(
     client_at_block: &BlockClient<'_>,
     block_number: u64,
 ) -> Result<Vec<ParsedEvent>, GetBlockError> {
-    use crate::handlers::blocks::events_visitor::{EventPhase as VisitorEventPhase, EventsVisitor};
+    use crate::handlers::blocks::decode::{EventPhase as VisitorEventPhase, EventsVisitor};
 
     let storage_entry = client_at_block.storage().entry("System", "Events")?;
     let events_value = storage_entry.fetch(()).await?.ok_or_else(|| {
@@ -898,14 +900,15 @@ pub async fn extract_extrinsics(
                 // If we failed to decode as account types, fall through to Value<()> decoding
             }
 
-            // For non-account fields (or account fields that failed to decode), use Value<()>
-            match field.decode_as::<scale_value::Value<()>>() {
-                Ok(value) => {
-                    let json_value = serde_json::to_value(&value).unwrap_or(Value::Null);
-                    // Single-pass transformation: combines byte-to-hex, snake_case, enum simplification, and SS58 decoding
-                    let transformed =
-                        transform_json_unified(json_value, Some(state.chain_info.ss58_prefix));
-                    args_map.insert(field_key, transformed);
+            // For non-account fields (or account fields that failed to decode):
+            // Use the type-aware JsonVisitor which correctly handles:
+            // - SS58 encoding only for AccountId32/MultiAddress/AccountId types
+            // - Preserving arrays for Vec<T> sequences
+            // - Converting byte arrays to hex
+            // - Enum variant transformation
+            match field.visit(JsonVisitor::new(state.chain_info.ss58_prefix)) {
+                Ok(json_value) => {
+                    args_map.insert(field_key, json_value);
                 }
                 Err(e) => {
                     tracing::warn!(
