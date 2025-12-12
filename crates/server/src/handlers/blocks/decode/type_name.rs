@@ -1,14 +1,19 @@
-/// This module defines a visitor which retrieves the name of a type.
-/// Based on the example from subxt_historic/examples/extrinsics.rs
+//! Type name extraction visitor.
+//!
+//! This module provides `GetTypeName`, a visitor which retrieves the name of a type
+//! from its path. Based on the example from subxt_historic/examples/extrinsics.rs.
+
 use scale_decode::{
+    visitor::{
+        types::{Composite, Sequence, Variant},
+        TypeIdFor, Unexpected,
+    },
     Visitor,
-    visitor::types::{Composite, Sequence, Variant},
-    visitor::{TypeIdFor, Unexpected},
 };
 use scale_info_legacy::LookupName;
 use scale_type_resolver::TypeResolver;
 
-/// This is a visitor which obtains type names from types.
+/// A visitor which obtains type names from types.
 pub struct GetTypeName<R> {
     marker: core::marker::PhantomData<R>,
 }
@@ -19,6 +24,12 @@ impl<R> GetTypeName<R> {
         GetTypeName {
             marker: core::marker::PhantomData,
         }
+    }
+}
+
+impl<R> Default for GetTypeName<R> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -39,6 +50,7 @@ where
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         Ok(value.path().last())
     }
+
     fn visit_variant<'scale, 'resolver>(
         self,
         value: &mut Variant<'scale, 'resolver, Self::TypeResolver>,
@@ -46,6 +58,7 @@ where
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         Ok(value.path().last())
     }
+
     fn visit_sequence<'scale, 'resolver>(
         self,
         value: &mut Sequence<'scale, 'resolver, Self::TypeResolver>,

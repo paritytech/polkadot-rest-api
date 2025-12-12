@@ -19,13 +19,14 @@ use subxt_historic::client::{ClientAtBlock, OnlineClientAtBlock};
 /// storage, extrinsics, and metadata for that block.
 pub type BlockClient<'a> = ClientAtBlock<OnlineClientAtBlock<'a, SubstrateConfig>, SubstrateConfig>;
 
-use super::docs::Docs;
-use super::transform::{
-    actual_weight_to_json, convert_bytes_to_hex, extract_number_as_string,
-    extract_numeric_string, transform_fee_info, transform_json_unified,
-    try_convert_accountid_to_ss58, JsonVisitor,
+use super::decode::{
+    convert_bytes_to_hex, transform_json_unified, try_convert_accountid_to_ss58, GetTypeName,
+    JsonVisitor,
 };
-use super::type_name_visitor::GetTypeName;
+use super::docs::Docs;
+use super::utils::{
+    actual_weight_to_json, extract_number_as_string, extract_numeric_string, transform_fee_info,
+};
 use super::types::{
     ActualWeight, CONSENSUS_ENGINE_ID_LEN, DigestItemDiscriminant, DigestLog, Event, EventPhase,
     ExtrinsicInfo, ExtrinsicOutcome, GetBlockError, MethodInfo, MultiAddress, OnFinalize,
@@ -457,7 +458,7 @@ pub async fn fetch_block_events(
     client_at_block: &BlockClient<'_>,
     block_number: u64,
 ) -> Result<Vec<ParsedEvent>, GetBlockError> {
-    use crate::handlers::blocks::events_visitor::{EventPhase as VisitorEventPhase, EventsVisitor};
+    use crate::handlers::blocks::decode::{EventPhase as VisitorEventPhase, EventsVisitor};
 
     let storage_entry = client_at_block.storage().entry("System", "Events")?;
     let events_value = storage_entry.fetch(()).await?.ok_or_else(|| {

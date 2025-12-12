@@ -1,11 +1,186 @@
 //! XCM message decoding for block extrinsics.
+//!
+//! This module provides:
+//! - `XcmDecoder` for extracting and decoding XCM messages from extrinsics
+//! - `scale_value_to_json` for registry-aware conversion of SCALE values to JSON
 
-use super::transform::scale_value_to_json;
-use super::types::{DownwardMessage, ExtrinsicInfo, HorizontalMessage, UpwardMessage, XcmMessages};
-use config::ChainType;
-use scale_info::PortableRegistry;
+use heck::ToLowerCamelCase;
+use scale_info::{PortableRegistry, TypeDef};
 use scale_value::scale::decode_as_type;
 use serde_json::Value;
+
+use super::super::types::{
+    DownwardMessage, ExtrinsicInfo, HorizontalMessage, UpwardMessage, XcmMessages,
+};
+use config::ChainType;
+
+// ================================================================================================
+// Registry-Aware SCALE Value Transformation
+// ================================================================================================
+
+/// Check if a type_id refers to a sequence type (Vec<T>) in the registry.
+/// This is used to distinguish between sequences (which should stay as arrays)
+/// and newtype wrappers (which should be unwrapped).
+pub fn is_sequence_type(type_id: u32, registry: &PortableRegistry) -> bool {
+    registry
+        .resolve(type_id)
+        .is_some_and(|ty| matches!(ty.type_def, TypeDef::Sequence(_)))
+}
+
+/// Check if an array of scale_value::Value looks like a byte array (all u8 values 0-255).
+/// Requires at least 2 elements to avoid treating single compact integers as byte arrays.
+pub fn is_byte_array_scale_value(values: &[scale_value::Value<u32>]) -> bool {
+    values.len() >= 2
+        && values.iter().all(|v| {
+            matches!(
+                &v.value,
+                scale_value::ValueDef::Primitive(scale_value::Primitive::U128(n)) if *n <= 255
+            )
+        })
+}
+
+/// Convert a slice of scale_value::Value (representing bytes) to a hex string.
+pub fn bytes_to_hex_scale_value(values: &[scale_value::Value<u32>]) -> String {
+    let bytes: Vec<u8> = values
+        .iter()
+        .filter_map(|v| match &v.value {
+            scale_value::ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n as u8),
+            _ => None,
+        })
+        .collect();
+    format!("0x{}", hex::encode(bytes))
+}
+
+/// Check if variant name is an X1, X2, etc junction.
+/// These variants need special handling to preserve array output format.
+fn is_junction_variant(name: &str) -> bool {
+    matches!(name, "X1" | "X2" | "X3" | "X4" | "X5" | "X6" | "X7" | "X8")
+}
+
+/// Convert a scale_value::Value<u32> to serde_json::Value with registry awareness.
+///
+/// This correctly handles:
+/// - Vec<T> (sequences) - always keeps as array even with single element
+/// - Newtype wrappers - unwraps single unnamed field
+/// - Byte arrays - converts to hex strings
+/// - Named structs - converts to JSON objects with camelCase keys
+/// - Enum variants - converts to { "variantName": value } format
+///
+/// The key insight: the decision to unwrap is based on the TYPE (checking TypeDef::Sequence
+/// in the registry), not the array length.
+pub fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRegistry) -> Value {
+    let type_id = value.context;
+    let is_sequence = is_sequence_type(type_id, registry);
+
+    match value.value {
+        scale_value::ValueDef::Composite(composite) => match composite {
+            scale_value::Composite::Named(fields) => {
+                let map: serde_json::Map<String, Value> = fields
+                    .into_iter()
+                    .map(|(name, val)| {
+                        (
+                            name.to_lower_camel_case(),
+                            scale_value_to_json(val, registry),
+                        )
+                    })
+                    .collect();
+                Value::Object(map)
+            }
+            scale_value::Composite::Unnamed(fields) => {
+                let fields_vec: Vec<_> = fields.into_iter().collect();
+                // Check if this looks like a byte array
+                if !fields_vec.is_empty() && is_byte_array_scale_value(&fields_vec) {
+                    Value::String(bytes_to_hex_scale_value(&fields_vec))
+                } else if fields_vec.len() == 1 && !is_sequence {
+                    // Single unnamed field that's NOT a sequence - unwrap it (newtype wrapper)
+                    scale_value_to_json(fields_vec.into_iter().next().unwrap(), registry)
+                } else {
+                    // Sequence type or multiple elements - keep as array
+                    Value::Array(
+                        fields_vec
+                            .into_iter()
+                            .map(|v| scale_value_to_json(v, registry))
+                            .collect(),
+                    )
+                }
+            }
+        },
+        scale_value::ValueDef::Variant(variant) => {
+            // Handle Option::None as JSON null
+            if variant.name == "None" {
+                return Value::Null;
+            }
+
+            let name = variant.name.to_lower_camel_case();
+            let is_junction = is_junction_variant(&variant.name);
+
+            let inner = match variant.values {
+                scale_value::Composite::Named(fields) if !fields.is_empty() => {
+                    let map: serde_json::Map<String, Value> = fields
+                        .into_iter()
+                        .map(|(n, v)| (n.to_lower_camel_case(), scale_value_to_json(v, registry)))
+                        .collect();
+                    Value::Object(map)
+                }
+                scale_value::Composite::Unnamed(fields) if !fields.is_empty() => {
+                    let fields_vec: Vec<_> = fields.into_iter().collect();
+                    if !fields_vec.is_empty() && is_byte_array_scale_value(&fields_vec) {
+                        Value::String(bytes_to_hex_scale_value(&fields_vec))
+                    } else if fields_vec.len() == 1 && !is_junction {
+                        let inner_type_id = fields_vec[0].context;
+                        if is_sequence_type(inner_type_id, registry) {
+                            // It's a sequence, keep recursing but don't unwrap here
+                            scale_value_to_json(fields_vec.into_iter().next().unwrap(), registry)
+                        } else {
+                            // Not a sequence, unwrap the newtype wrapper
+                            scale_value_to_json(fields_vec.into_iter().next().unwrap(), registry)
+                        }
+                    } else {
+                        // For junctions (X1, X2, etc) or multi-element, output as array
+                        Value::Array(
+                            fields_vec
+                                .into_iter()
+                                .map(|v| scale_value_to_json(v, registry))
+                                .collect(),
+                        )
+                    }
+                }
+                _ => Value::Null,
+            };
+            let mut map = serde_json::Map::new();
+            map.insert(name, inner);
+            Value::Object(map)
+        }
+        scale_value::ValueDef::Primitive(prim) => match prim {
+            scale_value::Primitive::Bool(b) => Value::Bool(b),
+            scale_value::Primitive::Char(c) => Value::String(c.to_string()),
+            scale_value::Primitive::String(s) => Value::String(s),
+            scale_value::Primitive::U128(n) => Value::String(n.to_string()),
+            scale_value::Primitive::I128(n) => Value::String(n.to_string()),
+            scale_value::Primitive::U256(n) => Value::String(format!("{:?}", n)),
+            scale_value::Primitive::I256(n) => Value::String(format!("{:?}", n)),
+        },
+        scale_value::ValueDef::BitSequence(bits) => {
+            // Convert bit sequence to hex string
+            let bytes: Vec<u8> = bits
+                .iter()
+                .collect::<Vec<_>>()
+                .chunks(8)
+                .map(|chunk| {
+                    chunk
+                        .iter()
+                        .enumerate()
+                        .fold(0u8, |acc, (i, &bit)| acc | ((bit as u8) << i))
+                })
+                .collect();
+            Value::String(format!("0x{}", hex::encode(bytes)))
+        }
+    }
+}
+
+// ================================================================================================
+// XCM Decoder
+// ================================================================================================
 
 /// Build a portable registry containing just the VersionedXcm type
 fn build_xcm_registry() -> (PortableRegistry, u32) {

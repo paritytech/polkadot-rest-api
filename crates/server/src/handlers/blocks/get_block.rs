@@ -17,7 +17,7 @@ use super::common::{
 };
 use super::docs::Docs;
 use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
-use super::xcm::XcmDecoder;
+use super::decode::XcmDecoder;
 
 // ================================================================================================
 // Main Handler
