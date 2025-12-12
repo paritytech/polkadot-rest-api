@@ -5,3 +5,6 @@ images:
     env:
       SAS_SUBSTRATE_URL: wss://apps-rpc.polkadot.io
       RUST_LOG: info
+      SAS_METRICS_ENABLED: "true"
+      SAS_METRICS_LOKI_HOST: loki.parity-mgmt.parity.io
+      SAS_METRICS_LOKI_PORT: "80"
