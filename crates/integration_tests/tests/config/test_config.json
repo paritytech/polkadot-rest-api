@@ -300,7 +300,7 @@
         "query_params": { "at": "11152000" },
         "fixture_path": "asset-hub-kusama/runtime_metadata_v15_11152000.json",
         "description": "Test runtime metadata v15 at Asset Hub Kusama block 11,152,000"
-      }.
+      },
       {
         "endpoint": "/v1/runtime/spec",
         "block_height": null,
