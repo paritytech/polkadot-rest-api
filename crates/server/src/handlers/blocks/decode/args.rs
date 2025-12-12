@@ -263,7 +263,10 @@ where
                 let mut bytes = Vec::with_capacity(field_count);
 
                 for field in &fields {
-                    match field.clone().decode_with_visitor(ByteValueVisitor::<R>::new()) {
+                    match field
+                        .clone()
+                        .decode_with_visitor(ByteValueVisitor::<R>::new())
+                    {
                         Ok(Some(byte)) => bytes.push(byte),
                         _ => {
                             is_byte_array = false;

@@ -4,11 +4,11 @@
 //! from its path. Based on the example from subxt_historic/examples/extrinsics.rs.
 
 use scale_decode::{
-    visitor::{
-        types::{Composite, Sequence, Variant},
-        TypeIdFor, Unexpected,
-    },
     Visitor,
+    visitor::{
+        TypeIdFor, Unexpected,
+        types::{Composite, Sequence, Variant},
+    },
 };
 use scale_info_legacy::LookupName;
 use scale_type_resolver::TypeResolver;

@@ -5,8 +5,8 @@
 
 use serde_json::Value;
 
-use super::numeric::extract_number_as_string;
 use super::super::types::ActualWeight;
+use super::numeric::extract_number_as_string;
 
 /// Transform fee info from payment_queryInfo RPC response into the expected format
 ///

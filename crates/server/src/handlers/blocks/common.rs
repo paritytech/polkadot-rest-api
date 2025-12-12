@@ -20,17 +20,17 @@ use subxt_historic::client::{ClientAtBlock, OnlineClientAtBlock};
 pub type BlockClient<'a> = ClientAtBlock<OnlineClientAtBlock<'a, SubstrateConfig>, SubstrateConfig>;
 
 use super::decode::{
-    convert_bytes_to_hex, transform_json_unified, try_convert_accountid_to_ss58, GetTypeName,
-    JsonVisitor,
+    GetTypeName, JsonVisitor, convert_bytes_to_hex, transform_json_unified,
+    try_convert_accountid_to_ss58,
 };
 use super::docs::Docs;
-use super::utils::{
-    actual_weight_to_json, extract_number_as_string, extract_numeric_string, transform_fee_info,
-};
 use super::types::{
     ActualWeight, CONSENSUS_ENGINE_ID_LEN, DigestItemDiscriminant, DigestLog, Event, EventPhase,
     ExtrinsicInfo, ExtrinsicOutcome, GetBlockError, MethodInfo, MultiAddress, OnFinalize,
     OnInitialize, ParsedEvent, SignatureInfo, SignerId,
+};
+use super::utils::{
+    actual_weight_to_json, extract_number_as_string, extract_numeric_string, transform_fee_info,
 };
 
 // ================================================================================================

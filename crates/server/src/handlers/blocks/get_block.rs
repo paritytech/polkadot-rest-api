@@ -15,9 +15,9 @@ use super::common::{
     extract_fee_info_for_extrinsic, fetch_block_events, get_canonical_hash_at_number,
     get_finalized_block_number,
 };
+use super::decode::XcmDecoder;
 use super::docs::Docs;
 use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
-use super::decode::XcmDecoder;
 
 // ================================================================================================
 // Main Handler

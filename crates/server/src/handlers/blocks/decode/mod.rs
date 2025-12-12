@@ -14,8 +14,8 @@ pub mod xcm;
 // Re-export commonly used types
 pub use args::JsonVisitor;
 pub use events::{
-    convert_bytes_to_hex, transform_json_unified, try_convert_accountid_to_ss58, EventField,
-    EventInfo, EventPhase, EventsVisitor,
+    EventField, EventInfo, EventPhase, EventsVisitor, convert_bytes_to_hex, transform_json_unified,
+    try_convert_accountid_to_ss58,
 };
 pub use type_name::GetTypeName;
 pub use xcm::XcmDecoder;

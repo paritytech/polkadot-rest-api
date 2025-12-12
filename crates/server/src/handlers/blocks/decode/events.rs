@@ -6,11 +6,11 @@
 
 use heck::ToLowerCamelCase;
 use scale_decode::{
-    visitor::{
-        types::{Composite, Sequence, Variant},
-        TypeIdFor, Unexpected,
-    },
     Visitor,
+    visitor::{
+        TypeIdFor, Unexpected,
+        types::{Composite, Sequence, Variant},
+    },
 };
 use scale_type_resolver::TypeResolver;
 use serde_json::Value as JsonValue;
@@ -739,8 +739,7 @@ pub fn convert_bytes_to_hex(value: JsonValue) -> JsonValue {
                 JsonValue::String(format!("0x{}", hex::encode(&bytes)))
             } else {
                 // Recurse into array elements
-                let converted: Vec<JsonValue> =
-                    arr.into_iter().map(convert_bytes_to_hex).collect();
+                let converted: Vec<JsonValue> = arr.into_iter().map(convert_bytes_to_hex).collect();
 
                 // If array has single element, unwrap it (this handles cases like ["0x..."] -> "0x...")
                 // This is specific to how the data is formatted in substrate-api-sidecar
