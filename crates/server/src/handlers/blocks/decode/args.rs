@@ -9,10 +9,12 @@ use scale_decode::visitor::{self, TypeIdFor};
 use serde_json::Value;
 use sp_core::crypto::{AccountId32, Ss58Codec};
 
-/// Check if variant name is an X1, X2, etc junction.
+/// Check if variant name is an X2-X8 junction.
 /// These variants need special handling to preserve array output format.
+/// Note: X1 is intentionally excluded - it has a single element and should be
+/// unwrapped like any other single-field variant to match sidecar's output format.
 fn is_junction_variant(name: &str) -> bool {
-    matches!(name, "X1" | "X2" | "X3" | "X4" | "X5" | "X6" | "X7" | "X8")
+    matches!(name, "X2" | "X3" | "X4" | "X5" | "X6" | "X7" | "X8")
 }
 
 /// A visitor that decodes SCALE values directly to JSON with type-aware transformations.
