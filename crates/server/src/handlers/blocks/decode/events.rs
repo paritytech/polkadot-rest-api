@@ -887,19 +887,14 @@ pub fn transform_json_unified(value: JsonValue, ss58_prefix: Option<u16>) -> Jso
                     return JsonValue::String(name.clone());
                 }
 
-                // For args (when ss58_prefix is Some), transform to {"<name>": <transformed_values>}
-                if ss58_prefix.is_some() {
-                    // Only lowercase the first letter for CamelCase names (e.g., "PreRuntime" -> "preRuntime")
-                    // Keep snake_case names as-is (e.g., "inbound_messages_data" stays unchanged)
-                    let key = crate::utils::lowercase_first_char(name);
-                    let transformed_value = transform_json_unified(values.clone(), ss58_prefix);
+                // Transform enum variant to {"<name>": <transformed_values>} format
+                // Only lowercase the first letter for CamelCase names (e.g., "Complete" -> "complete")
+                let key = crate::utils::lowercase_first_char(name);
+                let transformed_value = transform_json_unified(values.clone(), ss58_prefix);
 
-                    let mut result = serde_json::Map::new();
-                    result.insert(key, transformed_value);
-                    return JsonValue::Object(result);
-                }
-                // For events (when ss58_prefix is None), we don't transform the enum further
-                // Fall through to regular object handling
+                let mut result = serde_json::Map::new();
+                result.insert(key, transformed_value);
+                return JsonValue::Object(result);
             }
 
             // Regular object: transform keys from snake_case to camelCase and recurse
