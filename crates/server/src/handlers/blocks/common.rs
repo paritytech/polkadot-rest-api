@@ -13,7 +13,6 @@ use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash as HashT;
 use subxt_historic::SubstrateConfig;
 use subxt_historic::client::{ClientAtBlock, OnlineClientAtBlock};
-use subxt_historic::helpers::AnyResolver;
 
 /// Type alias for the ClientAtBlock type used throughout the codebase.
 /// This represents a client pinned to a specific block height with access to
@@ -22,9 +21,9 @@ pub type BlockClient<'a> = ClientAtBlock<OnlineClientAtBlock<'a, SubstrateConfig
 
 use super::docs::Docs;
 use super::transform::{
-    actual_weight_to_json, apply_ss58_encoding, convert_bytes_to_hex, extract_number_as_string,
+    actual_weight_to_json, convert_bytes_to_hex, extract_number_as_string,
     extract_numeric_string, transform_fee_info, transform_json_unified,
-    try_convert_accountid_to_ss58,
+    try_convert_accountid_to_ss58, JsonVisitor,
 };
 use super::type_name_visitor::GetTypeName;
 use super::types::{
@@ -802,60 +801,6 @@ pub async fn extract_fee_info_for_extrinsic(
 // Extrinsic Processing
 // ================================================================================================
 
-/// Visitor that checks if a type is a sequence type (Vec<T>) at the top level.
-/// Used to detect when a field should never have its array unwrapped.
-pub struct IsSequenceVisitor<R> {
-    marker: core::marker::PhantomData<R>,
-}
-
-impl<R> IsSequenceVisitor<R> {
-    pub fn new() -> Self {
-        IsSequenceVisitor {
-            marker: core::marker::PhantomData,
-        }
-    }
-}
-
-impl<R> scale_decode::Visitor for IsSequenceVisitor<R>
-where
-    R: scale_type_resolver::TypeResolver,
-{
-    type Value<'scale, 'resolver> = bool;
-    type Error = scale_decode::Error;
-    type TypeResolver = R;
-
-    fn visit_sequence<'scale, 'resolver>(
-        self,
-        _value: &mut scale_decode::visitor::types::Sequence<'scale, 'resolver, Self::TypeResolver>,
-        _type_id: scale_decode::visitor::TypeIdFor<Self>,
-    ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        Ok(true) // It's a sequence type!
-    }
-
-    fn visit_composite<'scale, 'resolver>(
-        self,
-        _value: &mut scale_decode::visitor::types::Composite<'scale, 'resolver, Self::TypeResolver>,
-        _type_id: scale_decode::visitor::TypeIdFor<Self>,
-    ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        Ok(false)
-    }
-
-    fn visit_variant<'scale, 'resolver>(
-        self,
-        _value: &mut scale_decode::visitor::types::Variant<'scale, 'resolver, Self::TypeResolver>,
-        _type_id: scale_decode::visitor::TypeIdFor<Self>,
-    ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        Ok(false)
-    }
-
-    fn visit_unexpected<'scale, 'resolver>(
-        self,
-        _unexpected: scale_decode::visitor::Unexpected,
-    ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        Ok(false)
-    }
-}
-
 /// Extract extrinsics from a block using subxt-historic
 pub async fn extract_extrinsics(
     state: &AppState,
@@ -955,28 +900,14 @@ pub async fn extract_extrinsics(
             }
 
             // For non-account fields (or account fields that failed to decode):
-            // First check if the field type is a sequence (Vec<T>) so we know not to unwrap single-element arrays
-            let is_sequence = field
-                .visit(IsSequenceVisitor::<AnyResolver>::new())
-                .unwrap_or(false);
-
-            // Now decode the value
-            match field.decode_as::<scale_value::Value<()>>() {
-                Ok(value) => {
-                    let json_value = serde_json::to_value(&value).unwrap_or(Value::Null);
-                    let mut transformed =
-                        transform_json_unified(json_value, Some(state.chain_info.ss58_prefix));
-
-                    // If this was a sequence type but the result is not an array,
-                    // it means a single-element array was incorrectly unwrapped - fix it
-                    if is_sequence && !transformed.is_array() {
-                        transformed = Value::Array(vec![transformed]);
-                    }
-
-                    // Apply SS58 encoding to any account addresses
-                    let final_value =
-                        apply_ss58_encoding(transformed, state.chain_info.ss58_prefix);
-                    args_map.insert(field_key, final_value);
+            // Use the type-aware JsonVisitor which correctly handles:
+            // - SS58 encoding only for AccountId32/MultiAddress/AccountId types
+            // - Preserving arrays for Vec<T> sequences
+            // - Converting byte arrays to hex
+            // - Enum variant transformation
+            match field.visit(JsonVisitor::new(state.chain_info.ss58_prefix)) {
+                Ok(json_value) => {
+                    args_map.insert(field_key, json_value);
                 }
                 Err(e) => {
                     tracing::warn!(
