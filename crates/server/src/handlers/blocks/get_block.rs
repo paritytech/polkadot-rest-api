@@ -11,12 +11,14 @@ use axum::{
 use heck::{ToSnakeCase, ToUpperCamelCase};
 
 use super::common::{
-    add_docs_to_events, categorize_events, decode_digest_logs, extract_author, extract_extrinsics,
-    extract_fee_info_for_extrinsic, fetch_block_events, get_canonical_hash_at_number,
+    add_docs_to_events, decode_digest_logs, extract_author, get_canonical_hash_at_number,
     get_finalized_block_number,
 };
 use super::decode::XcmDecoder;
 use super::docs::Docs;
+use super::processing::{
+    categorize_events, extract_extrinsics, extract_fee_info_for_extrinsic, fetch_block_events,
+};
 use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
 
 // ================================================================================================
