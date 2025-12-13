@@ -109,6 +109,9 @@ pub enum GetBlockError {
 
     #[error("Failed to get canonical block hash")]
     CanonicalHashFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Failed to compute block hash: {0}")]
+    HashComputationFailed(#[from] crate::utils::HashError),
 }
 
 impl IntoResponse for GetBlockError {
@@ -128,7 +131,8 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::MissingAddressBytes
             | GetBlockError::ExtrinsicDecodeFailed(_)
             | GetBlockError::FinalizedHeadFailed(_)
-            | GetBlockError::CanonicalHashFailed(_) => {
+            | GetBlockError::CanonicalHashFailed(_)
+            | GetBlockError::HashComputationFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
