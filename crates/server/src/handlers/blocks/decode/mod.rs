@@ -1,10 +1,17 @@
-//! Decoding modules for different block data types.
+//! SCALE decoding and JSON transformation for block data.
 //!
-//! This module provides specialized decoders for:
-//! - `args` - Type-aware JSON visitor for extrinsic arguments
-//! - `events` - Event decoding and transformation
-//! - `xcm` - XCM message decoding
-//! - `type_name` - Type name extraction
+//! # Why This Module Exists
+//!
+//! This module handles the **decoding** and **transformation** of SCALE-encoded data
+//! into JSON. It is separate from `processing/` because decoding requires specialized
+//! visitor patterns and type-aware logic that differs based on the data source:
+//!
+//! - **Extrinsic args** use `JsonVisitor` (type-aware at decode time)
+//! - **Events** use `EventsVisitor` + post-processing transforms (different JSON format)
+//! - **XCM messages** use `scale_value` + registry-aware conversion (different decode path)
+//!
+//! Each decoder produces different JSON output formats to match substrate-api-sidecar's
+//! API compatibility requirements.
 
 pub mod args;
 pub mod events;
