@@ -85,7 +85,8 @@ pub async fn get_block_head(
     Query(params): Query<BlockHeadQueryParams>,
 ) -> Result<Json<BlockResponse>, GetBlockError> {
     // Resolve head block hash based on finalized parameter
-    let (block_hash, block_number) = if params.finalized {
+    // Returns (block_hash, block_number, is_finalized)
+    let (block_hash, block_number, is_finalized) = if params.finalized {
         let finalized_hash = state
             .legacy_rpc
             .chain_get_finalized_head()
@@ -105,17 +106,24 @@ pub async fn get_block_head(
                     .map_err(|e| GetBlockError::HeaderFieldMissing(format!("number: {}", e)))
             })?;
 
-        (hash_str, block_number)
+        (hash_str, block_number, true)
     } else {
         // Get canonical head (may not be finalized)
-        // Use raw RPC request to get header as JSON
-        let header_json: serde_json::Value = state
-            .rpc_client
-            .request("chain_getHeader", rpc_params![])
-            .await
-            .map_err(GetBlockError::HeaderFetchFailed)?;
+        // We need to also fetch the finalized head to determine if canonical is finalized
+        let (canonical_header_json, finalized_hash) = tokio::join!(
+            async {
+                state
+                    .rpc_client
+                    .request::<serde_json::Value>("chain_getHeader", rpc_params![])
+                    .await
+            },
+            state.legacy_rpc.chain_get_finalized_head()
+        );
 
-        // Extract block number from header JSON (handles both hex string and numeric formats)
+        let header_json = canonical_header_json.map_err(GetBlockError::HeaderFetchFailed)?;
+        let finalized_hash = finalized_hash.map_err(GetBlockError::FinalizedHeadFailed)?;
+
+        // Extract block number from canonical header JSON
         let block_number = header_json
             .get("number")
             .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))
@@ -124,14 +132,27 @@ pub async fn get_block_head(
                     .map_err(|e| GetBlockError::HeaderFieldMissing(format!("number: {}", e)))
             })?;
 
-        // Compute block hash locally from header data (saves 1 RPC call)
+        let finalized_hash_str = BlockHash::from(finalized_hash).to_string();
+        let finalized_header_json = state
+            .get_header_json(&finalized_hash_str)
+            .await
+            .map_err(GetBlockError::HeaderFetchFailed)?;
+        let finalized_block_number = finalized_header_json
+            .get("number")
+            .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))
+            .and_then(|v| {
+                parse_block_number_from_json(v)
+                    .map_err(|e| GetBlockError::HeaderFieldMissing(format!("number: {}", e)))
+            })?;
+
+        // Block is finalized if its number <= finalized head number
+        let is_finalized = block_number <= finalized_block_number;
         let block_hash_typed = compute_block_hash_from_header_json(&header_json)?;
         let block_hash = block_hash_typed.to_string();
 
-        (block_hash, block_number)
+        (block_hash, block_number, is_finalized)
     };
 
-    // Fetch header JSON for the resolved block
     let header_json = state
         .get_header_json(&block_hash)
         .await
@@ -157,7 +178,6 @@ pub async fn get_block_head(
 
     let logs = decode_digest_logs(&header_json);
 
-    // Create client_at_block once and reuse for all operations
     let client_at_block = state.client.at(block_number).await?;
 
     let (author_id, extrinsics_result, events_result) = tokio::join!(
@@ -169,13 +189,11 @@ pub async fn get_block_head(
     let extrinsics = extrinsics_result?;
     let block_events = events_result?;
 
-    // For /blocks/head, the finalized status is determined by the query parameter:
+    // The finalized status is determined by comparing block number against finalized head:
     // - If finalized=true (default), we fetched the finalized head, so it IS finalized
-    // - If finalized=false, we fetched the canonical head which may or may not be finalized
-    //   In this case, we don't include the finalized field (set to None)
-    let finalized = if params.finalized { Some(true) } else { None };
+    // - If finalized=false, we fetched the canonical head and checked if it's <= finalized head
+    let finalized = Some(is_finalized);
 
-    // Categorize events by phase and extract extrinsic outcomes (success, paysFee)
     let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
         categorize_events(block_events, extrinsics.len());
 
