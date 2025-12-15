@@ -247,37 +247,33 @@ pub async fn fetch_block_events(
             if let Some(inner_value) = inner_values.first()
                 && let scale_value::ValueDef::Variant(event_variant) = &inner_value.value
             {
-                let field_values: Vec<&scale_value::Value<()>> =
+                let _field_values: Vec<&scale_value::Value<()>> =
                     event_variant.values.values().collect();
 
-                let event_data: Vec<Value> = field_values
+                // Use the visitor's field values which have proper type-level enum serialization
+                // (basic enums as strings, non-basic enums as objects)
+                let event_data: Vec<Value> = event_info
+                    .fields
                     .iter()
-                    .enumerate()
-                    .filter_map(|(idx, field)| {
-                        let json_value = serde_json::to_value(&field.value).ok()?;
+                    .map(|event_field| {
+                        let json_value = event_field.value.clone();
+                        let type_name = event_field.type_name.as_ref();
 
-                        // Type-based AccountId32 detection using type info from visitor
-                        if let Some(type_name) = event_info
-                            .fields
-                            .get(idx)
-                            .and_then(|f| f.type_name.as_ref())
-                            && (type_name == "AccountId32"
-                                || type_name == "MultiAddress"
-                                || type_name == "AccountId")
+                        if let Some(tn) = type_name
+                            && (tn == "AccountId32" || tn == "MultiAddress" || tn == "AccountId")
                         {
-                            // For AccountId fields, we need hex conversion first, then SS58 conversion
+                            // For AccountId fields, try SS58 conversion
                             let with_hex = convert_bytes_to_hex(json_value.clone());
                             if let Some(ss58_value) = try_convert_accountid_to_ss58(
                                 &with_hex,
                                 state.chain_info.ss58_prefix,
                             ) {
-                                return Some(ss58_value);
+                                return ss58_value;
                             }
-                            // If SS58 conversion failed, fall through to unified transformation
                         }
 
-                        // Single-pass transformation for non-AccountId fields (or AccountId fields where conversion failed)
-                        Some(transform_json_unified(json_value, None))
+                        // Apply remaining transformations (bytes to hex, numbers to strings, camelCase keys)
+                        transform_json_unified(json_value.clone(), None)
                     })
                     .collect();
 

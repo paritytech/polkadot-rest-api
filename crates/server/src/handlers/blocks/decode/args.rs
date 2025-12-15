@@ -357,6 +357,19 @@ where
             return Ok(Value::Null);
         }
 
+        // Handle Option::Some - unwrap and return just the inner value (not {"some": value})
+        if name == "Some" {
+            let fields: Vec<_> = value.fields().collect::<Result<Vec<_>, _>>()?;
+            if fields.len() == 1 {
+                if let Some(field) = fields.into_iter().next() {
+                    return field
+                        .decode_with_visitor(JsonVisitor::new(self.ss58_prefix, self.resolver));
+                }
+            }
+            // Fallback for unexpected Some structure
+            return Ok(Value::Null);
+        }
+
         // Convert variant name, ex: "PreRuntime" -> "preRuntime"
         let variant_name = crate::utils::lowercase_first_char(name);
 

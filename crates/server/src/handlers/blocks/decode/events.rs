@@ -32,7 +32,7 @@ where
     R::TypeId: Clone,
 {
     let type_visitor =
-        scale_type_resolver::visitor::new((), |_, _| false).visit_variant(|_, _, variants| {
+        scale_type_resolver::visitor::new((), |_, _| false).visit_variant(|_, _path, variants| {
             // Check if ANY variant has fields - if so, NOT basic
             for variant in variants {
                 if variant.fields.len() > 0 {
@@ -444,24 +444,36 @@ where
             }
         }
 
-        // Decode all fields recursively into a JSON object
-        let mut fields = Vec::new();
+        // Collect field names before decoding (since decode_item consumes them)
+        let field_names: Vec<Option<String>> = value
+            .fields()
+            .iter()
+            .map(|f| f.name.map(|s| s.to_lower_camel_case()))
+            .collect();
+        let has_named_fields = field_names.iter().any(|n| n.is_some());
+
+        let mut field_values = Vec::new();
         while let Some(field_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
             match field_result {
-                Ok(json_val) => fields.push(json_val),
+                Ok(json_val) => {
+                    field_values.push(json_val);
+                }
                 Err(e) => {
                     tracing::warn!("Failed to decode composite field: {:?}", e);
                 }
             }
         }
 
-        // If named fields, create an object; otherwise create an array
-        let json_value = if value.has_unnamed_fields() {
-            JsonValue::Array(fields)
+        // Create an object if we have named fields, otherwise an array
+        let json_value = if has_named_fields && field_names.len() == field_values.len() {
+            let obj: serde_json::Map<String, JsonValue> = field_names
+                .into_iter()
+                .zip(field_values)
+                .filter_map(|(name, val)| name.map(|n| (n, val)))
+                .collect();
+            JsonValue::Object(obj)
         } else {
-            // For named fields, we'd need field names which aren't easily accessible
-            // For now, just use an array
-            JsonValue::Array(fields)
+            JsonValue::Array(field_values)
         };
 
         Ok((type_name, json_value))
@@ -484,6 +496,20 @@ where
                 fields_composite.decode_item(ValueExtractor::new(self.resolver))
             {
                 let _ = field_result;
+            }
+            return Ok((type_name, JsonValue::Null));
+        }
+
+        // Special handling for Option::Some - unwrap and return just the inner value
+        if variant_name == "Some" {
+            let fields_composite = value.fields();
+            if let Some(field_result) =
+                fields_composite.decode_item(ValueExtractor::new(self.resolver))
+            {
+                match field_result {
+                    Ok(inner_value) => return Ok((type_name, inner_value)),
+                    Err(_) => return Ok((type_name, JsonValue::Null)),
+                }
             }
             return Ok((type_name, JsonValue::Null));
         }
@@ -555,6 +581,50 @@ where
                 Err(e) => {
                     tracing::warn!("Failed to decode sequence item: {:?}", e);
                 }
+            }
+        }
+
+        Ok((None, JsonValue::Array(items)))
+    }
+
+    fn visit_array<'scale, 'resolver>(
+        self,
+        value: &mut scale_decode::visitor::types::Array<'scale, 'resolver, Self::TypeResolver>,
+        _type_id: TypeIdFor<Self>,
+    ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
+        // Decode all array items
+        let mut items = Vec::new();
+        while let Some(item_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
+            match item_result {
+                Ok(json_val) => items.push(json_val),
+                Err(e) => {
+                    tracing::warn!("Failed to decode array item: {:?}", e);
+                }
+            }
+        }
+
+        // Check if this is a byte array (all items are u8 numbers)
+        // Convert to hex string if so
+        if items.len() >= 2 {
+            let mut is_byte_array = true;
+            let mut bytes = Vec::with_capacity(items.len());
+            for item in &items {
+                if let JsonValue::Number(n) = item {
+                    if let Some(byte) = n.as_u64() {
+                        if byte <= 255 {
+                            bytes.push(byte as u8);
+                            continue;
+                        }
+                    }
+                }
+                is_byte_array = false;
+                break;
+            }
+            if is_byte_array && bytes.len() == items.len() {
+                return Ok((
+                    None,
+                    JsonValue::String(format!("0x{}", hex::encode(&bytes))),
+                ));
             }
         }
 
@@ -643,16 +713,34 @@ where
         value: &mut Composite<'scale, 'resolver, Self::TypeResolver>,
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        let mut fields = Vec::new();
+        // Collect field names before decoding (since decode_item consumes them)
+        let field_names: Vec<Option<String>> = value
+            .fields()
+            .iter()
+            .map(|f| f.name.map(|s| s.to_lower_camel_case()))
+            .collect();
+        let has_named_fields = field_names.iter().any(|n| n.is_some());
+
+        let mut field_values = Vec::new();
         while let Some(field_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
             match field_result {
-                Ok(json_val) => fields.push(json_val),
+                Ok(json_val) => field_values.push(json_val),
                 Err(e) => {
                     tracing::warn!("Failed to decode composite field: {:?}", e);
                 }
             }
         }
-        Ok(JsonValue::Array(fields))
+
+        if has_named_fields && field_names.len() == field_values.len() {
+            let obj: serde_json::Map<String, JsonValue> = field_names
+                .into_iter()
+                .zip(field_values)
+                .filter_map(|(name, val)| name.map(|n| (n, val)))
+                .collect();
+            Ok(JsonValue::Object(obj))
+        } else {
+            Ok(JsonValue::Array(field_values))
+        }
     }
 
     fn visit_variant<'scale, 'resolver>(
@@ -670,6 +758,20 @@ where
                 fields_composite.decode_item(ValueExtractor::new(self.resolver))
             {
                 let _ = field_result;
+            }
+            return Ok(JsonValue::Null);
+        }
+
+        // Special handling for Option::Some - unwrap and return just the inner value
+        if variant_name == "Some" {
+            let fields_composite = value.fields();
+            if let Some(field_result) =
+                fields_composite.decode_item(ValueExtractor::new(self.resolver))
+            {
+                match field_result {
+                    Ok(inner_value) => return Ok(inner_value),
+                    Err(_) => return Ok(JsonValue::Null),
+                }
             }
             return Ok(JsonValue::Null);
         }
@@ -730,6 +832,47 @@ where
                 }
             }
         }
+        Ok(JsonValue::Array(items))
+    }
+
+    fn visit_array<'scale, 'resolver>(
+        self,
+        value: &mut scale_decode::visitor::types::Array<'scale, 'resolver, Self::TypeResolver>,
+        _type_id: TypeIdFor<Self>,
+    ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
+        // Decode all array items
+        let mut items = Vec::new();
+        while let Some(item_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
+            match item_result {
+                Ok(json_val) => items.push(json_val),
+                Err(e) => {
+                    tracing::warn!("Failed to decode array item: {:?}", e);
+                }
+            }
+        }
+
+        // Check if this is a byte array (all items are u8 numbers)
+        // Convert to hex string if so
+        if items.len() >= 2 {
+            let mut is_byte_array = true;
+            let mut bytes = Vec::with_capacity(items.len());
+            for item in &items {
+                if let JsonValue::Number(n) = item {
+                    if let Some(byte) = n.as_u64() {
+                        if byte <= 255 {
+                            bytes.push(byte as u8);
+                            continue;
+                        }
+                    }
+                }
+                is_byte_array = false;
+                break;
+            }
+            if is_byte_array && bytes.len() == items.len() {
+                return Ok(JsonValue::String(format!("0x{}", hex::encode(&bytes))));
+            }
+        }
+
         Ok(JsonValue::Array(items))
     }
 
@@ -880,9 +1023,11 @@ pub fn convert_bytes_to_hex(value: JsonValue) -> JsonValue {
 /// - Converts numbers to strings
 /// - Handles bitvec special encoding
 /// - Transforms snake_case keys to camelCase
-/// - Simplifies SCALE enum variants
 /// - Optionally decodes AccountId32 to SS58 format
 /// - Unwraps single-element arrays
+///
+/// Note: Enum serialization (basic vs non-basic) should be handled at the type level
+/// in the visitor chain using `is_basic_enum()`.
 pub fn transform_json_unified(value: JsonValue, ss58_prefix: Option<u16>) -> JsonValue {
     match value {
         JsonValue::Number(n) => {
@@ -948,38 +1093,9 @@ pub fn transform_json_unified(value: JsonValue, ss58_prefix: Option<u16>) -> Jso
                 return JsonValue::String(format!("0x{}", hex::encode(&bytes)));
             }
 
-            // Check if this is a SCALE enum variant: {"name": "X", "values": Y}
-            if map.len() == 2
-                && let (Some(JsonValue::String(name)), Some(values)) =
-                    (map.get("name"), map.get("values"))
-            {
-                // If values is "0x" (empty string) or [] (empty array), return just the name as string
-                // This is evident in class, and paysFee
-                let is_empty = match values {
-                    JsonValue::String(v) => v == "0x",
-                    JsonValue::Array(arr) => arr.is_empty(),
-                    _ => false,
-                };
-
-                if is_empty {
-                    // Special case: "None" variant should serialize as JSON null
-                    if name == "None" {
-                        return JsonValue::Null;
-                    }
-                    return JsonValue::String(name.clone());
-                }
-
-                // Transform enum variant to {"<name>": <transformed_values>} format
-                // Only lowercase the first letter for CamelCase names (e.g., "Complete" -> "complete")
-                let key = crate::utils::lowercase_first_char(name);
-                let transformed_value = transform_json_unified(values.clone(), ss58_prefix);
-
-                let mut result = serde_json::Map::new();
-                result.insert(key, transformed_value);
-                return JsonValue::Object(result);
-            }
-
             // Regular object: transform keys from snake_case to camelCase and recurse
+            // Note: Heuristic for SCALE enum variants removed - enum serialization should be
+            // handled at the type level in the visitor chain using is_basic_enum()
             let transformed: serde_json::Map<String, JsonValue> = map
                 .into_iter()
                 .map(|(key, val)| {
