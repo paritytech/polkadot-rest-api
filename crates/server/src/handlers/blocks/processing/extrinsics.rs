@@ -26,6 +26,9 @@ pub async fn extract_extrinsics(
     client_at_block: &BlockClient<'_>,
     block_number: u64,
 ) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
+    // Get the resolver for type-aware enum serialization
+    let resolver = client_at_block.resolver();
+
     let extrinsics = match client_at_block.extrinsics().fetch().await {
         Ok(exts) => exts,
         Err(e) => {
@@ -123,8 +126,8 @@ pub async fn extract_extrinsics(
             // - SS58 encoding only for AccountId32/MultiAddress/AccountId types
             // - Preserving arrays for Vec<T> sequences
             // - Converting byte arrays to hex
-            // - Enum variant transformation
-            match field.visit(JsonVisitor::new(state.chain_info.ss58_prefix)) {
+            // - Basic enums as strings, non-basic enums as objects
+            match field.visit(JsonVisitor::new(state.chain_info.ss58_prefix, &resolver)) {
                 Ok(json_value) => {
                     args_map.insert(field_key, json_value);
                 }
