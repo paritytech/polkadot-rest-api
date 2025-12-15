@@ -182,6 +182,9 @@ pub async fn fetch_block_events(
     client_at_block: &BlockClient<'_>,
     block_number: u64,
 ) -> Result<Vec<ParsedEvent>, GetBlockError> {
+    // Get the resolver for type-aware enum serialization
+    let resolver = client_at_block.resolver();
+
     let storage_entry = client_at_block.storage().entry("System", "Events")?;
     let events_value = storage_entry.fetch(()).await?.ok_or_else(|| {
         tracing::warn!("No events storage found for block {}", block_number);
@@ -189,16 +192,18 @@ pub async fn fetch_block_events(
     })?;
 
     // Use the visitor pattern to get type information for each field
-    let events_with_types = events_value.visit(EventsVisitor::new()).map_err(|e| {
-        tracing::warn!(
-            "Failed to decode events for block {}: {:?}",
-            block_number,
-            e
-        );
-        GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode events",
-        ))
-    })?;
+    let events_with_types = events_value
+        .visit(EventsVisitor::new(&resolver))
+        .map_err(|e| {
+            tracing::warn!(
+                "Failed to decode events for block {}: {:?}",
+                block_number,
+                e
+            );
+            GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
+                "Failed to decode events",
+            ))
+        })?;
 
     // Also decode with scale_value to preserve structure
     let events_vec = events_value

@@ -3,6 +3,11 @@
 //! This module provides:
 //! - `EventsVisitor` for extracting event information from System.Events storage
 //! - Post-processing functions for transforming decoded event data to JSON
+//!
+//! For enum types, it distinguishes between "basic" enums (all variants have no data)
+//! and "non-basic" enums (any variant has data):
+//! - Basic enums serialize as strings: `"Normal"`, `"Yes"`
+//! - Non-basic enums serialize as objects: `{"unlimited": null}`, `{"limited": {...}}`
 
 use heck::ToLowerCamelCase;
 use scale_decode::{
@@ -15,6 +20,32 @@ use scale_decode::{
 use scale_type_resolver::TypeResolver;
 use serde_json::Value as JsonValue;
 use sp_core::crypto::{AccountId32, Ss58Codec};
+
+/// Check if an enum type is "basic" (all variants have no associated data).
+///
+/// Basic enums should serialize as strings (e.g., `"Normal"`, `"Yes"`),
+/// while non-basic enums serialize as objects (e.g., `{"unlimited": null}`).
+///
+/// This determination is made at the TYPE level, not the variant level.
+fn is_basic_enum<R: TypeResolver>(resolver: &R, type_id: R::TypeId) -> bool
+where
+    R::TypeId: Clone,
+{
+    let type_visitor =
+        scale_type_resolver::visitor::new((), |_, _| false).visit_variant(|_, _, variants| {
+            // Check if ANY variant has fields - if so, NOT basic
+            for variant in variants {
+                if variant.fields.len() > 0 {
+                    return false;
+                }
+            }
+            true // All variants have no fields = IS basic
+        });
+
+    resolver
+        .resolve_type(type_id, type_visitor)
+        .unwrap_or(false)
+}
 
 // ================================================================================================
 // Event Visitor Types
@@ -55,27 +86,20 @@ pub enum EventPhase {
 }
 
 /// Visitor that collects all events with their field type information
-pub struct EventsVisitor<R> {
-    _marker: core::marker::PhantomData<R>,
+pub struct EventsVisitor<'r, R> {
+    resolver: &'r R,
 }
 
-impl<R> Default for EventsVisitor<R> {
-    fn default() -> Self {
-        Self::new()
+impl<'r, R> EventsVisitor<'r, R> {
+    pub fn new(resolver: &'r R) -> Self {
+        Self { resolver }
     }
 }
 
-impl<R> EventsVisitor<R> {
-    pub fn new() -> Self {
-        Self {
-            _marker: core::marker::PhantomData,
-        }
-    }
-}
-
-impl<R> Visitor for EventsVisitor<R>
+impl<'r, R> Visitor for EventsVisitor<'r, R>
 where
     R: TypeResolver,
+    R::TypeId: Clone,
 {
     type Value<'scale, 'resolver> = Vec<EventInfo>;
     type Error = scale_decode::Error;
@@ -89,7 +113,9 @@ where
         let mut events = Vec::new();
 
         // Iterate through each EventRecord in the Vec
-        while let Some(event_record_result) = value.decode_item(EventRecordVisitor::new()) {
+        while let Some(event_record_result) =
+            value.decode_item(EventRecordVisitor::new(self.resolver))
+        {
             match event_record_result {
                 Ok(Some(event_info)) => events.push(event_info),
                 Ok(None) => {
@@ -114,21 +140,20 @@ where
 }
 
 /// Visitor for a single EventRecord (composite with phase, event, topics)
-struct EventRecordVisitor<R> {
-    _marker: core::marker::PhantomData<R>,
+struct EventRecordVisitor<'r, R> {
+    resolver: &'r R,
 }
 
-impl<R> EventRecordVisitor<R> {
-    fn new() -> Self {
-        Self {
-            _marker: core::marker::PhantomData,
-        }
+impl<'r, R> EventRecordVisitor<'r, R> {
+    fn new(resolver: &'r R) -> Self {
+        Self { resolver }
     }
 }
 
-impl<R> Visitor for EventRecordVisitor<R>
+impl<'r, R> Visitor for EventRecordVisitor<'r, R>
 where
     R: TypeResolver,
+    R::TypeId: Clone,
 {
     type Value<'scale, 'resolver> = Option<EventInfo>;
     type Error = scale_decode::Error;
@@ -149,7 +174,8 @@ where
         };
 
         // Field 1: Get the actual event
-        if let Some(event_result) = value.decode_item(PalletEventVisitor::new(phase)) {
+        if let Some(event_result) = value.decode_item(PalletEventVisitor::new(phase, self.resolver))
+        {
             return event_result;
         }
 
@@ -257,23 +283,21 @@ where
 }
 
 /// Visitor for the pallet-level variant (e.g., Balances, System, etc.)
-struct PalletEventVisitor<R> {
+struct PalletEventVisitor<'r, R> {
     phase: EventPhase,
-    _marker: core::marker::PhantomData<R>,
+    resolver: &'r R,
 }
 
-impl<R> PalletEventVisitor<R> {
-    fn new(phase: EventPhase) -> Self {
-        Self {
-            phase,
-            _marker: core::marker::PhantomData,
-        }
+impl<'r, R> PalletEventVisitor<'r, R> {
+    fn new(phase: EventPhase, resolver: &'r R) -> Self {
+        Self { phase, resolver }
     }
 }
 
-impl<R> Visitor for PalletEventVisitor<R>
+impl<'r, R> Visitor for PalletEventVisitor<'r, R>
 where
     R: TypeResolver,
+    R::TypeId: Clone,
 {
     type Value<'scale, 'resolver> = Option<EventInfo>;
     type Error = scale_decode::Error;
@@ -292,9 +316,11 @@ where
         let fields_composite = value.fields();
 
         // The first field should be the inner event variant
-        if let Some(inner_event_result) =
-            fields_composite.decode_item(ActualEventVisitor::new(self.phase, pallet_name))
-        {
+        if let Some(inner_event_result) = fields_composite.decode_item(ActualEventVisitor::new(
+            self.phase,
+            pallet_name,
+            self.resolver,
+        )) {
             return inner_event_result;
         }
 
@@ -310,25 +336,26 @@ where
 }
 
 /// Visitor for the actual event variant (e.g., Transfer, Withdraw, etc.)
-struct ActualEventVisitor<R> {
+struct ActualEventVisitor<'r, R> {
     phase: EventPhase,
     pallet_name: String,
-    _marker: core::marker::PhantomData<R>,
+    resolver: &'r R,
 }
 
-impl<R> ActualEventVisitor<R> {
-    fn new(phase: EventPhase, pallet_name: String) -> Self {
+impl<'r, R> ActualEventVisitor<'r, R> {
+    fn new(phase: EventPhase, pallet_name: String, resolver: &'r R) -> Self {
         Self {
             phase,
             pallet_name,
-            _marker: core::marker::PhantomData,
+            resolver,
         }
     }
 }
 
-impl<R> Visitor for ActualEventVisitor<R>
+impl<'r, R> Visitor for ActualEventVisitor<'r, R>
 where
     R: TypeResolver,
+    R::TypeId: Clone,
 {
     type Value<'scale, 'resolver> = Option<EventInfo>;
     type Error = scale_decode::Error;
@@ -346,7 +373,9 @@ where
         let fields_composite = value.fields();
 
         // Decode each field and extract both type name and value
-        while let Some(field_result) = fields_composite.decode_item(FieldWithTypeExtractor::new()) {
+        while let Some(field_result) =
+            fields_composite.decode_item(FieldWithTypeExtractor::new(self.resolver))
+        {
             match field_result {
                 Ok((type_name, json_value)) => {
                     event_fields.push(EventField {
@@ -377,21 +406,20 @@ where
 }
 
 /// Visitor that extracts both the type name and JSON value for a field
-struct FieldWithTypeExtractor<R> {
-    _marker: core::marker::PhantomData<R>,
+struct FieldWithTypeExtractor<'r, R> {
+    resolver: &'r R,
 }
 
-impl<R> FieldWithTypeExtractor<R> {
-    fn new() -> Self {
-        Self {
-            _marker: core::marker::PhantomData,
-        }
+impl<'r, R> FieldWithTypeExtractor<'r, R> {
+    fn new(resolver: &'r R) -> Self {
+        Self { resolver }
     }
 }
 
-impl<R> Visitor for FieldWithTypeExtractor<R>
+impl<'r, R> Visitor for FieldWithTypeExtractor<'r, R>
 where
     R: TypeResolver,
+    R::TypeId: Clone,
 {
     type Value<'scale, 'resolver> = (Option<String>, JsonValue);
     type Error = scale_decode::Error;
@@ -418,7 +446,7 @@ where
 
         // Decode all fields recursively into a JSON object
         let mut fields = Vec::new();
-        while let Some(field_result) = value.decode_item(ValueExtractor::new()) {
+        while let Some(field_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
             match field_result {
                 Ok(json_val) => fields.push(json_val),
                 Err(e) => {
@@ -442,11 +470,23 @@ where
     fn visit_variant<'scale, 'resolver>(
         self,
         value: &mut Variant<'scale, 'resolver, Self::TypeResolver>,
-        _type_id: TypeIdFor<Self>,
+        type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         // Get type name from path
         let type_name = value.path().last().map(|s| s.to_string());
         let variant_name = value.name();
+
+        // Special handling for Option::None - return null
+        if variant_name == "None" {
+            // Consume fields
+            let fields_composite = value.fields();
+            while let Some(field_result) =
+                fields_composite.decode_item(ValueExtractor::new(self.resolver))
+            {
+                let _ = field_result;
+            }
+            return Ok((type_name, JsonValue::Null));
+        }
 
         // Special handling for MultiAddress::Id variant - extract AccountId32 as hex
         if type_name.as_deref() == Some("MultiAddress") && variant_name == "Id" {
@@ -458,10 +498,27 @@ where
             }
         }
 
-        // Decode variant fields
+        // Check if this is a basic enum (all variants have no data)
+        let is_basic = is_basic_enum(self.resolver, type_id);
+
+        // For basic enums, return just the variant name as a string
+        if is_basic {
+            // Consume fields (there shouldn't be any)
+            let fields_composite = value.fields();
+            while let Some(field_result) =
+                fields_composite.decode_item(ValueExtractor::new(self.resolver))
+            {
+                let _ = field_result;
+            }
+            return Ok((type_name, JsonValue::String(variant_name.to_string())));
+        }
+
+        // Non-basic enum - decode fields and wrap in object
         let mut fields = Vec::new();
         let fields_composite = value.fields();
-        while let Some(field_result) = fields_composite.decode_item(ValueExtractor::new()) {
+        while let Some(field_result) =
+            fields_composite.decode_item(ValueExtractor::new(self.resolver))
+        {
             match field_result {
                 Ok(json_val) => fields.push(json_val),
                 Err(e) => {
@@ -470,19 +527,16 @@ where
             }
         }
 
-        // Create variant JSON representation
+        // Convert variant name to lowerCamelCase for the key
+        let key = lowercase_first_char(variant_name);
+
+        // Create variant JSON representation as {"variantName": value}
         let json_value = if fields.is_empty() {
-            JsonValue::String(variant_name.to_string())
+            serde_json::json!({ key: JsonValue::Null })
         } else if fields.len() == 1 {
-            serde_json::json!({
-                "name": variant_name,
-                "value": fields[0].clone()
-            })
+            serde_json::json!({ key: fields[0].clone() })
         } else {
-            serde_json::json!({
-                "name": variant_name,
-                "values": fields
-            })
+            serde_json::json!({ key: fields })
         };
 
         Ok((type_name, json_value))
@@ -495,7 +549,7 @@ where
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         // Decode all sequence items
         let mut items = Vec::new();
-        while let Some(item_result) = value.decode_item(ValueExtractor::new()) {
+        while let Some(item_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
             match item_result {
                 Ok(json_val) => items.push(json_val),
                 Err(e) => {
@@ -565,21 +619,20 @@ where
 
 /// Visitor that extracts just the JSON value without type information
 /// Used for recursive decoding of composite/variant/sequence fields
-struct ValueExtractor<R> {
-    _marker: core::marker::PhantomData<R>,
+struct ValueExtractor<'r, R> {
+    resolver: &'r R,
 }
 
-impl<R> ValueExtractor<R> {
-    fn new() -> Self {
-        Self {
-            _marker: core::marker::PhantomData,
-        }
+impl<'r, R> ValueExtractor<'r, R> {
+    fn new(resolver: &'r R) -> Self {
+        Self { resolver }
     }
 }
 
-impl<R> Visitor for ValueExtractor<R>
+impl<'r, R> Visitor for ValueExtractor<'r, R>
 where
     R: TypeResolver,
+    R::TypeId: Clone,
 {
     type Value<'scale, 'resolver> = JsonValue;
     type Error = scale_decode::Error;
@@ -591,7 +644,7 @@ where
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         let mut fields = Vec::new();
-        while let Some(field_result) = value.decode_item(ValueExtractor::new()) {
+        while let Some(field_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
             match field_result {
                 Ok(json_val) => fields.push(json_val),
                 Err(e) => {
@@ -605,12 +658,43 @@ where
     fn visit_variant<'scale, 'resolver>(
         self,
         value: &mut Variant<'scale, 'resolver, Self::TypeResolver>,
-        _type_id: TypeIdFor<Self>,
+        type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         let variant_name = value.name();
+
+        // Special handling for Option::None - return null
+        if variant_name == "None" {
+            // Consume fields
+            let fields_composite = value.fields();
+            while let Some(field_result) =
+                fields_composite.decode_item(ValueExtractor::new(self.resolver))
+            {
+                let _ = field_result;
+            }
+            return Ok(JsonValue::Null);
+        }
+
+        // Check if this is a basic enum (all variants have no data)
+        let is_basic = is_basic_enum(self.resolver, type_id);
+
+        // For basic enums, return just the variant name as a string
+        if is_basic {
+            // Consume fields (there shouldn't be any)
+            let fields_composite = value.fields();
+            while let Some(field_result) =
+                fields_composite.decode_item(ValueExtractor::new(self.resolver))
+            {
+                let _ = field_result;
+            }
+            return Ok(JsonValue::String(variant_name.to_string()));
+        }
+
+        // Non-basic enum - decode fields and wrap in object
         let mut fields = Vec::new();
         let fields_composite = value.fields();
-        while let Some(field_result) = fields_composite.decode_item(ValueExtractor::new()) {
+        while let Some(field_result) =
+            fields_composite.decode_item(ValueExtractor::new(self.resolver))
+        {
             match field_result {
                 Ok(json_val) => fields.push(json_val),
                 Err(e) => {
@@ -619,18 +703,16 @@ where
             }
         }
 
+        // Convert variant name to lowerCamelCase for the key
+        let key = lowercase_first_char(variant_name);
+
+        // Create variant JSON representation as {"variantName": value}
         if fields.is_empty() {
-            Ok(JsonValue::String(variant_name.to_string()))
+            Ok(serde_json::json!({ key: JsonValue::Null }))
         } else if fields.len() == 1 {
-            Ok(serde_json::json!({
-                "name": variant_name,
-                "value": fields[0].clone()
-            }))
+            Ok(serde_json::json!({ key: fields[0].clone() }))
         } else {
-            Ok(serde_json::json!({
-                "name": variant_name,
-                "values": fields
-            }))
+            Ok(serde_json::json!({ key: fields }))
         }
     }
 
@@ -640,7 +722,7 @@ where
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         let mut items = Vec::new();
-        while let Some(item_result) = value.decode_item(ValueExtractor::new()) {
+        while let Some(item_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
             match item_result {
                 Ok(json_val) => items.push(json_val),
                 Err(e) => {
