@@ -609,13 +609,12 @@ where
             let mut is_byte_array = true;
             let mut bytes = Vec::with_capacity(items.len());
             for item in &items {
-                if let JsonValue::Number(n) = item {
-                    if let Some(byte) = n.as_u64() {
-                        if byte <= 255 {
-                            bytes.push(byte as u8);
-                            continue;
-                        }
-                    }
+                if let JsonValue::Number(n) = item
+                    && let Some(byte) = n.as_u64()
+                    && byte <= 255
+                {
+                    bytes.push(byte as u8);
+                    continue;
                 }
                 is_byte_array = false;
                 break;
@@ -857,13 +856,12 @@ where
             let mut is_byte_array = true;
             let mut bytes = Vec::with_capacity(items.len());
             for item in &items {
-                if let JsonValue::Number(n) = item {
-                    if let Some(byte) = n.as_u64() {
-                        if byte <= 255 {
-                            bytes.push(byte as u8);
-                            continue;
-                        }
-                    }
+                if let JsonValue::Number(n) = item
+                    && let Some(byte) = n.as_u64()
+                    && byte <= 255
+                {
+                    bytes.push(byte as u8);
+                    continue;
                 }
                 is_byte_array = false;
                 break;
