@@ -3,11 +3,45 @@
 //! This module provides `JsonVisitor`, a visitor that decodes SCALE values directly
 //! to JSON with type-aware transformations. It handles SS58 encoding for account types,
 //! byte array conversion, and proper array/newtype handling.
+//!
+//! For enum types, it distinguishes between "basic" enums (all variants have no data)
+//! and "non-basic" enums (any variant has data):
+//! - Basic enums serialize as strings: `"Normal"`, `"Yes"`
+//! - Non-basic enums serialize as objects: `{"unlimited": null}`, `{"limited": {...}}`
 
 use heck::ToLowerCamelCase;
 use scale_decode::visitor::{self, TypeIdFor};
+use scale_type_resolver::TypeResolver;
 use serde_json::Value;
 use sp_core::crypto::{AccountId32, Ss58Codec};
+
+/// Check if an enum type is "basic" (all variants have no associated data).
+///
+/// Basic enums should serialize as strings (e.g., `"Normal"`, `"Yes"`),
+/// while non-basic enums serialize as objects (e.g., `{"unlimited": null}`).
+///
+/// This determination is made at the TYPE level, not the variant level.
+/// For example, `WeightLimit::Unlimited` has no data, but `WeightLimit` is
+/// non-basic because `Limited(Weight)` has data.
+fn is_basic_enum<R: TypeResolver>(resolver: &R, type_id: R::TypeId) -> bool
+where
+    R::TypeId: Clone,
+{
+    let type_visitor =
+        scale_type_resolver::visitor::new((), |_, _| false).visit_variant(|_, _, variants| {
+            // Check if ANY variant has fields - if so, NOT basic
+            for variant in variants {
+                if variant.fields.len() > 0 {
+                    return false;
+                }
+            }
+            true // All variants have no fields = IS basic
+        });
+
+    resolver
+        .resolve_type(type_id, type_visitor)
+        .unwrap_or(false)
+}
 
 /// Check if variant name is an X2-X8 junction.
 /// These variants need special handling to preserve array output format.
@@ -24,29 +58,30 @@ fn is_junction_variant(name: &str) -> bool {
 /// - Preserving arrays for sequence types (Vec<T>) - never unwraps single-element sequences
 /// - Unwrapping newtype wrappers (single unnamed field composites)
 /// - Converting byte arrays to hex strings
-/// - Transforming enum variants to {"variantName": value} format
+/// - Basic enums as strings (e.g., `"Normal"`), non-basic enums as objects (e.g., `{"unlimited": null}`)
 /// - Converting all numbers to strings (matching sidecar behavior)
 ///
 /// The key advantage over post-processing transformations is that this visitor has access to
 /// type information at every nesting level, allowing it to make correct decisions about
 /// SS58 encoding and array unwrapping.
-pub struct JsonVisitor<R> {
+pub struct JsonVisitor<'r, R> {
     ss58_prefix: u16,
-    _marker: core::marker::PhantomData<R>,
+    resolver: &'r R,
 }
 
-impl<R> JsonVisitor<R> {
-    pub fn new(ss58_prefix: u16) -> Self {
+impl<'r, R> JsonVisitor<'r, R> {
+    pub fn new(ss58_prefix: u16, resolver: &'r R) -> Self {
         JsonVisitor {
             ss58_prefix,
-            _marker: core::marker::PhantomData,
+            resolver,
         }
     }
 }
 
-impl<R> scale_decode::Visitor for JsonVisitor<R>
+impl<'r, R> scale_decode::Visitor for JsonVisitor<'r, R>
 where
     R: scale_type_resolver::TypeResolver,
+    R::TypeId: Clone,
 {
     type Value<'scale, 'resolver> = Value;
     type Error = scale_decode::Error;
@@ -171,7 +206,8 @@ where
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         let mut items = Vec::new();
-        while let Some(item) = value.decode_item(JsonVisitor::new(self.ss58_prefix)) {
+        while let Some(item) = value.decode_item(JsonVisitor::new(self.ss58_prefix, self.resolver))
+        {
             items.push(item?);
         }
 
@@ -255,7 +291,8 @@ where
             for field in fields {
                 if let Some(name) = field.name() {
                     let key = name.to_lower_camel_case();
-                    let val = field.decode_with_visitor(JsonVisitor::new(self.ss58_prefix))?;
+                    let val = field
+                        .decode_with_visitor(JsonVisitor::new(self.ss58_prefix, self.resolver))?;
                     map.insert(key, val);
                 }
             }
@@ -288,7 +325,8 @@ where
             // Note: We already handled sequences in visit_sequence, so this is safe
             if field_count == 1 {
                 if let Some(field) = fields.into_iter().next() {
-                    return field.decode_with_visitor(JsonVisitor::new(self.ss58_prefix));
+                    return field
+                        .decode_with_visitor(JsonVisitor::new(self.ss58_prefix, self.resolver));
                 }
                 // Fallback: return empty array if iterator unexpectedly empty
                 return Ok(Value::Array(vec![]));
@@ -297,7 +335,7 @@ where
             // Deal with multiple unnamed fields
             let arr: Result<Vec<_>, _> = fields
                 .into_iter()
-                .map(|f| f.decode_with_visitor(JsonVisitor::new(self.ss58_prefix)))
+                .map(|f| f.decode_with_visitor(JsonVisitor::new(self.ss58_prefix, self.resolver)))
                 .collect();
             Ok(Value::Array(arr?))
         }
@@ -306,7 +344,7 @@ where
     fn visit_variant<'scale, 'resolver>(
         self,
         value: &mut visitor::types::Variant<'scale, 'resolver, Self::TypeResolver>,
-        _type_id: TypeIdFor<Self>,
+        type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         let name = value.name();
 
@@ -319,9 +357,35 @@ where
             return Ok(Value::Null);
         }
 
-        let is_junction = is_junction_variant(name);
+        // Handle Option::Some - unwrap and return just the inner value (not {"some": value})
+        if name == "Some" {
+            let fields: Vec<_> = value.fields().collect::<Result<Vec<_>, _>>()?;
+            if fields.len() == 1
+                && let Some(field) = fields.into_iter().next()
+            {
+                return field
+                    .decode_with_visitor(JsonVisitor::new(self.ss58_prefix, self.resolver));
+            }
+            // Fallback for unexpected Some structure
+            return Ok(Value::Null);
+        }
+
         // Convert variant name, ex: "PreRuntime" -> "preRuntime"
         let variant_name = crate::utils::lowercase_first_char(name);
+
+        // Check if this is a basic enum (all variants have no data).
+        // Basic enums serialize as strings: "Normal", "Yes"
+        // Non-basic enums serialize as objects: {"unlimited": null}
+        if is_basic_enum(self.resolver, type_id) {
+            // Consume any fields (there shouldn't be any for basic enum variants)
+            for field in value.fields() {
+                field?.decode_with_visitor(SkipVisitor::<R>::new())?;
+            }
+            return Ok(Value::String(variant_name));
+        }
+
+        // Non-basic enum - wrap variant in an object
+        let is_junction = is_junction_variant(name);
         let fields: Vec<_> = value.fields().collect::<Result<Vec<_>, _>>()?;
 
         let inner = if fields.is_empty() {
@@ -332,7 +396,8 @@ where
             for field in fields {
                 if let Some(name) = field.name() {
                     let key = name.to_lower_camel_case();
-                    let val = field.decode_with_visitor(JsonVisitor::new(self.ss58_prefix))?;
+                    let val = field
+                        .decode_with_visitor(JsonVisitor::new(self.ss58_prefix, self.resolver))?;
                     map.insert(key, val);
                 }
             }
@@ -340,14 +405,16 @@ where
         } else if fields.len() == 1 && !is_junction {
             // Deal with a single unnamed field
             match fields.into_iter().next() {
-                Some(field) => field.decode_with_visitor(JsonVisitor::new(self.ss58_prefix))?,
+                Some(field) => {
+                    field.decode_with_visitor(JsonVisitor::new(self.ss58_prefix, self.resolver))?
+                }
                 None => Value::Array(vec![]), // Fallback
             }
         } else {
             // Deal with multiple unnamed fields or Junction types
             let arr: Result<Vec<_>, _> = fields
                 .into_iter()
-                .map(|f| f.decode_with_visitor(JsonVisitor::new(self.ss58_prefix)))
+                .map(|f| f.decode_with_visitor(JsonVisitor::new(self.ss58_prefix, self.resolver)))
                 .collect();
             Value::Array(arr?)
         };
@@ -364,7 +431,8 @@ where
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         // Decode all elements first with JsonVisitor
         let mut items = Vec::new();
-        while let Some(item) = value.decode_item(JsonVisitor::new(self.ss58_prefix)) {
+        while let Some(item) = value.decode_item(JsonVisitor::new(self.ss58_prefix, self.resolver))
+        {
             items.push(item?);
         }
 
@@ -400,7 +468,8 @@ where
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         let mut items = Vec::new();
-        while let Some(item) = value.decode_item(JsonVisitor::new(self.ss58_prefix)) {
+        while let Some(item) = value.decode_item(JsonVisitor::new(self.ss58_prefix, self.resolver))
+        {
             items.push(item?);
         }
 
