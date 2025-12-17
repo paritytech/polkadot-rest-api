@@ -16,6 +16,13 @@ pub fn blocks_routes(registry: &RouteRegistry) -> Router<AppState> {
         .route_registered(
             registry,
             API_VERSION,
+            "/blocks/head",
+            "get",
+            get(blocks::get_block_head),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
             "/blocks/:blockId",
             "get",
             get(blocks::get_block),
