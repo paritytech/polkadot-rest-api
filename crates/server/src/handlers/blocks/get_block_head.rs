@@ -85,8 +85,8 @@ pub async fn get_block_head(
     Query(params): Query<BlockHeadQueryParams>,
 ) -> Result<Json<BlockResponse>, GetBlockError> {
     // Resolve head block hash based on finalized parameter
-    // Returns (block_hash, block_number, is_finalized)
-    let (block_hash, block_number, is_finalized) = if params.finalized {
+    // Returns (block_hash, block_number, is_finalized, header_json)
+    let (block_hash, block_number, is_finalized, header_json) = if params.finalized {
         let finalized_hash = state
             .legacy_rpc
             .chain_get_finalized_head()
@@ -106,7 +106,7 @@ pub async fn get_block_head(
                     .map_err(|e| GetBlockError::HeaderFieldMissing(format!("number: {}", e)))
             })?;
 
-        (hash_str, block_number, true)
+        (hash_str, block_number, true, header_json)
     } else {
         // Get canonical head (may not be finalized)
         // We need to also fetch the finalized head to determine if canonical is finalized
@@ -150,13 +150,8 @@ pub async fn get_block_head(
         let block_hash_typed = compute_block_hash_from_header_json(&header_json)?;
         let block_hash = block_hash_typed.to_string();
 
-        (block_hash, block_number, is_finalized)
+        (block_hash, block_number, is_finalized, header_json)
     };
-
-    let header_json = state
-        .get_header_json(&block_hash)
-        .await
-        .map_err(GetBlockError::HeaderFetchFailed)?;
 
     let parent_hash = header_json
         .get("parentHash")
