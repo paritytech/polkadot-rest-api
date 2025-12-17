@@ -147,11 +147,11 @@ fn default_substrate_reconnect_initial_delay_ms() -> u64 {
 }
 
 fn default_substrate_reconnect_max_delay_ms() -> u64 {
-    60000
+    10000
 }
 
 fn default_substrate_reconnect_request_timeout_ms() -> u64 {
-    60000
+    30000
 }
 
 fn default_metrics_enabled() -> bool {

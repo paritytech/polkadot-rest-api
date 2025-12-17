@@ -181,13 +181,13 @@ pub struct SubstrateConfig {
     /// Maximum delay in milliseconds for reconnection backoff
     ///
     /// Env: SAS_SUBSTRATE_RECONNECT_MAX_DELAY_MS
-    /// Default: 60000 (60 seconds)
+    /// Default: 10000 (10 seconds)
     pub reconnect_max_delay_ms: u64,
 
     /// Request timeout in milliseconds for RPC calls
     ///
     /// Env: SAS_SUBSTRATE_RECONNECT_REQUEST_TIMEOUT_MS
-    /// Default: 60000 (60 seconds)
+    /// Default: 30000 (30 seconds)
     pub reconnect_request_timeout_ms: u64,
 }
 
@@ -247,8 +247,8 @@ impl Default for SubstrateConfig {
             url: "ws://127.0.0.1:9944".to_string(),
             multi_chain_urls: vec![],
             reconnect_initial_delay_ms: 100,
-            reconnect_max_delay_ms: 60000,
-            reconnect_request_timeout_ms: 60000,
+            reconnect_max_delay_ms: 10000,
+            reconnect_request_timeout_ms: 30000,
         }
     }
 }
