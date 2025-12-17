@@ -23,3 +23,21 @@ pub use hash::{HashError, compute_block_hash_from_header_json, parse_block_numbe
 pub fn is_disconnected_error(err: &subxt_rpcs::Error) -> bool {
     matches!(err, subxt_rpcs::Error::DisconnectedWillReconnect(_))
 }
+
+/// Check if an OnlineClientAtBlockError contains a disconnection error.
+///
+/// The OnlineClientAtBlockError may wrap an RPC error (e.g., in CannotGetBlockHash)
+/// that indicates the connection was lost. This helper extracts and checks that inner error.
+pub fn is_online_client_at_block_disconnected(
+    err: &subxt_historic::error::OnlineClientAtBlockError,
+) -> bool {
+    use subxt_historic::error::OnlineClientAtBlockError;
+
+    match err {
+        OnlineClientAtBlockError::CannotGetBlockHash { reason, .. } => {
+            is_disconnected_error(reason)
+        }
+        // Other variants don't contain RPC errors that could be disconnection errors
+        _ => false,
+    }
+}

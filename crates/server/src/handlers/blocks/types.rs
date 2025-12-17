@@ -80,7 +80,7 @@ pub enum GetBlockError {
     #[error("Header field missing: {0}")]
     HeaderFieldMissing(String),
 
-    #[error("Failed to get client at block")]
+    #[error("Failed to get client at block: {0}")]
     ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
 
     #[error("Failed to fetch chain storage")]
@@ -119,12 +119,21 @@ pub enum GetBlockError {
 
 impl IntoResponse for GetBlockError {
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
+        let (status, message) = match &self {
             GetBlockError::InvalidBlockParam(_) | GetBlockError::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             GetBlockError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
+            // Check if ClientAtBlockFailed is due to a disconnection
+            GetBlockError::ClientAtBlockFailed(err)
+                if utils::is_online_client_at_block_disconnected(err) =>
+            {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    format!("Service temporarily unavailable: {}", self),
+                )
             }
             GetBlockError::HeaderFetchFailed(_)
             | GetBlockError::HeaderFieldMissing(_)

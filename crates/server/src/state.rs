@@ -72,7 +72,9 @@ impl AppState {
         let reconnecting_client = ReconnectingRpcClient::builder()
             .retry_policy(
                 ExponentialBackoff::from_millis(config.substrate.reconnect_initial_delay_ms)
-                    .max_delay(Duration::from_millis(config.substrate.reconnect_max_delay_ms)),
+                    .max_delay(Duration::from_millis(
+                        config.substrate.reconnect_max_delay_ms,
+                    )),
             )
             .request_timeout(Duration::from_millis(
                 config.substrate.reconnect_request_timeout_ms,
