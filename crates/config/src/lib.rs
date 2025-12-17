@@ -59,6 +59,15 @@ struct EnvConfig {
     #[serde(default = "default_substrate_multi_chain_url")]
     substrate_multi_chain_url: String,
 
+    #[serde(default = "default_substrate_reconnect_initial_delay_ms")]
+    substrate_reconnect_initial_delay_ms: u64,
+
+    #[serde(default = "default_substrate_reconnect_max_delay_ms")]
+    substrate_reconnect_max_delay_ms: u64,
+
+    #[serde(default = "default_substrate_reconnect_request_timeout_ms")]
+    substrate_reconnect_request_timeout_ms: u64,
+
     #[serde(default = "default_metrics_enabled")]
     metrics_enabled: bool,
 
@@ -133,6 +142,18 @@ fn default_substrate_multi_chain_url() -> String {
     String::new()
 }
 
+fn default_substrate_reconnect_initial_delay_ms() -> u64 {
+    100
+}
+
+fn default_substrate_reconnect_max_delay_ms() -> u64 {
+    60000
+}
+
+fn default_substrate_reconnect_request_timeout_ms() -> u64 {
+    60000
+}
+
 fn default_metrics_enabled() -> bool {
     false
 }
@@ -187,6 +208,9 @@ impl SidecarConfig {
     /// - SAS_LOG_WRITE_MAX_FILES
     /// - SAS_SUBSTRATE_URL
     /// - SAS_SUBSTRATE_MULTI_CHAIN_URL
+    /// - SAS_SUBSTRATE_RECONNECT_INITIAL_DELAY_MS
+    /// - SAS_SUBSTRATE_RECONNECT_MAX_DELAY_MS
+    /// - SAS_SUBSTRATE_RECONNECT_REQUEST_TIMEOUT_MS
     /// - SAS_METRICS_ENABLED
     /// - SAS_METRICS_PROM_HOST
     /// - SAS_METRICS_PROM_PORT
@@ -225,6 +249,9 @@ impl SidecarConfig {
             substrate: SubstrateConfig {
                 url: env_config.substrate_url,
                 multi_chain_urls,
+                reconnect_initial_delay_ms: env_config.substrate_reconnect_initial_delay_ms,
+                reconnect_max_delay_ms: env_config.substrate_reconnect_max_delay_ms,
+                reconnect_request_timeout_ms: env_config.substrate_reconnect_request_timeout_ms,
             },
             metrics: MetricsConfig {
                 enabled: env_config.metrics_enabled,

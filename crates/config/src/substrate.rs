@@ -171,6 +171,24 @@ pub struct SubstrateConfig {
     /// Example: '[{"url":"ws://polkadot:9944","type":"relay"}]'
     /// Default: []
     pub multi_chain_urls: Vec<ChainUrl>,
+
+    /// Initial delay in milliseconds for reconnection backoff
+    ///
+    /// Env: SAS_SUBSTRATE_RECONNECT_INITIAL_DELAY_MS
+    /// Default: 100
+    pub reconnect_initial_delay_ms: u64,
+
+    /// Maximum delay in milliseconds for reconnection backoff
+    ///
+    /// Env: SAS_SUBSTRATE_RECONNECT_MAX_DELAY_MS
+    /// Default: 60000 (60 seconds)
+    pub reconnect_max_delay_ms: u64,
+
+    /// Request timeout in milliseconds for RPC calls
+    ///
+    /// Env: SAS_SUBSTRATE_RECONNECT_REQUEST_TIMEOUT_MS
+    /// Default: 60000 (60 seconds)
+    pub reconnect_request_timeout_ms: u64,
 }
 
 impl SubstrateConfig {
@@ -228,6 +246,9 @@ impl Default for SubstrateConfig {
         Self {
             url: "ws://127.0.0.1:9944".to_string(),
             multi_chain_urls: vec![],
+            reconnect_initial_delay_ms: 100,
+            reconnect_max_delay_ms: 60000,
+            reconnect_request_timeout_ms: 60000,
         }
     }
 }
@@ -247,6 +268,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_err());
     }
@@ -256,6 +278,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "not-a-valid-url".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_err());
     }
@@ -265,6 +288,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "ftp://localhost:9944".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_err());
     }
@@ -274,6 +298,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "ws://localhost:9944".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_ok());
     }
@@ -283,6 +308,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "wss://polkadot.api.io".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_ok());
     }
@@ -292,6 +318,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "http://localhost:9933".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_ok());
     }
@@ -301,6 +328,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "https://rpc.polkadot.io".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_ok());
     }
@@ -319,6 +347,7 @@ mod tests {
                     chain_type: ChainType::AssetHub,
                 },
             ],
+            ..Default::default()
         };
         assert!(config.validate().is_ok());
     }
@@ -331,6 +360,7 @@ mod tests {
                 url: "ws://localhost:9944".to_string(),
                 chain_type: ChainType::Relay,
             }],
+            ..Default::default()
         };
         assert!(config.validate().is_err());
     }
@@ -343,6 +373,7 @@ mod tests {
                 url: "invalid-url".to_string(),
                 chain_type: ChainType::Relay,
             }],
+            ..Default::default()
         };
         assert!(config.validate().is_err());
     }
