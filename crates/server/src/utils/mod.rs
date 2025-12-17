@@ -15,3 +15,11 @@ pub use fee::{
 };
 pub use format::{decode_address_to_ss58, hex_with_prefix, lowercase_first_char};
 pub use hash::{HashError, compute_block_hash_from_header_json, parse_block_number_from_json};
+
+/// Check if an RPC error indicates the connection was lost and reconnection is in progress.
+///
+/// When using the reconnecting RPC client, this error indicates temporary unavailability
+/// while the client attempts to re-establish the WebSocket connection.
+pub fn is_disconnected_error(err: &subxt_rpcs::Error) -> bool {
+    matches!(err, subxt_rpcs::Error::DisconnectedWillReconnect(_))
+}

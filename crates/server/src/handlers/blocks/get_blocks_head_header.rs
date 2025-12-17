@@ -46,11 +46,17 @@ pub enum GetBlockHeadHeaderError {
 
     #[error("Failed to compute block hash: {0}")]
     HashComputationFailed(#[from] crate::utils::HashError),
+
+    #[error("Service temporarily unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 impl IntoResponse for GetBlockHeadHeaderError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
+            GetBlockHeadHeaderError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
             GetBlockHeadHeaderError::HeaderFetchFailed(_)
             | GetBlockHeadHeaderError::HeaderFieldMissing(_)
             | GetBlockHeadHeaderError::HashComputationFailed(_) => {

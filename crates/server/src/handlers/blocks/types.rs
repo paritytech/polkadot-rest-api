@@ -112,6 +112,9 @@ pub enum GetBlockError {
 
     #[error("Failed to compute block hash: {0}")]
     HashComputationFailed(#[from] crate::utils::HashError),
+
+    #[error("Service temporarily unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 impl IntoResponse for GetBlockError {
@@ -119,6 +122,9 @@ impl IntoResponse for GetBlockError {
         let (status, message) = match self {
             GetBlockError::InvalidBlockParam(_) | GetBlockError::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetBlockError::HeaderFetchFailed(_)
             | GetBlockError::HeaderFieldMissing(_)

@@ -22,6 +22,9 @@ pub enum GetSpecError {
 
     #[error("Failed to get system chain type")]
     SystemChainTypeFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Service temporarily unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 impl IntoResponse for GetSpecError {
@@ -29,6 +32,9 @@ impl IntoResponse for GetSpecError {
         let (status, message) = match self {
             GetSpecError::InvalidBlockParam(_) | GetSpecError::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetSpecError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };

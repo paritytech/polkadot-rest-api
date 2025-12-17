@@ -20,6 +20,9 @@ pub enum GetCodeError {
 
     #[error("Failed to get runtime code")]
     GetCodeFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Service temporarily unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 impl IntoResponse for GetCodeError {
@@ -27,6 +30,9 @@ impl IntoResponse for GetCodeError {
         let (status, message) = match self {
             GetCodeError::InvalidBlockParam(_) | GetCodeError::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetCodeError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
