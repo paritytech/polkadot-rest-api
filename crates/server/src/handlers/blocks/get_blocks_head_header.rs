@@ -1,6 +1,6 @@
 use crate::state::AppState;
 use crate::types::BlockHash;
-use crate::utils::compute_block_hash_from_header_json;
+use crate::utils::{self, compute_block_hash_from_header_json};
 use axum::{
     Json,
     extract::{Query, State},
@@ -53,12 +53,13 @@ pub enum GetBlockHeadHeaderError {
 
 impl IntoResponse for GetBlockHeadHeaderError {
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
+        let (status, message) = match &self {
             GetBlockHeadHeaderError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
-            GetBlockHeadHeaderError::HeaderFetchFailed(_)
-            | GetBlockHeadHeaderError::HeaderFieldMissing(_)
+            // Handle RPC errors with appropriate status codes
+            GetBlockHeadHeaderError::HeaderFetchFailed(err) => utils::rpc_error_to_status(err),
+            GetBlockHeadHeaderError::HeaderFieldMissing(_)
             | GetBlockHeadHeaderError::HashComputationFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }

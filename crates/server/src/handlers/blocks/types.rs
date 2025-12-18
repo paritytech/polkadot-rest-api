@@ -135,8 +135,12 @@ impl IntoResponse for GetBlockError {
                     format!("Service temporarily unavailable: {}", self),
                 )
             }
-            GetBlockError::HeaderFetchFailed(_)
-            | GetBlockError::HeaderFieldMissing(_)
+            // Handle RPC errors with appropriate status codes
+            GetBlockError::HeaderFetchFailed(err)
+            | GetBlockError::FinalizedHeadFailed(err)
+            | GetBlockError::CanonicalHashFailed(err) => utils::rpc_error_to_status(err),
+            // All other errors are internal server errors
+            GetBlockError::HeaderFieldMissing(_)
             | GetBlockError::ClientAtBlockFailed(_)
             | GetBlockError::StorageFetchFailed(_)
             | GetBlockError::StorageNotPlainValue(_)
@@ -145,8 +149,6 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::MissingSignatureBytes
             | GetBlockError::MissingAddressBytes
             | GetBlockError::ExtrinsicDecodeFailed(_)
-            | GetBlockError::FinalizedHeadFailed(_)
-            | GetBlockError::CanonicalHashFailed(_)
             | GetBlockError::HashComputationFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }

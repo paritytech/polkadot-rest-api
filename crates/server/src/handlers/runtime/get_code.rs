@@ -27,14 +27,15 @@ pub enum GetCodeError {
 
 impl IntoResponse for GetCodeError {
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
+        let (status, message) = match &self {
             GetCodeError::InvalidBlockParam(_) | GetCodeError::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             GetCodeError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            // Handle RPC errors with appropriate status codes
+            GetCodeError::GetCodeFailed(err) => utils::rpc_error_to_status(err),
         };
 
         let body = Json(json!({

@@ -41,3 +41,42 @@ pub fn is_online_client_at_block_disconnected(
         _ => false,
     }
 }
+
+/// Check if an RPC error is a request timeout.
+///
+/// Timeout errors occur when an RPC request takes longer than the configured
+/// request_timeout (default: 30s). This typically happens when the node is
+/// unresponsive or the connection is degraded.
+pub fn is_timeout_error(err: &subxt_rpcs::Error) -> bool {
+    match err {
+        subxt_rpcs::Error::Client(inner) => {
+            // jsonrpsee returns "Request timeout" for timeout errors
+            inner.to_string().contains("Request timeout")
+        }
+        _ => false,
+    }
+}
+
+/// Convert an RPC error to an appropriate HTTP status code and message.
+///
+/// This centralizes the logic for handling different RPC error types:
+/// - Timeout errors → 504 Gateway Timeout
+/// - Disconnection errors → 503 Service Unavailable
+/// - Other errors → 500 Internal Server Error
+pub fn rpc_error_to_status(err: &subxt_rpcs::Error) -> (axum::http::StatusCode, String) {
+    use axum::http::StatusCode;
+
+    if is_timeout_error(err) {
+        (
+            StatusCode::GATEWAY_TIMEOUT,
+            "Request timed out while waiting for node response".to_string(),
+        )
+    } else if is_disconnected_error(err) {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            format!("Service temporarily unavailable: {}", err),
+        )
+    } else {
+        (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+    }
+}
