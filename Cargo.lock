@@ -1325,6 +1325,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52051878f80a721bb68ebfbc930e07b65ba72f2da88968ea5c06fd6ca3d3a127"
 
 [[package]]
+name = "finito"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2384245d85162258a14b43567a9ee3598f5ae746a1581fb5d3d2cb780f0dbf95"
+dependencies = [
+ "futures-timer",
+ "pin-project",
+]
+
+[[package]]
 name = "fixed-hash"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4525,9 +4535,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "subxt-historic"
-version = "0.0.7"
+version = "0.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f0dd166f3f71df34f2207312b19bfa63637f055cbfe098d333087f417ef0b04"
+checksum = "7ff1c8313ac0e5c4cd4761a79bc92c68cd0759a1ad5ce3bf50da6d32f3b0e12b"
 dependencies = [
  "frame-decode",
  "frame-metadata 23.0.0",
@@ -4568,6 +4578,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab68a9c20ecedb0cb7d62d64f884e6add91bb70485783bf40aa8eac5c389c6e0"
 dependencies = [
  "derive-where",
+ "finito",
  "frame-metadata 23.0.0",
  "futures",
  "hex",

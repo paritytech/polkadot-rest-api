@@ -21,8 +21,8 @@ tower = "0.5"
 tower-http = { version = "0.6.6", features = ["trace", "cors", "limit"] }
 socket2 = "0.6"
 config = { path = "../config" }
-subxt-historic = { version = "0.0.7" }
-subxt-rpcs = { version = "0.44.0" }
+subxt-historic = { version = "0.0.8" }
+subxt-rpcs = { version = "0.44.0", features = ["reconnecting-rpc-client"] }
 frame-metadata = { version = "23", default-features = false, features = ["current", "decode", "legacy", "std"] }
 scale-info = "2.11"
 heck = "0.5"

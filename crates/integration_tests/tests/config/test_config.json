@@ -136,6 +136,14 @@
       },
       {
         "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 20000006,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "polkadot/blocks_20000006.json",
+        "description": "Test block endpoint at Polkadot block 20,000,006"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}",
         "block_height": 28490503,
         "account_id": null,
         "query_params": {

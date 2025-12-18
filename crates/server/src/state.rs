@@ -6,7 +6,11 @@ use config::{ChainType, KnownRelayChain, SidecarConfig};
 use parity_scale_codec::{Compact, Decode, Encode};
 use serde_json::Value;
 use std::sync::Arc;
+use std::time::Duration;
 use subxt_historic::{OnlineClient, SubstrateConfig};
+use subxt_rpcs::client::reconnecting_rpc_client::{
+    ExponentialBackoff, RpcClient as ReconnectingRpcClient,
+};
 use subxt_rpcs::{LegacyRpcMethods, RpcClient, rpc_params};
 use thiserror::Error;
 
@@ -64,13 +68,26 @@ impl AppState {
     }
 
     pub async fn new_with_config(config: SidecarConfig) -> Result<Self, StateError> {
-        // Create RPC client first - we'll use it for both historic client and legacy RPC
-        let rpc_client = RpcClient::from_insecure_url(&config.substrate.url)
+        // Create reconnecting RPC client - automatically handles connection drops
+        let reconnecting_client = ReconnectingRpcClient::builder()
+            .retry_policy(
+                ExponentialBackoff::from_millis(config.substrate.reconnect_initial_delay_ms)
+                    .max_delay(Duration::from_millis(
+                        config.substrate.reconnect_max_delay_ms,
+                    )),
+            )
+            .request_timeout(Duration::from_millis(
+                config.substrate.reconnect_request_timeout_ms,
+            ))
+            .build(&config.substrate.url)
             .await
             .map_err(|source| StateError::ConnectionFailed {
                 url: config.substrate.url.clone(),
-                source,
+                source: subxt_rpcs::Error::Client(Box::new(source)),
             })?;
+
+        // Wrap in RpcClient for compatibility with existing code
+        let rpc_client = RpcClient::new(reconnecting_client);
 
         let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
 

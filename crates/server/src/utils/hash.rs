@@ -78,22 +78,42 @@ fn parse_hash(hex_str: &str) -> Result<H256, HashError> {
     Ok(H256::from_slice(&bytes))
 }
 
-/// Extract block number from JSON
+/// Extract block number from JSON header field.
+///
+/// Handles both formats returned by different RPC implementations:
+/// - Hex string: `"number": "0x1a2b3c"` (standard Substrate nodes)
+/// - Numeric: `"number": 12345` (Smoldot light client)
 fn extract_block_number(json: &serde_json::Value, field: &str) -> Result<u32, HashError> {
-    let number_hex = json
+    let value = json
         .get(field)
-        .and_then(|v| v.as_str())
         .ok_or_else(|| HashError::MissingField(field.to_string()))?;
 
-    parse_block_number(number_hex)
+    parse_block_number_from_json(value)
+        .map(|n| n as u32)
+        .map_err(HashError::InvalidNumber)
 }
 
-/// Parse a hex string into u32 block number
-fn parse_block_number(hex_str: &str) -> Result<u32, HashError> {
-    let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+/// Parse a block number from a JSON value.
+///
+/// Handles both formats returned by different RPC implementations:
+/// - Hex string: `"0x1a2b3c"` (standard Substrate nodes)
+/// - Numeric: `12345` (Smoldot light client)
+///
+/// This mirrors subxt's `NumberOrHex` deserialization approach.
+pub fn parse_block_number_from_json(value: &serde_json::Value) -> Result<u64, String> {
+    // Try as string first (hex format from standard Substrate nodes)
+    if let Some(hex_str) = value.as_str() {
+        let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+        return u64::from_str_radix(hex_str, 16)
+            .map_err(|e| format!("invalid hex '{}': {}", hex_str, e));
+    }
 
-    u32::from_str_radix(hex_str, 16)
-        .map_err(|e| HashError::InvalidNumber(format!("{}: {}", hex_str, e)))
+    // Try as number (numeric format from Smoldot)
+    if let Some(num) = value.as_u64() {
+        return Ok(num);
+    }
+
+    Err(format!("expected hex string or number, got: {}", value))
 }
 
 /// Extract and decode digest from JSON
@@ -137,10 +157,35 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_block_number() {
-        assert_eq!(parse_block_number("0x64").unwrap(), 100);
-        assert_eq!(parse_block_number("64").unwrap(), 100);
-        assert_eq!(parse_block_number("0x0").unwrap(), 0);
+    fn test_parse_block_number_from_json_hex_string() {
+        // Hex string format (standard Substrate nodes)
+        assert_eq!(parse_block_number_from_json(&json!("0x64")).unwrap(), 100);
+        assert_eq!(parse_block_number_from_json(&json!("64")).unwrap(), 100);
+        assert_eq!(parse_block_number_from_json(&json!("0x0")).unwrap(), 0);
+        assert_eq!(
+            parse_block_number_from_json(&json!("0xf4240")).unwrap(),
+            1_000_000
+        );
+    }
+
+    #[test]
+    fn test_parse_block_number_from_json_numeric() {
+        // Numeric format (Smoldot light client)
+        assert_eq!(parse_block_number_from_json(&json!(100)).unwrap(), 100);
+        assert_eq!(parse_block_number_from_json(&json!(0)).unwrap(), 0);
+        assert_eq!(
+            parse_block_number_from_json(&json!(1_000_000)).unwrap(),
+            1_000_000
+        );
+    }
+
+    #[test]
+    fn test_parse_block_number_from_json_invalid() {
+        // Invalid formats
+        assert!(parse_block_number_from_json(&json!(null)).is_err());
+        assert!(parse_block_number_from_json(&json!([])).is_err());
+        assert!(parse_block_number_from_json(&json!({})).is_err());
+        assert!(parse_block_number_from_json(&json!("not_hex")).is_err());
     }
 
     #[test]
