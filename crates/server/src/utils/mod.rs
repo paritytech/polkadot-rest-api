@@ -80,3 +80,89 @@ pub fn rpc_error_to_status(err: &subxt_rpcs::Error) -> (axum::http::StatusCode, 
         (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
     }
 }
+
+#[cfg(test)]
+mod rpc_error_tests {
+    use super::*;
+    use axum::http::StatusCode;
+
+    /// Helper to create a timeout error (simulates jsonrpsee RequestTimeout)
+    fn make_timeout_error() -> subxt_rpcs::Error {
+        subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "Request timeout",
+        )))
+    }
+
+    /// Helper to create a disconnection error
+    fn make_disconnected_error() -> subxt_rpcs::Error {
+        subxt_rpcs::Error::DisconnectedWillReconnect("Connection lost".to_string())
+    }
+
+    /// Helper to create a generic RPC error
+    fn make_generic_error() -> subxt_rpcs::Error {
+        subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Some other error",
+        )))
+    }
+
+    #[test]
+    fn test_is_disconnected_error_true() {
+        let err = make_disconnected_error();
+        assert!(is_disconnected_error(&err));
+    }
+
+    #[test]
+    fn test_is_disconnected_error_false_for_timeout() {
+        let err = make_timeout_error();
+        assert!(!is_disconnected_error(&err));
+    }
+
+    #[test]
+    fn test_is_disconnected_error_false_for_generic() {
+        let err = make_generic_error();
+        assert!(!is_disconnected_error(&err));
+    }
+
+    #[test]
+    fn test_is_timeout_error_true() {
+        let err = make_timeout_error();
+        assert!(is_timeout_error(&err));
+    }
+
+    #[test]
+    fn test_is_timeout_error_false_for_disconnected() {
+        let err = make_disconnected_error();
+        assert!(!is_timeout_error(&err));
+    }
+
+    #[test]
+    fn test_is_timeout_error_false_for_generic() {
+        let err = make_generic_error();
+        assert!(!is_timeout_error(&err));
+    }
+
+    #[test]
+    fn test_rpc_error_to_status_timeout() {
+        let err = make_timeout_error();
+        let (status, message) = rpc_error_to_status(&err);
+        assert_eq!(status, StatusCode::GATEWAY_TIMEOUT);
+        assert!(message.contains("timed out"));
+    }
+
+    #[test]
+    fn test_rpc_error_to_status_disconnected() {
+        let err = make_disconnected_error();
+        let (status, message) = rpc_error_to_status(&err);
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(message.contains("temporarily unavailable"));
+    }
+
+    #[test]
+    fn test_rpc_error_to_status_generic() {
+        let err = make_generic_error();
+        let (status, _message) = rpc_error_to_status(&err);
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+}
