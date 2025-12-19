@@ -3688,6 +3688,7 @@ dependencies = [
  "axum",
  "config",
  "frame-metadata 23.0.0",
+ "futures",
  "heck",
  "hex",
  "http-body-util",
