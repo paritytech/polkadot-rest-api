@@ -113,6 +113,9 @@ pub enum GetBlockError {
     #[error("Failed to compute block hash: {0}")]
     HashComputationFailed(#[from] crate::utils::HashError),
 
+    #[error("Failed to get runtime version")]
+    RuntimeVersionFailed(#[source] subxt_rpcs::Error),
+
     #[error("Service temporarily unavailable: {0}")]
     ServiceUnavailable(String),
 }
@@ -138,7 +141,8 @@ impl IntoResponse for GetBlockError {
             // Handle RPC errors with appropriate status codes
             GetBlockError::HeaderFetchFailed(err)
             | GetBlockError::FinalizedHeadFailed(err)
-            | GetBlockError::CanonicalHashFailed(err) => utils::rpc_error_to_status(err),
+            | GetBlockError::CanonicalHashFailed(err)
+            | GetBlockError::RuntimeVersionFailed(err) => utils::rpc_error_to_status(err),
             // All other errors are internal server errors
             GetBlockError::HeaderFieldMissing(_)
             | GetBlockError::ClientAtBlockFailed(_)
