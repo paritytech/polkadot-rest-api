@@ -161,10 +161,11 @@ pub async fn get_block(
             let spec_version = state
                 .get_runtime_version_at_hash(&resolved_block.hash)
                 .await
-                .ok()
-                .and_then(|v| v.get("specVersion").and_then(|sv| sv.as_u64()))
+                .map_err(GetBlockError::RuntimeVersionFailed)?
+                .get("specVersion")
+                .and_then(|sv| sv.as_u64())
                 .map(|v| v as u32)
-                .unwrap_or(state.chain_info.spec_version);
+                .ok_or_else(|| GetBlockError::HeaderFieldMissing("specVersion".to_string()))?;
 
             // Parallelize fee extraction for all extrinsics that need it
             let fee_futures: Vec<_> = fee_indices
