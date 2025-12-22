@@ -101,10 +101,7 @@ mod rpc_error_tests {
 
     /// Helper to create a generic RPC error
     fn make_generic_error() -> subxt_rpcs::Error {
-        subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Some other error",
-        )))
+        subxt_rpcs::Error::Client(Box::new(std::io::Error::other("Some other error")))
     }
 
     #[test]

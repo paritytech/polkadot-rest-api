@@ -18,8 +18,8 @@ use subxt_rpcs::rpc_params;
 use thiserror::Error;
 
 lazy_static! {
-    static ref VERSION_REGEX: Regex = Regex::new(r"^[vV](\d+)$")
-        .expect("VERSION_REGEX is a valid regex pattern");
+    static ref VERSION_REGEX: Regex =
+        Regex::new(r"^[vV](\d+)$").expect("VERSION_REGEX is a valid regex pattern");
 }
 
 #[derive(Debug, Error)]
