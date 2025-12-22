@@ -2,13 +2,13 @@
   "chains": [
     {
       "name": "polkadot",
-      "api_url": "http://localhost:8086",
+      "api_url": "http://localhost:8080",
       "test_accounts": [],
       "extra": {}
     },
     {
       "name": "kusama",
-      "api_url": "http://localhost:8087",
+      "api_url": "http://localhost:8080",
       "test_accounts": [],
       "extra": {}
     },
@@ -20,13 +20,13 @@
     },
     {
       "name": "asset-hub-polkadot",
-      "api_url": "http://localhost:8088",
+      "api_url": "http://localhost:8080",
       "test_accounts": [],
       "extra": {}
     },
     {
       "name": "asset-hub-kusama",
-      "api_url": "http://localhost:8089",
+      "api_url": "http://localhost:8080",
       "test_accounts": [],
       "extra": {}
     },

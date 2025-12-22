@@ -8,12 +8,19 @@ use axum::{Json, extract::Path, extract::State, http::StatusCode, response::Into
 use frame_metadata::v14 as v14_types;
 use frame_metadata::v15 as v15_types;
 use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
+use lazy_static::lazy_static;
 use parity_scale_codec::Decode;
+use regex::Regex;
 use scale_info::{PortableRegistry, form::PortableForm};
 use serde::Serialize;
 use serde_json::{Value, json};
 use subxt_rpcs::rpc_params;
 use thiserror::Error;
+
+lazy_static! {
+    static ref VERSION_REGEX: Regex = Regex::new(r"^[vV](\d+)$")
+        .expect("VERSION_REGEX is a valid regex pattern");
+}
 
 #[derive(Debug, Error)]
 pub enum GetMetadataError {
@@ -48,17 +55,25 @@ pub enum GetMetadataError {
 
     #[error("Function 'metadata.metadataVersions()' is not available at this block height")]
     MetadataVersionsNotAvailable,
+
+    #[error("Service temporarily unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 impl IntoResponse for GetMetadataError {
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
+        let (status, message) = match &self {
             GetMetadataError::InvalidBlockParam(_)
             | GetMetadataError::BlockResolveFailed(_)
             | GetMetadataError::InvalidVersionFormat(_)
-            | GetMetadataError::VersionNotAvailable(_) => {
+            | GetMetadataError::VersionNotAvailable(_)
+            | GetMetadataError::MetadataVersionsNotAvailable => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
+            GetMetadataError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
+            GetMetadataError::RpcFailed(err) => crate::utils::rpc_error_to_status(err),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
@@ -151,7 +166,15 @@ pub async fn runtime_metadata_versions(
             ],
         )
         .await
-        .map_err(|_| GetMetadataError::MetadataVersionsNotAvailable)?;
+        .map_err(|e| {
+            // Check if this is a "method not found" error (runtime API not available)
+            let err_str = e.to_string().to_lowercase();
+            if err_str.contains("not found") || err_str.contains("does not exist") {
+                GetMetadataError::MetadataVersionsNotAvailable
+            } else {
+                GetMetadataError::RpcFailed(e)
+            }
+        })?;
 
     // Decode the result - it's a Vec<u32>
     let hex_str = result.strip_prefix("0x").unwrap_or(&result);
@@ -175,15 +198,15 @@ pub async fn runtime_metadata_versioned(
     Path(version): Path<String>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
 ) -> Result<Json<RuntimeMetadataResponse>, GetMetadataError> {
-    // Validate version format: must be vX or VX where X is a number
-    let version_regex = regex::Regex::new(r"^[vV](\d+)$").unwrap();
-    let version_num: u32 = match version_regex.captures(&version) {
-        Some(caps) => caps
-            .get(1)
-            .unwrap()
-            .as_str()
-            .parse()
-            .map_err(|_| GetMetadataError::InvalidVersionFormat(version.clone()))?,
+    let version_num: u32 = match VERSION_REGEX.captures(&version) {
+        Some(caps) => {
+            // Safe unwrap: regex guarantees capture group 1 exists when there's a match
+            caps.get(1)
+                .expect("regex capture group 1 must exist")
+                .as_str()
+                .parse()
+                .map_err(|_| GetMetadataError::InvalidVersionFormat(version.clone()))?
+        }
         None => return Err(GetMetadataError::InvalidVersionFormat(version.clone())),
     };
 
@@ -206,7 +229,14 @@ pub async fn runtime_metadata_versioned(
             ],
         )
         .await
-        .map_err(|_| GetMetadataError::MetadataVersionsNotAvailable)?;
+        .map_err(|e| {
+            let err_str = e.to_string().to_lowercase();
+            if err_str.contains("not found") || err_str.contains("does not exist") {
+                GetMetadataError::MetadataVersionsNotAvailable
+            } else {
+                GetMetadataError::RpcFailed(e)
+            }
+        })?;
 
     let versions_hex = versions_result
         .strip_prefix("0x")
@@ -235,7 +265,14 @@ pub async fn runtime_metadata_versioned(
             ],
         )
         .await
-        .map_err(GetMetadataError::RpcFailed)?;
+        .map_err(|e| {
+            let err_str = e.to_string().to_lowercase();
+            if err_str.contains("not found") || err_str.contains("does not exist") {
+                GetMetadataError::MetadataVersionsNotAvailable
+            } else {
+                GetMetadataError::RpcFailed(e)
+            }
+        })?;
 
     // Decode the result - it's an Option<OpaqueMetadata>
     let hex_str = result.strip_prefix("0x").unwrap_or(&result);
