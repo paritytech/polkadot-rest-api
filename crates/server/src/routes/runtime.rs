@@ -22,4 +22,25 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             "get",
             get(runtime::runtime_code),
         )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/runtime/metadata",
+            "get",
+            get(runtime::runtime_metadata),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/runtime/metadata/versions",
+            "get",
+            get(runtime::runtime_metadata_versions),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/runtime/metadata/:version",
+            "get",
+            get(runtime::runtime_metadata_versioned),
+        )
 }
