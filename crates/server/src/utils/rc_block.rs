@@ -67,7 +67,6 @@ pub async fn find_ah_blocks_in_rc_block(
     let events_composite = match &events_decoded.value {
         scale_value::ValueDef::Composite(composite) => composite,
         _ => {
-            tracing::warn!("Events is not a composite type");
             return Ok(ah_blocks);
         }
     };
@@ -75,12 +74,9 @@ pub async fn find_ah_blocks_in_rc_block(
     let events_values = match events_composite {
         scale_value::Composite::Unnamed(values) => values,
         scale_value::Composite::Named(_) => {
-            tracing::warn!("Events is named composite, expected unnamed");
             return Ok(ah_blocks);
         }
     };
-
-    tracing::warn!("Processing {} events", events_values.len());
 
     for (idx, event_record) in events_values.iter().enumerate() {
         let record_composite = match &event_record.value {
@@ -143,21 +139,9 @@ pub async fn find_ah_blocks_in_rc_block(
             continue;
         }
 
-        tracing::warn!(
-            "Found CandidateIncluded event at index {}, pallet: {}, event: {}",
-            idx,
-            pallet_name,
-            event_name
-        );
-
         if let Some(ah_block) =
             extract_ah_block_from_candidate_included(event_data, ASSET_HUB_PARA_ID)
         {
-            tracing::warn!(
-                "Extracted AH block: number={}, hash={}",
-                ah_block.number,
-                ah_block.hash
-            );
             ah_blocks.push(ah_block);
         }
     }

@@ -3,7 +3,7 @@
 //! This module contains all the types used by `/blocks/*` endpoints including
 //! request parameters, response structures, and internal types.
 
-use crate::utils::{self, EraInfo};
+use crate::utils::{self, EraInfo, RcBlockError};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -113,14 +113,26 @@ pub enum GetBlockError {
 
     #[error("Failed to get canonical block hash")]
     CanonicalHashFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Failed to find Asset Hub blocks in Relay Chain block")]
+    RcBlockError(#[from] RcBlockError),
+
+    #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
+    UseRcBlockNotSupported,
+
+    #[error(
+        "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL"
+    )]
+    RelayChainNotConfigured,
 }
 
 impl IntoResponse for GetBlockError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
-            GetBlockError::InvalidBlockParam(_) | GetBlockError::BlockResolveFailed(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
+            GetBlockError::InvalidBlockParam(_)
+            | GetBlockError::BlockResolveFailed(_)
+            | GetBlockError::UseRcBlockNotSupported
+            | GetBlockError::RelayChainNotConfigured => (StatusCode::BAD_REQUEST, self.to_string()),
             GetBlockError::HeaderFetchFailed(_)
             | GetBlockError::HeaderFieldMissing(_)
             | GetBlockError::ClientAtBlockFailed(_)
@@ -132,7 +144,8 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::MissingAddressBytes
             | GetBlockError::ExtrinsicDecodeFailed(_)
             | GetBlockError::FinalizedHeadFailed(_)
-            | GetBlockError::CanonicalHashFailed(_) => {
+            | GetBlockError::CanonicalHashFailed(_)
+            | GetBlockError::RcBlockError(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };

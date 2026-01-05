@@ -54,45 +54,22 @@ async fn handle_use_rc_block(
     params: BlockQueryParams,
 ) -> Result<Response, GetBlockError> {
     if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(GetBlockError::HeaderFetchFailed(subxt_rpcs::Error::Client(
-            Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "useRcBlock parameter is only supported for Asset Hub endpoints",
-            )),
-        )));
+        return Err(GetBlockError::UseRcBlockNotSupported);
     }
 
     if state.get_relay_chain_client().is_none() {
-        return Err(GetBlockError::HeaderFetchFailed(subxt_rpcs::Error::Client(
-            Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL",
-            )),
-        )));
+        return Err(GetBlockError::RelayChainNotConfigured);
     }
 
     let rc_block_id = block_id.parse::<utils::BlockId>()?;
-    let rc_resolved_block = if let (Some(rc_rpc), Some(rc_legacy_rpc)) = (
-        state.get_relay_chain_rpc_client(),
-        state.get_relay_chain_rpc(),
-    ) {
-        utils::resolve_block_with_rpc(rc_rpc, rc_legacy_rpc, Some(rc_block_id)).await?
-    } else {
-        return Err(GetBlockError::HeaderFetchFailed(subxt_rpcs::Error::Client(
-            Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Relay Chain RPC client not available",
-            )),
-        )));
-    };
+    let rc_resolved_block = utils::resolve_block_with_rpc(
+        state.get_relay_chain_rpc_client().unwrap(),
+        state.get_relay_chain_rpc().unwrap(),
+        Some(rc_block_id),
+    )
+    .await?;
 
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
-        .await
-        .map_err(|e| {
-            GetBlockError::HeaderFetchFailed(subxt_rpcs::Error::Client(Box::new(
-                std::io::Error::other(format!("Failed to find Asset Hub blocks: {}", e)),
-            )))
-        })?;
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
     if ah_blocks.is_empty() {
         return Ok(Json(json!([])).into_response());
