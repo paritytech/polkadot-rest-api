@@ -285,6 +285,9 @@ pub async fn get_block_head(
         on_finalize,
         finalized,
         decoded_xcm_msgs,
+        rc_block_hash: None,
+        rc_block_number: None,
+        ah_timestamp: None,
     };
 
     Ok(Json(response))

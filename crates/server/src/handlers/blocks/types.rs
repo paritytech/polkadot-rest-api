@@ -138,9 +138,9 @@ pub enum GetBlockError {
 impl IntoResponse for GetBlockError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
-            GetBlockError::InvalidBlockParam(_) | GetBlockError::BlockResolveFailed(_) | GetBlockError::RelayChainNotConfigured(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
+            GetBlockError::InvalidBlockParam(_)
+            | GetBlockError::BlockResolveFailed(_)
+            | GetBlockError::RelayChainNotConfigured => (StatusCode::BAD_REQUEST, self.to_string()),
             GetBlockError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
@@ -168,8 +168,6 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::MissingSignatureBytes
             | GetBlockError::MissingAddressBytes
             | GetBlockError::ExtrinsicDecodeFailed(_)
-            | GetBlockError::FinalizedHeadFailed(_)
-            | GetBlockError::CanonicalHashFailed(_)
             | GetBlockError::RcBlockError(_)
             | GetBlockError::UseRcBlockNotSupported
             | GetBlockError::HashComputationFailed(_) => {
