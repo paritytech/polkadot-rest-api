@@ -84,7 +84,7 @@ pub enum GetBlockError {
     #[error("Header field missing: {0}")]
     HeaderFieldMissing(String),
 
-    #[error("Failed to get client at block")]
+    #[error("Failed to get client at block: {0}")]
     ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
 
     #[error("Failed to fetch chain storage")]
@@ -124,17 +124,42 @@ pub enum GetBlockError {
         "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL"
     )]
     RelayChainNotConfigured,
+
+    #[error("Failed to compute block hash: {0}")]
+    HashComputationFailed(#[from] crate::utils::HashError),
+
+    #[error("Failed to get runtime version")]
+    RuntimeVersionFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Service temporarily unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 impl IntoResponse for GetBlockError {
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
-            GetBlockError::InvalidBlockParam(_)
-            | GetBlockError::BlockResolveFailed(_)
-            | GetBlockError::UseRcBlockNotSupported
-            | GetBlockError::RelayChainNotConfigured => (StatusCode::BAD_REQUEST, self.to_string()),
-            GetBlockError::HeaderFetchFailed(_)
-            | GetBlockError::HeaderFieldMissing(_)
+        let (status, message) = match &self {
+            GetBlockError::InvalidBlockParam(_) | GetBlockError::BlockResolveFailed(_) | GetBlockError::RelayChainNotConfigured(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
+            // Check if ClientAtBlockFailed is due to a disconnection
+            GetBlockError::ClientAtBlockFailed(err)
+                if utils::is_online_client_at_block_disconnected(err) =>
+            {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    format!("Service temporarily unavailable: {}", self),
+                )
+            }
+            // Handle RPC errors with appropriate status codes
+            GetBlockError::HeaderFetchFailed(err)
+            | GetBlockError::FinalizedHeadFailed(err)
+            | GetBlockError::CanonicalHashFailed(err)
+            | GetBlockError::RuntimeVersionFailed(err) => utils::rpc_error_to_status(err),
+            // All other errors are internal server errors
+            GetBlockError::HeaderFieldMissing(_)
             | GetBlockError::ClientAtBlockFailed(_)
             | GetBlockError::StorageFetchFailed(_)
             | GetBlockError::StorageNotPlainValue(_)
@@ -145,7 +170,9 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::ExtrinsicDecodeFailed(_)
             | GetBlockError::FinalizedHeadFailed(_)
             | GetBlockError::CanonicalHashFailed(_)
-            | GetBlockError::RcBlockError(_) => {
+            | GetBlockError::RcBlockError(_)
+            | GetBlockError::UseRcBlockNotSupported
+            | GetBlockError::HashComputationFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };

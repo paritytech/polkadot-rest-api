@@ -22,6 +22,13 @@ When running locally with `docker compose`, the Grafana dashboard is accessible 
 
 If needed, the login and password for grafana are set to "admin" and "admin" respectfully.
 
+All container resources are shown despite only the `rest-api` container being useful.
+To map the short ids for a container name you can run
+
+```bash
+docker ps --format '{{.ID}}: {{.Names}}'
+```
+
 Prometheus is accessible at http://localhost:9090/
 
 Loki logs can be viewed in Grafana at Explore > Loki (select Loki as the datasource and query with `{service_name="polkadot-rest-api"}`)

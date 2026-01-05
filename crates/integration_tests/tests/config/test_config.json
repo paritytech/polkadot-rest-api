@@ -68,6 +68,38 @@
         "description": "Test runtime spec at Polkadot block 28,500,000"
       },
       {
+        "endpoint": "/v1/runtime/metadata",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "21000000" },
+        "fixture_path": "polkadot/runtime_metadata_21000000.json",
+        "description": "Test runtime metadata at Polkadot block 21,000,000"
+      },
+      {
+        "endpoint": "/v1/runtime/metadata/versions",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "21000000" },
+        "fixture_path": "polkadot/runtime_metadata_versions_21000000.json",
+        "description": "Test runtime metadata versions at Polkadot block 21,000,000"
+      },
+      {
+        "endpoint": "/v1/runtime/metadata/v14",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "21000000" },
+        "fixture_path": "polkadot/runtime_metadata_v14_21000000.json",
+        "description": "Test runtime metadata v14 at Polkadot block 21,000,000"
+      },
+      {
+        "endpoint": "/v1/runtime/metadata/v15",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "21000000" },
+        "fixture_path": "polkadot/runtime_metadata_v15_21000000.json",
+        "description": "Test runtime metadata v15 at Polkadot block 21,000,000"
+      },
+      {
         "endpoint": "/v1/runtime/code",
         "block_height": null,
         "account_id": null,
@@ -104,6 +136,14 @@
       },
       {
         "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 20000006,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "polkadot/blocks_20000006.json",
+        "description": "Test block endpoint at Polkadot block 20,000,006"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}",
         "block_height": 28490503,
         "account_id": null,
         "query_params": {
@@ -114,6 +154,38 @@
       }
     ],
     "kusama": [
+      {
+        "endpoint": "/v1/runtime/metadata",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "24000000" },
+        "fixture_path": "kusama/runtime_metadata_24000000.json",
+        "description": "Test runtime metadata at Kusama block 24,000,000"
+      },
+      {
+        "endpoint": "/v1/runtime/metadata/versions",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "24000000" },
+        "fixture_path": "kusama/runtime_metadata_versions_24000000.json",
+        "description": "Test runtime metadata versions at Kusama block 24,000,000"
+      },
+      {
+        "endpoint": "/v1/runtime/metadata/v14",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "24000000" },
+        "fixture_path": "kusama/runtime_metadata_v14_24000000.json",
+        "description": "Test runtime metadata v14 at Kusama block 24,000,000"
+      },
+      {
+        "endpoint": "/v1/runtime/metadata/v15",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "24000000" },
+        "fixture_path": "kusama/runtime_metadata_v15_24000000.json",
+        "description": "Test runtime metadata v15 at Kusama block 24,000,000"
+      },
       {
         "endpoint": "/v1/runtime/spec",
         "block_height": null,
@@ -141,7 +213,38 @@
     ],
     "asset-hub-polkadot": [
       {
-        "endpoint": "/v1/runtime/spec",
+        "endpoint": "/v1/runtime/metadata",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "10260000" },
+        "fixture_path": "asset-hub-polkadot/runtime_metadata_10260000.json",
+        "description": "Test runtime metadata at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/runtime/metadata/versions",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "10260000" },
+        "fixture_path": "asset-hub-polkadot/runtime_metadata_versions_10260000.json",
+        "description": "Test runtime metadata versions at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/runtime/metadata/v14",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "10260000" },
+        "fixture_path": "asset-hub-polkadot/runtime_metadata_v14_10260000.json",
+        "description": "Test runtime metadata v14 at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/runtime/metadata/v15",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "10260000" },
+        "fixture_path": "asset-hub-polkadot/runtime_metadata_v15_10260000.json",
+        "description": "Test runtime metadata v15 at Asset Hub Polkadot block 10,260,000"
+      },
+      {"endpoint": "/v1/runtime/spec",
         "block_height": null,
         "account_id": null,
         "query_params": { "at": "10260000" },
@@ -174,6 +277,38 @@
       }
     ],
     "asset-hub-kusama": [
+      {
+        "endpoint": "/v1/runtime/metadata",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "11152000" },
+        "fixture_path": "asset-hub-kusama/runtime_metadata_11152000.json",
+        "description": "Test runtime metadata at Asset Hub Kusama block 11,152,000"
+      },
+      {
+        "endpoint": "/v1/runtime/metadata/versions",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "11152000" },
+        "fixture_path": "asset-hub-kusama/runtime_metadata_versions_11152000.json",
+        "description": "Test runtime metadata versions at Asset Hub Kusama block 11,152,000"
+      },
+      {
+        "endpoint": "/v1/runtime/metadata/v14",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "11152000" },
+        "fixture_path": "asset-hub-kusama/runtime_metadata_v14_11152000.json",
+        "description": "Test runtime metadata v14 at Asset Hub Kusama block 11,152,000"
+      },
+      {
+        "endpoint": "/v1/runtime/metadata/v15",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "11152000" },
+        "fixture_path": "asset-hub-kusama/runtime_metadata_v15_11152000.json",
+        "description": "Test runtime metadata v15 at Asset Hub Kusama block 11,152,000"
+      },
       {
         "endpoint": "/v1/runtime/spec",
         "block_height": null,

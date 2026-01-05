@@ -15,13 +15,15 @@ use parity_scale_codec::Decode;
 use serde_json::json;
 
 use super::common::{
-    add_docs_to_events, categorize_events, decode_digest_logs, extract_author, extract_extrinsics,
-    extract_fee_info_for_extrinsic, fetch_block_events, get_canonical_hash_at_number,
+    add_docs_to_events, decode_digest_logs, extract_author, get_canonical_hash_at_number,
     get_finalized_block_number,
 };
+use super::decode::XcmDecoder;
 use super::docs::Docs;
+use super::processing::{
+    categorize_events, extract_extrinsics, extract_fee_info_for_extrinsic, fetch_block_events,
+};
 use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
-use super::xcm::XcmDecoder;
 
 // ================================================================================================
 // Main Handler
@@ -235,26 +237,48 @@ async fn build_block_response_for_hash(
     }
 
     // Populate fee info for signed extrinsics that pay fees (unless noFees=true)
+    // Optimization: Only fetch runtime version and process fees if there are extrinsics that need it
     if !params.no_fees {
-        let spec_version = state
-            .get_runtime_version_at_hash(block_hash)
-            .await
-            .ok()
-            .and_then(|v| v.get("specVersion").and_then(|sv| sv.as_u64()))
-            .map(|v| v as u32)
-            .unwrap_or(state.chain_info.spec_version);
+        // Find indices of extrinsics that need fee calculation
+        let fee_indices: Vec<usize> = extrinsics_with_events
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.signature.is_some() && e.pays_fee == Some(true))
+            .map(|(i, _)| i)
+            .collect();
 
-        for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
-            if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
-                extrinsic.info = extract_fee_info_for_extrinsic(
-                    state,
-                    &extrinsic.raw_hex,
-                    &extrinsic.events,
-                    extrinsic_outcomes.get(i),
-                    &parent_hash,
-                    spec_version,
-                )
-                .await;
+        // Only fetch runtime version if there are extrinsics that need fees
+        if !fee_indices.is_empty() {
+            let spec_version = state
+                .get_runtime_version_at_hash(block_hash)
+                .await
+                .map_err(GetBlockError::RuntimeVersionFailed)?
+                .get("specVersion")
+                .and_then(|sv| sv.as_u64())
+                .map(|v| v as u32)
+                .ok_or_else(|| GetBlockError::HeaderFieldMissing("specVersion".to_string()))?;
+
+            // Parallelize fee extraction for all extrinsics that need it
+            let fee_futures: Vec<_> = fee_indices
+                .iter()
+                .map(|&i| {
+                    let extrinsic = &extrinsics_with_events[i];
+                    extract_fee_info_for_extrinsic(
+                        state,
+                        &extrinsic.raw_hex,
+                        &extrinsic.events,
+                        extrinsic_outcomes.get(i),
+                        &parent_hash,
+                        spec_version,
+                    )
+                })
+                .collect();
+
+            let fee_results = futures::future::join_all(fee_futures).await;
+
+            // Apply fee results back to extrinsics
+            for (idx, fee_info) in fee_indices.into_iter().zip(fee_results.into_iter()) {
+                extrinsics_with_events[idx].info = fee_info;
             }
         }
     }

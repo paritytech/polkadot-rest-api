@@ -22,15 +22,24 @@ pub enum GetSpecError {
 
     #[error("Failed to get system chain type")]
     SystemChainTypeFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Service temporarily unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 impl IntoResponse for GetSpecError {
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
+        let (status, message) = match &self {
             GetSpecError::InvalidBlockParam(_) | GetSpecError::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            GetSpecError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
+            // Handle RPC errors with appropriate status codes
+            GetSpecError::RuntimeVersionFailed(err)
+            | GetSpecError::SystemPropertiesFailed(err)
+            | GetSpecError::SystemChainTypeFailed(err) => utils::rpc_error_to_status(err),
         };
 
         let body = Json(json!({

@@ -1,22 +1,35 @@
 //! XCM message decoding for block extrinsics.
+//!
+//! This module provides:
+//! - `XcmDecoder` for extracting and decoding XCM messages from extrinsics
+//! - `scale_value_to_json` for registry-aware conversion of SCALE values to JSON
 
-use super::types::{DownwardMessage, ExtrinsicInfo, HorizontalMessage, UpwardMessage, XcmMessages};
-use config::ChainType;
 use heck::ToLowerCamelCase;
 use scale_info::{PortableRegistry, TypeDef};
 use scale_value::scale::decode_as_type;
 use serde_json::Value;
 
-/// Check if a type_id refers to a sequence type in the registry
-fn is_sequence_type(type_id: u32, registry: &PortableRegistry) -> bool {
+use super::super::types::{
+    DownwardMessage, ExtrinsicInfo, HorizontalMessage, UpwardMessage, XcmMessages,
+};
+use config::ChainType;
+
+// ================================================================================================
+// Registry-Aware SCALE Value Transformation
+// ================================================================================================
+
+/// Check if a type_id refers to a sequence type (Vec<T>) in the registry.
+/// This is used to distinguish between sequences (which should stay as arrays)
+/// and newtype wrappers (which should be unwrapped).
+pub fn is_sequence_type(type_id: u32, registry: &PortableRegistry) -> bool {
     registry
         .resolve(type_id)
         .is_some_and(|ty| matches!(ty.type_def, TypeDef::Sequence(_)))
 }
 
-/// Check if an array of values looks like a byte array (all u8 values 0-255)
-/// Requires at least 2 elements to avoid treating single compact integers as byte arrays
-fn is_byte_array(values: &[scale_value::Value<u32>]) -> bool {
+/// Check if an array of scale_value::Value looks like a byte array (all u8 values 0-255).
+/// Requires at least 2 elements to avoid treating single compact integers as byte arrays.
+pub fn is_byte_array_scale_value(values: &[scale_value::Value<u32>]) -> bool {
     values.len() >= 2
         && values.iter().all(|v| {
             matches!(
@@ -26,8 +39,8 @@ fn is_byte_array(values: &[scale_value::Value<u32>]) -> bool {
         })
 }
 
-/// Convert byte array to hex string
-fn bytes_to_hex(values: &[scale_value::Value<u32>]) -> String {
+/// Convert a slice of scale_value::Value (representing bytes) to a hex string.
+pub fn bytes_to_hex_scale_value(values: &[scale_value::Value<u32>]) -> String {
     let bytes: Vec<u8> = values
         .iter()
         .filter_map(|v| match &v.value {
@@ -38,20 +51,26 @@ fn bytes_to_hex(values: &[scale_value::Value<u32>]) -> String {
     format!("0x{}", hex::encode(bytes))
 }
 
-/// Check if variant name is an X1, X2, etc junction.
+/// Check if variant name is an X1-X8 junction.
 /// These variants need special handling to preserve array output format.
-///
-/// TODO: Instead of hardcoding variant names, we could check if the parent type
-/// is `Junctions` by looking up the type in the registry. This would be more
-/// robust and wouldn't require updating if XCM adds new junction variants.
+/// Note: X1 is included here (unlike args.rs) because decoded XCM messages
+/// represent X1 as an array to match sidecar's output format for XCM instructions.
 fn is_junction_variant(name: &str) -> bool {
     matches!(name, "X1" | "X2" | "X3" | "X4" | "X5" | "X6" | "X7" | "X8")
 }
 
-/// Convert a scale_value::Value to serde_json::Value
-/// Uses the registry to distinguish between newtype wrappers (should unwrap)
-/// and sequence types like Vec<T> (should keep as array even with one element)
-fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRegistry) -> Value {
+/// Convert a scale_value::Value<u32> to serde_json::Value with registry awareness.
+///
+/// This correctly handles:
+/// - Vec<T> (sequences) - always keeps as array even with single element
+/// - Newtype wrappers - unwraps single unnamed field
+/// - Byte arrays - converts to hex strings
+/// - Named structs - converts to JSON objects with camelCase keys
+/// - Enum variants - converts to { "variantName": value } format
+///
+/// The key insight: the decision to unwrap is based on the TYPE (checking TypeDef::Sequence
+/// in the registry), not the array length.
+pub fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRegistry) -> Value {
     let type_id = value.context;
     let is_sequence = is_sequence_type(type_id, registry);
 
@@ -72,11 +91,14 @@ fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRegist
             scale_value::Composite::Unnamed(fields) => {
                 let fields_vec: Vec<_> = fields.into_iter().collect();
                 // Check if this looks like a byte array
-                if !fields_vec.is_empty() && is_byte_array(&fields_vec) {
-                    Value::String(bytes_to_hex(&fields_vec))
+                if !fields_vec.is_empty() && is_byte_array_scale_value(&fields_vec) {
+                    Value::String(bytes_to_hex_scale_value(&fields_vec))
                 } else if fields_vec.len() == 1 && !is_sequence {
                     // Single unnamed field that's NOT a sequence - unwrap it (newtype wrapper)
-                    scale_value_to_json(fields_vec.into_iter().next().unwrap(), registry)
+                    match fields_vec.into_iter().next() {
+                        Some(field) => scale_value_to_json(field, registry),
+                        None => Value::Null,
+                    }
                 } else {
                     // Sequence type or multiple elements - keep as array
                     Value::Array(
@@ -89,10 +111,7 @@ fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRegist
             }
         },
         scale_value::ValueDef::Variant(variant) => {
-            // TODO: This is a temporary patch for Option::None handling.
-            // The broader enum serialization issue is being addressed separately.
-            // Once that's resolved, this special case can be removed.
-            // ref: https://github.com/paritytech/polkadot-rest-api/issues/79
+            // Handle Option::None as JSON null
             if variant.name == "None" {
                 return Value::Null;
             }
@@ -110,16 +129,13 @@ fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRegist
                 }
                 scale_value::Composite::Unnamed(fields) if !fields.is_empty() => {
                     let fields_vec: Vec<_> = fields.into_iter().collect();
-                    if !fields_vec.is_empty() && is_byte_array(&fields_vec) {
-                        Value::String(bytes_to_hex(&fields_vec))
+                    if !fields_vec.is_empty() && is_byte_array_scale_value(&fields_vec) {
+                        Value::String(bytes_to_hex_scale_value(&fields_vec))
                     } else if fields_vec.len() == 1 && !is_junction {
-                        let inner_type_id = fields_vec[0].context;
-                        if is_sequence_type(inner_type_id, registry) {
-                            // It's a sequence, keep recursing but don't unwrap here
-                            scale_value_to_json(fields_vec.into_iter().next().unwrap(), registry)
-                        } else {
-                            // Not a sequence, unwrap the newtype wrapper
-                            scale_value_to_json(fields_vec.into_iter().next().unwrap(), registry)
+                        // Single unnamed field - recurse into it
+                        match fields_vec.into_iter().next() {
+                            Some(field) => scale_value_to_json(field, registry),
+                            None => Value::Null,
                         }
                     } else {
                         // For junctions (X1, X2, etc) or multi-element, output as array
@@ -163,6 +179,10 @@ fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRegist
         }
     }
 }
+
+// ================================================================================================
+// XCM Decoder
+// ================================================================================================
 
 /// Build a portable registry containing just the VersionedXcm type
 fn build_xcm_registry() -> (PortableRegistry, u32) {

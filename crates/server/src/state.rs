@@ -6,7 +6,11 @@ use config::{ChainType, KnownRelayChain, SidecarConfig};
 use parity_scale_codec::{Compact, Decode, Encode};
 use serde_json::Value;
 use std::sync::Arc;
+use std::time::Duration;
 use subxt_historic::{OnlineClient, SubstrateConfig};
+use subxt_rpcs::client::reconnecting_rpc_client::{
+    ExponentialBackoff, RpcClient as ReconnectingRpcClient,
+};
 use subxt_rpcs::{LegacyRpcMethods, RpcClient, rpc_params};
 use thiserror::Error;
 
@@ -21,6 +25,9 @@ pub enum StateError {
         #[source]
         source: subxt_rpcs::Error,
     },
+
+    #[error("Connection to substrate node at {url} timed out after {timeout_secs} seconds")]
+    ConnectionTimeout { url: String, timeout_secs: u64 },
 
     #[error("Failed to get runtime version")]
     RuntimeVersionFailed(#[source] subxt_rpcs::Error),
@@ -70,13 +77,11 @@ impl AppState {
     }
 
     pub async fn new_with_config(config: SidecarConfig) -> Result<Self, StateError> {
-        // Create RPC client first - we'll use it for both historic client and legacy RPC
-        let rpc_client = RpcClient::from_insecure_url(&config.substrate.url)
-            .await
-            .map_err(|source| StateError::ConnectionFailed {
-                url: config.substrate.url.clone(),
-                source,
-            })?;
+        let reconnecting_client =
+            connect_with_progress_logging(&config.substrate.url, &config).await?;
+
+        // Wrap in RpcClient for compatibility with existing code
+        let rpc_client = RpcClient::new(reconnecting_client);
 
         let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
 
@@ -416,4 +421,83 @@ async fn get_chain_info(
         spec_version: runtime_version.spec_version,
         ss58_prefix,
     })
+}
+
+/// Connect to the substrate node with CLI progress indicator.
+/// Shows a live progress line that updates every second, independent of log levels.
+/// Terminates after 60 seconds with a clear error message.
+async fn connect_with_progress_logging(
+    url: &str,
+    config: &SidecarConfig,
+) -> Result<ReconnectingRpcClient, StateError> {
+    use std::io::Write;
+    use subxt_rpcs::client::reconnecting_rpc_client::RpcClient as ReconnectingClient;
+
+    let connect_future = ReconnectingClient::builder()
+        .retry_policy(
+            ExponentialBackoff::from_millis(config.substrate.reconnect_initial_delay_ms).max_delay(
+                Duration::from_millis(config.substrate.reconnect_max_delay_ms),
+            ),
+        )
+        .request_timeout(Duration::from_millis(
+            config.substrate.reconnect_request_timeout_ms,
+        ))
+        .build(url);
+
+    tokio::pin!(connect_future);
+
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    interval.tick().await; // First tick is immediate, skip it
+
+    let mut elapsed_secs = 0u64;
+    const TIMEOUT_SECS: u64 = 60;
+
+    // Show initial connection message
+    eprint!("\rConnecting to {}...", url);
+    let _ = std::io::stderr().flush();
+
+    loop {
+        tokio::select! {
+            result = &mut connect_future => {
+                // Clear the progress line and show success
+                eprint!("\r\x1b[K"); // Clear line
+                let _ = std::io::stderr().flush();
+
+                return result.map_err(|source| StateError::ConnectionFailed {
+                    url: url.to_string(),
+                    source: subxt_rpcs::Error::Client(Box::new(source)),
+                });
+            }
+            _ = interval.tick() => {
+                elapsed_secs += 1;
+
+                if elapsed_secs >= TIMEOUT_SECS {
+                    // Clear line and print final error
+                    eprintln!("\r\x1b[K");
+                    eprintln!("Failed to connect to {} after {} seconds.", url, TIMEOUT_SECS);
+                    eprintln!("Terminating: no active connection with the RPC node.");
+
+                    return Err(StateError::ConnectionTimeout {
+                        url: url.to_string(),
+                        timeout_secs: TIMEOUT_SECS,
+                    });
+                }
+
+                // Update progress line with elapsed time and status message
+                let status = match elapsed_secs {
+                    0..=9 => "",
+                    10..=19 => " (taking longer than usual)",
+                    20..=29 => " (taking significantly longer than expected)",
+                    30..=39 => " (check if RPC node is running)",
+                    _ => " (timing out soon)",
+                };
+
+                eprint!(
+                    "\rConnecting to {}... {}s{}",
+                    url, elapsed_secs, status
+                );
+                let _ = std::io::stderr().flush();
+            }
+        }
+    }
 }
