@@ -104,20 +104,14 @@ impl KnownAssetHub {
 }
 
 /// Chain type identifier
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ChainType {
     Relay,
     #[serde(rename = "assethub")]
     AssetHub,
+    #[default]
     Parachain,
-}
-
-impl Default for ChainType {
-    fn default() -> Self {
-        // Default to Parachain as it's the most common case
-        Self::Parachain
-    }
 }
 
 impl ChainType {
@@ -225,12 +219,12 @@ impl SubstrateConfig {
         seen_urls.insert(self.url.clone());
 
         // Add relay chain URL to seen set if present
-        if let Some(ref relay_url) = self.relay_chain_url {
-            if !seen_urls.insert(relay_url.clone()) {
-                return Err(SubstrateError::DuplicateUrl {
-                    url: relay_url.clone(),
-                });
-            }
+        if let Some(ref relay_url) = self.relay_chain_url
+            && !seen_urls.insert(relay_url.clone())
+        {
+            return Err(SubstrateError::DuplicateUrl {
+                url: relay_url.clone(),
+            });
         }
 
         for chain_url in &self.multi_chain_urls {

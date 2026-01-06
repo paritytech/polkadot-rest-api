@@ -7,13 +7,16 @@ mod metrics;
 mod spec_versions;
 mod substrate;
 
-pub use chain::{ChainConfig, ChainConfigError, ChainConfigs, Hasher, QueryFeeDetailsStatus as ChainQueryFeeDetailsStatus};
-pub use spec_versions::SpecVersionChanges;
+pub use chain::{
+    ChainConfig, ChainConfigError, ChainConfigs, Hasher,
+    QueryFeeDetailsStatus as ChainQueryFeeDetailsStatus,
+};
 pub use error::ConfigError;
 pub use express::{ExpressConfig, ExpressError};
 pub use fee::{ChainFeeConfig, ChainFeeConfigs, FeeConfigError, QueryFeeDetailsStatus};
 pub use log::{LogConfig, LogError};
 pub use metrics::{MetricsConfig, MetricsError};
+pub use spec_versions::SpecVersionChanges;
 pub use substrate::{
     ChainType, ChainUrl, KnownAssetHub, KnownRelayChain, SubstrateConfig, SubstrateError,
 };
@@ -31,7 +34,7 @@ use serde::Deserialize;
 pub struct Config {
     /// Primary chain configuration
     pub chain: ChainConfig,
-    
+
     /// Optional relay chain configuration (for parachains)
     pub rc: Option<ChainConfig>,
 }

@@ -298,11 +298,11 @@ mod tests {
     #[test]
     fn test_hasher_blake2_256() {
         use config::Hasher;
-        
+
         let data = b"test data for hashing";
         let hash = Hasher::Blake2_256.hash(data);
         assert_eq!(hash.len(), 32);
-        
+
         // Hash should be deterministic
         let hash2 = Hasher::Blake2_256.hash(data);
         assert_eq!(hash, hash2);
@@ -311,11 +311,11 @@ mod tests {
     #[test]
     fn test_hasher_keccak256() {
         use config::Hasher;
-        
+
         let data = b"test data for hashing";
         let hash = Hasher::Keccak256.hash(data);
         assert_eq!(hash.len(), 32);
-        
+
         // Different hasher should produce different hash
         let blake_hash = Hasher::Blake2_256.hash(data);
         assert_ne!(hash, blake_hash);
@@ -324,12 +324,12 @@ mod tests {
     #[test]
     fn test_hasher_produces_consistent_results() {
         use config::Hasher;
-        
+
         let data = b"consistent data";
         let hash1 = Hasher::Blake2_256.hash(data);
         let hash2 = Hasher::Blake2_256.hash(data);
         let hash3 = Hasher::Blake2_256.hash(data);
-        
+
         assert_eq!(hash1, hash2);
         assert_eq!(hash2, hash3);
     }
@@ -346,13 +346,15 @@ mod tests {
 
         let hash_blake2 = compute_block_hash_from_header_json_with_hasher(
             &header_json,
-            &config::Hasher::Blake2_256
-        ).unwrap();
-        
+            &config::Hasher::Blake2_256,
+        )
+        .unwrap();
+
         let hash_keccak = compute_block_hash_from_header_json_with_hasher(
             &header_json,
-            &config::Hasher::Keccak256
-        ).unwrap();
+            &config::Hasher::Keccak256,
+        )
+        .unwrap();
 
         // Different hashers should produce different hashes
         assert_ne!(hash_blake2.as_bytes(), hash_keccak.as_bytes());

@@ -243,8 +243,10 @@ mod tests {
 
     #[test]
     fn test_supports_fee_calculation() {
-        let mut config = ChainConfig::default();
-        config.min_calc_fee_runtime = 1000;
+        let config = ChainConfig {
+            min_calc_fee_runtime: 1000,
+            ..Default::default()
+        };
 
         assert!(!config.supports_fee_calculation(999));
         assert!(config.supports_fee_calculation(1000));
@@ -253,9 +255,11 @@ mod tests {
 
     #[test]
     fn test_query_fee_details_status() {
-        let mut config = ChainConfig::default();
-        config.query_fee_details_unavailable_at = Some(27);
-        config.query_fee_details_available_at = Some(28);
+        let config = ChainConfig {
+            query_fee_details_unavailable_at: Some(27),
+            query_fee_details_available_at: Some(28),
+            ..Default::default()
+        };
 
         assert_eq!(
             config.query_fee_details_status(26),
@@ -324,7 +328,7 @@ mod tests {
     #[test]
     fn test_load_embedded_config() {
         let configs = ChainConfigs::default();
-        
+
         // Verify we can load some expected chains
         assert!(configs.get("polkadot").is_some());
         assert!(configs.get("kusama").is_some());
@@ -334,38 +338,57 @@ mod tests {
     #[test]
     fn test_all_embedded_chains_have_required_fields() {
         let configs = ChainConfigs::default();
-        
+
         // Test all expected chains exist and have valid config
         let expected_chains = vec![
-            "polkadot", "kusama", "westend",
-            "statemint", "statemine", "westmint",
-            "asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"
+            "polkadot",
+            "kusama",
+            "westend",
+            "statemint",
+            "statemine",
+            "westmint",
+            "asset-hub-polkadot",
+            "asset-hub-kusama",
+            "asset-hub-westend",
         ];
-        
+
         for chain_name in expected_chains {
-            let config = configs.get(chain_name)
+            let config = configs
+                .get(chain_name)
                 .unwrap_or_else(|| panic!("Chain '{}' should exist in config", chain_name));
-            
+
             // Verify reasonable defaults
-            assert!(config.block_number_bytes > 0, "{}: block_number_bytes should be > 0", chain_name);
-            assert!(config.block_number_bytes <= 8, "{}: block_number_bytes should be <= 8", chain_name);
+            assert!(
+                config.block_number_bytes > 0,
+                "{}: block_number_bytes should be > 0",
+                chain_name
+            );
+            assert!(
+                config.block_number_bytes <= 8,
+                "{}: block_number_bytes should be <= 8",
+                chain_name
+            );
         }
     }
 
     #[test]
     fn test_relay_chains_config() {
         let configs = ChainConfigs::default();
-        
+
         for chain in &["polkadot", "kusama", "westend"] {
             let config = configs.get(chain).unwrap();
-            assert_eq!(config.legacy_types, "polkadot", "{} should use polkadot legacy types", chain);
+            assert_eq!(
+                config.legacy_types, "polkadot",
+                "{} should use polkadot legacy types",
+                chain
+            );
         }
     }
 
     #[test]
     fn test_asset_hubs_config() {
         let configs = ChainConfigs::default();
-        
+
         let asset_hubs = vec![
             ("statemint", "Asset Hub Polkadot legacy"),
             ("statemine", "Asset Hub Kusama legacy"),
@@ -374,10 +397,14 @@ mod tests {
             ("asset-hub-kusama", "Asset Hub Kusama current"),
             ("asset-hub-westend", "Asset Hub Westend current"),
         ];
-        
+
         for (chain, description) in asset_hubs {
             let config = configs.get(chain).unwrap();
-            assert_eq!(config.legacy_types, "none", "{} should use no legacy types", description);
+            assert_eq!(
+                config.legacy_types, "none",
+                "{} should use no legacy types",
+                description
+            );
         }
     }
 
@@ -396,46 +423,79 @@ mod tests {
     #[test]
     fn test_query_fee_details_status_display() {
         assert_eq!(QueryFeeDetailsStatus::Available.to_string(), "Available");
-        assert_eq!(QueryFeeDetailsStatus::Unavailable.to_string(), "Unavailable");
+        assert_eq!(
+            QueryFeeDetailsStatus::Unavailable.to_string(),
+            "Unavailable"
+        );
         assert_eq!(QueryFeeDetailsStatus::Unknown.to_string(), "Unknown");
     }
 
     #[test]
     fn test_query_fee_details_no_thresholds() {
         let config = ChainConfig::default();
-        
+
         // With no thresholds set, should always be Unknown
-        assert_eq!(config.query_fee_details_status(0), QueryFeeDetailsStatus::Unknown);
-        assert_eq!(config.query_fee_details_status(1000), QueryFeeDetailsStatus::Unknown);
+        assert_eq!(
+            config.query_fee_details_status(0),
+            QueryFeeDetailsStatus::Unknown
+        );
+        assert_eq!(
+            config.query_fee_details_status(1000),
+            QueryFeeDetailsStatus::Unknown
+        );
     }
 
     #[test]
     fn test_query_fee_details_only_unavailable_threshold() {
-        let mut config = ChainConfig::default();
-        config.query_fee_details_unavailable_at = Some(100);
-        
+        let config = ChainConfig {
+            query_fee_details_unavailable_at: Some(100),
+            ..Default::default()
+        };
+
         // Should be Unavailable before threshold, Unknown after
-        assert_eq!(config.query_fee_details_status(99), QueryFeeDetailsStatus::Unavailable);
-        assert_eq!(config.query_fee_details_status(100), QueryFeeDetailsStatus::Unknown);
-        assert_eq!(config.query_fee_details_status(101), QueryFeeDetailsStatus::Unknown);
+        assert_eq!(
+            config.query_fee_details_status(99),
+            QueryFeeDetailsStatus::Unavailable
+        );
+        assert_eq!(
+            config.query_fee_details_status(100),
+            QueryFeeDetailsStatus::Unknown
+        );
+        assert_eq!(
+            config.query_fee_details_status(101),
+            QueryFeeDetailsStatus::Unknown
+        );
     }
 
     #[test]
     fn test_query_fee_details_only_available_threshold() {
-        let mut config = ChainConfig::default();
-        config.query_fee_details_available_at = Some(100);
-        
+        let config = ChainConfig {
+            query_fee_details_available_at: Some(100),
+            ..Default::default()
+        };
+
         // Should be Unknown before threshold, Available after
-        assert_eq!(config.query_fee_details_status(99), QueryFeeDetailsStatus::Unknown);
-        assert_eq!(config.query_fee_details_status(100), QueryFeeDetailsStatus::Available);
-        assert_eq!(config.query_fee_details_status(101), QueryFeeDetailsStatus::Available);
+        assert_eq!(
+            config.query_fee_details_status(99),
+            QueryFeeDetailsStatus::Unknown
+        );
+        assert_eq!(
+            config.query_fee_details_status(100),
+            QueryFeeDetailsStatus::Available
+        );
+        assert_eq!(
+            config.query_fee_details_status(101),
+            QueryFeeDetailsStatus::Available
+        );
     }
 
     #[test]
     fn test_supports_fee_calculation_at_zero() {
-        let mut config = ChainConfig::default();
-        config.min_calc_fee_runtime = 0;
-        
+        let config = ChainConfig {
+            min_calc_fee_runtime: 0,
+            ..Default::default()
+        };
+
         // Should support fee calculation from block 0
         assert!(config.supports_fee_calculation(0));
         assert!(config.supports_fee_calculation(1));
@@ -443,9 +503,11 @@ mod tests {
 
     #[test]
     fn test_supports_fee_calculation_high_threshold() {
-        let mut config = ChainConfig::default();
-        config.min_calc_fee_runtime = 1_000_000;
-        
+        let config = ChainConfig {
+            min_calc_fee_runtime: 1_000_000,
+            ..Default::default()
+        };
+
         assert!(!config.supports_fee_calculation(999_999));
         assert!(config.supports_fee_calculation(1_000_000));
     }
@@ -465,7 +527,7 @@ mod tests {
             relay_chain: None,
             para_id: None,
         };
-        
+
         let config2 = config1.clone();
         assert_eq!(config1.finalizes, config2.finalizes);
         assert_eq!(config1.min_calc_fee_runtime, config2.min_calc_fee_runtime);
@@ -476,10 +538,10 @@ mod tests {
     #[test]
     fn test_chain_configs_get_or_default() {
         let configs = ChainConfigs::default();
-        
+
         // Existing chain
-        let polkadot = configs.get("polkadot").unwrap();
-        
+        let _polkadot = configs.get("polkadot").unwrap();
+
         // Non-existing chain returns None
         assert!(configs.get("non-existent-chain").is_none());
     }
@@ -505,13 +567,13 @@ mod tests {
                 "finalizes": false
             }
         }"#;
-        
+
         let configs = ChainConfigs::from_json_str(json).unwrap();
         let config = configs.get("test-chain").unwrap();
-        
+
         // Specified value
         assert!(!config.finalizes);
-        
+
         // Should use defaults for unspecified fields
         assert_eq!(config.min_calc_fee_runtime, 0);
         assert_eq!(config.block_number_bytes, 4);
@@ -527,7 +589,7 @@ mod tests {
         assert_eq!("BLAKE2-256".parse::<Hasher>().unwrap(), Hasher::Blake2_256);
         assert_eq!("blake2_256".parse::<Hasher>().unwrap(), Hasher::Blake2_256);
         assert_eq!("Blake2_256".parse::<Hasher>().unwrap(), Hasher::Blake2_256);
-        
+
         assert_eq!("keccak-256".parse::<Hasher>().unwrap(), Hasher::Keccak256);
         assert_eq!("Keccak-256".parse::<Hasher>().unwrap(), Hasher::Keccak256);
         assert_eq!("KECCAK-256".parse::<Hasher>().unwrap(), Hasher::Keccak256);
@@ -539,7 +601,7 @@ mod tests {
     fn test_polkadot_specific_config() {
         let configs = ChainConfigs::default();
         let polkadot = configs.get("polkadot").unwrap();
-        
+
         assert!(polkadot.finalizes);
         assert_eq!(polkadot.min_calc_fee_runtime, 0);
         assert_eq!(polkadot.legacy_types, "polkadot");
@@ -550,7 +612,7 @@ mod tests {
     fn test_kusama_specific_config() {
         let configs = ChainConfigs::default();
         let kusama = configs.get("kusama").unwrap();
-        
+
         assert!(kusama.finalizes);
         assert_eq!(kusama.legacy_types, "polkadot"); // Uses polkadot legacy types
         assert_eq!(kusama.hasher, Hasher::Blake2_256);
@@ -559,7 +621,7 @@ mod tests {
     #[test]
     fn test_block_number_bytes_range() {
         let configs = ChainConfigs::default();
-        
+
         // All chains should have reasonable block_number_bytes (typically 4)
         for chain in &["polkadot", "kusama", "westend", "statemint", "statemine"] {
             let config = configs.get(chain).unwrap();
@@ -617,18 +679,25 @@ mod tests {
     fn test_all_embedded_chains_have_valid_hashers() {
         let configs = ChainConfigs::default();
         let all_chains = vec![
-            "polkadot", "kusama", "westend",
-            "statemint", "statemine", "westmint",
-            "asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"
+            "polkadot",
+            "kusama",
+            "westend",
+            "statemint",
+            "statemine",
+            "westmint",
+            "asset-hub-polkadot",
+            "asset-hub-kusama",
+            "asset-hub-westend",
         ];
-        
+
         for chain_name in all_chains {
             let config = configs.get(chain_name).unwrap();
             // Verify hasher is valid (should not panic)
             let _ = format!("{}", config.hasher);
             assert!(
                 config.hasher == Hasher::Blake2_256 || config.hasher == Hasher::Keccak256,
-                "{} has invalid hasher", chain_name
+                "{} has invalid hasher",
+                chain_name
             );
         }
     }
@@ -644,8 +713,17 @@ mod tests {
     #[test]
     fn test_new_chain_names_exist() {
         let configs = ChainConfigs::default();
-        assert!(configs.get("asset-hub-polkadot").is_some(), "asset-hub-polkadot should exist");
-        assert!(configs.get("asset-hub-kusama").is_some(), "asset-hub-kusama should exist");
-        assert!(configs.get("asset-hub-westend").is_some(), "asset-hub-westend should exist");
+        assert!(
+            configs.get("asset-hub-polkadot").is_some(),
+            "asset-hub-polkadot should exist"
+        );
+        assert!(
+            configs.get("asset-hub-kusama").is_some(),
+            "asset-hub-kusama should exist"
+        );
+        assert!(
+            configs.get("asset-hub-westend").is_some(),
+            "asset-hub-westend should exist"
+        );
     }
 }

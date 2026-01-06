@@ -58,7 +58,7 @@ pub struct AppState {
     pub legacy_rpc: Arc<LegacyRpcMethods<SubstrateConfig>>,
     pub rpc_client: Arc<RpcClient>,
     pub chain_info: ChainInfo,
-    
+
     /// Optional relay chain connection (for parachains)
     #[allow(dead_code)] // Will be used when implementing relay chain endpoints
     pub relay_client: Option<Arc<OnlineClient<SubstrateConfig>>>,
@@ -66,7 +66,7 @@ pub struct AppState {
     pub relay_rpc_client: Option<Arc<RpcClient>>,
     #[allow(dead_code)] // Will be used when implementing relay chain endpoints
     pub relay_chain_info: Option<ChainInfo>,
-    
+
     /// Cache for tracking queryFeeDetails availability per spec version
     pub fee_details_cache: Arc<QueryFeeDetailsCache>,
     /// All chain configurations loaded from chain_config.json
@@ -97,7 +97,7 @@ impl AppState {
 
         // Load all chain configurations
         let chain_configs = Arc::new(config::ChainConfigs::default());
-        
+
         // Get configuration for the connected chain (or use defaults)
         let chain_chain_config = chain_configs
             .get(&chain_info.spec_name)
@@ -120,44 +120,46 @@ impl AppState {
         let client = OnlineClient::from_rpc_client(subxt_config, rpc_client.clone());
 
         // Check if this chain requires a relay chain connection
-        let (relay_client, relay_rpc_client, relay_chain_info, relay_chain_config) = 
-            if let Some(relay_chain_name) = &chain_chain_config.relay_chain {
-                // If relay chain URL is provided, connect to it
-                if let Some(relay_url) = &config.substrate.relay_chain_url {
-                    match Self::connect_relay_chain(
-                        relay_url, 
-                        relay_chain_name, 
-                        &chain_configs
-                    ).await {
-                        Ok((client, rpc, info, config)) => {
-                            (Some(client), Some(rpc), Some(info), Some(config))
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                "Failed to connect to relay chain at {}: {}. Continuing without relay chain support.",
-                                relay_url,
-                                e
-                            );
-                            (None, None, None, None)
-                        }
+        let (relay_client, relay_rpc_client, relay_chain_info, relay_chain_config) = if let Some(
+            relay_chain_name,
+        ) =
+            &chain_chain_config.relay_chain
+        {
+            // If relay chain URL is provided, connect to it
+            if let Some(relay_url) = &config.substrate.relay_chain_url {
+                match Self::connect_relay_chain(relay_url, relay_chain_name, &chain_configs).await {
+                    Ok((client, rpc, info, config)) => {
+                        (Some(client), Some(rpc), Some(info), Some(config))
                     }
-                } else {
-                    tracing::info!(
-                        "Chain '{}' is a parachain with relay chain '{}', but SAS_RELAY_CHAIN_URL not set. \
-                        Relay chain features will be unavailable.",
-                        chain_info.spec_name,
-                        relay_chain_name
-                    );
-                    (None, None, None, None)
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to connect to relay chain at {}: {}. Continuing without relay chain support.",
+                            relay_url,
+                            e
+                        );
+                        (None, None, None, None)
+                    }
                 }
             } else {
-                // Not a parachain or relay chain connection not needed
+                tracing::info!(
+                    "Chain '{}' is a parachain with relay chain '{}', but SAS_RELAY_CHAIN_URL not set. \
+                        Relay chain features will be unavailable.",
+                    chain_info.spec_name,
+                    relay_chain_name
+                );
                 (None, None, None, None)
-            };
+            }
+        } else {
+            // Not a parachain or relay chain connection not needed
+            (None, None, None, None)
+        };
 
         // Create Config struct with chain and optional relay chain
         let full_config = if let Some(rc_config) = relay_chain_config {
-            Arc::new(config::Config::with_relay_chain(chain_chain_config, rc_config))
+            Arc::new(config::Config::with_relay_chain(
+                chain_chain_config,
+                rc_config,
+            ))
         } else {
             Arc::new(config::Config::single_chain(chain_chain_config))
         };
@@ -183,12 +185,15 @@ impl AppState {
         relay_url: &str,
         _relay_chain_name: &str,
         chain_configs: &config::ChainConfigs,
-    ) -> Result<(
-        Arc<OnlineClient<SubstrateConfig>>,
-        Arc<RpcClient>,
-        ChainInfo,
-        config::ChainConfig,
-    ), StateError> {
+    ) -> Result<
+        (
+            Arc<OnlineClient<SubstrateConfig>>,
+            Arc<RpcClient>,
+            ChainInfo,
+            config::ChainConfig,
+        ),
+        StateError,
+    > {
         // Create relay chain RPC client
         let relay_rpc_client = RpcClient::from_insecure_url(relay_url)
             .await
@@ -198,7 +203,7 @@ impl AppState {
             })?;
 
         let relay_legacy_rpc = LegacyRpcMethods::new(relay_rpc_client.clone());
-        
+
         // Get relay chain info
         let relay_chain_info = get_chain_info(&relay_legacy_rpc).await?;
 
@@ -216,17 +221,13 @@ impl AppState {
 
         // Configure SubstrateConfig with appropriate legacy types
         let relay_subxt_config = match relay_chain_config.legacy_types.as_str() {
-            "polkadot" => {
-                SubstrateConfig::new()
-                    .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
-            }
+            "polkadot" => SubstrateConfig::new()
+                .set_legacy_types(subxt_historic::config::polkadot::legacy_types()),
             _ => SubstrateConfig::new(),
         };
 
-        let relay_client = OnlineClient::from_rpc_client(
-            relay_subxt_config,
-            relay_rpc_client.clone(),
-        );
+        let relay_client =
+            OnlineClient::from_rpc_client(relay_subxt_config, relay_rpc_client.clone());
 
         tracing::info!(
             "Connected to relay chain '{}' at {}",
