@@ -2,7 +2,7 @@ use crate::routes::RouteRegistry;
 use crate::utils::{
     QueryFeeDetailsCache, RuntimeDispatchInfoRaw, WeightRaw, dispatch_class_from_u8,
 };
-use config::{ChainType, KnownRelayChain, SidecarConfig};
+use config::{ChainType, SidecarConfig};
 use parity_scale_codec::{Compact, Decode, Encode};
 use serde_json::Value;
 use std::sync::Arc;
@@ -58,8 +58,21 @@ pub struct AppState {
     pub legacy_rpc: Arc<LegacyRpcMethods<SubstrateConfig>>,
     pub rpc_client: Arc<RpcClient>,
     pub chain_info: ChainInfo,
+    
+    /// Optional relay chain connection (for parachains)
+    #[allow(dead_code)] // Will be used when implementing relay chain endpoints
+    pub relay_client: Option<Arc<OnlineClient<SubstrateConfig>>>,
+    #[allow(dead_code)] // Will be used when implementing relay chain endpoints
+    pub relay_rpc_client: Option<Arc<RpcClient>>,
+    #[allow(dead_code)] // Will be used when implementing relay chain endpoints
+    pub relay_chain_info: Option<ChainInfo>,
+    
     /// Cache for tracking queryFeeDetails availability per spec version
     pub fee_details_cache: Arc<QueryFeeDetailsCache>,
+    /// All chain configurations loaded from chain_config.json
+    pub chain_configs: Arc<config::ChainConfigs>,
+    /// Complete configuration with optional relay chain
+    pub chain_config: Arc<config::Config>,
     /// Registry of all available routes for introspection
     pub route_registry: RouteRegistry,
 }
@@ -79,32 +92,75 @@ impl AppState {
 
         let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
 
-        // Get chain info first to determine which legacy types to load
+        // Get chain info first to determine which configuration to load
         let chain_info = get_chain_info(&legacy_rpc).await?;
 
-        // Configure SubstrateConfig with appropriate legacy types based on chain
-        let subxt_config = match chain_info.chain_type.as_relay_chain(&chain_info.spec_name) {
-            Some(KnownRelayChain::Polkadot) => {
+        // Load all chain configurations
+        let chain_configs = Arc::new(config::ChainConfigs::default());
+        
+        // Get configuration for the connected chain (or use defaults)
+        let chain_chain_config = chain_configs
+            .get(&chain_info.spec_name)
+            .cloned()
+            .unwrap_or_default();
+
+        // Configure SubstrateConfig with appropriate legacy types based on chain config
+        let subxt_config = match chain_chain_config.legacy_types.as_str() {
+            "polkadot" => {
                 // Load Polkadot-specific legacy types for historic block support
                 SubstrateConfig::new()
                     .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
             }
-            Some(KnownRelayChain::Kusama)
-            | Some(KnownRelayChain::Westend)
-            | Some(KnownRelayChain::Rococo)
-            | Some(KnownRelayChain::Paseo) => {
-                // For other known relay chains, use Polkadot types as fallback
-                // TODO: Add chain-specific legacy types when available
-                SubstrateConfig::new()
-                    .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
-            }
-            None => {
-                // For parachains and unknown chains, use empty legacy types
+            _ => {
+                // For chains without legacy types or unknown chains, use empty config
                 SubstrateConfig::new()
             }
         };
 
         let client = OnlineClient::from_rpc_client(subxt_config, rpc_client.clone());
+
+        // Check if this chain requires a relay chain connection
+        let (relay_client, relay_rpc_client, relay_chain_info, relay_chain_config) = 
+            if let Some(relay_chain_name) = &chain_chain_config.relay_chain {
+                // If relay chain URL is provided, connect to it
+                if let Some(relay_url) = &config.substrate.relay_chain_url {
+                    match Self::connect_relay_chain(
+                        relay_url, 
+                        relay_chain_name, 
+                        &chain_configs
+                    ).await {
+                        Ok((client, rpc, info, config)) => {
+                            (Some(client), Some(rpc), Some(info), Some(config))
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to connect to relay chain at {}: {}. Continuing without relay chain support.",
+                                relay_url,
+                                e
+                            );
+                            (None, None, None, None)
+                        }
+                    }
+                } else {
+                    tracing::info!(
+                        "Chain '{}' is a parachain with relay chain '{}', but SAS_RELAY_CHAIN_URL not set. \
+                        Relay chain features will be unavailable.",
+                        chain_info.spec_name,
+                        relay_chain_name
+                    );
+                    (None, None, None, None)
+                }
+            } else {
+                // Not a parachain or relay chain connection not needed
+                (None, None, None, None)
+            };
+
+        // Create Config struct with chain and optional relay chain
+        let full_config = if let Some(rc_config) = relay_chain_config {
+            Arc::new(config::Config::with_relay_chain(chain_chain_config, rc_config))
+        } else {
+            Arc::new(config::Config::single_chain(chain_chain_config))
+        };
 
         Ok(Self {
             config,
@@ -112,9 +168,78 @@ impl AppState {
             legacy_rpc: Arc::new(legacy_rpc),
             rpc_client: Arc::new(rpc_client),
             chain_info,
+            relay_client,
+            relay_rpc_client,
+            relay_chain_info,
             fee_details_cache: Arc::new(QueryFeeDetailsCache::new()),
+            chain_configs,
+            chain_config: full_config,
             route_registry: RouteRegistry::new(),
         })
+    }
+
+    /// Connect to a relay chain
+    async fn connect_relay_chain(
+        relay_url: &str,
+        _relay_chain_name: &str,
+        chain_configs: &config::ChainConfigs,
+    ) -> Result<(
+        Arc<OnlineClient<SubstrateConfig>>,
+        Arc<RpcClient>,
+        ChainInfo,
+        config::ChainConfig,
+    ), StateError> {
+        // Create relay chain RPC client
+        let relay_rpc_client = RpcClient::from_insecure_url(relay_url)
+            .await
+            .map_err(|source| StateError::ConnectionFailed {
+                url: relay_url.to_string(),
+                source,
+            })?;
+
+        let relay_legacy_rpc = LegacyRpcMethods::new(relay_rpc_client.clone());
+        
+        // Get relay chain info
+        let relay_chain_info = get_chain_info(&relay_legacy_rpc).await?;
+
+        // Load relay chain configuration
+        let relay_chain_config = chain_configs
+            .get(&relay_chain_info.spec_name)
+            .cloned()
+            .unwrap_or_else(|| {
+                tracing::warn!(
+                    "No configuration found for relay chain '{}', using defaults",
+                    relay_chain_info.spec_name
+                );
+                config::ChainConfig::default()
+            });
+
+        // Configure SubstrateConfig with appropriate legacy types
+        let relay_subxt_config = match relay_chain_config.legacy_types.as_str() {
+            "polkadot" => {
+                SubstrateConfig::new()
+                    .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
+            }
+            _ => SubstrateConfig::new(),
+        };
+
+        let relay_client = OnlineClient::from_rpc_client(
+            relay_subxt_config,
+            relay_rpc_client.clone(),
+        );
+
+        tracing::info!(
+            "Connected to relay chain '{}' at {}",
+            relay_chain_info.spec_name,
+            relay_url
+        );
+
+        Ok((
+            Arc::new(relay_client),
+            Arc::new(relay_rpc_client),
+            relay_chain_info,
+            relay_chain_config,
+        ))
     }
 
     /// Make a raw JSON-RPC call to get a header and return the result as a Value
