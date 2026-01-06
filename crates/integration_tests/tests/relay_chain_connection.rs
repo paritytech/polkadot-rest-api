@@ -1,16 +1,16 @@
-// Integration tests for relay chain connection
-// These tests validate that relay chain connection logic works correctly
+// Integration tests for relay chain connection and config validation
 use config::ChainConfigs;
 use jsonrpsee::{core::client::ClientT, rpc_params, ws_client::WsClientBuilder};
 use serde_json::Value;
+use std::time::Duration;
 
 #[tokio::test]
-#[ignore] // Requires network access to public RPCs
 async fn test_connect_to_polkadot_relay_chain() {
     let chain_configs = ChainConfigs::default();
 
-    // Connect to Polkadot relay chain
+    // Connect to Polkadot relay chain with timeout
     let client = WsClientBuilder::default()
+        .request_timeout(Duration::from_secs(30))
         .build("wss://rpc.polkadot.io")
         .await
         .expect("Failed to connect to Polkadot relay chain");
@@ -44,7 +44,7 @@ async fn test_connect_to_polkadot_relay_chain() {
     assert_eq!(format!("{}", config.hasher), "Blake2_256");
     assert!(config.finalizes, "Polkadot should finalize blocks");
 
-    println!("✅ Successfully connected to Polkadot relay chain");
+    println!("Successfully connected to Polkadot relay chain");
     println!("   Chain: {}", chain_name);
     println!("   Spec: {}", spec_name);
     println!(
@@ -54,12 +54,12 @@ async fn test_connect_to_polkadot_relay_chain() {
 }
 
 #[tokio::test]
-#[ignore] // Requires network access to public RPCs
 async fn test_connect_to_kusama_relay_chain() {
     let chain_configs = ChainConfigs::default();
 
-    // Connect to Kusama relay chain
+    // Connect to Kusama relay chain with timeout
     let client = WsClientBuilder::default()
+        .request_timeout(Duration::from_secs(30))
         .build("wss://kusama-rpc.polkadot.io")
         .await
         .expect("Failed to connect to Kusama relay chain");
@@ -87,18 +87,18 @@ async fn test_connect_to_kusama_relay_chain() {
     assert_eq!(config.legacy_types, "polkadot");
     assert!(config.finalizes);
 
-    println!("✅ Successfully connected to Kusama relay chain");
+    println!("Successfully connected to Kusama relay chain");
     println!("   Chain: {}", chain_name);
     println!("   Spec: {}", spec_name);
 }
 
 #[tokio::test]
-#[ignore] // Requires network access to public RPCs
 async fn test_asset_hub_polkadot_references_relay_chain() {
     let chain_configs = ChainConfigs::default();
 
-    // Connect to Asset Hub Polkadot
+    // Connect to Asset Hub Polkadot with timeout
     let client = WsClientBuilder::default()
+        .request_timeout(Duration::from_secs(30))
         .build("wss://polkadot-asset-hub-rpc.polkadot.io")
         .await
         .expect("Failed to connect to Asset Hub Polkadot");
@@ -142,7 +142,7 @@ async fn test_asset_hub_polkadot_references_relay_chain() {
         "Relay chain 'polkadot' should have config"
     );
 
-    println!("✅ Asset Hub Polkadot correctly references relay chain");
+    println!("Asset Hub Polkadot correctly references relay chain");
     println!("   Parachain: {}", spec_name);
     println!(
         "   Relay chain: {}",
@@ -152,13 +152,13 @@ async fn test_asset_hub_polkadot_references_relay_chain() {
 }
 
 #[tokio::test]
-#[ignore] // Requires network access to public RPCs
 async fn test_dual_connection_config_loading() {
     let chain_configs = ChainConfigs::default();
 
     // Simulate what AppState::connect_relay_chain does:
-    // 1. Connect to Asset Hub
+    // 1. Connect to Asset Hub with timeout
     let ahp_client = WsClientBuilder::default()
+        .request_timeout(Duration::from_secs(30))
         .build("wss://polkadot-asset-hub-rpc.polkadot.io")
         .await
         .expect("Failed to connect to Asset Hub");
@@ -171,8 +171,9 @@ async fn test_dual_connection_config_loading() {
     let ahp_spec_name = ahp_runtime["specName"].as_str().unwrap();
     let ahp_config = chain_configs.get(ahp_spec_name).unwrap();
 
-    // 2. Connect to its relay chain
+    // 2. Connect to its relay chain with timeout
     let relay_client = WsClientBuilder::default()
+        .request_timeout(Duration::from_secs(30))
         .build("wss://rpc.polkadot.io")
         .await
         .expect("Failed to connect to relay chain");
@@ -196,7 +197,7 @@ async fn test_dual_connection_config_loading() {
     assert_eq!(relay_config.legacy_types, "polkadot");
     assert_eq!(format!("{}", relay_config.hasher), "Blake2_256");
 
-    println!("✅ Dual-connection config loading validated");
+    println!("Dual-connection config loading validated");
     println!(
         "   Parachain: {} (para_id: {})",
         ahp_spec_name,
