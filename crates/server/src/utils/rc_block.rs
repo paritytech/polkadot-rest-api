@@ -78,7 +78,7 @@ pub async fn find_ah_blocks_in_rc_block(
         }
     };
 
-    for (idx, event_record) in events_values.iter().enumerate() {
+    for event_record in events_values.iter() {
         let record_composite = match &event_record.value {
             scale_value::ValueDef::Composite(c) => c,
             _ => continue,
