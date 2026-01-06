@@ -113,6 +113,13 @@ pub enum ChainType {
     Parachain,
 }
 
+impl Default for ChainType {
+    fn default() -> Self {
+        // Default to Parachain as it's the most common case
+        Self::Parachain
+    }
+}
+
 impl ChainType {
     /// Determine chain type from runtime spec name
     pub fn from_spec_name(spec_name: &str) -> Self {
@@ -164,6 +171,14 @@ pub struct SubstrateConfig {
     /// Default: ws://127.0.0.1:9944
     pub url: String,
 
+    /// Optional relay chain URL for parachain deployments
+    ///
+    /// Env: SAS_RELAY_CHAIN_URL
+    /// Valid schemes: ws://, wss://, http://, https://
+    /// Used for: parachain inclusion tracking, historic staking queries, useRcBlock
+    /// Default: None
+    pub relay_chain_url: Option<String>,
+
     /// Additional chain URLs for multi-chain setup
     ///
     /// Env: SAS_SUBSTRATE_MULTI_CHAIN_URL
@@ -200,9 +215,23 @@ impl SubstrateConfig {
 
         Self::validate_url(&self.url)?;
 
+        // Validate relay chain URL if provided
+        if let Some(ref relay_url) = self.relay_chain_url {
+            Self::validate_url(relay_url)?;
+        }
+
         // Validate multi-chain URLs
         let mut seen_urls = std::collections::HashSet::new();
         seen_urls.insert(self.url.clone());
+
+        // Add relay chain URL to seen set if present
+        if let Some(ref relay_url) = self.relay_chain_url {
+            if !seen_urls.insert(relay_url.clone()) {
+                return Err(SubstrateError::DuplicateUrl {
+                    url: relay_url.clone(),
+                });
+            }
+        }
 
         for chain_url in &self.multi_chain_urls {
             // Validate URL format
@@ -245,6 +274,7 @@ impl Default for SubstrateConfig {
     fn default() -> Self {
         Self {
             url: "ws://127.0.0.1:9944".to_string(),
+            relay_chain_url: None,
             multi_chain_urls: vec![],
             reconnect_initial_delay_ms: 100,
             reconnect_max_delay_ms: 10000,
@@ -267,6 +297,7 @@ mod tests {
     fn test_validate_empty_url() {
         let config = SubstrateConfig {
             url: "".to_string(),
+            relay_chain_url: None,
             multi_chain_urls: vec![],
             ..Default::default()
         };
@@ -277,6 +308,7 @@ mod tests {
     fn test_validate_invalid_url_format() {
         let config = SubstrateConfig {
             url: "not-a-valid-url".to_string(),
+            relay_chain_url: None,
             multi_chain_urls: vec![],
             ..Default::default()
         };
@@ -287,6 +319,7 @@ mod tests {
     fn test_validate_invalid_scheme() {
         let config = SubstrateConfig {
             url: "ftp://localhost:9944".to_string(),
+            relay_chain_url: None,
             multi_chain_urls: vec![],
             ..Default::default()
         };
@@ -297,6 +330,7 @@ mod tests {
     fn test_validate_valid_ws_url() {
         let config = SubstrateConfig {
             url: "ws://localhost:9944".to_string(),
+            relay_chain_url: None,
             multi_chain_urls: vec![],
             ..Default::default()
         };
@@ -307,6 +341,7 @@ mod tests {
     fn test_validate_valid_wss_url() {
         let config = SubstrateConfig {
             url: "wss://polkadot.api.io".to_string(),
+            relay_chain_url: None,
             multi_chain_urls: vec![],
             ..Default::default()
         };
@@ -317,6 +352,7 @@ mod tests {
     fn test_validate_valid_http_url() {
         let config = SubstrateConfig {
             url: "http://localhost:9933".to_string(),
+            relay_chain_url: None,
             multi_chain_urls: vec![],
             ..Default::default()
         };
@@ -327,6 +363,7 @@ mod tests {
     fn test_validate_valid_https_url() {
         let config = SubstrateConfig {
             url: "https://rpc.polkadot.io".to_string(),
+            relay_chain_url: None,
             multi_chain_urls: vec![],
             ..Default::default()
         };
@@ -337,6 +374,7 @@ mod tests {
     fn test_multi_chain_valid() {
         let config = SubstrateConfig {
             url: "ws://localhost:9944".to_string(),
+            relay_chain_url: None,
             multi_chain_urls: vec![
                 ChainUrl {
                     url: "ws://polkadot:9944".to_string(),
@@ -356,6 +394,7 @@ mod tests {
     fn test_multi_chain_duplicate_url() {
         let config = SubstrateConfig {
             url: "ws://localhost:9944".to_string(),
+            relay_chain_url: None,
             multi_chain_urls: vec![ChainUrl {
                 url: "ws://localhost:9944".to_string(),
                 chain_type: ChainType::Relay,
@@ -369,6 +408,7 @@ mod tests {
     fn test_multi_chain_invalid_url() {
         let config = SubstrateConfig {
             url: "ws://localhost:9944".to_string(),
+            relay_chain_url: None,
             multi_chain_urls: vec![ChainUrl {
                 url: "invalid-url".to_string(),
                 chain_type: ChainType::Relay,

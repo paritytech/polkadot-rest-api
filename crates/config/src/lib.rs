@@ -1,10 +1,14 @@
+mod chain;
 mod error;
 mod express;
 mod fee;
 mod log;
 mod metrics;
+mod spec_versions;
 mod substrate;
 
+pub use chain::{ChainConfig, ChainConfigError, ChainConfigs, Hasher, QueryFeeDetailsStatus as ChainQueryFeeDetailsStatus};
+pub use spec_versions::SpecVersionChanges;
 pub use error::ConfigError;
 pub use express::{ExpressConfig, ExpressError};
 pub use fee::{ChainFeeConfig, ChainFeeConfigs, FeeConfigError, QueryFeeDetailsStatus};
@@ -15,6 +19,42 @@ pub use substrate::{
 };
 
 use serde::Deserialize;
+
+/// Complete configuration structure for chain + optional relay chain
+///
+/// This struct supports dual-connection mode where a parachain can be connected
+/// alongside its relay chain for operations like:
+/// - Parachain inclusion tracking
+/// - Historic staking queries  
+/// - useRcBlock functionality
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// Primary chain configuration
+    pub chain: ChainConfig,
+    
+    /// Optional relay chain configuration (for parachains)
+    pub rc: Option<ChainConfig>,
+}
+
+impl Config {
+    /// Create a single-chain config (no relay chain)
+    pub fn single_chain(chain: ChainConfig) -> Self {
+        Self { chain, rc: None }
+    }
+
+    /// Create a dual-chain config (parachain + relay chain)
+    pub fn with_relay_chain(chain: ChainConfig, relay_chain: ChainConfig) -> Self {
+        Self {
+            chain,
+            rc: Some(relay_chain),
+        }
+    }
+
+    /// Check if relay chain is configured
+    pub fn has_relay_chain(&self) -> bool {
+        self.rc.is_some()
+    }
+}
 
 /// Flat structure for loading from environment variables
 /// This works better with envy than nested structs
@@ -55,6 +95,9 @@ struct EnvConfig {
 
     #[serde(default = "default_substrate_url")]
     substrate_url: String,
+
+    #[serde(default)]
+    relay_chain_url: Option<String>,
 
     #[serde(default = "default_substrate_multi_chain_url")]
     substrate_multi_chain_url: String,
@@ -248,6 +291,7 @@ impl SidecarConfig {
             },
             substrate: SubstrateConfig {
                 url: env_config.substrate_url,
+                relay_chain_url: env_config.relay_chain_url,
                 multi_chain_urls,
                 reconnect_initial_delay_ms: env_config.substrate_reconnect_initial_delay_ms,
                 reconnect_max_delay_ms: env_config.substrate_reconnect_max_delay_ms,
