@@ -311,7 +311,12 @@ mod tests {
             legacy_rpc,
             rpc_client,
             chain_info,
+            relay_client: None,
+            relay_rpc_client: None,
+            relay_chain_info: None,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
+            chain_configs: Arc::new(config::ChainConfigs::default()),
+            chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
             route_registry: crate::routes::RouteRegistry::new(),
         }
     }

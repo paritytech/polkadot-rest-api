@@ -1,4 +1,5 @@
 use crate::types::BlockHash;
+use config::Hasher;
 use parity_scale_codec::{Decode, Encode};
 use sp_core::H256;
 use sp_runtime::generic::{Digest, DigestItem};
@@ -19,6 +20,21 @@ pub enum HashError {
     ScaleDecodeError(String),
 }
 
+/// Extension trait for Hasher to provide hashing functionality
+pub trait HasherExt {
+    /// Hash the given data and return a 32-byte hash
+    fn hash(&self, data: &[u8]) -> [u8; 32];
+}
+
+impl HasherExt for Hasher {
+    fn hash(&self, data: &[u8]) -> [u8; 32] {
+        match self {
+            Hasher::Blake2_256 => sp_core::blake2_256(data),
+            Hasher::Keccak256 => sp_core::keccak_256(data),
+        }
+    }
+}
+
 /// Compute the block hash from header JSON fields
 ///
 /// This reconstructs the SCALE-encoded header and hashes it with Blake2b-256,
@@ -28,6 +44,19 @@ pub enum HashError {
 /// Convert to string with `hash.to_string()` or use directly in JSON responses.
 pub fn compute_block_hash_from_header_json(
     header_json: &serde_json::Value,
+) -> Result<BlockHash, HashError> {
+    compute_block_hash_from_header_json_with_hasher(header_json, &Hasher::Blake2_256)
+}
+
+/// Compute the block hash from header JSON fields with configurable hasher
+///
+/// This reconstructs the SCALE-encoded header and hashes it with the specified hasher,
+/// matching the chain's block hash calculation.
+///
+/// Returns `BlockHash` wrapper type with controlled string formatting.
+pub fn compute_block_hash_from_header_json_with_hasher(
+    header_json: &serde_json::Value,
+    hasher: &Hasher,
 ) -> Result<BlockHash, HashError> {
     let parent_hash = extract_hash(header_json, "parentHash")?;
     let number = extract_block_number(header_json, "number")?;
@@ -44,9 +73,9 @@ pub fn compute_block_hash_from_header_json(
         digest,
     };
 
-    // Compute hash using Blake2b-256 of SCALE-encoded header
+    // Compute hash using the configured hasher on SCALE-encoded header
     let encoded = header.encode();
-    let hash = sp_core::blake2_256(&encoded);
+    let hash = hasher.hash(&encoded);
 
     Ok(BlockHash::from(H256::from(hash)))
 }
