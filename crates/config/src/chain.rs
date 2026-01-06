@@ -571,4 +571,81 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_spec_versions_is_optional() {
+        let json = r#"{"test": {"specVersions": null}}"#;
+        let configs = ChainConfigs::from_json_str(json).unwrap();
+        let config = configs.get("test").unwrap();
+        assert!(config.spec_versions.is_none());
+    }
+
+    #[test]
+    fn test_spec_versions_when_present() {
+        let json = r#"{
+            "test": {
+                "specVersions": {"changes": {"0": 1000, "1000": 1001}}
+            }
+        }"#;
+        let configs = ChainConfigs::from_json_str(json).unwrap();
+        let config = configs.get("test").unwrap();
+        assert!(config.spec_versions.is_some());
+        let spec_versions = config.spec_versions.as_ref().unwrap();
+        assert_eq!(spec_versions.get_version_at_block(500), Some(1000));
+        assert_eq!(spec_versions.get_version_at_block(1000), Some(1001));
+    }
+
+    #[test]
+    fn test_parachain_topology_fields() {
+        let configs = ChainConfigs::default();
+        let ahp = configs.get("asset-hub-polkadot").unwrap();
+        assert_eq!(ahp.chain_type, crate::substrate::ChainType::AssetHub);
+        assert_eq!(ahp.relay_chain, Some("polkadot".to_string()));
+        assert_eq!(ahp.para_id, Some(1000));
+    }
+
+    #[test]
+    fn test_relay_chain_topology_fields() {
+        let configs = ChainConfigs::default();
+        let polkadot = configs.get("polkadot").unwrap();
+        assert_eq!(polkadot.chain_type, crate::substrate::ChainType::Relay);
+        assert_eq!(polkadot.relay_chain, None);
+        assert_eq!(polkadot.para_id, None);
+    }
+
+    #[test]
+    fn test_all_embedded_chains_have_valid_hashers() {
+        let configs = ChainConfigs::default();
+        let all_chains = vec![
+            "polkadot", "kusama", "westend",
+            "statemint", "statemine", "westmint",
+            "asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"
+        ];
+        
+        for chain_name in all_chains {
+            let config = configs.get(chain_name).unwrap();
+            // Verify hasher is valid (should not panic)
+            let _ = format!("{}", config.hasher);
+            assert!(
+                config.hasher == Hasher::Blake2_256 || config.hasher == Hasher::Keccak256,
+                "{} has invalid hasher", chain_name
+            );
+        }
+    }
+
+    #[test]
+    fn test_legacy_chain_names_exist() {
+        let configs = ChainConfigs::default();
+        assert!(configs.get("statemint").is_some(), "statemint should exist");
+        assert!(configs.get("statemine").is_some(), "statemine should exist");
+        assert!(configs.get("westmint").is_some(), "westmint should exist");
+    }
+
+    #[test]
+    fn test_new_chain_names_exist() {
+        let configs = ChainConfigs::default();
+        assert!(configs.get("asset-hub-polkadot").is_some(), "asset-hub-polkadot should exist");
+        assert!(configs.get("asset-hub-kusama").is_some(), "asset-hub-kusama should exist");
+        assert!(configs.get("asset-hub-westend").is_some(), "asset-hub-westend should exist");
+    }
 }

@@ -393,4 +393,31 @@ mod tests {
             std::env::remove_var("SAS_SUBSTRATE_MULTI_CHAIN_URL");
         }
     }
+
+    #[test]
+    fn test_config_single_chain() {
+        let chain_config = ChainConfig::default();
+        let config = Config::single_chain(chain_config);
+        assert!(!config.has_relay_chain());
+        assert!(config.rc.is_none());
+    }
+
+    #[test]
+    fn test_config_with_relay_chain() {
+        let chain_config = ChainConfig::default();
+        let relay_config = ChainConfig::default();
+        let config = Config::with_relay_chain(chain_config, relay_config);
+        assert!(config.has_relay_chain());
+        assert!(config.rc.is_some());
+    }
+
+    #[test]
+    fn test_config_relay_chain_is_optional() {
+        let chain_config = ChainConfig::default();
+        let config = Config {
+            chain: chain_config,
+            rc: None,
+        };
+        assert!(!config.has_relay_chain());
+    }
 }
