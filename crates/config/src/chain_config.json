@@ -1,0 +1,99 @@
+{
+  "polkadot": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 0,
+    "queryFeeDetailsUnavailableAt": 27,
+    "queryFeeDetailsAvailableAt": 28,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "polkadot",
+    "chainType": "relay",
+    "specVersions": null
+  },
+  "kusama": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 1058,
+    "queryFeeDetailsUnavailableAt": 2027,
+    "queryFeeDetailsAvailableAt": 2028,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "polkadot",
+    "chainType": "relay",
+    "specVersions": null
+  },
+  "westend": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 0,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "polkadot",
+    "chainType": "relay",
+    "specVersions": null
+  },
+  "statemint": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 601,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "none",
+    "chainType": "assethub",
+    "relayChain": "polkadot",
+    "paraId": 1000,
+    "specVersions": null
+  },
+  "statemine": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 1,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "none",
+    "chainType": "assethub",
+    "relayChain": "kusama",
+    "paraId": 1000,
+    "specVersions": null
+  },
+  "westmint": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 0,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "none",
+    "chainType": "assethub",
+    "relayChain": "westend",
+    "paraId": 1000,
+    "specVersions": null
+  },
+  "asset-hub-polkadot": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 601,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "none",
+    "chainType": "assethub",
+    "relayChain": "polkadot",
+    "paraId": 1000,
+    "specVersions": null
+  },
+  "asset-hub-kusama": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 1,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "none",
+    "chainType": "assethub",
+    "relayChain": "kusama",
+    "paraId": 1000,
+    "specVersions": null
+  },
+  "asset-hub-westend": {
+    "finalizes": true,
+    "minCalcFeeRuntime": 0,
+    "blockNumberBytes": 4,
+    "hasher": "blake2-256",
+    "legacyTypes": "none",
+    "chainType": "assethub",
+    "relayChain": "westend",
+    "paraId": 1000,
+    "specVersions": null
+  }
+}
