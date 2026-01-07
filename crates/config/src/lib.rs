@@ -1,7 +1,6 @@
 mod chain;
 mod error;
 mod express;
-mod fee;
 mod log;
 mod metrics;
 mod spec_versions;
@@ -13,7 +12,6 @@ pub use chain::{
 };
 pub use error::ConfigError;
 pub use express::{ExpressConfig, ExpressError};
-pub use fee::{ChainFeeConfig, ChainFeeConfigs, FeeConfigError, QueryFeeDetailsStatus};
 pub use log::{LogConfig, LogError};
 pub use metrics::{MetricsConfig, MetricsError};
 pub use spec_versions::SpecVersionChanges;

@@ -28,7 +28,7 @@ impl<'de> Deserialize<'de> for Hasher {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Ok(s.parse().unwrap())
+        Ok(s.parse().expect("invalid hasher string"))
     }
 }
 
@@ -150,7 +150,7 @@ impl ChainConfig {
             self.query_fee_details_available_at,
         ) {
             (Some(unavail), Some(avail)) => {
-                if spec_version < unavail {
+                if spec_version <= unavail {
                     QueryFeeDetailsStatus::Unavailable
                 } else if spec_version >= avail {
                     QueryFeeDetailsStatus::Available
@@ -159,7 +159,7 @@ impl ChainConfig {
                 }
             }
             (Some(unavail), None) => {
-                if spec_version < unavail {
+                if spec_version <= unavail {
                     QueryFeeDetailsStatus::Unavailable
                 } else {
                     QueryFeeDetailsStatus::Unknown
@@ -196,20 +196,18 @@ impl ChainConfigs {
     }
 
     pub fn from_json_str(json: &str) -> Result<Self, ChainConfigError> {
-        let configs: HashMap<String, ChainConfig> = serde_json::from_str(json)?;
+        let raw: HashMap<String, ChainConfig> = serde_json::from_str(json)?;
+
+        let configs: HashMap<String, ChainConfig> = raw
+            .into_iter()
+            .map(|(k, v)| (k.to_lowercase(), v))
+            .collect();
+
         Ok(Self { configs })
     }
 
     pub fn get(&self, chain_name: &str) -> Option<&ChainConfig> {
-        if let Some(config) = self.configs.get(chain_name) {
-            return Some(config);
-        }
-
-        let lowercase_name = chain_name.to_lowercase();
-        self.configs
-            .iter()
-            .find(|(k, _)| k.to_lowercase() == lowercase_name)
-            .map(|(_, v)| v)
+        self.configs.get(&chain_name.to_lowercase())
     }
 
     /// Get all configured chain names
@@ -267,7 +265,7 @@ mod tests {
         );
         assert_eq!(
             config.query_fee_details_status(27),
-            QueryFeeDetailsStatus::Unknown
+            QueryFeeDetailsStatus::Unavailable
         );
         assert_eq!(
             config.query_fee_details_status(28),
@@ -459,7 +457,7 @@ mod tests {
         );
         assert_eq!(
             config.query_fee_details_status(100),
-            QueryFeeDetailsStatus::Unknown
+            QueryFeeDetailsStatus::Unavailable
         );
         assert_eq!(
             config.query_fee_details_status(101),
@@ -485,6 +483,35 @@ mod tests {
         );
         assert_eq!(
             config.query_fee_details_status(101),
+            QueryFeeDetailsStatus::Available
+        );
+    }
+
+    #[test]
+    fn test_query_fee_details_unavailable_equals_available() {
+        // Edge case where both thresholds are the same value.
+        // Expect inclusive semantics: the unavailable check (<=) takes precedence.
+        let config = ChainConfig {
+            query_fee_details_unavailable_at: Some(27),
+            query_fee_details_available_at: Some(27),
+            ..Default::default()
+        };
+
+        // Below the threshold -> Unavailable
+        assert_eq!(
+            config.query_fee_details_status(26),
+            QueryFeeDetailsStatus::Unavailable
+        );
+
+        // At the threshold -> Unavailable due to inclusive semantics
+        assert_eq!(
+            config.query_fee_details_status(27),
+            QueryFeeDetailsStatus::Unavailable
+        );
+
+        // Above the threshold -> Available
+        assert_eq!(
+            config.query_fee_details_status(28),
             QueryFeeDetailsStatus::Available
         );
     }
