@@ -8,6 +8,7 @@ pub fn create_app(state: AppState) -> Router {
     let registry = &state.route_registry;
 
     // Create v1 API router with route registration
+    // All routes are mounted unconditionally - runtime metadata validation happens in handlers
     let v1_routes = Router::new()
         .route("/", get(routes::root::root_handler))
         .merge(routes::ahm::routes(registry))
