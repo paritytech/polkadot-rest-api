@@ -276,21 +276,10 @@ async fn handle_use_rc_block(
             }
         }
     } else {
-        return Err(GetBlockHeadHeaderError::HeaderFetchFailed(
-            subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Relay Chain RPC client not available",
-            ))),
-        ));
+        return Err(GetBlockHeadHeaderError::RelayChainNotConfigured);
     };
 
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
-        .await
-        .map_err(|e| {
-            GetBlockHeadHeaderError::HeaderFetchFailed(subxt_rpcs::Error::Client(Box::new(
-                std::io::Error::other(format!("Failed to find Asset Hub blocks: {}", e)),
-            )))
-        })?;
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
     if ah_blocks.is_empty() {
         return Ok(Json(json!([])).into_response());
