@@ -2,7 +2,9 @@ use crate::handlers::blocks::common::decode_digest_logs;
 use crate::handlers::blocks::types::DigestLog;
 use crate::state::AppState;
 use crate::types::BlockHash;
-use crate::utils::{self, compute_block_hash_from_header_json, find_ah_blocks_in_rc_block};
+use crate::utils::{
+    self, RcBlockError, compute_block_hash_from_header_json, find_ah_blocks_in_rc_block,
+};
 use axum::{
     Json,
     extract::{Query, State},
@@ -78,18 +80,34 @@ pub enum GetBlockHeadHeaderError {
 
     #[error("Service temporarily unavailable: {0}")]
     ServiceUnavailable(String),
+
+    #[error("Failed to find Asset Hub blocks in Relay Chain block")]
+    RcBlockError(#[from] RcBlockError),
+
+    #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
+    UseRcBlockNotSupported,
+
+    #[error(
+        "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL"
+    )]
+    RelayChainNotConfigured,
 }
 
 impl IntoResponse for GetBlockHeadHeaderError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
+            GetBlockHeadHeaderError::UseRcBlockNotSupported
+            | GetBlockHeadHeaderError::RelayChainNotConfigured => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
             GetBlockHeadHeaderError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             // Handle RPC errors with appropriate status codes
             GetBlockHeadHeaderError::HeaderFetchFailed(err) => utils::rpc_error_to_status(err),
             GetBlockHeadHeaderError::HeaderFieldMissing(_)
-            | GetBlockHeadHeaderError::HashComputationFailed(_) => {
+            | GetBlockHeadHeaderError::HashComputationFailed(_)
+            | GetBlockHeadHeaderError::RcBlockError(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -207,21 +225,11 @@ async fn handle_use_rc_block(
     params: BlockQueryParams,
 ) -> Result<Response, GetBlockHeadHeaderError> {
     if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(GetBlockHeadHeaderError::HeaderFetchFailed(
-            subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "useRcBlock parameter is only supported for Asset Hub endpoints",
-            ))),
-        ));
+        return Err(GetBlockHeadHeaderError::UseRcBlockNotSupported);
     }
 
     if state.get_relay_chain_client().is_none() {
-        return Err(GetBlockHeadHeaderError::HeaderFetchFailed(
-            subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL",
-            ))),
-        ));
+        return Err(GetBlockHeadHeaderError::RelayChainNotConfigured);
     }
 
     let rc_resolved_block = if let (Some(rc_rpc), Some(rc_legacy_rpc)) = (
@@ -298,11 +306,6 @@ async fn handle_use_rc_block(
             .await
             .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
 
-        let number_hex = header_json
-            .get("number")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("number".to_string()))?;
-
         let parent_hash = header_json
             .get("parentHash")
             .and_then(|v| v.as_str())
@@ -343,7 +346,7 @@ async fn handle_use_rc_block(
         }
 
         results.push(BlockHeaderResponse {
-            number: number_hex.to_string(),
+            number: ah_block.number.to_string(),
             hash: ah_block.hash,
             parent_hash,
             state_root,

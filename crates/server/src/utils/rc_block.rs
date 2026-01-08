@@ -52,13 +52,13 @@ pub async fn find_ah_blocks_in_rc_block(
 
     let rc_client_at_block = rc_client.at(rc_block.number).await?;
     let storage_entry = rc_client_at_block.storage().entry("System", "Events")?;
-    let events_value = storage_entry.fetch(()).await?.ok_or_else(|| {
-        tracing::warn!("No events found for RC block {}", rc_block.number);
-        RcBlockError::EventDataIncomplete
-    })?;
+    let events_value = storage_entry
+        .fetch(())
+        .await?
+        .ok_or_else(|| RcBlockError::EventDataIncomplete)?;
 
     let events_decoded: scale_value::Value<()> = events_value.decode_as().map_err(|e| {
-        tracing::warn!("Failed to decode events: {:?}", e);
+        tracing::debug!("Failed to decode events: {:?}", e);
         RcBlockError::EventsStorageDecodeFailed(e)
     })?;
 
@@ -173,18 +173,8 @@ fn extract_ah_block_from_candidate_included(
     };
 
     if para_id != target_para_id {
-        tracing::warn!(
-            "Skipping paraId {} (not Asset Hub, looking for {})",
-            para_id,
-            target_para_id
-        );
         return None;
     }
-
-    tracing::warn!(
-        "Found CandidateIncluded for target para_id {}",
-        target_para_id
-    );
 
     let head_data = values.get(1)?;
 
@@ -192,12 +182,9 @@ fn extract_ah_block_from_candidate_included(
         .ok()
         .and_then(|json| extract_bytes_from_json(&json))
     {
-        Some(bytes) => {
-            tracing::warn!("Extracted {} bytes from HeadData", bytes.len());
-            bytes
-        }
+        Some(bytes) => bytes,
         None => {
-            tracing::warn!("Failed to extract bytes from HeadData");
+            tracing::debug!("Failed to extract bytes from HeadData");
             return None;
         }
     };
@@ -206,12 +193,6 @@ fn extract_ah_block_from_candidate_included(
 
     let block_hash = BlakeTwo256::hash(&header_bytes);
     let block_hash_hex = format!("0x{}", hex::encode(block_hash.as_ref()));
-
-    tracing::warn!(
-        "Extracted AH block from CandidateIncluded: number={}, hash={}",
-        block_number,
-        block_hash_hex
-    );
 
     Some(AhBlockInfo {
         hash: block_hash_hex,
