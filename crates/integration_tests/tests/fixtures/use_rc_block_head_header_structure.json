@@ -1,0 +1,35 @@
+[
+  {
+    "parentHash": "0x76cd327b92f56f31e9dd07318a9793dc5943e60fd6b2cdc096f31a84ae562289",
+    "number": "10554981",
+    "hash": "0xe2fbe60df2940dd2ae8585b166d7c55def532849b193e93e5a9a4a0def827782",
+    "stateRoot": "0x4ada77d75a8e7380685115b3edbd53228da52d696a3f99e9c4cbef869e597433",
+    "extrinsicsRoot": "0x0ebf421f78b267b7ec29b126e4d4d4f64b0d5cf9f695be9b76be7e6cca6955cc",
+    "digest": {
+      "logs": [
+        {
+          "preRuntime": [
+            "0x61757261",
+            "0x2a3ec30800000000"
+          ]
+        },
+        {
+          "consensus": [
+            "0x52505352",
+            "0x937f7c16bcfef829319a1d87c3377d98700a63687ed7fe13db67eb3a12325ae06a4dde06"
+          ]
+        },
+        {
+          "seal": [
+            "0x61757261",
+            "0x86d62a57f1ad0c2dd407b4c286a7ea7ee0564300be9f98927e67b597a19ca1e89216c022e5c8045b3775efefb587640b868e24429184b99b1f3e02b498d04e05"
+          ]
+        }
+      ]
+    },
+    "rcBlockHash": "0xa6d3879b58cde32121e3e86de1484797a44687e597400d1b6ba39f2af5d8d49f",
+    "rcBlockNumber": "28808029",
+    "ahTimestamp": "1764157944000"
+  }
+]
+

@@ -3,7 +3,7 @@
 //! This module contains all the types used by `/blocks/*` endpoints including
 //! request parameters, response structures, and internal types.
 
-use crate::utils::{self, EraInfo};
+use crate::utils::{self, EraInfo, RcBlockError};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -37,6 +37,9 @@ pub struct BlockQueryParams {
     /// When true, include finalized status in response. When false, omit finalized field.
     #[serde(default = "default_true")]
     pub finalized_key: bool,
+    /// When true, treat block identifier as Relay Chain block and return Asset Hub blocks included in it
+    #[serde(default)]
+    pub use_rc_block: bool,
     /// When true, decode and include XCM messages from the block's extrinsics
     #[serde(default)]
     pub decoded_xcm_msgs: bool,
@@ -56,6 +59,7 @@ impl Default for BlockQueryParams {
             extrinsic_docs: false,
             no_fees: false,
             finalized_key: true,
+            use_rc_block: false,
             decoded_xcm_msgs: false,
             para_id: None,
         }
@@ -110,6 +114,17 @@ pub enum GetBlockError {
     #[error("Failed to get canonical block hash")]
     CanonicalHashFailed(#[source] subxt_rpcs::Error),
 
+    #[error("Failed to find Asset Hub blocks in Relay Chain block")]
+    RcBlockError(#[from] RcBlockError),
+
+    #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
+    UseRcBlockNotSupported,
+
+    #[error(
+        "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL"
+    )]
+    RelayChainNotConfigured,
+
     #[error("Failed to compute block hash: {0}")]
     HashComputationFailed(#[from] crate::utils::HashError),
 
@@ -123,9 +138,9 @@ pub enum GetBlockError {
 impl IntoResponse for GetBlockError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
-            GetBlockError::InvalidBlockParam(_) | GetBlockError::BlockResolveFailed(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
+            GetBlockError::InvalidBlockParam(_)
+            | GetBlockError::BlockResolveFailed(_)
+            | GetBlockError::RelayChainNotConfigured => (StatusCode::BAD_REQUEST, self.to_string()),
             GetBlockError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
@@ -153,6 +168,8 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::MissingSignatureBytes
             | GetBlockError::MissingAddressBytes
             | GetBlockError::ExtrinsicDecodeFailed(_)
+            | GetBlockError::RcBlockError(_)
+            | GetBlockError::UseRcBlockNotSupported
             | GetBlockError::HashComputationFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
@@ -355,6 +372,15 @@ pub struct BlockResponse {
     /// Whether this block has been finalized (omitted when finalizedKey=false)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finalized: Option<bool>,
+    /// Relay Chain block hash (only present when useRcBlock=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    /// Relay Chain block number (only present when useRcBlock=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    /// Asset Hub block timestamp (only present when useRcBlock=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
     /// Decoded XCM messages (omitted when decodedXcmMsgs=false)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decoded_xcm_msgs: Option<XcmMessages>,

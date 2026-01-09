@@ -75,6 +75,8 @@ pub struct AppState {
     pub chain_config: Arc<config::Config>,
     /// Registry of all available routes for introspection
     pub route_registry: RouteRegistry,
+    /// Relay Chain RPC client (only present when multi-chain is configured with a relay chain)
+    pub relay_chain_rpc: Option<Arc<LegacyRpcMethods<SubstrateConfig>>>,
 }
 
 impl AppState {
@@ -164,6 +166,10 @@ impl AppState {
             Arc::new(config::Config::single_chain(chain_chain_config))
         };
 
+        let relay_chain_rpc = relay_rpc_client
+            .as_ref()
+            .map(|rpc_client| Arc::new(LegacyRpcMethods::new((**rpc_client).clone())));
+
         Ok(Self {
             config,
             client: Arc::new(client),
@@ -177,7 +183,20 @@ impl AppState {
             chain_configs,
             chain_config: full_config,
             route_registry: RouteRegistry::new(),
+            relay_chain_rpc,
         })
+    }
+
+    pub fn get_relay_chain_client(&self) -> Option<&Arc<OnlineClient<SubstrateConfig>>> {
+        self.relay_client.as_ref()
+    }
+
+    pub fn get_relay_chain_rpc(&self) -> Option<&Arc<LegacyRpcMethods<SubstrateConfig>>> {
+        self.relay_chain_rpc.as_ref()
+    }
+
+    pub fn get_relay_chain_rpc_client(&self) -> Option<&Arc<RpcClient>> {
+        self.relay_rpc_client.as_ref()
     }
 
     /// Connect to a relay chain
