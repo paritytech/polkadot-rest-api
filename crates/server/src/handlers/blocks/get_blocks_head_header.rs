@@ -16,6 +16,7 @@ use heck::ToLowerCamelCase;
 use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use subxt_historic::error::OnlineClientAtBlockError;
 use subxt_rpcs::rpc_params;
 use thiserror::Error;
 
@@ -91,6 +92,12 @@ pub enum GetBlockHeadHeaderError {
         "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL"
     )]
     RelayChainNotConfigured,
+
+    #[error("Block resolution failed")]
+    BlockResolveFailed(#[from] crate::utils::BlockResolveError),
+
+    #[error("Failed to get client at block: {0}")]
+    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
 }
 
 impl IntoResponse for GetBlockHeadHeaderError {
@@ -107,7 +114,9 @@ impl IntoResponse for GetBlockHeadHeaderError {
             GetBlockHeadHeaderError::HeaderFetchFailed(err) => utils::rpc_error_to_status(err),
             GetBlockHeadHeaderError::HeaderFieldMissing(_)
             | GetBlockHeadHeaderError::HashComputationFailed(_)
-            | GetBlockHeadHeaderError::RcBlockError(_) => {
+            | GetBlockHeadHeaderError::RcBlockError(_)
+            | GetBlockHeadHeaderError::BlockResolveFailed(_)
+            | GetBlockHeadHeaderError::ClientAtBlockFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -242,13 +251,8 @@ async fn handle_use_rc_block(
                 .await
                 .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
             let hash_str = format!("{:#x}", hash);
-            let number = crate::utils::get_block_number_from_hash_with_rpc(rc_rpc, &hash_str)
-                .await
-                .map_err(|e| {
-                    GetBlockHeadHeaderError::HeaderFetchFailed(subxt_rpcs::Error::Client(Box::new(
-                        std::io::Error::other(format!("Failed to get RC block number: {}", e)),
-                    )))
-                })?;
+            let number =
+                crate::utils::get_block_number_from_hash_with_rpc(rc_rpc, &hash_str).await?;
             crate::utils::ResolvedBlock {
                 hash: hash_str,
                 number,
@@ -319,11 +323,7 @@ async fn handle_use_rc_block(
         let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
 
         let mut ah_timestamp = None;
-        let client_at_block = state.client.at(ah_block.number).await.map_err(|e| {
-            GetBlockHeadHeaderError::HeaderFetchFailed(subxt_rpcs::Error::Client(Box::new(
-                std::io::Error::other(format!("Failed to get client at block: {}", e)),
-            )))
-        })?;
+        let client_at_block = state.client.at(ah_block.number).await?;
         if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
             && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
         {
