@@ -1,4 +1,4 @@
-use frame_metadata::{decode_different::DecodeDifferent, RuntimeMetadata, RuntimeMetadataPrefixed};
+use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed, decode_different::DecodeDifferent};
 use std::collections::HashSet;
 
 pub fn pallets_in_metadata(meta: &RuntimeMetadataPrefixed) -> HashSet<String> {

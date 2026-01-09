@@ -10,17 +10,29 @@ async fn test_capabilities_endpoint() {
         return;
     }
 
-    let (status, json) = client.get_json("/v1/capabilities").await.expect("request failed");
+    let (status, json) = client
+        .get_json("/v1/capabilities")
+        .await
+        .expect("request failed");
 
     assert!(status.is_success(), "Expected 200, got {}", status);
-    assert!(json.get("chain").is_some(), "Response should have chain field");
-    assert!(json.get("pallets").is_some(), "Response should have pallets field");
+    assert!(
+        json.get("chain").is_some(),
+        "Response should have chain field"
+    );
+    assert!(
+        json.get("pallets").is_some(),
+        "Response should have pallets field"
+    );
 
     let pallets = json["pallets"].as_array().expect("pallets should be array");
     assert!(!pallets.is_empty(), "Should have at least one pallet");
 
     let pallet_names: Vec<&str> = pallets.iter().filter_map(|p| p.as_str()).collect();
-    assert!(pallet_names.contains(&"System"), "Should have System pallet");
+    assert!(
+        pallet_names.contains(&"System"),
+        "Should have System pallet"
+    );
 
     println!("✓ Capabilities test passed with {} pallets", pallets.len());
 }
