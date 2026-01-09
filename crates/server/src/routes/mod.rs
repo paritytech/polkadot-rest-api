@@ -3,6 +3,7 @@ pub mod blocks;
 pub mod capabilities;
 pub mod health;
 pub mod metrics;
+pub mod node;
 pub mod pallets;
 pub mod rc;
 pub mod registry;
