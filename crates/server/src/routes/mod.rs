@@ -1,4 +1,5 @@
 pub mod ahm;
+pub mod accounts;
 pub mod blocks;
 pub mod capabilities;
 pub mod health;
