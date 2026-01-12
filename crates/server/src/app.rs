@@ -11,6 +11,7 @@ pub fn create_app(state: AppState) -> Router {
     // All routes are mounted unconditionally - runtime metadata validation happens in handlers
     let v1_routes = Router::new()
         .route("/", get(routes::root::root_handler))
+        .merge(routes::accounts::accounts_routes(registry))
         .merge(routes::ahm::routes(registry))
         .merge(routes::blocks::blocks_routes(registry))
         .merge(routes::capabilities::routes(registry))
