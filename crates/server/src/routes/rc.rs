@@ -7,11 +7,19 @@ use crate::{
 };
 
 pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
-    Router::new().route_registered(
-        registry,
-        API_VERSION,
-        "/rc/node/network",
-        "get",
-        get(node::get_rc_node_network),
-    )
+    Router::new()
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/rc/node/network",
+            "get",
+            get(node::get_rc_node_network),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/rc/node/version",
+            "get",
+            get(node::get_rc_node_version),
+        )
 }
