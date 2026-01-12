@@ -51,11 +51,16 @@ pub async fn get_node_version(
     // Execute RPC calls in parallel, similar to the TypeScript implementation
     let (runtime_version_result, chain_result, version_result) = tokio::join!(
         state.legacy_rpc.state_get_runtime_version(None),
-        state.rpc_client.request::<String>("system_chain", rpc_params![]),
-        state.rpc_client.request::<String>("system_version", rpc_params![]),
+        state
+            .rpc_client
+            .request::<String>("system_chain", rpc_params![]),
+        state
+            .rpc_client
+            .request::<String>("system_version", rpc_params![]),
     );
 
-    let runtime_version = runtime_version_result.map_err(GetNodeVersionError::RuntimeVersionFailed)?;
+    let runtime_version =
+        runtime_version_result.map_err(GetNodeVersionError::RuntimeVersionFailed)?;
     let chain = chain_result.map_err(GetNodeVersionError::SystemChainFailed)?;
     let client_version = version_result.map_err(GetNodeVersionError::SystemVersionFailed)?;
 
