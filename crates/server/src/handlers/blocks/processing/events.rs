@@ -179,17 +179,20 @@ pub fn extract_class_from_event_data(event_data: &[Value], is_success: bool) -> 
 /// Fetch and parse all events for a block
 pub async fn fetch_block_events(
     state: &AppState,
-    client_at_block: &BlockClient<'_>,
+    client_at_block: &BlockClient,
     block_number: u64,
 ) -> Result<Vec<ParsedEvent>, GetBlockError> {
-    // Get the resolver for type-aware enum serialization
-    let resolver = client_at_block.resolver();
+    // Get the type resolver from metadata for type-aware enum serialization
+    let metadata = client_at_block.metadata();
+    let resolver = metadata.types().clone();
 
-    let storage_entry = client_at_block.storage().entry("System", "Events")?;
-    let events_value = storage_entry.fetch(()).await?.ok_or_else(|| {
-        tracing::warn!("No events storage found for block {}", block_number);
-        parity_scale_codec::Error::from("Events storage not found")
-    })?;
+    // Use dynamic storage address for System::Events
+    // Note: For dynamic storage, we need to specify the value type
+    let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
+    let events_value = client_at_block
+        .storage()
+        .fetch(addr, ())
+        .await?;
 
     // Use the visitor pattern to get type information for each field
     let events_with_types = events_value

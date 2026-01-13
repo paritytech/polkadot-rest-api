@@ -1,7 +1,7 @@
 //! Type name extraction visitor.
 //!
 //! This module provides `GetTypeName`, a visitor which retrieves the name of a type
-//! from its path. Based on the example from subxt_historic/examples/extrinsics.rs.
+//! from its path. Updated for subxt 0.50.0 which uses PortableRegistry.
 
 use scale_decode::{
     Visitor,
@@ -10,37 +10,29 @@ use scale_decode::{
         types::{Composite, Sequence, Variant},
     },
 };
-use scale_info_legacy::LookupName;
-use scale_type_resolver::TypeResolver;
+use scale_info::PortableRegistry;
 
 /// A visitor which obtains type names from types.
-pub struct GetTypeName<R> {
-    marker: core::marker::PhantomData<R>,
-}
+/// This version is specialized for PortableRegistry (u32 type IDs).
+pub struct GetTypeName;
 
-impl<R> GetTypeName<R> {
+impl GetTypeName {
     /// Construct our TypeName visitor.
     pub fn new() -> Self {
-        GetTypeName {
-            marker: core::marker::PhantomData,
-        }
+        GetTypeName
     }
 }
 
-impl<R> Default for GetTypeName<R> {
+impl Default for GetTypeName {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<R> Visitor for GetTypeName<R>
-where
-    R: TypeResolver,
-    R::TypeId: TryInto<LookupName>,
-{
+impl Visitor for GetTypeName {
     type Value<'scale, 'resolver> = Option<&'resolver str>;
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     // Look at the path of types that have paths and return the ident from that.
     fn visit_composite<'scale, 'resolver>(
