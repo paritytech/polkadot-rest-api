@@ -83,7 +83,7 @@ pub enum GetBlockHeadHeaderError {
     ServiceUnavailable(String),
 
     #[error("Failed to find Asset Hub blocks in Relay Chain block")]
-    RcBlockError(#[from] RcBlockError),
+    RcBlockError(#[source] Box<RcBlockError>),
 
     #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
     UseRcBlockNotSupported,
@@ -97,7 +97,7 @@ pub enum GetBlockHeadHeaderError {
     BlockResolveFailed(#[from] crate::utils::BlockResolveError),
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 }
 
 impl IntoResponse for GetBlockHeadHeaderError {
@@ -283,7 +283,9 @@ async fn handle_use_rc_block(
         return Err(GetBlockHeadHeaderError::RelayChainNotConfigured);
     };
 
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
+        .await
+        .map_err(|e| GetBlockHeadHeaderError::RcBlockError(Box::new(e)))?;
 
     if ah_blocks.is_empty() {
         return Ok(Json(json!([])).into_response());
@@ -323,7 +325,11 @@ async fn handle_use_rc_block(
         let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
 
         let mut ah_timestamp = None;
-        let client_at_block = state.client.at_block(ah_block.number).await?;
+        let client_at_block = state
+            .client
+            .at_block(ah_block.number)
+            .await
+            .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?;
         let timestamp_addr = subxt::dynamic::storage::<(), scale_value::Value>("Timestamp", "Now");
         if let Ok(timestamp) = client_at_block.storage().fetch(timestamp_addr, ()).await {
             let timestamp_bytes = timestamp.into_bytes();

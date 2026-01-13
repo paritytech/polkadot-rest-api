@@ -71,7 +71,9 @@ async fn handle_use_rc_block(
     )
     .await?;
 
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
+        .await
+        .map_err(|e| GetBlockError::RcBlockError(Box::new(e)))?;
 
     if ah_blocks.is_empty() {
         return Ok(Json(json!([])).into_response());
@@ -89,7 +91,11 @@ async fn handle_use_rc_block(
         response.rc_block_hash = Some(rc_block_hash.clone());
         response.rc_block_number = Some(rc_block_number.clone());
 
-        let client_at_block = state.client.at_block(ah_block.number).await?;
+        let client_at_block = state
+            .client
+            .at_block(ah_block.number)
+            .await
+            .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
         let timestamp_addr = subxt::dynamic::storage::<(), scale_value::Value>("Timestamp", "Now");
         if let Ok(timestamp) = client_at_block.storage().fetch(timestamp_addr, ()).await {
             // Timestamp is a u64 (milliseconds) - decode from storage value
@@ -157,7 +163,11 @@ async fn build_block_response_for_hash(
     let logs = decode_digest_logs(&header_json);
 
     // Create client_at_block once and reuse for all operations
-    let client_at_block = state.client.at_block(block_number).await?;
+    let client_at_block = state
+        .client
+        .at_block(block_number)
+        .await
+        .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
 
     let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
         extract_author(state, &client_at_block, &logs, block_number),

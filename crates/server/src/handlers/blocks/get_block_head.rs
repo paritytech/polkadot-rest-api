@@ -173,7 +173,11 @@ pub async fn get_block_head(
 
     let logs = decode_digest_logs(&header_json);
 
-    let client_at_block = state.client.at_block(block_number).await?;
+    let client_at_block = state
+        .client
+        .at_block(block_number)
+        .await
+        .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
 
     let (author_id, extrinsics_result, events_result) = tokio::join!(
         extract_author(&state, &client_at_block, &logs, block_number),

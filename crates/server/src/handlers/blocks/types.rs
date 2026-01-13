@@ -85,7 +85,7 @@ pub enum GetBlockError {
     HeaderFieldMissing(String),
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 
     #[error("Failed to fetch chain storage")]
     StorageFetchFailed(#[from] StorageError),
@@ -112,7 +112,7 @@ pub enum GetBlockError {
     CanonicalHashFailed(#[source] subxt_rpcs::Error),
 
     #[error("Failed to find Asset Hub blocks in Relay Chain block")]
-    RcBlockError(#[from] RcBlockError),
+    RcBlockError(#[source] Box<RcBlockError>),
 
     #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
     UseRcBlockNotSupported,

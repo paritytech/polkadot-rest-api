@@ -15,7 +15,7 @@ pub struct AhBlockInfo {
 #[derive(Debug, Error)]
 pub enum RcBlockError {
     #[error("Failed to get client at block")]
-    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] Box<subxt::error::OnlineClientAtBlockError>),
 
     #[error("Failed to fetch storage")]
     StorageFetchFailed(#[from] subxt::error::StorageError),
@@ -47,7 +47,10 @@ pub async fn find_ah_blocks_in_rc_block(
         .get_relay_chain_client()
         .ok_or(RcBlockError::RelayChainClientNotAvailable)?;
 
-    let rc_client_at_block = rc_client.at_block(rc_block.number).await?;
+    let rc_client_at_block = rc_client
+        .at_block(rc_block.number)
+        .await
+        .map_err(|e| RcBlockError::ClientAtBlockFailed(Box::new(e)))?;
     // Use dynamic storage address for System::Events
     let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
     let events_value = rc_client_at_block.storage().fetch(addr, ()).await?;
