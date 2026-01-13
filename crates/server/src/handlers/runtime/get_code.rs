@@ -154,6 +154,12 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_code_at_block_hash() {
         let mock_client = MockRpcClient::builder()
+            .method_handler("rpc_methods", async |_params| {
+                MockJson(serde_json::json!({ "methods": [] }))
+            })
+            .method_handler("chain_getBlockHash", async |_params| {
+                MockJson("0x0000000000000000000000000000000000000000000000000000000000000000")
+            })
             .method_handler("chain_getHeader", async |_params| {
                 MockJson(serde_json::json!({
                     "number": "0x100",
@@ -182,7 +188,11 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_code_at_block_number() {
         let mock_client = MockRpcClient::builder()
+            .method_handler("rpc_methods", async |_params| {
+                MockJson(serde_json::json!({ "methods": [] }))
+            })
             .method_handler("chain_getBlockHash", async |_params| {
+                // Return test hash for block number lookups
                 MockJson("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
             })
             .method_handler("chain_getHeader", async |_params| {
@@ -215,6 +225,12 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_code_latest_block() {
         let mock_client = MockRpcClient::builder()
+            .method_handler("rpc_methods", async |_params| {
+                MockJson(serde_json::json!({ "methods": [] }))
+            })
+            .method_handler("chain_getBlockHash", async |_params| {
+                MockJson("0x0000000000000000000000000000000000000000000000000000000000000000")
+            })
             .method_handler("chain_getFinalizedHead", async |_params| {
                 MockJson("0xfeedfacedeadbeef1234567890abcdef1234567890abcdef1234567890abcdef")
             })

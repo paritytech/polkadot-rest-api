@@ -133,13 +133,22 @@ mod tests {
     use super::*;
     use crate::state::{AppState, ChainInfo};
     use config::SidecarConfig;
+    use serde_json::json;
     use std::sync::Arc;
+    use subxt_rpcs::client::mock_rpc_client::Json;
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
     /// Helper to create a test AppState with mocked RPC client and custom chain info
     async fn create_test_state_with_chain_info(chain_type: ChainType, spec_name: &str) -> AppState {
         let config = SidecarConfig::default();
-        let mock_client = MockRpcClient::builder().build();
+        let mock_client = MockRpcClient::builder()
+            .method_handler("rpc_methods", async |_params| {
+                Json(json!({ "methods": [] }))
+            })
+            .method_handler("chain_getBlockHash", async |_params| {
+                Json("0x0000000000000000000000000000000000000000000000000000000000000000")
+            })
+            .build();
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
         let chain_info = ChainInfo {
