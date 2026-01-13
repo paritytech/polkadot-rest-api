@@ -189,10 +189,7 @@ pub async fn fetch_block_events(
     // Use dynamic storage address for System::Events
     // Note: For dynamic storage, we need to specify the value type
     let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
-    let events_value = client_at_block
-        .storage()
-        .fetch(addr, ())
-        .await?;
+    let events_value = client_at_block.storage().fetch(addr, ()).await?;
 
     // Use the visitor pattern to get type information for each field
     let events_with_types = events_value

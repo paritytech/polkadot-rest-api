@@ -91,8 +91,7 @@ async fn handle_use_rc_block(
 
         let client_at_block = state.client.at_block(ah_block.number).await?;
         let timestamp_addr = subxt::dynamic::storage::<(), scale_value::Value>("Timestamp", "Now");
-        if let Ok(timestamp) = client_at_block.storage().fetch(timestamp_addr, ()).await
-        {
+        if let Ok(timestamp) = client_at_block.storage().fetch(timestamp_addr, ()).await {
             // Timestamp is a u64 (milliseconds) - decode from storage value
             let timestamp_bytes = timestamp.into_bytes();
             let mut cursor = &timestamp_bytes[..];
@@ -306,8 +305,8 @@ async fn build_block_response_for_hash(
                 // Method names in metadata are snake_case, but our method names are lowerCamelCase
                 let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
                 let method_name = extrinsic.method.method.to_snake_case();
-                extrinsic.docs =
-                    Docs::for_call_subxt(&metadata, &pallet_name, &method_name).map(|d| d.to_string());
+                extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
+                    .map(|d| d.to_string());
             }
         }
     }

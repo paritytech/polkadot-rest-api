@@ -126,7 +126,8 @@ impl AppState {
         };
 
         // Note: from_rpc_client_with_config is now async in the new subxt
-        let client = OnlineClient::from_rpc_client_with_config(subxt_config, rpc_client.clone()).await
+        let client = OnlineClient::from_rpc_client_with_config(subxt_config, rpc_client.clone())
+            .await
             .map_err(|e| StateError::ConnectionFailed {
                 url: config.substrate.url.clone(),
                 source: subxt_rpcs::Error::Client(Box::new(std::io::Error::other(e.to_string()))),
@@ -258,10 +259,13 @@ impl AppState {
         };
 
         let relay_client =
-            OnlineClient::from_rpc_client_with_config(relay_subxt_config, relay_rpc_client.clone()).await
+            OnlineClient::from_rpc_client_with_config(relay_subxt_config, relay_rpc_client.clone())
+                .await
                 .map_err(|e| StateError::ConnectionFailed {
                     url: relay_url.to_string(),
-                    source: subxt_rpcs::Error::Client(Box::new(std::io::Error::other(e.to_string()))),
+                    source: subxt_rpcs::Error::Client(Box::new(std::io::Error::other(
+                        e.to_string(),
+                    ))),
                 })?;
 
         tracing::info!(
@@ -489,9 +493,7 @@ fn get_ss58_prefix(chain_type: &ChainType, spec_name: &str) -> u16 {
 }
 
 /// Query the chain to get runtime information via RPC
-async fn get_chain_info(
-    legacy_rpc: &SubstrateLegacyRpc,
-) -> Result<ChainInfo, StateError> {
+async fn get_chain_info(legacy_rpc: &SubstrateLegacyRpc) -> Result<ChainInfo, StateError> {
     let runtime_version = legacy_rpc
         .state_get_runtime_version(None)
         .await

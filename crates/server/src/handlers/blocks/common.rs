@@ -155,10 +155,7 @@ pub async fn get_validators_at_block(
     // Use dynamic storage address for Session::Validators
     // Note: For dynamic storage, we need to specify the value type
     let addr = subxt::dynamic::storage::<(), scale_value::Value>("Session", "Validators");
-    let validators_value = client_at_block
-        .storage()
-        .fetch(addr, ())
-        .await?;
+    let validators_value = client_at_block.storage().fetch(addr, ()).await?;
     let raw_bytes = validators_value.into_bytes();
     let validators_raw: Vec<[u8; 32]> = Vec::<[u8; 32]>::decode(&mut &raw_bytes[..])?;
     let validators: Vec<AccountId32> = validators_raw.into_iter().map(AccountId32::from).collect();
@@ -295,7 +292,7 @@ pub fn add_docs_to_events(events: &mut [Event], metadata: &subxt::Metadata) {
         // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
         // We need to convert back: "system" -> "System", "balances" -> "Balances"
         let pallet_name = event.method.pallet.to_upper_camel_case();
-        event.docs =
-            Docs::for_event_subxt(metadata, &pallet_name, &event.method.method).map(|d| d.to_string());
+        event.docs = Docs::for_event_subxt(metadata, &pallet_name, &event.method.method)
+            .map(|d| d.to_string());
     }
 }

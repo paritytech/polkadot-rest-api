@@ -302,7 +302,8 @@ mod tests {
     #[tokio::test]
     async fn test_ahm_info_unknown_asset_hub() {
         // Test: Unknown asset hub should return error
-        let state = create_test_state_with_chain_info(ChainType::AssetHub, "unknown-asset-hub").await;
+        let state =
+            create_test_state_with_chain_info(ChainType::AssetHub, "unknown-asset-hub").await;
 
         let result = ahm_info(State(state)).await;
 

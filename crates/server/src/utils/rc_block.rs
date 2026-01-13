@@ -50,10 +50,7 @@ pub async fn find_ah_blocks_in_rc_block(
     let rc_client_at_block = rc_client.at_block(rc_block.number).await?;
     // Use dynamic storage address for System::Events
     let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
-    let events_value = rc_client_at_block
-        .storage()
-        .fetch(addr, ())
-        .await?;
+    let events_value = rc_client_at_block.storage().fetch(addr, ()).await?;
 
     let events_decoded: scale_value::Value<()> = events_value.decode_as().map_err(|e| {
         tracing::debug!("Failed to decode events: {:?}", e);

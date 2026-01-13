@@ -254,8 +254,8 @@ pub async fn get_block_head(
             for extrinsic in extrinsics_with_events.iter_mut() {
                 let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
                 let method_name = extrinsic.method.method.to_snake_case();
-                extrinsic.docs =
-                    Docs::for_call_subxt(&metadata, &pallet_name, &method_name).map(|d| d.to_string());
+                extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
+                    .map(|d| d.to_string());
             }
         }
     }

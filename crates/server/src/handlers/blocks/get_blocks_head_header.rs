@@ -325,8 +325,7 @@ async fn handle_use_rc_block(
         let mut ah_timestamp = None;
         let client_at_block = state.client.at_block(ah_block.number).await?;
         let timestamp_addr = subxt::dynamic::storage::<(), scale_value::Value>("Timestamp", "Now");
-        if let Ok(timestamp) = client_at_block.storage().fetch(timestamp_addr, ()).await
-        {
+        if let Ok(timestamp) = client_at_block.storage().fetch(timestamp_addr, ()).await {
             let timestamp_bytes = timestamp.into_bytes();
             let mut cursor = &timestamp_bytes[..];
             if let Ok(timestamp_value) = u64::decode(&mut cursor) {
