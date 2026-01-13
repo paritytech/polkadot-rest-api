@@ -1,11 +1,8 @@
 use crate::state::AppState;
 use crate::utils::ResolvedBlock;
-use subxt_historic::SubstrateConfig;
-use subxt_historic::client::{ClientAtBlock, OnlineClientAtBlock};
 use thiserror::Error;
 
-pub type RcBlockClient<'a> =
-    ClientAtBlock<OnlineClientAtBlock<'a, SubstrateConfig>, SubstrateConfig>;
+// Note: RcBlockClient type alias removed - the new subxt API doesn't expose OnlineClientAtBlock the same way
 
 const ASSET_HUB_PARA_ID: u32 = 1000;
 
@@ -18,16 +15,16 @@ pub struct AhBlockInfo {
 #[derive(Debug, Error)]
 pub enum RcBlockError {
     #[error("Failed to get client at block")]
-    ClientAtBlockFailed(#[from] subxt_historic::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
 
     #[error("Failed to fetch storage")]
-    StorageFetchFailed(#[from] subxt_historic::error::StorageError),
+    StorageFetchFailed(#[from] subxt::error::StorageError),
 
     #[error("Failed to decode events")]
     EventsDecodeFailed(#[source] scale_decode::Error),
 
     #[error("Failed to decode events storage value")]
-    EventsStorageDecodeFailed(#[source] subxt_historic::error::StorageValueError),
+    EventsStorageDecodeFailed(#[from] subxt::error::StorageValueError),
 
     #[error("Failed to decode header from event data")]
     HeaderDecodeFailed(#[source] parity_scale_codec::Error),
@@ -50,12 +47,13 @@ pub async fn find_ah_blocks_in_rc_block(
         .get_relay_chain_client()
         .ok_or(RcBlockError::RelayChainClientNotAvailable)?;
 
-    let rc_client_at_block = rc_client.at(rc_block.number).await?;
-    let storage_entry = rc_client_at_block.storage().entry("System", "Events")?;
-    let events_value = storage_entry
-        .fetch(())
-        .await?
-        .ok_or_else(|| RcBlockError::EventDataIncomplete)?;
+    let rc_client_at_block = rc_client.at_block(rc_block.number).await?;
+    // Use dynamic storage address for System::Events
+    let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
+    let events_value = rc_client_at_block
+        .storage()
+        .fetch(addr, ())
+        .await?;
 
     let events_decoded: scale_value::Value<()> = events_value.decode_as().map_err(|e| {
         tracing::debug!("Failed to decode events: {:?}", e);
