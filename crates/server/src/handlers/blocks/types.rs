@@ -7,7 +7,7 @@ use crate::utils::{self, EraInfo, RcBlockError};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use subxt_historic::error::{OnlineClientAtBlockError, StorageEntryIsNotAPlainValue, StorageError};
+use subxt::error::{OnlineClientAtBlockError, StorageError};
 use thiserror::Error;
 
 // ================================================================================================
@@ -90,9 +90,6 @@ pub enum GetBlockError {
     #[error("Failed to fetch chain storage")]
     StorageFetchFailed(#[from] StorageError),
 
-    #[error("Storage entry is not a plain value")]
-    StorageNotPlainValue(#[from] StorageEntryIsNotAPlainValue),
-
     #[error("Failed to decode storage value")]
     StorageDecodeFailed(#[from] parity_scale_codec::Error),
 
@@ -162,7 +159,6 @@ impl IntoResponse for GetBlockError {
             GetBlockError::HeaderFieldMissing(_)
             | GetBlockError::ClientAtBlockFailed(_)
             | GetBlockError::StorageFetchFailed(_)
-            | GetBlockError::StorageNotPlainValue(_)
             | GetBlockError::StorageDecodeFailed(_)
             | GetBlockError::ExtrinsicsFetchFailed(_)
             | GetBlockError::MissingSignatureBytes

@@ -173,7 +173,7 @@ pub async fn get_block_head(
 
     let logs = decode_digest_logs(&header_json);
 
-    let client_at_block = state.client.at(block_number).await?;
+    let client_at_block = state.client.at_block(block_number).await?;
 
     let (author_id, extrinsics_result, events_result) = tokio::join!(
         extract_author(&state, &client_at_block, &logs, block_number),
@@ -242,11 +242,11 @@ pub async fn get_block_head(
         let metadata = client_at_block.metadata();
 
         if params.event_docs {
-            add_docs_to_events(&mut on_initialize.events, metadata);
-            add_docs_to_events(&mut on_finalize.events, metadata);
+            add_docs_to_events(&mut on_initialize.events, &metadata);
+            add_docs_to_events(&mut on_finalize.events, &metadata);
 
             for extrinsic in extrinsics_with_events.iter_mut() {
-                add_docs_to_events(&mut extrinsic.events, metadata);
+                add_docs_to_events(&mut extrinsic.events, &metadata);
             }
         }
 
@@ -255,7 +255,7 @@ pub async fn get_block_head(
                 let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
                 let method_name = extrinsic.method.method.to_snake_case();
                 extrinsic.docs =
-                    Docs::for_call(metadata, &pallet_name, &method_name).map(|d| d.to_string());
+                    Docs::for_call_subxt(&metadata, &pallet_name, &method_name).map(|d| d.to_string());
             }
         }
     }

@@ -89,9 +89,9 @@ async fn handle_use_rc_block(
         response.rc_block_hash = Some(rc_block_hash.clone());
         response.rc_block_number = Some(rc_block_number.clone());
 
-        let client_at_block = state.client.at(ah_block.number).await?;
-        if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
-            && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+        let timestamp_addr = subxt::dynamic::storage::<(), scale_value::Value>("Timestamp", "Now");
+        if let Ok(timestamp) = client_at_block.storage().fetch(timestamp_addr, ()).await
         {
             // Timestamp is a u64 (milliseconds) - decode from storage value
             let timestamp_bytes = timestamp.into_bytes();
@@ -158,7 +158,7 @@ async fn build_block_response_for_hash(
     let logs = decode_digest_logs(&header_json);
 
     // Create client_at_block once and reuse for all operations
-    let client_at_block = state.client.at(block_number).await?;
+    let client_at_block = state.client.at_block(block_number).await?;
 
     let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
         extract_author(state, &client_at_block, &logs, block_number),
@@ -291,11 +291,11 @@ async fn build_block_response_for_hash(
         let metadata = client_at_block.metadata();
 
         if params.event_docs {
-            add_docs_to_events(&mut on_initialize.events, metadata);
-            add_docs_to_events(&mut on_finalize.events, metadata);
+            add_docs_to_events(&mut on_initialize.events, &metadata);
+            add_docs_to_events(&mut on_finalize.events, &metadata);
 
             for extrinsic in extrinsics_with_events.iter_mut() {
-                add_docs_to_events(&mut extrinsic.events, metadata);
+                add_docs_to_events(&mut extrinsic.events, &metadata);
             }
         }
 
@@ -307,7 +307,7 @@ async fn build_block_response_for_hash(
                 let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
                 let method_name = extrinsic.method.method.to_snake_case();
                 extrinsic.docs =
-                    Docs::for_call(metadata, &pallet_name, &method_name).map(|d| d.to_string());
+                    Docs::for_call_subxt(&metadata, &pallet_name, &method_name).map(|d| d.to_string());
             }
         }
     }
@@ -358,7 +358,7 @@ mod tests {
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
     /// Helper to create a test AppState with mocked RPC responses
-    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+    async fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
         let config = SidecarConfig::default();
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
@@ -369,12 +369,16 @@ mod tests {
             ss58_prefix: 42,
         };
 
+        let client = subxt::OnlineClient::from_rpc_client_with_config(
+            subxt::SubstrateConfig::new(),
+            (*rpc_client).clone(),
+        )
+        .await
+        .expect("Failed to create test OnlineClient");
+
         AppState {
             config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
+            client: Arc::new(client),
             legacy_rpc,
             rpc_client,
             chain_info,
@@ -436,7 +440,7 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
         let block_id = "100".to_string();
         let params = BlockQueryParams::default();
 

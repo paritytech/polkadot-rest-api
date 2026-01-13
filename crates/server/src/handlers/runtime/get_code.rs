@@ -116,7 +116,7 @@ mod tests {
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
-    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+    async fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
         let config = SidecarConfig::default();
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
@@ -127,12 +127,16 @@ mod tests {
             ss58_prefix: 42,
         };
 
+        let client = subxt::OnlineClient::from_rpc_client_with_config(
+            subxt::SubstrateConfig::new(),
+            (*rpc_client).clone(),
+        )
+        .await
+        .expect("Failed to create test OnlineClient");
+
         AppState {
             config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
+            client: Arc::new(client),
             legacy_rpc,
             rpc_client,
             chain_info,
@@ -160,7 +164,7 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
         let params = AtBlockParam {
             at: Some(
                 "0x1234567890123456789012345678901234567890123456789012345678901234".to_string(),
@@ -191,7 +195,7 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
         let params = AtBlockParam {
             at: Some("10000".to_string()),
         };
@@ -224,7 +228,7 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
         let params = AtBlockParam { at: None };
 
         let result = runtime_code(State(state), Query(params)).await;

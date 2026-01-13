@@ -249,7 +249,7 @@ mod tests {
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
     /// Helper to create a test AppState with mocked RPC responses
-    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+    async fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
         let config = SidecarConfig::default();
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
@@ -260,12 +260,16 @@ mod tests {
             ss58_prefix: 42,
         };
 
+        let client = subxt::OnlineClient::from_rpc_client_with_config(
+            subxt::SubstrateConfig::new(),
+            (*rpc_client).clone(),
+        )
+        .await
+        .expect("Failed to create test OnlineClient");
+
         AppState {
             config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
+            client: Arc::new(client),
             legacy_rpc,
             rpc_client,
             chain_info,
@@ -310,7 +314,7 @@ mod tests {
             .method_handler("system_chainType", async |_params| MockJson("Live"))
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let params = AtBlockParam { at: None };
         let result = runtime_spec(State(state), axum::extract::Query(params)).await;
@@ -363,7 +367,7 @@ mod tests {
             .method_handler("system_chainType", async |_params| MockJson("Live"))
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let params = AtBlockParam {
             at: Some(test_hash.to_string()),
@@ -408,7 +412,7 @@ mod tests {
             .method_handler("system_chainType", async |_params| MockJson("Development"))
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let params = AtBlockParam {
             at: Some(test_number.to_string()),
@@ -427,7 +431,7 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_spec_invalid_block_param() {
         let mock_client = MockRpcClient::builder().build();
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let params = AtBlockParam {
             at: Some("invalid_block".to_string()),
@@ -449,7 +453,7 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let params = AtBlockParam {
             at: Some("999999".to_string()),
