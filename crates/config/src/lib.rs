@@ -5,6 +5,7 @@ mod log;
 mod metrics;
 mod spec_versions;
 mod substrate;
+mod args;
 
 pub use chain::{
     ChainConfig, ChainConfigError, ChainConfigs, Hasher,
@@ -263,6 +264,12 @@ impl SidecarConfig {
     /// - SAS_METRICS_LOKI_PORT
     /// - SAS_METRICS_INCLUDE_QUERYPARAMS
     pub fn from_env() -> Result<Self, ConfigError> {
+        // Get the path to the env file from the command line argument
+        let env_file = args::Args::parse_args().env_file;
+
+        // Load the environment variables from the specified file
+        dotenv::from_filename(&env_file).ok();
+
         // Load flat env config
         let env_config = envy::prefixed("SAS_").from_env::<EnvConfig>()?;
 
