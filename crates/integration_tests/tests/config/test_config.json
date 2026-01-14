@@ -55,6 +55,30 @@
       "query_params": [{}],
       "requires_block_height": false,
       "requires_account": false
+    },
+    {
+      "path": "/v1/pallets/system/storage",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
+    },
+    {
+      "path": "/v1/pallets/system/storage",
+      "query_params": [{"onlyIds": "true"}],
+      "requires_block_height": false,
+      "requires_account": false
+    },
+    {
+      "path": "/v1/pallets/balances/storage",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
+    },
+    {
+      "path": "/v1/pallets/0/storage",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
     }
   ],
   "historical_tests": {
@@ -151,6 +175,62 @@
         },
         "fixture_path": "polkadot/blocks_28490503_decode_xcm.json",
         "description": "Test block endpoint at Polkadot block 10,000,006"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "29467043" },
+        "fixture_path": "polkadot/pallets_system_storage_29467043.json",
+        "description": "Test pallets system storage at Polkadot block 29,467,043 (v16 metadata)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "7500000" },
+        "fixture_path": "polkadot/pallets_system_storage_7500000_v14.json",
+        "description": "Test pallets system storage at Polkadot block 7,500,000 (v14 metadata fallback)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "1000000" },
+        "fixture_path": "polkadot/pallets_system_storage_1000000_v12.json",
+        "description": "Test pallets system storage at Polkadot block 1,000,000 (v12 metadata era)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "5000000" },
+        "fixture_path": "polkadot/pallets_system_storage_5000000_v13.json",
+        "description": "Test pallets system storage at Polkadot block 5,000,000 (v13 metadata era)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "10000000" },
+        "fixture_path": "polkadot/pallets_system_storage_10000000_v14.json",
+        "description": "Test pallets system storage at Polkadot block 10,000,000 (v14 metadata era)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "20000000" },
+        "fixture_path": "polkadot/pallets_system_storage_20000000_v14.json",
+        "description": "Test pallets system storage at Polkadot block 20,000,000 (v14 metadata)"
+      },
+      {
+        "endpoint": "/v1/pallets/staking/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "20000000" },
+        "fixture_path": "polkadot/pallets_staking_storage_20000000.json",
+        "description": "Test pallets staking storage at Polkadot block 20,000,000"
       }
     ],
     "kusama": [
@@ -209,6 +289,38 @@
         "query_params": {},
         "fixture_path": "kusama/blocks_5000000.json",
         "description": "Test block endpoint at Kusama block 5,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "31785029" },
+        "fixture_path": "kusama/pallets_system_storage_31785029.json",
+        "description": "Test pallets system storage at Kusama block 31,785,029"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "1000000" },
+        "fixture_path": "kusama/pallets_system_storage_1000000_v12.json",
+        "description": "Test pallets system storage at Kusama block 1,000,000 (v12 metadata era)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "5000000" },
+        "fixture_path": "kusama/pallets_system_storage_5000000_v13.json",
+        "description": "Test pallets system storage at Kusama block 5,000,000 (v13 metadata era)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "10000000" },
+        "fixture_path": "kusama/pallets_system_storage_10000000_v14.json",
+        "description": "Test pallets system storage at Kusama block 10,000,000 (v14 metadata era)"
       }
     ],
     "asset-hub-polkadot": [
@@ -274,6 +386,38 @@
         "query_params": {},
         "fixture_path": "asset-hub-polkadot/blocks_10260000_post_migration.json",
         "description": "Test block endpoint at Asset Hub Polkadot block 10,260,000 (post-migration, Asset Hub era, after migration ended at 10,259,208)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "11184807" },
+        "fixture_path": "asset-hub-polkadot/pallets_system_storage_11184807.json",
+        "description": "Test pallets system storage at Asset Hub Polkadot block 11,184,807"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "1000000" },
+        "fixture_path": "asset-hub-polkadot/pallets_system_storage_1000000.json",
+        "description": "Test pallets system storage at Asset Hub Polkadot block 1,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "5000000" },
+        "fixture_path": "asset-hub-polkadot/pallets_system_storage_5000000.json",
+        "description": "Test pallets system storage at Asset Hub Polkadot block 5,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/assets/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "11184807" },
+        "fixture_path": "asset-hub-polkadot/pallets_assets_storage_11184807.json",
+        "description": "Test pallets assets storage at Asset Hub Polkadot block 11,184,807"
       }
     ],
     "asset-hub-kusama": [
@@ -340,6 +484,38 @@
         "query_params": {},
         "fixture_path": "asset-hub-kusama/blocks_11152000_post_migration.json",
         "description": "Test block endpoint at Asset Hub Kusama block 11,152,000 (post-migration, Asset Hub era, after migration ended at 11,151,931)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "12676268" },
+        "fixture_path": "asset-hub-kusama/pallets_system_storage_12676268.json",
+        "description": "Test pallets system storage at Asset Hub Kusama block 12,676,268"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "1000000" },
+        "fixture_path": "asset-hub-kusama/pallets_system_storage_1000000.json",
+        "description": "Test pallets system storage at Asset Hub Kusama block 1,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "5000000" },
+        "fixture_path": "asset-hub-kusama/pallets_system_storage_5000000.json",
+        "description": "Test pallets system storage at Asset Hub Kusama block 5,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/assets/storage",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "12676268" },
+        "fixture_path": "asset-hub-kusama/pallets_assets_storage_12676268.json",
+        "description": "Test pallets assets storage at Asset Hub Kusama block 12,676,268"
       }
     ]
   }
