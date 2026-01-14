@@ -18,6 +18,13 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
         .route_registered(
             registry,
             API_VERSION,
+            "/node/transaction-pool",
+            "get",
+            get(node::get_node_transaction_pool),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
             "/node/version",
             "get",
             get(node::get_node_version),
