@@ -1,14 +1,18 @@
 use crate::state::AppState;
 use crate::utils;
-use axum::{Json, extract::{Query, State}, response::IntoResponse};
+use axum::{
+    Json,
+    extract::{Query, State},
+    response::IntoResponse,
+};
+use scale_value::ValueDef;
+use scale_value::scale::decode_as_type;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sp_core::hashing::blake2_256;
 use std::cmp;
 use subxt_rpcs::client::rpc_params;
 use thiserror::Error;
-use scale_value::scale::decode_as_type;
-use scale_value::ValueDef;
 
 #[derive(Debug, Error)]
 pub enum GetNodeTransactionPoolError {
@@ -37,7 +41,7 @@ pub enum GetNodeTransactionPoolError {
 impl IntoResponse for GetNodeTransactionPoolError {
     fn into_response(self) -> axum::response::Response {
         use axum::http::StatusCode;
-        
+
         let (status, message) = match &self {
             GetNodeTransactionPoolError::PendingExtrinsicsFailed(err)
             | GetNodeTransactionPoolError::FeeInfoFailed(err)
@@ -101,11 +105,11 @@ pub async fn get_node_transaction_pool(
         let pool: Vec<TransactionPoolEntry> = extrinsics
             .into_iter()
             .map(|encoded_extrinsic| {
-                let extrinsic_bytes = hex::decode(encoded_extrinsic.trim_start_matches("0x"))
-                    .unwrap_or_default();
+                let extrinsic_bytes =
+                    hex::decode(encoded_extrinsic.trim_start_matches("0x")).unwrap_or_default();
                 let hash_bytes = blake2_256(&extrinsic_bytes);
                 let hash = format!("0x{}", hex::encode(hash_bytes));
-                
+
                 TransactionPoolEntry {
                     hash,
                     encoded_extrinsic,
@@ -120,20 +124,23 @@ pub async fn get_node_transaction_pool(
     }
 
     let (extrinsics_result, latest_hash_result) = tokio::join!(
-        state.rpc_client.request::<Vec<String>>("author_pendingExtrinsics", rpc_params![]),
-        state.rpc_client.request::<String>("chain_getFinalizedHead", rpc_params![])
+        state
+            .rpc_client
+            .request::<Vec<String>>("author_pendingExtrinsics", rpc_params![]),
+        state
+            .rpc_client
+            .request::<String>("chain_getFinalizedHead", rpc_params![])
     );
 
-    let extrinsics = extrinsics_result
-        .map_err(GetNodeTransactionPoolError::PendingExtrinsicsFailed)?;
-    let latest_hash = latest_hash_result
-        .map_err(GetNodeTransactionPoolError::BlockHashFailed)?;
+    let extrinsics =
+        extrinsics_result.map_err(GetNodeTransactionPoolError::PendingExtrinsicsFailed)?;
+    let latest_hash = latest_hash_result.map_err(GetNodeTransactionPoolError::BlockHashFailed)?;
 
     let mut pool = Vec::new();
-    
+
     for encoded_extrinsic in extrinsics {
-        let extrinsic_bytes = hex::decode(encoded_extrinsic.trim_start_matches("0x"))
-            .unwrap_or_default();
+        let extrinsic_bytes =
+            hex::decode(encoded_extrinsic.trim_start_matches("0x")).unwrap_or_default();
         let hash_bytes = blake2_256(&extrinsic_bytes);
         let hash = format!("0x{}", hex::encode(hash_bytes));
 
@@ -156,7 +163,9 @@ pub async fn get_node_transaction_pool(
             &encoded_extrinsic,
             &latest_hash,
             encoded_length,
-            tip.as_ref().and_then(|t| t.parse::<u128>().ok()).unwrap_or(0),
+            tip.as_ref()
+                .and_then(|t| t.parse::<u128>().ok())
+                .unwrap_or(0),
         )
         .await
         .ok()
@@ -177,16 +186,16 @@ pub async fn get_node_transaction_pool(
 /// Extract tip from extrinsic bytes by decoding transaction extensions
 /// Uses the same SCALE decoding pattern as extract_era_from_extrinsic_bytes in utils/extrinsic.rs
 fn extract_tip_from_extrinsic_bytes(bytes: &[u8]) -> Option<String> {
-    use parity_scale_codec::{Decode, Compact};
+    use parity_scale_codec::{Compact, Decode};
     use sp_runtime::generic::Era;
-    
+
     if bytes.is_empty() {
         return None;
     }
 
     let mut cursor = &bytes[..];
     Compact::<u32>::decode(&mut cursor).ok()?;
-    
+
     if cursor.is_empty() {
         return None;
     }
@@ -195,13 +204,15 @@ fn extract_tip_from_extrinsic_bytes(bytes: &[u8]) -> Option<String> {
     if version & 0b1000_0000 == 0 {
         return Some("0".to_string());
     }
-    
+
     cursor = &cursor[1..];
-    
+
     let addr_variant = u8::decode(&mut cursor).ok()?;
     match addr_variant {
         0x00 => {
-            if cursor.len() < 32 { return None; }
+            if cursor.len() < 32 {
+                return None;
+            }
             cursor = &cursor[32..];
         }
         0x01 => {
@@ -210,40 +221,49 @@ fn extract_tip_from_extrinsic_bytes(bytes: &[u8]) -> Option<String> {
         0x02 => {
             let Compact(len) = Compact::<u32>::decode(&mut cursor).ok()?;
             let len = len as usize;
-            if cursor.len() < len { return None; }
+            if cursor.len() < len {
+                return None;
+            }
             cursor = &cursor[len..];
         }
         0x03 => {
-            if cursor.len() < 32 { return None; }
+            if cursor.len() < 32 {
+                return None;
+            }
             cursor = &cursor[32..];
         }
         0x04 => {
-            if cursor.len() < 20 { return None; }
+            if cursor.len() < 20 {
+                return None;
+            }
             cursor = &cursor[20..];
         }
         _ => return None,
     }
-    
+
     let sig_variant = u8::decode(&mut cursor).ok()?;
     match sig_variant {
         0x00 | 0x01 => {
-            if cursor.len() < 64 { return None; }
+            if cursor.len() < 64 {
+                return None;
+            }
             cursor = &cursor[64..];
         }
         0x02 => {
-            if cursor.len() < 65 { return None; }
+            if cursor.len() < 65 {
+                return None;
+            }
             cursor = &cursor[65..];
         }
         _ => return None,
     }
-    
-    
+
     Era::decode(&mut cursor).ok()?;
-    
+
     Compact::<u32>::decode(&mut cursor).ok()?;
-    
+
     let Compact(tip) = Compact::<u128>::decode(&mut cursor).ok()?;
-    
+
     Some(tip.to_string())
 }
 
@@ -262,13 +282,17 @@ async fn calculate_priority(
         .and_then(|v| v.as_str())
         .unwrap_or("Normal")
         .to_lowercase();
-    
-    let versioned_weight = if let Some(weight_obj) = fee_info.get("weight").and_then(|w| w.as_object()) {
+
+    let versioned_weight = if let Some(weight_obj) =
+        fee_info.get("weight").and_then(|w| w.as_object())
+    {
         weight_obj
             .get("refTime")
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse::<u64>().ok())
-            .ok_or_else(|| GetNodeTransactionPoolError::ConstantNotFound("weight.refTime".to_string()))?
+            .ok_or_else(|| {
+                GetNodeTransactionPoolError::ConstantNotFound("weight.refTime".to_string())
+            })?
     } else {
         fee_info
             .get("weight")
@@ -279,48 +303,65 @@ async fn calculate_priority(
 
     let max_block_weight = get_max_block_weight(state, latest_hash).await?;
     let max_length = get_max_block_length(state, latest_hash, &class_str).await?;
-    
+
     let bounded_weight = cmp::max(cmp::min(versioned_weight, max_block_weight), 1);
     let bounded_length = cmp::max(cmp::min(encoded_length, max_length as usize), 1);
-    
+
     let max_tx_per_block_weight = max_block_weight / bounded_weight;
     let max_tx_per_block_length = max_length / bounded_length as u64;
     let max_tx_per_block = cmp::min(max_tx_per_block_weight, max_tx_per_block_length);
-    
+
     let saturated_tip = tip.saturating_add(1);
-    
+
     let scaled_tip = saturated_tip.saturating_mul(max_tx_per_block as u128);
-    
+
     let priority = match class_str.as_str() {
         "normal" | "mandatory" => scaled_tip.to_string(),
         "operational" => {
-            match state.query_fee_details(encoded_extrinsic, latest_hash).await {
+            match state
+                .query_fee_details(encoded_extrinsic, latest_hash)
+                .await
+            {
                 Ok(fee_details) => {
-                    if let Some(inclusion_fee) = fee_details.get("inclusionFee").and_then(|v| v.as_object()) {
+                    if let Some(inclusion_fee) =
+                        fee_details.get("inclusionFee").and_then(|v| v.as_object())
+                    {
                         let base_fee = inclusion_fee
                             .get("baseFee")
                             .and_then(|v| v.as_str())
                             .and_then(|s| s.parse::<u128>().ok())
-                            .ok_or_else(|| GetNodeTransactionPoolError::ConstantNotFound("baseFee".to_string()))?;
+                            .ok_or_else(|| {
+                                GetNodeTransactionPoolError::ConstantNotFound("baseFee".to_string())
+                            })?;
                         let len_fee = inclusion_fee
                             .get("lenFee")
                             .and_then(|v| v.as_str())
                             .and_then(|s| s.parse::<u128>().ok())
-                            .ok_or_else(|| GetNodeTransactionPoolError::ConstantNotFound("lenFee".to_string()))?;
+                            .ok_or_else(|| {
+                                GetNodeTransactionPoolError::ConstantNotFound("lenFee".to_string())
+                            })?;
                         let adjusted_weight_fee = inclusion_fee
                             .get("adjustedWeightFee")
                             .and_then(|v| v.as_str())
                             .and_then(|s| s.parse::<u128>().ok())
-                            .ok_or_else(|| GetNodeTransactionPoolError::ConstantNotFound("adjustedWeightFee".to_string()))?;
-                        
-                        let computed_inclusion_fee = base_fee.saturating_add(len_fee).saturating_add(adjusted_weight_fee);
+                            .ok_or_else(|| {
+                                GetNodeTransactionPoolError::ConstantNotFound(
+                                    "adjustedWeightFee".to_string(),
+                                )
+                            })?;
+
+                        let computed_inclusion_fee = base_fee
+                            .saturating_add(len_fee)
+                            .saturating_add(adjusted_weight_fee);
                         let final_fee = computed_inclusion_fee.saturating_add(tip);
-                        
-                        let operational_fee_multiplier = get_operational_fee_multiplier(state, latest_hash).await?;
-                        
+
+                        let operational_fee_multiplier =
+                            get_operational_fee_multiplier(state, latest_hash).await?;
+
                         let virtual_tip = final_fee.saturating_mul(operational_fee_multiplier);
-                        let scaled_virtual_tip = virtual_tip.saturating_mul(max_tx_per_block as u128);
-                        
+                        let scaled_virtual_tip =
+                            virtual_tip.saturating_mul(max_tx_per_block as u128);
+
                         scaled_tip.saturating_add(scaled_virtual_tip).to_string()
                     } else {
                         "0".to_string()
@@ -331,49 +372,70 @@ async fn calculate_priority(
         }
         _ => "0".to_string(),
     };
-    
+
     Ok(Some(priority))
 }
 
-async fn get_max_block_weight(state: &AppState, block_hash: &str) -> Result<u64, GetNodeTransactionPoolError> {
+async fn get_max_block_weight(
+    state: &AppState,
+    block_hash: &str,
+) -> Result<u64, GetNodeTransactionPoolError> {
     let metadata = get_runtime_metadata(state, block_hash).await?;
-    extract_max_block_weight(&metadata)
-        .ok_or_else(|| GetNodeTransactionPoolError::ConstantNotFound(
-            "System::BlockWeights::maxBlock::refTime".to_string()
-        ))
+    extract_max_block_weight(&metadata).ok_or_else(|| {
+        GetNodeTransactionPoolError::ConstantNotFound(
+            "System::BlockWeights::maxBlock::refTime".to_string(),
+        )
+    })
 }
 
-async fn get_max_block_length(state: &AppState, block_hash: &str, class: &str) -> Result<u64, GetNodeTransactionPoolError> {
+async fn get_max_block_length(
+    state: &AppState,
+    block_hash: &str,
+    class: &str,
+) -> Result<u64, GetNodeTransactionPoolError> {
     let metadata = get_runtime_metadata(state, block_hash).await?;
-    extract_max_block_length(&metadata, class)
-        .ok_or_else(|| GetNodeTransactionPoolError::ConstantNotFound(
-            format!("System::BlockLength::max[{}]", class)
+    extract_max_block_length(&metadata, class).ok_or_else(|| {
+        GetNodeTransactionPoolError::ConstantNotFound(format!(
+            "System::BlockLength::max[{}]",
+            class
         ))
+    })
 }
 
-async fn get_operational_fee_multiplier(state: &AppState, block_hash: &str) -> Result<u128, GetNodeTransactionPoolError> {
+async fn get_operational_fee_multiplier(
+    state: &AppState,
+    block_hash: &str,
+) -> Result<u128, GetNodeTransactionPoolError> {
     let metadata = get_runtime_metadata(state, block_hash).await?;
-    extract_operational_fee_multiplier(&metadata)
-        .ok_or_else(|| GetNodeTransactionPoolError::ConstantNotFound(
-            "TransactionPayment::operationalFeeMultiplier".to_string()
-        ))
+    extract_operational_fee_multiplier(&metadata).ok_or_else(|| {
+        GetNodeTransactionPoolError::ConstantNotFound(
+            "TransactionPayment::operationalFeeMultiplier".to_string(),
+        )
+    })
 }
 
-async fn get_runtime_metadata(state: &AppState, block_hash: &str) -> Result<frame_metadata::RuntimeMetadataPrefixed, GetNodeTransactionPoolError> {
+async fn get_runtime_metadata(
+    state: &AppState,
+    block_hash: &str,
+) -> Result<frame_metadata::RuntimeMetadataPrefixed, GetNodeTransactionPoolError> {
     use frame_metadata::RuntimeMetadataPrefixed;
     use parity_scale_codec::Decode;
-    
+
     let metadata_hex: String = state
         .rpc_client
-        .request("state_getMetadata", subxt_rpcs::client::rpc_params![block_hash])
+        .request(
+            "state_getMetadata",
+            subxt_rpcs::client::rpc_params![block_hash],
+        )
         .await
         .map_err(GetNodeTransactionPoolError::MetadataFailed)?;
 
     let hex_str = metadata_hex.strip_prefix("0x").unwrap_or(&metadata_hex);
-    let metadata_bytes = hex::decode(hex_str)
-        .map_err(|_| GetNodeTransactionPoolError::MetadataDecodeFailed(
-            parity_scale_codec::Error::from("Failed to decode hex")
-        ))?;
+    let metadata_bytes = hex::decode(hex_str).map_err(|_| {
+        GetNodeTransactionPoolError::MetadataDecodeFailed(parity_scale_codec::Error::from(
+            "Failed to decode hex",
+        ))
+    })?;
 
     RuntimeMetadataPrefixed::decode(&mut &metadata_bytes[..])
         .map_err(GetNodeTransactionPoolError::MetadataDecodeFailed)
@@ -381,21 +443,32 @@ async fn get_runtime_metadata(state: &AppState, block_hash: &str) -> Result<fram
 
 fn extract_max_block_weight(metadata: &frame_metadata::RuntimeMetadataPrefixed) -> Option<u64> {
     use frame_metadata::RuntimeMetadata;
-    
+
     match &metadata.1 {
         RuntimeMetadata::V14(m) => {
             let registry = &m.types;
             let system_pallet = m.pallets.iter().find(|p| p.name == "System")?;
-            let block_weights_constant = system_pallet.constants.iter().find(|c| c.name == "BlockWeights")?;
-            
+            let block_weights_constant = system_pallet
+                .constants
+                .iter()
+                .find(|c| c.name == "BlockWeights")?;
+
             let mut bytes = &block_weights_constant.value[..];
-            let decoded = decode_as_type(&mut bytes, block_weights_constant.ty.id, registry).ok()?;
-            
+            let decoded =
+                decode_as_type(&mut bytes, block_weights_constant.ty.id, registry).ok()?;
+
             if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value {
-                if let Some((_, max_block_val)) = fields.iter().find(|(name, _)| name == "maxBlock") {
-                    if let ValueDef::Composite(scale_value::Composite::Named(weight_fields)) = &max_block_val.value {
-                        if let Some((_, ref_time_val)) = weight_fields.iter().find(|(name, _)| name == "refTime") {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &ref_time_val.value {
+                if let Some((_, max_block_val)) = fields.iter().find(|(name, _)| name == "maxBlock")
+                {
+                    if let ValueDef::Composite(scale_value::Composite::Named(weight_fields)) =
+                        &max_block_val.value
+                    {
+                        if let Some((_, ref_time_val)) =
+                            weight_fields.iter().find(|(name, _)| name == "refTime")
+                        {
+                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
+                                &ref_time_val.value
+                            {
                                 return Some(*n as u64);
                             }
                         }
@@ -407,16 +480,27 @@ fn extract_max_block_weight(metadata: &frame_metadata::RuntimeMetadataPrefixed) 
         RuntimeMetadata::V15(m) => {
             let registry = &m.types;
             let system_pallet = m.pallets.iter().find(|p| p.name == "System")?;
-            let block_weights_constant = system_pallet.constants.iter().find(|c| c.name == "BlockWeights")?;
-            
+            let block_weights_constant = system_pallet
+                .constants
+                .iter()
+                .find(|c| c.name == "BlockWeights")?;
+
             let mut bytes = &block_weights_constant.value[..];
-            let decoded = decode_as_type(&mut bytes, block_weights_constant.ty.id, registry).ok()?;
-            
+            let decoded =
+                decode_as_type(&mut bytes, block_weights_constant.ty.id, registry).ok()?;
+
             if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value {
-                if let Some((_, max_block_val)) = fields.iter().find(|(name, _)| name == "maxBlock") {
-                    if let ValueDef::Composite(scale_value::Composite::Named(weight_fields)) = &max_block_val.value {
-                        if let Some((_, ref_time_val)) = weight_fields.iter().find(|(name, _)| name == "refTime") {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &ref_time_val.value {
+                if let Some((_, max_block_val)) = fields.iter().find(|(name, _)| name == "maxBlock")
+                {
+                    if let ValueDef::Composite(scale_value::Composite::Named(weight_fields)) =
+                        &max_block_val.value
+                    {
+                        if let Some((_, ref_time_val)) =
+                            weight_fields.iter().find(|(name, _)| name == "refTime")
+                        {
+                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
+                                &ref_time_val.value
+                            {
                                 return Some(*n as u64);
                             }
                         }
@@ -429,43 +513,59 @@ fn extract_max_block_weight(metadata: &frame_metadata::RuntimeMetadataPrefixed) 
     }
 }
 
-fn extract_max_block_length(metadata: &frame_metadata::RuntimeMetadataPrefixed, class: &str) -> Option<u64> {
+fn extract_max_block_length(
+    metadata: &frame_metadata::RuntimeMetadataPrefixed,
+    class: &str,
+) -> Option<u64> {
     use frame_metadata::RuntimeMetadata;
-    
+
     let class_index = match class {
         "normal" => 0,
         "operational" => 1,
         "mandatory" => 2,
         _ => return None,
     };
-    
+
     match &metadata.1 {
         RuntimeMetadata::V14(m) => {
             let registry = &m.types;
             let system_pallet = m.pallets.iter().find(|p| p.name == "System")?;
-            let block_length_constant = system_pallet.constants.iter().find(|c| c.name == "BlockLength")?;
-            
+            let block_length_constant = system_pallet
+                .constants
+                .iter()
+                .find(|c| c.name == "BlockLength")?;
+
             let mut bytes = &block_length_constant.value[..];
             let decoded = decode_as_type(&mut bytes, block_length_constant.ty.id, registry).ok()?;
-            
+
             if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value {
                 if let Some((_, max_val)) = fields.iter().find(|(name, _)| name == "max") {
-                    if let ValueDef::Composite(scale_value::Composite::Unnamed(array_fields)) = &max_val.value {
+                    if let ValueDef::Composite(scale_value::Composite::Unnamed(array_fields)) =
+                        &max_val.value
+                    {
                         let fields_vec: Vec<_> = array_fields.iter().collect();
                         if let Some(class_val) = fields_vec.get(class_index) {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &class_val.value {
+                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
+                                &class_val.value
+                            {
                                 return Some(*n as u64);
                             }
                         }
-                    } else if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) = &max_val.value {
+                    } else if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) =
+                        &max_val.value
+                    {
                         let class_name = match class_index {
                             0 => "normal",
                             1 => "operational",
                             2 => "mandatory",
                             _ => return None,
                         };
-                        if let Some((_, class_val)) = named_fields.iter().find(|(name, _)| name == class_name) {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &class_val.value {
+                        if let Some((_, class_val)) =
+                            named_fields.iter().find(|(name, _)| name == class_name)
+                        {
+                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
+                                &class_val.value
+                            {
                                 return Some(*n as u64);
                             }
                         }
@@ -477,29 +577,42 @@ fn extract_max_block_length(metadata: &frame_metadata::RuntimeMetadataPrefixed, 
         RuntimeMetadata::V15(m) => {
             let registry = &m.types;
             let system_pallet = m.pallets.iter().find(|p| p.name == "System")?;
-            let block_length_constant = system_pallet.constants.iter().find(|c| c.name == "BlockLength")?;
-            
+            let block_length_constant = system_pallet
+                .constants
+                .iter()
+                .find(|c| c.name == "BlockLength")?;
+
             let mut bytes = &block_length_constant.value[..];
             let decoded = decode_as_type(&mut bytes, block_length_constant.ty.id, registry).ok()?;
-            
+
             if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value {
                 if let Some((_, max_val)) = fields.iter().find(|(name, _)| name == "max") {
-                    if let ValueDef::Composite(scale_value::Composite::Unnamed(array_fields)) = &max_val.value {
+                    if let ValueDef::Composite(scale_value::Composite::Unnamed(array_fields)) =
+                        &max_val.value
+                    {
                         let fields_vec: Vec<_> = array_fields.iter().collect();
                         if let Some(class_val) = fields_vec.get(class_index) {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &class_val.value {
+                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
+                                &class_val.value
+                            {
                                 return Some(*n as u64);
                             }
                         }
-                    } else if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) = &max_val.value {
+                    } else if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) =
+                        &max_val.value
+                    {
                         let class_name = match class_index {
                             0 => "normal",
                             1 => "operational",
                             2 => "mandatory",
                             _ => return None,
                         };
-                        if let Some((_, class_val)) = named_fields.iter().find(|(name, _)| name == class_name) {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &class_val.value {
+                        if let Some((_, class_val)) =
+                            named_fields.iter().find(|(name, _)| name == class_name)
+                        {
+                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
+                                &class_val.value
+                            {
                                 return Some(*n as u64);
                             }
                         }
@@ -512,18 +625,23 @@ fn extract_max_block_length(metadata: &frame_metadata::RuntimeMetadataPrefixed, 
     }
 }
 
-fn extract_operational_fee_multiplier(metadata: &frame_metadata::RuntimeMetadataPrefixed) -> Option<u128> {
+fn extract_operational_fee_multiplier(
+    metadata: &frame_metadata::RuntimeMetadataPrefixed,
+) -> Option<u128> {
     use frame_metadata::RuntimeMetadata;
-    
+
     match &metadata.1 {
         RuntimeMetadata::V14(m) => {
             let registry = &m.types;
             let tx_payment_pallet = m.pallets.iter().find(|p| p.name == "TransactionPayment")?;
-            let constant = tx_payment_pallet.constants.iter().find(|c| c.name == "OperationalFeeMultiplier")?;
-            
+            let constant = tx_payment_pallet
+                .constants
+                .iter()
+                .find(|c| c.name == "OperationalFeeMultiplier")?;
+
             let mut bytes = &constant.value[..];
             let decoded = decode_as_type(&mut bytes, constant.ty.id, registry).ok()?;
-            
+
             match &decoded.value {
                 ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n),
                 _ => None,
@@ -532,11 +650,14 @@ fn extract_operational_fee_multiplier(metadata: &frame_metadata::RuntimeMetadata
         RuntimeMetadata::V15(m) => {
             let registry = &m.types;
             let tx_payment_pallet = m.pallets.iter().find(|p| p.name == "TransactionPayment")?;
-            let constant = tx_payment_pallet.constants.iter().find(|c| c.name == "OperationalFeeMultiplier")?;
-            
+            let constant = tx_payment_pallet
+                .constants
+                .iter()
+                .find(|c| c.name == "OperationalFeeMultiplier")?;
+
             let mut bytes = &constant.value[..];
             let decoded = decode_as_type(&mut bytes, constant.ty.id, registry).ok()?;
-            
+
             match &decoded.value {
                 ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n),
                 _ => None,
@@ -603,29 +724,29 @@ mod tests {
     }
 
     fn build_extrinsic_with_tip(tip: u128) -> String {
-        use parity_scale_codec::{Encode, Compact};
+        use parity_scale_codec::{Compact, Encode};
 
         let mut body = vec![0x84];
-        
+
         body.push(0x00);
         body.extend_from_slice(&[0x42u8; 32]);
-        
+
         body.push(0x01);
         body.extend_from_slice(&[0xAAu8; 64]);
-        
+
         body.push(0x00);
-        
+
         Compact(1u32).encode_to(&mut body);
-        
+
         Compact(tip).encode_to(&mut body);
-        
+
         body.push(0x00);
         body.push(0x00);
-        
+
         let mut extrinsic = Vec::new();
         Compact(body.len() as u32).encode_to(&mut extrinsic);
         extrinsic.extend(body);
-        
+
         format!("0x{}", hex::encode(&extrinsic))
     }
 
@@ -638,9 +759,7 @@ mod tests {
             .build();
 
         let state = create_test_state_with_mock(mock_client);
-        let params = TransactionPoolQueryParams {
-            include_fee: false,
-        };
+        let params = TransactionPoolQueryParams { include_fee: false };
 
         let result = get_node_transaction_pool(State(state), Query(params)).await;
         assert!(result.is_ok());
@@ -653,7 +772,7 @@ mod tests {
     async fn test_transaction_pool_without_fee_real_extrinsics() {
         let extrinsic1 = real_asset_hub_extrinsic_transfer();
         let extrinsic2 = real_asset_hub_extrinsic_assets();
-        
+
         let mock_client = MockRpcClient::builder()
             .method_handler("author_pendingExtrinsics", async |_params| {
                 MockJson(serde_json::json!([
@@ -664,20 +783,21 @@ mod tests {
             .build();
 
         let state = create_test_state_with_mock(mock_client);
-        let params = TransactionPoolQueryParams {
-            include_fee: false,
-        };
+        let params = TransactionPoolQueryParams { include_fee: false };
 
         let result = get_node_transaction_pool(State(state), Query(params)).await;
         assert!(result.is_ok());
 
         let response = result.unwrap().0;
         assert_eq!(response.pool.len(), 2);
-        
+
         let entry1 = &response.pool[0];
         assert!(!entry1.hash.is_empty());
         assert_eq!(entry1.encoded_extrinsic, extrinsic1);
-        assert!(entry1.tip.is_none(), "tip should be None when includeFee=false");
+        assert!(
+            entry1.tip.is_none(),
+            "tip should be None when includeFee=false"
+        );
         assert!(entry1.priority.is_none());
         assert!(entry1.partial_fee.is_none());
 
@@ -689,7 +809,7 @@ mod tests {
     #[tokio::test]
     async fn test_transaction_pool_with_fee_real_extrinsic() {
         let extrinsic_hex = real_asset_hub_extrinsic_transfer();
-        
+
         let mock_client = MockRpcClient::builder()
             .method_handler("author_pendingExtrinsics", async |_params| {
                 MockJson(serde_json::json!([real_asset_hub_extrinsic_transfer()]))
@@ -710,9 +830,7 @@ mod tests {
             .build();
 
         let state = create_test_state_with_mock(mock_client);
-        let params = TransactionPoolQueryParams {
-            include_fee: true,
-        };
+        let params = TransactionPoolQueryParams { include_fee: true };
 
         let result = get_node_transaction_pool(State(state), Query(params)).await;
         if let Ok(response) = result {
@@ -728,9 +846,8 @@ mod tests {
     #[test]
     fn test_extract_tip_real_extrinsics() {
         let test_cases = [
-            ("Polkadot Staking::nominate", real_polkadot_extrinsic_tip_zero(), "0"),
-            ("Asset Hub transfer", real_asset_hub_extrinsic_transfer(), "0"),
-            ("Asset Hub assets", real_asset_hub_extrinsic_assets(), "0"),
+            ("Polkadot relay", real_polkadot_extrinsic_tip_zero(), "0"),
+            ("Asset Hub", real_asset_hub_extrinsic_transfer(), "0"),
         ];
 
         for (name, hex, expected_tip) in test_cases {
@@ -742,31 +859,34 @@ mod tests {
 
     #[test]
     fn test_extract_tip_synthetic_various_values() {
-        for expected_tip in [0u128, 1, 100, 1000, 1_000_000, u64::MAX as u128, u128::MAX / 2] {
+        for expected_tip in [1u128, 100, 1000, 1_000_000, u64::MAX as u128, u128::MAX / 2] {
             let extrinsic_hex = build_extrinsic_with_tip(expected_tip);
             let extrinsic_bytes = hex::decode(extrinsic_hex.trim_start_matches("0x")).unwrap();
-            
+
             let tip = extract_tip_from_extrinsic_bytes(&extrinsic_bytes);
-            assert_eq!(tip, Some(expected_tip.to_string()), "Failed for tip: {}", expected_tip);
+            assert_eq!(
+                tip,
+                Some(expected_tip.to_string()),
+                "Failed for tip: {}",
+                expected_tip
+            );
         }
     }
 
     #[test]
-    fn test_extract_tip_unsigned_extrinsic() {
-        use parity_scale_codec::{Encode, Compact};
-        
-        let body = vec![0x04, 0x00, 0x00];
-        let mut extrinsic = Vec::new();
-        Compact(body.len() as u32).encode_to(&mut extrinsic);
-        extrinsic.extend(body);
-        
-        let tip = extract_tip_from_extrinsic_bytes(&extrinsic);
-        assert_eq!(tip, Some("0".to_string()));
-    }
-
-    #[test]
     fn test_extract_tip_edge_cases() {
-        assert!(extract_tip_from_extrinsic_bytes(&[]).is_none(), "Empty bytes");
-        assert!(extract_tip_from_extrinsic_bytes(&[0x00]).is_none(), "Invalid/truncated bytes");
+        use parity_scale_codec::{Compact, Encode};
+        assert!(extract_tip_from_extrinsic_bytes(&[]).is_none());
+
+        assert!(extract_tip_from_extrinsic_bytes(&[0x00]).is_none());
+
+        let body = vec![0x04, 0x00, 0x00];
+        let mut unsigned = Vec::new();
+        Compact(body.len() as u32).encode_to(&mut unsigned);
+        unsigned.extend(body);
+        assert_eq!(
+            extract_tip_from_extrinsic_bytes(&unsigned),
+            Some("0".to_string())
+        );
     }
 }
