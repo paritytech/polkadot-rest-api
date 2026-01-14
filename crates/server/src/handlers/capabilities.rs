@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use thiserror::Error;
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CapabilitiesResponse {
     chain: String,
     pallets: Vec<String>,

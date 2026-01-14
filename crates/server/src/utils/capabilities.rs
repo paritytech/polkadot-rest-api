@@ -65,6 +65,7 @@ pub fn pallets_in_metadata(meta: &RuntimeMetadataPrefixed) -> HashSet<String> {
     set
 }
 
+#[allow(dead_code)]
 pub fn check_pallets(meta: &RuntimeMetadataPrefixed, required: &[&str]) -> Result<(), Vec<String>> {
     let available = pallets_in_metadata(meta);
     let missing: Vec<String> = required
