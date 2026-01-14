@@ -48,7 +48,6 @@ pub struct NodeVersionResponse {
 pub async fn get_node_version(
     State(state): State<AppState>,
 ) -> Result<Json<NodeVersionResponse>, GetNodeVersionError> {
-    // Execute RPC calls in parallel, similar to the TypeScript implementation
     let (runtime_version_result, chain_result, version_result) = tokio::join!(
         state.legacy_rpc.state_get_runtime_version(None),
         state
@@ -64,8 +63,6 @@ pub async fn get_node_version(
     let chain = chain_result.map_err(GetNodeVersionError::SystemChainFailed)?;
     let client_version = version_result.map_err(GetNodeVersionError::SystemVersionFailed)?;
 
-    // Extract implName from runtime version
-    // The implName is in the "other" HashMap in the RuntimeVersion struct
     let client_impl_name = runtime_version
         .other
         .get("implName")

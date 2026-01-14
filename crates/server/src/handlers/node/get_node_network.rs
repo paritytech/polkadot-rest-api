@@ -130,7 +130,6 @@ pub async fn get_node_network(
                                 let roles_str = match roles {
                                     Value::String(s) => s.clone(),
                                     Value::Array(arr) => {
-                                        // If it's an array, join or convert
                                         arr.iter()
                                             .filter_map(|v| v.as_str())
                                             .collect::<Vec<_>>()
