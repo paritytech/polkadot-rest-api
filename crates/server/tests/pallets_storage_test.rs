@@ -2,7 +2,7 @@
 //!
 //! These tests verify the response format matches Sidecar's output exactly.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Test that DeprecationInfo::NotDeprecated serializes correctly
 #[test]
@@ -125,7 +125,10 @@ fn test_storage_item_metadata_serialization() {
     assert_eq!(serialized["type"]["map"]["value"], "3");
     assert_eq!(serialized["fallback"], "0x00");
     assert_eq!(serialized["docs"], "The full account information.");
-    assert_eq!(serialized["deprecationInfo"], json!({ "notDeprecated": null }));
+    assert_eq!(
+        serialized["deprecationInfo"],
+        json!({ "notDeprecated": null })
+    );
 }
 
 /// Test PalletsStorageResponse serialization matches Sidecar format
@@ -235,10 +238,7 @@ fn test_multiple_hashers_serialization() {
 
     let info = StorageTypeInfo::Map {
         map: MapTypeInfo {
-            hashers: vec![
-                "Blake2_128Concat".to_string(),
-                "Twox64Concat".to_string(),
-            ],
+            hashers: vec!["Blake2_128Concat".to_string(), "Twox64Concat".to_string()],
             key: "(0, 1)".to_string(),
             value: "2".to_string(),
         },

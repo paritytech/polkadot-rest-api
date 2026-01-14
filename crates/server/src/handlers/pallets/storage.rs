@@ -4,13 +4,13 @@
 //! Supports all metadata versions V9-V16.
 
 use crate::state::AppState;
-use config::ChainType;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json, extract::Path, extract::Query, extract::State, http::StatusCode, response::IntoResponse,
     response::Response,
 };
+use config::ChainType;
 use frame_metadata::RuntimeMetadata;
 use frame_metadata::decode_different::DecodeDifferent;
 use parity_scale_codec::Decode;
@@ -170,11 +170,10 @@ pub struct StorageItemMetadata {
     pub ty: StorageTypeInfo,
     pub fallback: String,
     pub docs: String,
-    /// Always present in Sidecar responses (notDeprecated or deprecated)
     pub deprecation_info: DeprecationInfo,
 }
 
-/// Storage type information (matching Sidecar format)
+/// Storage type information - untagged enum for Sidecar format
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum StorageTypeInfo {
@@ -182,7 +181,6 @@ pub enum StorageTypeInfo {
     Map { map: MapTypeInfo },
 }
 
-/// Map storage type details
 #[derive(Debug, Serialize)]
 pub struct MapTypeInfo {
     pub hashers: Vec<String>,
@@ -190,15 +188,11 @@ pub struct MapTypeInfo {
     pub value: String,
 }
 
-/// Deprecation information for storage items (matching Sidecar format)
-/// Sidecar uses tagged union: { "notDeprecated": null } or { "deprecated": { note, since } }
+/// Sidecar format: { "notDeprecated": null } or { "deprecated": { note, since } }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DeprecationInfo {
-    /// Not deprecated - serializes as { "notDeprecated": null }
-    /// Using Option<()> with None to get the exact Sidecar format
     NotDeprecated(Option<()>),
-    /// Deprecated with optional note and since
     Deprecated {
         #[serde(skip_serializing_if = "Option::is_none")]
         note: Option<String>,
@@ -208,10 +202,9 @@ pub enum DeprecationInfo {
 }
 
 // ============================================================================
-// Helper Functions for DecodeDifferent extraction
+// Helper Functions
 // ============================================================================
 
-/// Extract string from DecodeDifferent<&'static str, String>
 fn extract_str<'a>(s: &'a DecodeDifferent<&'static str, String>) -> &'a str {
     match s {
         DecodeDifferent::Decoded(v) => v.as_str(),
@@ -219,7 +212,6 @@ fn extract_str<'a>(s: &'a DecodeDifferent<&'static str, String>) -> &'a str {
     }
 }
 
-/// Extract docs from DecodeDifferent<&'static [&'static str], Vec<String>>
 fn extract_docs(docs: &DecodeDifferent<&'static [&'static str], Vec<String>>) -> String {
     match docs {
         DecodeDifferent::Decoded(v) => v.join("\n"),
@@ -227,11 +219,10 @@ fn extract_docs(docs: &DecodeDifferent<&'static [&'static str], Vec<String>>) ->
     }
 }
 
-/// Extract default bytes from ByteGetter (DecodeDifferent<DefaultByteGetter, Vec<u8>>)
 fn extract_default_bytes<G>(default: &DecodeDifferent<G, Vec<u8>>) -> String {
     match default {
         DecodeDifferent::Decoded(v) => format!("0x{}", hex::encode(v)),
-        DecodeDifferent::Encode(_) => "0x".to_string(), // Fallback for encoded
+        DecodeDifferent::Encode(_) => "0x".to_string(),
     }
 }
 
@@ -244,27 +235,19 @@ pub async fn get_pallets_storage(
     Path(pallet_id): Path<String>,
     Query(params): Query<StorageQueryParams>,
 ) -> Result<Response, GetPalletsStorageError> {
-    // Handle useRcBlock case
     if params.use_rc_block {
         return handle_use_rc_block(state, pallet_id, params).await;
     }
 
-    // Parse block identifier if provided
     let block_id = params
         .at
         .map(|s| s.parse::<crate::utils::BlockId>())
         .transpose()?;
 
-    // Resolve to a concrete block (hash + number)
     let resolved_block = utils::resolve_block(&state, block_id).await?;
-
-    // Get client at the specific block
     let client_at_block = state.client.at(resolved_block.number).await?;
-
-    // Get metadata from the client at that block
     let metadata = client_at_block.metadata();
 
-    // Build the response based on metadata version
     let response = build_storage_response(metadata, &pallet_id, &resolved_block, params.only_ids)?;
     Ok(Json(response).into_response())
 }
@@ -275,32 +258,31 @@ async fn handle_use_rc_block(
     pallet_id: String,
     params: StorageQueryParams,
 ) -> Result<Response, GetPalletsStorageError> {
-    // useRcBlock is only supported for Asset Hub chains
     if state.chain_info.chain_type != ChainType::AssetHub {
         return Err(GetPalletsStorageError::UseRcBlockNotSupported);
     }
 
-    // Relay chain connection must be configured
     if state.get_relay_chain_client().is_none() {
         return Err(GetPalletsStorageError::RelayChainNotConfigured);
     }
 
-    // Parse the block ID as a relay chain block
     let rc_block_id = params
         .at
         .as_ref()
         .ok_or(GetPalletsStorageError::AtParameterRequired)?
         .parse::<utils::BlockId>()?;
 
-    // Resolve the relay chain block
     let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().unwrap(),
-        state.get_relay_chain_rpc().unwrap(),
+        state
+            .get_relay_chain_rpc_client()
+            .expect("relay chain client checked above"),
+        state
+            .get_relay_chain_rpc()
+            .expect("relay chain rpc checked above"),
         Some(rc_block_id),
     )
     .await?;
 
-    // Find Asset Hub blocks included in this RC block
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
     if ah_blocks.is_empty() {
@@ -312,30 +294,28 @@ async fn handle_use_rc_block(
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {
-        // Get client at the Asset Hub block
         let client_at_block = state.client.at(ah_block.number).await?;
         let metadata = client_at_block.metadata();
 
-        // Build the storage response for this block
         let ah_resolved_block = utils::ResolvedBlock {
             hash: ah_block.hash.clone(),
             number: ah_block.number,
         };
 
-        let mut response = build_storage_response(metadata, &pallet_id, &ah_resolved_block, params.only_ids)?;
+        let mut response =
+            build_storage_response(metadata, &pallet_id, &ah_resolved_block, params.only_ids)?;
 
-        // Add RC block info
         response.rc_block_hash = Some(rc_block_hash.clone());
         response.rc_block_number = Some(rc_block_number.clone());
 
-        // Fetch Asset Hub timestamp
-        if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now") {
-            if let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await {
-                let timestamp_bytes = timestamp.into_bytes();
-                let mut cursor = &timestamp_bytes[..];
-                if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                    response.ah_timestamp = Some(timestamp_value.to_string());
-                }
+        // Fetch timestamp from Timestamp pallet
+        if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
+            && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
+        {
+            let timestamp_bytes = timestamp.into_bytes();
+            let mut cursor = &timestamp_bytes[..];
+            if let Ok(timestamp_value) = u64::decode(&mut cursor) {
+                response.ah_timestamp = Some(timestamp_value.to_string());
             }
         }
 
