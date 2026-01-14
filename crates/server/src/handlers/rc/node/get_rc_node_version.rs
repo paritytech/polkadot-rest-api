@@ -105,3 +105,111 @@ pub async fn get_rc_node_version(
         chain,
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::AppState;
+    use axum::extract::State;
+    use config::SidecarConfig;
+    use std::sync::Arc;
+    use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
+    use subxt_rpcs::client::{MockRpcClient, RpcClient};
+
+    fn create_test_state_with_relay_mock(relay_mock_client: MockRpcClient) -> AppState {
+        let config = SidecarConfig::default();
+        let primary_mock = MockRpcClient::builder().build();
+        let rpc_client = Arc::new(RpcClient::new(primary_mock));
+        let relay_rpc_client = Arc::new(RpcClient::new(relay_mock_client));
+        let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
+        let chain_info = crate::state::ChainInfo {
+            chain_type: config::ChainType::AssetHub,
+            spec_name: "statemint".to_string(),
+            spec_version: 1,
+            ss58_prefix: 0,
+        };
+
+        AppState {
+            config,
+            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
+                subxt_historic::SubstrateConfig::new(),
+                (*rpc_client).clone(),
+            )),
+            legacy_rpc,
+            rpc_client,
+            chain_info,
+            relay_client: None,
+            relay_rpc_client: Some(relay_rpc_client),
+            relay_chain_info: None,
+            fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
+            chain_configs: Arc::new(config::ChainConfigs::default()),
+            chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
+            route_registry: crate::routes::RouteRegistry::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_rc_node_version_success() {
+        let relay_mock = MockRpcClient::builder()
+            .method_handler("state_getRuntimeVersion", async |_params| {
+                MockJson(serde_json::json!({
+                    "specName": "polkadot",
+                    "implName": "parity-polkadot",
+                    "authoringVersion": 0,
+                    "specVersion": 1003000,
+                    "implVersion": 0,
+                    "apis": [],
+                    "transactionVersion": 26,
+                    "stateVersion": 1
+                }))
+            })
+            .method_handler("system_chain", async |_params| {
+                MockJson("Polkadot".to_string())
+            })
+            .method_handler("system_version", async |_params| {
+                MockJson("1.15.2-abcdef12".to_string())
+            })
+            .build();
+
+        let state = create_test_state_with_relay_mock(relay_mock);
+        let result = get_rc_node_version(State(state)).await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+        assert_eq!(response.chain, "Polkadot");
+        assert_eq!(response.client_version, "1.15.2-abcdef12");
+        assert_eq!(response.client_impl_name, "parity-polkadot");
+    }
+
+    #[tokio::test]
+    async fn test_get_rc_node_version_missing_impl_name() {
+        let relay_mock = MockRpcClient::builder()
+            .method_handler("state_getRuntimeVersion", async |_params| {
+                MockJson(serde_json::json!({
+                    "specName": "westend",
+                    "authoringVersion": 0,
+                    "specVersion": 1000000,
+                    "implVersion": 0,
+                    "apis": [],
+                    "transactionVersion": 26,
+                    "stateVersion": 1
+                }))
+            })
+            .method_handler("system_chain", async |_params| {
+                MockJson("Westend".to_string())
+            })
+            .method_handler("system_version", async |_params| {
+                MockJson("1.0.0".to_string())
+            })
+            .build();
+
+        let state = create_test_state_with_relay_mock(relay_mock);
+        let result = get_rc_node_version(State(state)).await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+        assert_eq!(response.chain, "Westend");
+        assert_eq!(response.client_version, "1.0.0");
+        assert_eq!(response.client_impl_name, "unknown");
+    }
+}

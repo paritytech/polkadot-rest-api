@@ -102,7 +102,6 @@ pub async fn get_node_network(
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
 
-    //TODO: check peers_info with a compatible node
     let peers_info = match state
         .rpc_client
         .request::<Value>("system_peers", rpc_params![])
@@ -129,12 +128,11 @@ pub async fn get_node_network(
                             if let Some(roles) = peer_obj.get("roles") {
                                 let roles_str = match roles {
                                     Value::String(s) => s.clone(),
-                                    Value::Array(arr) => {
-                                        arr.iter()
-                                            .filter_map(|v| v.as_str())
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
-                                    }
+                                    Value::Array(arr) => arr
+                                        .iter()
+                                        .filter_map(|v| v.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", "),
                                     _ => roles.to_string(),
                                 };
                                 transformed_peer
@@ -210,4 +208,169 @@ pub async fn get_node_network(
         local_listen_addresses,
         peers_info,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::AppState;
+    use axum::extract::State;
+    use config::SidecarConfig;
+    use std::sync::Arc;
+    use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
+    use subxt_rpcs::client::{MockRpcClient, RpcClient};
+
+    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+        let config = SidecarConfig::default();
+        let rpc_client = Arc::new(RpcClient::new(mock_client));
+        let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
+        let chain_info = crate::state::ChainInfo {
+            chain_type: config::ChainType::Relay,
+            spec_name: "test".to_string(),
+            spec_version: 1,
+            ss58_prefix: 42,
+        };
+
+        AppState {
+            config,
+            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
+                subxt_historic::SubstrateConfig::new(),
+                (*rpc_client).clone(),
+            )),
+            legacy_rpc,
+            rpc_client,
+            chain_info,
+            relay_client: None,
+            relay_rpc_client: None,
+            relay_chain_info: None,
+            fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
+            chain_configs: Arc::new(config::ChainConfigs::default()),
+            chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
+            route_registry: crate::routes::RouteRegistry::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_node_network_success() {
+        let mock_client = MockRpcClient::builder()
+            .method_handler("system_health", async |_params| {
+                MockJson(json!({
+                    "peers": 42,
+                    "isSyncing": false,
+                    "shouldHavePeers": true
+                }))
+            })
+            .method_handler("system_localPeerId", async |_params| {
+                MockJson("12D3KooWNDrKSayoZXGGE2dRSFW2g1iGPq3fTZE2U39ma9yZGKd3".to_string())
+            })
+            .method_handler("system_nodeRoles", async |_params| {
+                MockJson(vec!["Full".to_string()])
+            })
+            .method_handler("system_localListenAddresses", async |_params| {
+                MockJson(vec![
+                    "/ip4/127.0.0.1/tcp/30333".to_string(),
+                    "/ip4/192.168.1.1/tcp/30333".to_string(),
+                ])
+            })
+            .method_handler("system_peers", async |_params| {
+                MockJson(json!([
+                    {
+                        "peerId": "12D3KooWCamelCasePeer",
+                        "roles": "Full",
+                        "protocolVersion": 7,
+                        "bestHash": "0xabc123",
+                        "bestNumber": 12345678
+                    },
+                    {
+                        "peer_id": "12D3KooWSnakeCasePeer",
+                        "roles": "Light",
+                        "protocol_version": 8,
+                        "best_hash": "0xdef456",
+                        "best_number": 999999
+                    }
+                ]))
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+        let result = get_node_network(State(state)).await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+
+        assert_eq!(response.num_peers, 42);
+        assert!(!response.is_syncing);
+        assert!(response.should_have_peers);
+        assert_eq!(
+            response.local_peer_id,
+            "12D3KooWNDrKSayoZXGGE2dRSFW2g1iGPq3fTZE2U39ma9yZGKd3"
+        );
+        assert_eq!(response.local_listen_addresses.len(), 2);
+        assert_eq!(response.node_roles.len(), 1);
+
+        if let Value::Array(peers) = &response.peers_info {
+            assert_eq!(peers.len(), 2);
+
+            let camel_peer = &peers[0];
+            assert_eq!(
+                camel_peer.get("peerId").and_then(|v| v.as_str()),
+                Some("12D3KooWCamelCasePeer")
+            );
+            assert_eq!(
+                camel_peer.get("protocolVersion").and_then(|v| v.as_str()),
+                Some("7")
+            );
+
+            let snake_peer = &peers[1];
+            assert_eq!(
+                snake_peer.get("peerId").and_then(|v| v.as_str()),
+                Some("12D3KooWSnakeCasePeer")
+            );
+            assert_eq!(
+                snake_peer.get("protocolVersion").and_then(|v| v.as_str()),
+                Some("8")
+            );
+            assert_eq!(
+                snake_peer.get("bestNumber").and_then(|v| v.as_str()),
+                Some("999999")
+            );
+        } else {
+            panic!("Expected peers_info to be an array");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_node_network_peers_unavailable() {
+        let mock_client = MockRpcClient::builder()
+            .method_handler("system_health", async |_params| {
+                MockJson(json!({
+                    "peers": 10,
+                    "isSyncing": true,
+                    "shouldHavePeers": true
+                }))
+            })
+            .method_handler("system_localPeerId", async |_params| {
+                MockJson("12D3KooWTestPeerId".to_string())
+            })
+            .method_handler("system_nodeRoles", async |_params| {
+                MockJson(vec!["Authority".to_string()])
+            })
+            .method_handler("system_localListenAddresses", async |_params| {
+                MockJson(vec!["/ip4/127.0.0.1/tcp/30333".to_string()])
+            })
+            .build();
+
+        let state = create_test_state_with_mock(mock_client);
+        let result = get_node_network(State(state)).await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+
+        assert_eq!(response.num_peers, 10);
+        assert!(response.is_syncing);
+        assert_eq!(
+            response.peers_info,
+            Value::String("Cannot query system_peers from node.".to_string())
+        );
+    }
 }

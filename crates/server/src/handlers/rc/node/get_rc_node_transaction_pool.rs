@@ -1,4 +1,6 @@
-use crate::handlers::node::{TransactionPoolEntry, TransactionPoolQueryParams, TransactionPoolResponse};
+use crate::handlers::node::{
+    TransactionPoolEntry, TransactionPoolQueryParams, TransactionPoolResponse,
+};
 use crate::state::AppState;
 use crate::utils;
 use axum::{
@@ -146,8 +148,7 @@ pub async fn get_rc_node_transaction_pool(
 
     let extrinsics =
         extrinsics_result.map_err(GetRcNodeTransactionPoolError::PendingExtrinsicsFailed)?;
-    let latest_hash =
-        latest_hash_result.map_err(GetRcNodeTransactionPoolError::BlockHashFailed)?;
+    let latest_hash = latest_hash_result.map_err(GetRcNodeTransactionPoolError::BlockHashFailed)?;
 
     let mut pool = Vec::new();
 
@@ -283,7 +284,10 @@ async fn query_fee_info(
     block_hash: &str,
 ) -> Result<Value, subxt_rpcs::Error> {
     rpc_client
-        .request("payment_queryInfo", rpc_params![encoded_extrinsic, block_hash])
+        .request(
+            "payment_queryInfo",
+            rpc_params![encoded_extrinsic, block_hash],
+        )
         .await
 }
 
@@ -293,7 +297,10 @@ async fn query_fee_details(
     block_hash: &str,
 ) -> Result<Value, subxt_rpcs::Error> {
     rpc_client
-        .request("payment_queryFeeDetails", rpc_params![encoded_extrinsic, block_hash])
+        .request(
+            "payment_queryFeeDetails",
+            rpc_params![encoded_extrinsic, block_hash],
+        )
         .await
 }
 
@@ -326,9 +333,7 @@ async fn calculate_priority(
             .get("weight")
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse::<u64>().ok())
-            .ok_or_else(|| {
-                GetRcNodeTransactionPoolError::ConstantNotFound("weight".to_string())
-            })?
+            .ok_or_else(|| GetRcNodeTransactionPoolError::ConstantNotFound("weight".to_string()))?
     };
 
     let max_block_weight = get_max_block_weight(rpc_client, latest_hash).await?;
@@ -358,14 +363,18 @@ async fn calculate_priority(
                             .and_then(|v| v.as_str())
                             .and_then(|s| s.parse::<u128>().ok())
                             .ok_or_else(|| {
-                                GetRcNodeTransactionPoolError::ConstantNotFound("baseFee".to_string())
+                                GetRcNodeTransactionPoolError::ConstantNotFound(
+                                    "baseFee".to_string(),
+                                )
                             })?;
                         let len_fee = inclusion_fee
                             .get("lenFee")
                             .and_then(|v| v.as_str())
                             .and_then(|s| s.parse::<u128>().ok())
                             .ok_or_else(|| {
-                                GetRcNodeTransactionPoolError::ConstantNotFound("lenFee".to_string())
+                                GetRcNodeTransactionPoolError::ConstantNotFound(
+                                    "lenFee".to_string(),
+                                )
                             })?;
                         let adjusted_weight_fee = inclusion_fee
                             .get("adjustedWeightFee")
@@ -812,9 +821,7 @@ mod tests {
                     "partialFee": "10000000"
                 }))
             })
-            .method_handler("state_getMetadata", async |_params| {
-                MockJson("0x6d657461")
-            })
+            .method_handler("state_getMetadata", async |_params| MockJson("0x6d657461"))
             .build();
 
         let state = create_test_state_with_relay_mock(relay_mock);
@@ -847,7 +854,12 @@ mod tests {
             let extrinsic_bytes = hex::decode(extrinsic_hex.trim_start_matches("0x")).unwrap();
 
             let tip = extract_tip_from_extrinsic_bytes(&extrinsic_bytes);
-            assert_eq!(tip, Some(expected_tip.to_string()), "Failed for tip: {}", expected_tip);
+            assert_eq!(
+                tip,
+                Some(expected_tip.to_string()),
+                "Failed for tip: {}",
+                expected_tip
+            );
         }
     }
 
@@ -862,6 +874,9 @@ mod tests {
         let mut unsigned = Vec::new();
         Compact(body.len() as u32).encode_to(&mut unsigned);
         unsigned.extend(body);
-        assert_eq!(extract_tip_from_extrinsic_bytes(&unsigned), Some("0".to_string()));
+        assert_eq!(
+            extract_tip_from_extrinsic_bytes(&unsigned),
+            Some("0".to_string())
+        );
     }
 }
