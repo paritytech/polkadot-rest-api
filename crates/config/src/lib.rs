@@ -1,3 +1,4 @@
+mod args;
 mod chain;
 mod error;
 mod express;
@@ -5,7 +6,6 @@ mod log;
 mod metrics;
 mod spec_versions;
 mod substrate;
-mod args;
 
 pub use chain::{
     ChainConfig, ChainConfigError, ChainConfigs, Hasher,
