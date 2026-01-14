@@ -1,0 +1,226 @@
+{
+  "at": {
+    "hash": "0xe360cc614f6de435a6e1e2598795aca7ca9dfc658b84ecf8e7139b89d7a161e3",
+    "height": "5000000"
+  },
+  "pallet": "system",
+  "palletIndex": "0",
+  "items": [
+    {
+      "name": "Account",
+      "modifier": "Default",
+      "type": {
+        "map": {
+          "hashers": [
+            "Blake2_128Concat"
+          ],
+          "key": "T::AccountId",
+          "value": "AccountInfo<T::Index, T::AccountData>"
+        }
+      },
+      "fallback": "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "docs": " The full account information for a particular account ID.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "ExtrinsicCount",
+      "modifier": "Optional",
+      "type": {
+        "plain": "u32"
+      },
+      "fallback": "0x00",
+      "docs": " Total extrinsics count for the current block.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "BlockWeight",
+      "modifier": "Default",
+      "type": {
+        "plain": "weights::ExtrinsicsWeight"
+      },
+      "fallback": "0x00000000000000000000000000000000",
+      "docs": " The current weight for the block.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "AllExtrinsicsLen",
+      "modifier": "Optional",
+      "type": {
+        "plain": "u32"
+      },
+      "fallback": "0x00",
+      "docs": " Total length (in bytes) for all extrinsics put together, for the current block.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "BlockHash",
+      "modifier": "Default",
+      "type": {
+        "map": {
+          "hashers": [
+            "Twox64Concat"
+          ],
+          "key": "T::BlockNumber",
+          "value": "T::Hash"
+        }
+      },
+      "fallback": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "docs": " Map of block numbers to block hashes.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "ExtrinsicData",
+      "modifier": "Default",
+      "type": {
+        "map": {
+          "hashers": [
+            "Twox64Concat"
+          ],
+          "key": "u32",
+          "value": "Vec<u8>"
+        }
+      },
+      "fallback": "0x00",
+      "docs": " Extrinsics data for the current block (maps an extrinsic's index to its data).",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "Number",
+      "modifier": "Default",
+      "type": {
+        "plain": "T::BlockNumber"
+      },
+      "fallback": "0x00000000",
+      "docs": " The current block number being processed. Set by `execute_block`.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "ParentHash",
+      "modifier": "Default",
+      "type": {
+        "plain": "T::Hash"
+      },
+      "fallback": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "docs": " Hash of the previous block.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "ExtrinsicsRoot",
+      "modifier": "Default",
+      "type": {
+        "plain": "T::Hash"
+      },
+      "fallback": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "docs": " Extrinsics root of the current block, also part of the block header.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "Digest",
+      "modifier": "Default",
+      "type": {
+        "plain": "DigestOf<T>"
+      },
+      "fallback": "0x00",
+      "docs": " Digest of the current block, also part of the block header.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "Events",
+      "modifier": "Default",
+      "type": {
+        "plain": "Vec<EventRecord<T::Event, T::Hash>>"
+      },
+      "fallback": "0x00",
+      "docs": " Events deposited for the current block.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "EventCount",
+      "modifier": "Default",
+      "type": {
+        "plain": "EventIndex"
+      },
+      "fallback": "0x00000000",
+      "docs": " The number of events in the `Events<T>` list.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "EventTopics",
+      "modifier": "Default",
+      "type": {
+        "map": {
+          "hashers": [
+            "Blake2_128Concat"
+          ],
+          "key": "T::Hash",
+          "value": "Vec<(T::BlockNumber, EventIndex)>"
+        }
+      },
+      "fallback": "0x00",
+      "docs": " Mapping between a topic (represented by T::Hash) and a vector of indexes\n of events in the `<Events<T>>` list.\n\n All topic vectors have deterministic storage locations depending on the topic. This\n allows light-clients to leverage the changes trie storage tracking mechanism and\n in case of changes fetch the list of events of interest.\n\n The value has the type `(T::BlockNumber, EventIndex)` because if we used only just\n the `EventIndex` then in case if the topic has the same contents on the next block\n no notification will be triggered thus the event might be lost.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "LastRuntimeUpgrade",
+      "modifier": "Optional",
+      "type": {
+        "plain": "LastRuntimeUpgradeInfo"
+      },
+      "fallback": "0x00",
+      "docs": " Stores the `spec_version` and `spec_name` of when the last runtime upgrade happened.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "UpgradedToU32RefCount",
+      "modifier": "Default",
+      "type": {
+        "plain": "bool"
+      },
+      "fallback": "0x00",
+      "docs": " True if we have upgraded so that `type RefCount` is `u32`. False (default) if not.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "ExecutionPhase",
+      "modifier": "Optional",
+      "type": {
+        "plain": "Phase"
+      },
+      "fallback": "0x00",
+      "docs": " The execution phase of the block.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    }
+  ]
+}
