@@ -114,6 +114,7 @@ mod tests {
             chain_configs: Arc::new(config::ChainConfigs::default()),
             chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
             route_registry: crate::routes::RouteRegistry::new(),
+            relay_chain_rpc: None,
         }
     }
 

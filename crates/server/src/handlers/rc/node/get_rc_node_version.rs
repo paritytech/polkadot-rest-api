@@ -139,7 +139,10 @@ mod tests {
             rpc_client,
             chain_info,
             relay_client: None,
-            relay_rpc_client: Some(relay_rpc_client),
+            relay_rpc_client: Some(relay_rpc_client.clone()),
+            relay_chain_rpc: Some(Arc::new(subxt_rpcs::LegacyRpcMethods::new(
+                (*relay_rpc_client).clone(),
+            ))),
             relay_chain_info: None,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
             chain_configs: Arc::new(config::ChainConfigs::default()),
