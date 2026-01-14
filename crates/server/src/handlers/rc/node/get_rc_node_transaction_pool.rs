@@ -204,7 +204,7 @@ fn extract_tip_from_extrinsic_bytes(bytes: &[u8]) -> Option<String> {
         return None;
     }
 
-    let mut cursor = &bytes[..];
+    let mut cursor = bytes;
     Compact::<u32>::decode(&mut cursor).ok()?;
 
     if cursor.is_empty() {
@@ -486,23 +486,15 @@ fn extract_max_block_weight(metadata: &RuntimeMetadataPrefixed) -> Option<u64> {
             let decoded =
                 decode_as_type(&mut bytes, block_weights_constant.ty.id, registry).ok()?;
 
-            if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value {
-                if let Some((_, max_block_val)) = fields.iter().find(|(name, _)| name == "maxBlock")
-                {
-                    if let ValueDef::Composite(scale_value::Composite::Named(weight_fields)) =
-                        &max_block_val.value
-                    {
-                        if let Some((_, ref_time_val)) =
-                            weight_fields.iter().find(|(name, _)| name == "refTime")
-                        {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
-                                &ref_time_val.value
-                            {
-                                return Some(*n as u64);
-                            }
-                        }
-                    }
-                }
+            if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value
+                && let Some((_, max_block_val)) = fields.iter().find(|(name, _)| name == "maxBlock")
+                && let ValueDef::Composite(scale_value::Composite::Named(weight_fields)) =
+                    &max_block_val.value
+                && let Some((_, ref_time_val)) =
+                    weight_fields.iter().find(|(name, _)| name == "refTime")
+                && let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &ref_time_val.value
+            {
+                return Some(*n as u64);
             }
             None
         }
@@ -518,23 +510,15 @@ fn extract_max_block_weight(metadata: &RuntimeMetadataPrefixed) -> Option<u64> {
             let decoded =
                 decode_as_type(&mut bytes, block_weights_constant.ty.id, registry).ok()?;
 
-            if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value {
-                if let Some((_, max_block_val)) = fields.iter().find(|(name, _)| name == "maxBlock")
-                {
-                    if let ValueDef::Composite(scale_value::Composite::Named(weight_fields)) =
-                        &max_block_val.value
-                    {
-                        if let Some((_, ref_time_val)) =
-                            weight_fields.iter().find(|(name, _)| name == "refTime")
-                        {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
-                                &ref_time_val.value
-                            {
-                                return Some(*n as u64);
-                            }
-                        }
-                    }
-                }
+            if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value
+                && let Some((_, max_block_val)) = fields.iter().find(|(name, _)| name == "maxBlock")
+                && let ValueDef::Composite(scale_value::Composite::Named(weight_fields)) =
+                    &max_block_val.value
+                && let Some((_, ref_time_val)) =
+                    weight_fields.iter().find(|(name, _)| name == "refTime")
+                && let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &ref_time_val.value
+            {
+                return Some(*n as u64);
             }
             None
         }
@@ -564,37 +548,34 @@ fn extract_max_block_length(metadata: &RuntimeMetadataPrefixed, class: &str) -> 
             let mut bytes = &block_length_constant.value[..];
             let decoded = decode_as_type(&mut bytes, block_length_constant.ty.id, registry).ok()?;
 
-            if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value {
-                if let Some((_, max_val)) = fields.iter().find(|(name, _)| name == "max") {
-                    if let ValueDef::Composite(scale_value::Composite::Unnamed(array_fields)) =
-                        &max_val.value
+            if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value
+                && let Some((_, max_val)) = fields.iter().find(|(name, _)| name == "max")
+            {
+                if let ValueDef::Composite(scale_value::Composite::Unnamed(array_fields)) =
+                    &max_val.value
+                {
+                    let fields_vec: Vec<_> = array_fields.iter().collect();
+                    if let Some(class_val) = fields_vec.get(class_index)
+                        && let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
+                            &class_val.value
                     {
-                        let fields_vec: Vec<_> = array_fields.iter().collect();
-                        if let Some(class_val) = fields_vec.get(class_index) {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
-                                &class_val.value
-                            {
-                                return Some(*n as u64);
-                            }
-                        }
-                    } else if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) =
-                        &max_val.value
+                        return Some(*n as u64);
+                    }
+                } else if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) =
+                    &max_val.value
+                {
+                    let class_name = match class_index {
+                        0 => "normal",
+                        1 => "operational",
+                        2 => "mandatory",
+                        _ => return None,
+                    };
+                    if let Some((_, class_val)) =
+                        named_fields.iter().find(|(name, _)| name == class_name)
+                        && let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
+                            &class_val.value
                     {
-                        let class_name = match class_index {
-                            0 => "normal",
-                            1 => "operational",
-                            2 => "mandatory",
-                            _ => return None,
-                        };
-                        if let Some((_, class_val)) =
-                            named_fields.iter().find(|(name, _)| name == class_name)
-                        {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
-                                &class_val.value
-                            {
-                                return Some(*n as u64);
-                            }
-                        }
+                        return Some(*n as u64);
                     }
                 }
             }
@@ -611,37 +592,34 @@ fn extract_max_block_length(metadata: &RuntimeMetadataPrefixed, class: &str) -> 
             let mut bytes = &block_length_constant.value[..];
             let decoded = decode_as_type(&mut bytes, block_length_constant.ty.id, registry).ok()?;
 
-            if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value {
-                if let Some((_, max_val)) = fields.iter().find(|(name, _)| name == "max") {
-                    if let ValueDef::Composite(scale_value::Composite::Unnamed(array_fields)) =
-                        &max_val.value
+            if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value
+                && let Some((_, max_val)) = fields.iter().find(|(name, _)| name == "max")
+            {
+                if let ValueDef::Composite(scale_value::Composite::Unnamed(array_fields)) =
+                    &max_val.value
+                {
+                    let fields_vec: Vec<_> = array_fields.iter().collect();
+                    if let Some(class_val) = fields_vec.get(class_index)
+                        && let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
+                            &class_val.value
                     {
-                        let fields_vec: Vec<_> = array_fields.iter().collect();
-                        if let Some(class_val) = fields_vec.get(class_index) {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
-                                &class_val.value
-                            {
-                                return Some(*n as u64);
-                            }
-                        }
-                    } else if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) =
-                        &max_val.value
+                        return Some(*n as u64);
+                    }
+                } else if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) =
+                    &max_val.value
+                {
+                    let class_name = match class_index {
+                        0 => "normal",
+                        1 => "operational",
+                        2 => "mandatory",
+                        _ => return None,
+                    };
+                    if let Some((_, class_val)) =
+                        named_fields.iter().find(|(name, _)| name == class_name)
+                        && let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
+                            &class_val.value
                     {
-                        let class_name = match class_index {
-                            0 => "normal",
-                            1 => "operational",
-                            2 => "mandatory",
-                            _ => return None,
-                        };
-                        if let Some((_, class_val)) =
-                            named_fields.iter().find(|(name, _)| name == class_name)
-                        {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
-                                &class_val.value
-                            {
-                                return Some(*n as u64);
-                            }
-                        }
+                        return Some(*n as u64);
                     }
                 }
             }
