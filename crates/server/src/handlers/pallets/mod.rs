@@ -16,6 +16,7 @@ pub mod nomination_pools;
 pub mod pool_assets;
 pub mod staking_progress;
 pub mod staking_validators;
+pub mod storage;
 
 pub use asset_conversion::{get_liquidity_pools, get_next_available_id};
 pub use assets::pallets_assets_asset_info;
@@ -30,3 +31,4 @@ pub use staking_progress::pallets_staking_progress;
 pub use staking_progress::rc_pallets_staking_progress;
 pub use staking_validators::pallets_staking_validators;
 pub use staking_validators::rc_pallets_staking_validators;
+pub use storage::get_pallets_storage;
