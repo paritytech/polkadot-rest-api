@@ -1,0 +1,182 @@
+// ================================================================================================
+// Assets Data Fetching
+// ================================================================================================
+
+use crate::{handlers::accounts::{AssetBalance, AssetBalancesError, DecodedAssetBalance, utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field}}, state::AppState};
+use parity_scale_codec::Decode;
+use futures::StreamExt;
+use scale_value::{Composite, Value, ValueDef};
+use sp_core::crypto::AccountId32;
+use subxt_historic::storage::StorageValue;
+
+/// Fetch all asset IDs from storage
+pub async fn query_all_assets_id(
+    state: &AppState,
+    block_number: u64,
+) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
+    let client_at_block = state.client.at(block_number).await?;
+    let storage_entry = client_at_block.storage().entry("Assets", "Asset")?;
+    let mut asset_ids = Vec::new();
+
+    let mut values = storage_entry.iter(()).await?;
+    while let Some(result) = values.next().await {
+        let entry = result?;
+        // Extract asset ID from storage key
+        // Storage key structure for Assets::Asset(AssetId):
+        // - Bytes 0-15: Twox128("Assets")
+        // - Bytes 16-31: Twox128("Asset")
+        // - Bytes 32-47: Blake2_128Concat hash of asset_id
+        // - Bytes 48+: Raw SCALE-encoded u32 asset_id
+        let key = entry.key_bytes();
+
+        // Skip pallet hash (16) + storage hash (16) + Blake2_128 hash (16) = 48 bytes
+        // Then decode the raw u32 asset ID
+        if key.len() >= 52 {  // 48 bytes prefix + 4 bytes u32
+            if let Ok(asset_id) = u32::decode(&mut &key[48..]) {
+                asset_ids.push(asset_id);
+            }
+        }
+    }
+    Ok(asset_ids)
+}
+
+/// Query asset balances for an account
+pub async fn query_assets(
+    state: &AppState,
+    block_number: u64,
+    account: &AccountId32,
+    assets: &[u32],
+) -> Result<Vec<AssetBalance>, AssetBalancesError> {
+    let client_at_block = state.client.at(block_number).await?;
+    let storage_entry = client_at_block.storage().entry("Assets", "Account")?;
+
+    // Encode the storage key: (asset_id, account_id)
+    // Convert AccountId32 to [u8; 32] for encoding
+    let account_bytes: &[u8; 32] = account.as_ref();
+
+    let mut balances = Vec::new();
+
+    for asset_id in assets {
+        let key = (asset_id, account_bytes);
+        let storage_value = storage_entry.fetch(&key).await?;
+
+        if let Some(value) = storage_value {
+            // Decode the storage value
+            let decoded = decode_asset_balance(&value).await?;
+            if let Some(decoded_balance) = decoded {
+                balances.push(AssetBalance {
+                    asset_id: *asset_id,
+                    balance: decoded_balance.balance,
+                    is_frozen: decoded_balance.is_frozen,
+                    is_sufficient: decoded_balance.is_sufficient,
+                });
+            }
+        }
+    }
+
+    Ok(balances)
+}
+
+
+// ================================================================================================
+// Asset Balance Decoding
+// ================================================================================================
+
+/// Decode asset balance from storage value, handling multiple runtime versions
+pub async fn decode_asset_balance(
+    value: &StorageValue<'_>,
+) -> Result<Option<DecodedAssetBalance>, AssetBalancesError> {
+    // Decode as scale_value::Value to inspect structure
+    let decoded: Value<()> = value.decode_as().map_err(|_e| {
+        AssetBalancesError::DecodeFailed(parity_scale_codec::Error::from("Failed to decode storage value"))
+    })?;
+
+    // Handle Option wrapper (post-v9160)
+    let balance_value = match &decoded.value {
+        ValueDef::Variant(variant) => {
+            // This is an Option enum
+            if variant.name == "Some" {
+                // Extract the inner value from the composite
+                match &variant.values {
+                    Composite::Unnamed(values) => {
+                        if let Some(inner) = values.first() {
+                            inner
+                        } else {
+                            // Empty Some variant, return None
+                            return Ok(None);
+                        }
+                    }
+                    Composite::Named(fields) => {
+                        if let Some((_, inner)) = fields.first() {
+                            inner
+                        } else {
+                            return Ok(None);
+                        }
+                    }
+                }
+            } else {
+                // None variant
+                return Ok(None);
+            }
+        }
+        _ => &decoded,
+    };
+
+    // Now decode the actual balance structure
+    match &balance_value.value {
+        ValueDef::Composite(composite) => decode_balance_composite(composite),
+        _ => {
+            // Fallback: return zero balance
+            Ok(Some(DecodedAssetBalance {
+                balance: "0".to_string(),
+                is_frozen: false,
+                is_sufficient: false,
+            }))
+        }
+    }
+}
+
+/// Decode balance from a composite structure
+fn decode_balance_composite(
+    composite: &Composite<()>,
+) -> Result<Option<DecodedAssetBalance>, AssetBalancesError> {
+    match composite {
+        Composite::Named(fields) => {
+            // Extract fields by name
+            let balance = extract_u128_field(fields, "balance").unwrap_or(0);
+            let is_frozen = extract_bool_field(fields, "isFrozen")
+                .or_else(|| extract_bool_field(fields, "is_frozen"))
+                .unwrap_or(false);
+
+            // Handle different runtime versions for isSufficient
+            let is_sufficient = if let Some(reason_value) = fields.iter().find(|(name, _)| name == "reason") {
+                // Post-v9160: reason enum
+                extract_is_sufficient_from_reason(&reason_value.1)
+            } else if let Some(sufficient) = extract_bool_field(fields, "sufficient") {
+                // v9160: sufficient boolean
+                sufficient
+            } else if let Some(is_sufficient) = extract_bool_field(fields, "isSufficient")
+                .or_else(|| extract_bool_field(fields, "is_sufficient"))
+            {
+                // Pre-v9160: isSufficient boolean
+                is_sufficient
+            } else {
+                false
+            };
+
+            Ok(Some(DecodedAssetBalance {
+                balance: balance.to_string(),
+                is_frozen,
+                is_sufficient,
+            }))
+        }
+        Composite::Unnamed(_) => {
+            // Fallback: return zero balance
+            Ok(Some(DecodedAssetBalance {
+                balance: "0".to_string(),
+                is_frozen: false,
+                is_sufficient: false,
+            }))
+        }
+    }
+}

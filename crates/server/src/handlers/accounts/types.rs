@@ -67,6 +67,15 @@ pub struct AssetBalance {
     pub is_sufficient: bool,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecodedAssetBalance {
+    /// Balance as string (u128 serialized as decimal string)
+    pub balance: String,
+    pub is_frozen: bool,
+    pub is_sufficient: bool,
+}
+
 // ================================================================================================
 // Error Types
 // ================================================================================================
