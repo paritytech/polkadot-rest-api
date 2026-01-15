@@ -112,90 +112,53 @@ pub async fn fetch_node_network(rpc_client: &RpcClient) -> Result<NodeNetworkRes
 }
 
 fn transform_peers_info(peers: Value) -> Value {
-    if let Value::Array(peers_array) = peers {
-        let transformed: Vec<Value> = peers_array
-            .into_iter()
-            .filter_map(|peer| {
-                if let Value::Object(peer_obj) = peer {
-                    let mut transformed_peer = serde_json::Map::new();
+    let Value::Array(peers_array) = peers else {
+        return Value::Array(vec![]);
+    };
 
-                    let peer_id = peer_obj
-                        .get("peerId")
-                        .or_else(|| peer_obj.get("peer_id"))
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
+    let transformed: Vec<Value> = peers_array
+        .into_iter()
+        .filter_map(|peer| {
+            let Value::Object(peer_obj) = peer else {
+                return None;
+            };
 
-                    if let Some(pid) = peer_id {
-                        transformed_peer.insert("peerId".to_string(), Value::String(pid));
-                    }
+            let peer_id = peer_obj.get("peerId")?.as_str()?;
 
-                    if let Some(roles) = peer_obj.get("roles") {
-                        let roles_str = match roles {
-                            Value::String(s) => s.clone(),
-                            Value::Array(arr) => arr
-                                .iter()
-                                .filter_map(|v| v.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", "),
-                            _ => roles.to_string(),
-                        };
-                        transformed_peer.insert("roles".to_string(), Value::String(roles_str));
-                    }
+            let mut result = serde_json::Map::new();
+            result.insert("peerId".to_string(), Value::String(peer_id.to_string()));
 
-                    if let Some(protocol_version) = peer_obj
-                        .get("protocolVersion")
-                        .or_else(|| peer_obj.get("protocol_version"))
-                    {
-                        let protocol_version_str = match protocol_version {
-                            Value::Number(n) => n.to_string(),
-                            Value::String(s) => s.clone(),
-                            _ => protocol_version.to_string(),
-                        };
-                        transformed_peer.insert(
-                            "protocolVersion".to_string(),
-                            Value::String(protocol_version_str),
-                        );
-                    }
+            if let Some(roles) = peer_obj.get("roles").and_then(|v| v.as_str()) {
+                result.insert("roles".to_string(), Value::String(roles.to_string()));
+            }
 
-                    if let Some(best_hash) = peer_obj
-                        .get("bestHash")
-                        .or_else(|| peer_obj.get("best_hash"))
-                    {
-                        let best_hash_str = match best_hash {
-                            Value::String(s) => s.clone(),
-                            _ => best_hash.to_string(),
-                        };
-                        transformed_peer
-                            .insert("bestHash".to_string(), Value::String(best_hash_str));
-                    }
+            if let Some(protocol_version) = peer_obj.get("protocolVersion") {
+                let version_str = match protocol_version {
+                    Value::Number(n) => n.to_string(),
+                    Value::String(s) => s.clone(),
+                    _ => protocol_version.to_string(),
+                };
+                result.insert("protocolVersion".to_string(), Value::String(version_str));
+            }
 
-                    if let Some(best_number) = peer_obj
-                        .get("bestNumber")
-                        .or_else(|| peer_obj.get("best_number"))
-                    {
-                        let best_number_str = match best_number {
-                            Value::Number(n) => n.to_string(),
-                            Value::String(s) => s.clone(),
-                            _ => best_number.to_string(),
-                        };
-                        transformed_peer
-                            .insert("bestNumber".to_string(), Value::String(best_number_str));
-                    }
+            if let Some(best_hash) = peer_obj.get("bestHash").and_then(|v| v.as_str()) {
+                result.insert("bestHash".to_string(), Value::String(best_hash.to_string()));
+            }
 
-                    if transformed_peer.contains_key("peerId") {
-                        Some(Value::Object(transformed_peer))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect();
-        Value::Array(transformed)
-    } else {
-        Value::Array(vec![])
-    }
+            if let Some(best_number) = peer_obj.get("bestNumber") {
+                let num_str = match best_number {
+                    Value::Number(n) => n.to_string(),
+                    Value::String(s) => s.clone(),
+                    _ => return Some(Value::Object(result)),
+                };
+                result.insert("bestNumber".to_string(), Value::String(num_str));
+            }
+
+            Some(Value::Object(result))
+        })
+        .collect();
+
+    Value::Array(transformed)
 }
 
 // ============================================================================

@@ -146,18 +146,16 @@ mod tests {
             .method_handler("system_peers", async |_params| {
                 MockJson(json!([
                     {
-                        "peerId": "12D3KooWCamelCasePeer",
-                        "roles": "Full",
-                        "protocolVersion": 7,
-                        "bestHash": "0xabc123",
-                        "bestNumber": 12345678
+                        "peerId": "12D3KooWFBkZwKye8pKvnG3KH5TN6UNf146Ciz1hCJUZ6mwtE5Qw",
+                        "roles": "FULL",
+                        "bestHash": "0x9e9c9e87c875a5e5c9296e50d4eca8eb8dc8513ac4fad29756ce9e65066f6525",
+                        "bestNumber": 29522680
                     },
                     {
-                        "peer_id": "12D3KooWSnakeCasePeer",
-                        "roles": "Light",
-                        "protocol_version": 8,
-                        "best_hash": "0xdef456",
-                        "best_number": 999999
+                        "peerId": "12D3KooWCu3pLDAcr1JKf1WoETGaPkkbNTSoYP7cUxkLJpNDUdnd",
+                        "roles": "AUTHORITY",
+                        "bestHash": "0x52478fd400eaf77adc60455b7a72c7f75a76012078a678c492f2fdfb24fc1ee5",
+                        "bestNumber": 29522676
                     }
                 ]))
             })
@@ -182,28 +180,28 @@ mod tests {
         if let Value::Array(peers) = &response.peers_info {
             assert_eq!(peers.len(), 2);
 
-            let camel_peer = &peers[0];
+            let full_peer = &peers[0];
             assert_eq!(
-                camel_peer.get("peerId").and_then(|v| v.as_str()),
-                Some("12D3KooWCamelCasePeer")
+                full_peer.get("peerId").and_then(|v| v.as_str()),
+                Some("12D3KooWFBkZwKye8pKvnG3KH5TN6UNf146Ciz1hCJUZ6mwtE5Qw")
             );
             assert_eq!(
-                camel_peer.get("protocolVersion").and_then(|v| v.as_str()),
-                Some("7")
+                full_peer.get("roles").and_then(|v| v.as_str()),
+                Some("FULL")
+            );
+            assert_eq!(
+                full_peer.get("bestNumber").and_then(|v| v.as_str()),
+                Some("29522680")
             );
 
-            let snake_peer = &peers[1];
+            let auth_peer = &peers[1];
             assert_eq!(
-                snake_peer.get("peerId").and_then(|v| v.as_str()),
-                Some("12D3KooWSnakeCasePeer")
+                auth_peer.get("peerId").and_then(|v| v.as_str()),
+                Some("12D3KooWCu3pLDAcr1JKf1WoETGaPkkbNTSoYP7cUxkLJpNDUdnd")
             );
             assert_eq!(
-                snake_peer.get("protocolVersion").and_then(|v| v.as_str()),
-                Some("8")
-            );
-            assert_eq!(
-                snake_peer.get("bestNumber").and_then(|v| v.as_str()),
-                Some("999999")
+                auth_peer.get("roles").and_then(|v| v.as_str()),
+                Some("AUTHORITY")
             );
         } else {
             panic!("Expected peers_info to be an array");
