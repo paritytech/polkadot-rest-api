@@ -1,6 +1,8 @@
 -- Blocks endpoint benchmark script
 -- Tests the /blocks/:blockId endpoint for latency and throughput
 
+local util = require("../util")
+
 -- Generate random block IDs in a realistic range
 -- Adjust this range based on your chain's block height
 request = function()
@@ -13,8 +15,5 @@ delay = function()
     -- No delay by default
 end
 
--- Signal completion
-done = function()
-    -- Setup complete
-end
-
+-- Signal completion with statistics
+done = util.done()

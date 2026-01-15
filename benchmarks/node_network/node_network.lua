@@ -1,11 +1,11 @@
--- AHM Info endpoint benchmark script
--- Tests the /v1/ahm-info endpoint for latency and throughput
+-- Node network endpoint benchmark script
+-- Tests the /v1/node/network endpoint for latency and throughput
 
 local util = require("../util")
 
 -- Setup the request
 request = function()
-    return wrk.format("GET", "/v1/ahm-info")
+    return wrk.format("GET", "/v1/node/network")
 end
 
 -- No delay between requests for maximum throughput
