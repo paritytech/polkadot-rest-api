@@ -266,7 +266,10 @@ impl SidecarConfig {
     pub fn from_env() -> Result<Self, ConfigError> {
         // Get the path to the env file from the command line argument
         let env_file = args::Args::parse_args().env_file;
+        Self::from_env_with_file(&env_file)
+    }
 
+    pub fn from_env_with_file(env_file: &str) -> Result<Self, ConfigError> {
         // Load the environment variables from the specified file
         dotenv::from_filename(&env_file).ok();
 
@@ -393,6 +396,7 @@ mod tests {
         }
 
         let result = SidecarConfig::from_env();
+
         assert!(result.is_err());
 
         // Clean up
@@ -427,5 +431,30 @@ mod tests {
             rc: None,
         };
         assert!(!config.has_relay_chain());
+    }
+
+    #[test]
+    fn test_env_file_non_existent() {
+        // Create a temp directory with no .env files
+        let temp_dir = tempfile::tempdir().unwrap();
+        std::env::set_current_dir(&temp_dir).unwrap();
+
+        let non_existent_file = ".env.non_existent";
+
+        unsafe {
+            std::env::set_var("SAS_EXPRESS_PORT", "8011");
+            std::env::set_var("SAS_LOG_LEVEL", "debug");
+        }
+
+        let config = SidecarConfig::from_env_with_file(non_existent_file).unwrap();
+
+        assert_eq!(config.express.port, 8011);
+        assert_eq!(config.log.level, "debug");
+
+        // Clean up
+        unsafe {
+            std::env::remove_var("SAS_EXPRESS_PORT");
+            std::env::remove_var("SAS_LOG_LEVEL");
+        }
     }
 }
