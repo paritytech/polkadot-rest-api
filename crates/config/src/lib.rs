@@ -271,7 +271,7 @@ impl SidecarConfig {
 
     pub fn from_env_with_file(env_file: &str) -> Result<Self, ConfigError> {
         // Load the environment variables from the specified file
-        dotenv::from_filename(&env_file).ok();
+        dotenv::from_filename(env_file).ok();
 
         // Load flat env config
         let env_config = envy::prefixed("SAS_").from_env::<EnvConfig>()?;
@@ -456,5 +456,21 @@ mod tests {
             std::env::remove_var("SAS_EXPRESS_PORT");
             std::env::remove_var("SAS_LOG_LEVEL");
         }
+    }
+
+    #[test]
+    fn test_env_file_unknown_var() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        std::env::set_current_dir(&temp_dir).unwrap();
+
+        let env_path = temp_dir.path().join(".env");
+
+        // Instead of SAS_EXPRESS_PORT setting SAS_EXPSS_PRT as environment variable
+        std::fs::write(&env_path, "SAS_EXPSS_PRT=8011\n").unwrap();
+
+        let result = SidecarConfig::from_env_with_file(env_path.to_str().unwrap());
+
+        // It will take the default enviroment variables hence the default SAS_EXPRESS_PORT=8080
+        assert_eq!(result.unwrap().express.port, 8080);
     }
 }
