@@ -54,7 +54,7 @@ impl From<FetchError> for GetNodeTransactionPoolError {
 impl IntoResponse for GetNodeTransactionPoolError {
     fn into_response(self) -> axum::response::Response {
         use axum::http::StatusCode;
-        
+
         let (status, message) = match &self {
             GetNodeTransactionPoolError::PendingExtrinsicsFailed(err)
             | GetNodeTransactionPoolError::FeeInfoFailed(err)
@@ -178,15 +178,15 @@ mod tests {
         use parity_scale_codec::{Compact, Encode};
 
         let mut body = vec![0x84];
-        
+
         body.push(0x00);
         body.extend_from_slice(&[0x42u8; 32]);
-        
+
         body.push(0x01);
         body.extend_from_slice(&[0xAAu8; 64]);
 
         body.push(0x00);
-        
+
         Compact(1u32).encode_to(&mut body);
 
         Compact(tip).encode_to(&mut body);
@@ -197,7 +197,7 @@ mod tests {
         let mut extrinsic = Vec::new();
         Compact(body.len() as u32).encode_to(&mut extrinsic);
         extrinsic.extend(body);
-        
+
         format!("0x{}", hex::encode(&extrinsic))
     }
 
@@ -223,7 +223,7 @@ mod tests {
     async fn test_transaction_pool_without_fee_real_extrinsics() {
         let extrinsic1 = real_asset_hub_extrinsic_transfer();
         let extrinsic2 = real_asset_hub_extrinsic_assets();
-        
+
         let mock_client = MockRpcClient::builder()
             .method_handler("author_pendingExtrinsics", async |_params| {
                 MockJson(serde_json::json!([
@@ -241,7 +241,7 @@ mod tests {
 
         let response = result.unwrap().0;
         assert_eq!(response.pool.len(), 2);
-        
+
         let entry1 = &response.pool[0];
         assert!(!entry1.hash.is_empty());
         assert_eq!(entry1.encoded_extrinsic, extrinsic1);
@@ -260,7 +260,7 @@ mod tests {
     #[tokio::test]
     async fn test_transaction_pool_with_fee_real_extrinsic() {
         let extrinsic_hex = real_asset_hub_extrinsic_transfer();
-        
+
         let mock_client = MockRpcClient::builder()
             .method_handler("author_pendingExtrinsics", async |_params| {
                 MockJson(serde_json::json!([real_asset_hub_extrinsic_transfer()]))
@@ -305,7 +305,7 @@ mod tests {
             let bytes = hex::decode(hex.trim_start_matches("0x")).unwrap();
             let tip = extract_tip_from_extrinsic_bytes(&bytes);
             assert_eq!(tip, Some(expected_tip.to_string()), "Failed for: {}", name);
-                    }
+        }
     }
 
     #[test]
@@ -313,8 +313,8 @@ mod tests {
         for expected_tip in [1u128, 100, 1000, 1_000_000, u64::MAX as u128, u128::MAX / 2] {
             let extrinsic_hex = build_extrinsic_with_tip(expected_tip);
             let extrinsic_bytes = hex::decode(extrinsic_hex.trim_start_matches("0x")).unwrap();
-        
-        let tip = extract_tip_from_extrinsic_bytes(&extrinsic_bytes);
+
+            let tip = extract_tip_from_extrinsic_bytes(&extrinsic_bytes);
             assert_eq!(
                 tip,
                 Some(expected_tip.to_string()),
