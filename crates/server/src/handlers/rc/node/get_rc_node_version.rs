@@ -1,4 +1,5 @@
 use crate::handlers::node::NodeVersionResponse;
+use crate::handlers::node::common::{FetchError, fetch_node_version};
 use crate::state::AppState;
 use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
@@ -6,7 +7,7 @@ use config::ChainType;
 use serde_json::json;
 use std::sync::Arc;
 use subxt_historic::SubstrateConfig;
-use subxt_rpcs::{LegacyRpcMethods, RpcClient, client::rpc_params};
+use subxt_rpcs::{LegacyRpcMethods, RpcClient};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -25,6 +26,15 @@ pub enum GetRcNodeVersionError {
 
     #[error("Failed to get system version")]
     SystemVersionFailed(#[source] subxt_rpcs::Error),
+}
+
+impl From<FetchError> for GetRcNodeVersionError {
+    fn from(err: FetchError) -> Self {
+        match err {
+            FetchError::RpcFailed(e) => GetRcNodeVersionError::RuntimeVersionFailed(e),
+            _ => unreachable!("fetch_node_version only returns RpcFailed"),
+        }
+    }
 }
 
 impl IntoResponse for GetRcNodeVersionError {
@@ -78,32 +88,10 @@ pub async fn get_rc_node_version(
     State(state): State<AppState>,
 ) -> Result<Json<NodeVersionResponse>, GetRcNodeVersionError> {
     let relay_rpc_client = get_relay_rpc_client(&state).await?;
-
     let relay_legacy_rpc = LegacyRpcMethods::<SubstrateConfig>::new((*relay_rpc_client).clone());
 
-    let (runtime_version_result, chain_result, version_result) = tokio::join!(
-        relay_legacy_rpc.state_get_runtime_version(None),
-        relay_rpc_client.request::<String>("system_chain", rpc_params![]),
-        relay_rpc_client.request::<String>("system_version", rpc_params![]),
-    );
-
-    let runtime_version =
-        runtime_version_result.map_err(GetRcNodeVersionError::RuntimeVersionFailed)?;
-    let chain = chain_result.map_err(GetRcNodeVersionError::SystemChainFailed)?;
-    let client_version = version_result.map_err(GetRcNodeVersionError::SystemVersionFailed)?;
-
-    let client_impl_name = runtime_version
-        .other
-        .get("implName")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
-
-    Ok(Json(NodeVersionResponse {
-        client_version,
-        client_impl_name,
-        chain,
-    }))
+    let response = fetch_node_version(&relay_rpc_client, &relay_legacy_rpc).await?;
+    Ok(Json(response))
 }
 
 #[cfg(test)]

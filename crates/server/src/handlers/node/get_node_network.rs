@@ -3,8 +3,9 @@ use crate::utils;
 use axum::{Json, extract::State, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use subxt_rpcs::client::rpc_params;
 use thiserror::Error;
+
+use super::common::{FetchError, fetch_node_network};
 
 #[derive(Debug, Error)]
 pub enum GetNodeNetworkError {
@@ -19,6 +20,15 @@ pub enum GetNodeNetworkError {
 
     #[error("Failed to get local listen addresses")]
     LocalListenAddressesFailed(#[source] subxt_rpcs::Error),
+}
+
+impl From<FetchError> for GetNodeNetworkError {
+    fn from(err: FetchError) -> Self {
+        match err {
+            FetchError::RpcFailed(e) => GetNodeNetworkError::SystemHealthFailed(e),
+            _ => unreachable!("fetch_node_network only returns RpcFailed"),
+        }
+    }
 }
 
 impl IntoResponse for GetNodeNetworkError {
@@ -66,148 +76,8 @@ where
 pub async fn get_node_network(
     State(state): State<AppState>,
 ) -> Result<Json<NodeNetworkResponse>, GetNodeNetworkError> {
-    let (health_result, peer_id_result, roles_result, addresses_result) = tokio::join!(
-        state
-            .rpc_client
-            .request::<Value>("system_health", rpc_params![]),
-        state
-            .rpc_client
-            .request::<String>("system_localPeerId", rpc_params![]),
-        state
-            .rpc_client
-            .request::<Vec<String>>("system_nodeRoles", rpc_params![]),
-        state
-            .rpc_client
-            .request::<Vec<String>>("system_localListenAddresses", rpc_params![]),
-    );
-
-    let health = health_result.map_err(GetNodeNetworkError::SystemHealthFailed)?;
-    let local_peer_id = peer_id_result.map_err(GetNodeNetworkError::LocalPeerIdFailed)?;
-    let node_roles_raw = roles_result.map_err(GetNodeNetworkError::NodeRolesFailed)?;
-    let local_listen_addresses =
-        addresses_result.map_err(GetNodeNetworkError::LocalListenAddressesFailed)?;
-
-    let node_roles: Vec<Value> = node_roles_raw
-        .into_iter()
-        .map(|role| json!({ role.to_lowercase(): null }))
-        .collect();
-
-    let num_peers = health.get("peers").and_then(|v| v.as_u64()).unwrap_or(0);
-    let is_syncing = health
-        .get("isSyncing")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let should_have_peers = health
-        .get("shouldHavePeers")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
-
-    let peers_info = match state
-        .rpc_client
-        .request::<Value>("system_peers", rpc_params![])
-        .await
-    {
-        Ok(peers) => {
-            if let Value::Array(peers_array) = peers {
-                let transformed: Vec<Value> = peers_array
-                    .into_iter()
-                    .filter_map(|peer| {
-                        if let Value::Object(peer_obj) = peer {
-                            let mut transformed_peer = serde_json::Map::new();
-
-                            let peer_id = peer_obj
-                                .get("peerId")
-                                .or_else(|| peer_obj.get("peer_id"))
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string());
-
-                            if let Some(pid) = peer_id {
-                                transformed_peer.insert("peerId".to_string(), Value::String(pid));
-                            }
-
-                            if let Some(roles) = peer_obj.get("roles") {
-                                let roles_str = match roles {
-                                    Value::String(s) => s.clone(),
-                                    Value::Array(arr) => arr
-                                        .iter()
-                                        .filter_map(|v| v.as_str())
-                                        .collect::<Vec<_>>()
-                                        .join(", "),
-                                    _ => roles.to_string(),
-                                };
-                                transformed_peer
-                                    .insert("roles".to_string(), Value::String(roles_str));
-                            }
-
-                            if let Some(protocol_version) = peer_obj
-                                .get("protocolVersion")
-                                .or_else(|| peer_obj.get("protocol_version"))
-                            {
-                                let protocol_version_str = match protocol_version {
-                                    Value::Number(n) => n.to_string(),
-                                    Value::String(s) => s.clone(),
-                                    _ => protocol_version.to_string(),
-                                };
-                                transformed_peer.insert(
-                                    "protocolVersion".to_string(),
-                                    Value::String(protocol_version_str),
-                                );
-                            }
-
-                            if let Some(best_hash) = peer_obj
-                                .get("bestHash")
-                                .or_else(|| peer_obj.get("best_hash"))
-                            {
-                                let best_hash_str = match best_hash {
-                                    Value::String(s) => s.clone(),
-                                    _ => best_hash.to_string(),
-                                };
-                                transformed_peer
-                                    .insert("bestHash".to_string(), Value::String(best_hash_str));
-                            }
-
-                            if let Some(best_number) = peer_obj
-                                .get("bestNumber")
-                                .or_else(|| peer_obj.get("best_number"))
-                            {
-                                let best_number_str = match best_number {
-                                    Value::Number(n) => n.to_string(),
-                                    Value::String(s) => s.clone(),
-                                    _ => best_number.to_string(),
-                                };
-                                transformed_peer.insert(
-                                    "bestNumber".to_string(),
-                                    Value::String(best_number_str),
-                                );
-                            }
-
-                            if transformed_peer.contains_key("peerId") {
-                                Some(Value::Object(transformed_peer))
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                Value::Array(transformed)
-            } else {
-                Value::Array(vec![])
-            }
-        }
-        Err(_) => Value::String("Cannot query system_peers from node.".to_string()),
-    };
-
-    Ok(Json(NodeNetworkResponse {
-        node_roles,
-        num_peers,
-        is_syncing,
-        should_have_peers,
-        local_peer_id,
-        local_listen_addresses,
-        peers_info,
-    }))
+    let response = fetch_node_network(&state.rpc_client).await?;
+    Ok(Json(response))
 }
 
 #[cfg(test)]

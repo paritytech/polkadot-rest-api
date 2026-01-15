@@ -3,8 +3,9 @@ use crate::utils;
 use axum::{Json, extract::State, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use subxt_rpcs::client::rpc_params;
 use thiserror::Error;
+
+use super::common::{FetchError, fetch_node_version};
 
 #[derive(Debug, Error)]
 pub enum GetNodeVersionError {
@@ -16,6 +17,15 @@ pub enum GetNodeVersionError {
 
     #[error("Failed to get system version")]
     SystemVersionFailed(#[source] subxt_rpcs::Error),
+}
+
+impl From<FetchError> for GetNodeVersionError {
+    fn from(err: FetchError) -> Self {
+        match err {
+            FetchError::RpcFailed(e) => GetNodeVersionError::RuntimeVersionFailed(e),
+            _ => unreachable!("fetch_node_version only returns RpcFailed"),
+        }
+    }
 }
 
 impl IntoResponse for GetNodeVersionError {
@@ -48,33 +58,8 @@ pub struct NodeVersionResponse {
 pub async fn get_node_version(
     State(state): State<AppState>,
 ) -> Result<Json<NodeVersionResponse>, GetNodeVersionError> {
-    let (runtime_version_result, chain_result, version_result) = tokio::join!(
-        state.legacy_rpc.state_get_runtime_version(None),
-        state
-            .rpc_client
-            .request::<String>("system_chain", rpc_params![]),
-        state
-            .rpc_client
-            .request::<String>("system_version", rpc_params![]),
-    );
-
-    let runtime_version =
-        runtime_version_result.map_err(GetNodeVersionError::RuntimeVersionFailed)?;
-    let chain = chain_result.map_err(GetNodeVersionError::SystemChainFailed)?;
-    let client_version = version_result.map_err(GetNodeVersionError::SystemVersionFailed)?;
-
-    let client_impl_name = runtime_version
-        .other
-        .get("implName")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
-
-    Ok(Json(NodeVersionResponse {
-        client_version,
-        client_impl_name,
-        chain,
-    }))
+    let response = fetch_node_version(&state.rpc_client, &state.legacy_rpc).await?;
+    Ok(Json(response))
 }
 
 #[cfg(test)]

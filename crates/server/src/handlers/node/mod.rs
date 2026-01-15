@@ -1,3 +1,4 @@
+pub mod common;
 mod get_node_network;
 mod get_node_transaction_pool;
 mod get_node_version;
