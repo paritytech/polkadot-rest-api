@@ -30,7 +30,7 @@ async fn test_asset_approvals_basic() -> Result<()> {
 
     // Use a known account ID for testing
     let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu"; // Alice
-    let delegate = "14E5nqKAp3oAJcg1sidSfnwQ55kVZj8HYLqaRsq9NmzCmHpi"; // Bob
+    let delegate = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5"; // Bob
     let asset_id = 1984; // USDT on Asset Hub
     let endpoint = format!(
         "/accounts/{}/asset-approvals?assetId={}&delegate={}",
@@ -116,7 +116,7 @@ async fn test_asset_approvals_at_specific_block() -> Result<()> {
     let local_client = get_client().await?;
 
     let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
-    let delegate = "14E5nqKAp3oAJcg1sidSfnwQ55kVZj8HYLqaRsq9NmzCmHpi";
+    let delegate = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
     let asset_id = 1984;
     let block_number = 10260000;
     let endpoint = format!(
@@ -167,7 +167,7 @@ async fn test_asset_approvals_invalid_address() -> Result<()> {
     let local_client = get_client().await?;
 
     let invalid_address = "invalid-address-123";
-    let delegate = "14E5nqKAp3oAJcg1sidSfnwQ55kVZj8HYLqaRsq9NmzCmHpi";
+    let delegate = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
     let asset_id = 1984;
     let endpoint = format!(
         "/accounts/{}/asset-approvals?assetId={}&delegate={}",
@@ -274,39 +274,47 @@ async fn test_asset_approvals_missing_required_params() -> Result<()> {
     );
     println!("{}", "═".repeat(80).bright_white());
 
-    // Test missing assetId
+    // Test missing assetId - uses get() instead of get_json() because Axum returns plain text for missing query params
     let endpoint_no_asset = format!(
-        "/accounts/{}/asset-approvals?delegate=14E5nqKAp3oAJcg1sidSfnwQ55kVZj8HYLqaRsq9NmzCmHpi",
+        "/accounts/{}/asset-approvals?delegate=15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5",
         account_id
     );
-    let (status_no_asset, _) = local_client
-        .get_json(&format!("/v1{}", endpoint_no_asset))
+    let response_no_asset = local_client
+        .get(&format!("/v1{}", endpoint_no_asset))
         .await
         .context("Failed to fetch from local API")?;
 
     assert_eq!(
-        status_no_asset.as_u16(),
+        response_no_asset.status.as_u16(),
         400,
         "Expected 400 Bad Request for missing assetId, got {}",
-        status_no_asset
+        response_no_asset.status
+    );
+    assert!(
+        response_no_asset.body.contains("assetId"),
+        "Error message should mention missing assetId"
     );
     println!("{} Missing assetId returns 400", "✓".green());
 
-    // Test missing delegate
+    // Test missing delegate - uses get() instead of get_json() because Axum returns plain text for missing query params
     let endpoint_no_delegate = format!(
         "/accounts/{}/asset-approvals?assetId=1984",
         account_id
     );
-    let (status_no_delegate, _) = local_client
-        .get_json(&format!("/v1{}", endpoint_no_delegate))
+    let response_no_delegate = local_client
+        .get(&format!("/v1{}", endpoint_no_delegate))
         .await
         .context("Failed to fetch from local API")?;
 
     assert_eq!(
-        status_no_delegate.as_u16(),
+        response_no_delegate.status.as_u16(),
         400,
         "Expected 400 Bad Request for missing delegate, got {}",
-        status_no_delegate
+        response_no_delegate.status
+    );
+    assert!(
+        response_no_delegate.body.contains("delegate"),
+        "Error message should mention missing delegate"
     );
     println!("{} Missing delegate returns 400", "✓".green());
 
@@ -320,7 +328,7 @@ async fn test_asset_approvals_use_rc_block() -> Result<()> {
     let local_client = get_client().await?;
 
     let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
-    let delegate = "14E5nqKAp3oAJcg1sidSfnwQ55kVZj8HYLqaRsq9NmzCmHpi";
+    let delegate = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
     let asset_id = 1984;
     let rc_block_number = 10554957;
     let endpoint = format!(
@@ -409,7 +417,7 @@ async fn test_asset_approvals_use_rc_block_empty() -> Result<()> {
     let local_client = get_client().await?;
 
     let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
-    let delegate = "14E5nqKAp3oAJcg1sidSfnwQ55kVZj8HYLqaRsq9NmzCmHpi";
+    let delegate = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
     let asset_id = 1984;
     // Block 10554958 is a Relay Chain block that doesn't include any Asset Hub blocks
     let rc_block_number = 10554958;
