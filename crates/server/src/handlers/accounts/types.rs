@@ -560,6 +560,134 @@ impl IntoResponse for PoolAssetBalancesError {
 }
 
 // ================================================================================================
+// Pool Asset Approvals Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/pool-asset-approvals endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolAssetApprovalQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    #[serde(default)]
+    pub at: Option<String>,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+
+    /// The pool asset ID to query approval for (required)
+    pub asset_id: u32,
+
+    /// The delegate address with spending approval (required)
+    pub delegate: String,
+}
+
+/// Response for GET /accounts/{accountId}/pool-asset-approvals
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolAssetApprovalResponse {
+    pub at: BlockInfo,
+
+    /// The approved amount (null if approval doesn't exist)
+    pub amount: Option<String>,
+
+    /// The deposit associated with the approval (null if approval doesn't exist)
+    pub deposit: Option<String>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Decoded pool asset approval data
+#[derive(Debug, Clone)]
+pub struct DecodedPoolAssetApproval {
+    pub amount: u128,
+    pub deposit: u128,
+}
+
+// ================================================================================================
+// Pool Asset Approval Error Types
+// ================================================================================================
+
+#[derive(Debug, Error)]
+pub enum PoolAssetApprovalError {
+    #[error("Invalid block parameter: {0}")]
+    InvalidBlockParam(#[from] utils::BlockIdParseError),
+
+    #[error("Block resolution failed: {0}")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Invalid account address: {0}")]
+    InvalidAddress(String),
+
+    #[error("Invalid delegate address: {0}")]
+    InvalidDelegateAddress(String),
+
+    #[error("The runtime does not include the pool assets pallet at this block")]
+    PoolAssetsPalletNotAvailable,
+
+    #[error("Failed to query storage: {0}")]
+    StorageQueryFailed(#[from] StorageError),
+
+    #[error("Failed to get client at block: {0}")]
+    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+
+    #[error("useRcBlock is only supported on Asset Hub chains")]
+    UseRcBlockNotSupported,
+
+    #[error("Relay chain not configured for this Asset Hub")]
+    RelayChainNotConfigured,
+
+    #[error("Relay chain block mapping failed: {0}")]
+    RcBlockMappingFailed(#[from] RcBlockError),
+
+    #[error("Failed to decode storage value: {0}")]
+    DecodeFailed(#[from] parity_scale_codec::Error),
+
+    #[error("Failed to fetch storage entry")]
+    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+}
+
+impl IntoResponse for PoolAssetApprovalError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            PoolAssetApprovalError::InvalidBlockParam(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            PoolAssetApprovalError::InvalidAddress(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            PoolAssetApprovalError::InvalidDelegateAddress(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            PoolAssetApprovalError::PoolAssetsPalletNotAvailable => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            PoolAssetApprovalError::UseRcBlockNotSupported => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            PoolAssetApprovalError::RelayChainNotConfigured => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            PoolAssetApprovalError::BlockResolveFailed(_) => {
+                (StatusCode::NOT_FOUND, self.to_string())
+            }
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+
+        let body = Json(json!({
+            "error": message
+        }));
+        (status, body).into_response()
+    }
+}
+
+// ================================================================================================
 // Account Convert Types
 // ================================================================================================
 

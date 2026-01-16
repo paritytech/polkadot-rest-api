@@ -40,4 +40,11 @@ pub fn accounts_routes(registry: &RouteRegistry) -> Router<AppState> {
             "get",
             get(accounts::get_pool_asset_balances),
         )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/accounts/:accountId/pool-asset-approvals",
+            "get",
+            get(accounts::get_pool_asset_approvals),
+        )
 }
