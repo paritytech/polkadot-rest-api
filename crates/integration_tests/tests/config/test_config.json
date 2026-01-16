@@ -274,6 +274,15 @@
         "query_params": {},
         "fixture_path": "asset-hub-polkadot/blocks_10260000_post_migration.json",
         "description": "Test block endpoint at Asset Hub Polkadot block 10,260,000 (post-migration, Asset Hub era, after migration ended at 10,259,208)"
+      },
+      {
+        "endpoint": "/v1/pallets/assets/{assetId}/asset-info",
+        "block_height": null,
+        "account_id": null,
+        "asset_id": "1984",
+        "query_params": { "at": "10260000" },
+        "fixture_path": "asset-hub-polkadot/pallets_assets_1984_asset_info_10260000.json",
+        "description": "Test pallets assets asset-info for USDT (asset 1984) at Asset Hub Polkadot block 10,260,000"
       }
     ],
     "asset-hub-kusama": [
@@ -340,6 +349,15 @@
         "query_params": {},
         "fixture_path": "asset-hub-kusama/blocks_11152000_post_migration.json",
         "description": "Test block endpoint at Asset Hub Kusama block 11,152,000 (post-migration, Asset Hub era, after migration ended at 11,151,931)"
+      },
+      {
+        "endpoint": "/v1/pallets/assets/{assetId}/asset-info",
+        "block_height": null,
+        "account_id": null,
+        "asset_id": "1984",
+        "query_params": { "at": "11152000" },
+        "fixture_path": "asset-hub-kusama/pallets_assets_1984_asset_info_11152000.json",
+        "description": "Test pallets assets asset-info for USDT (asset 1984) at Asset Hub Kusama block 11,152,000"
       }
     ]
   }
