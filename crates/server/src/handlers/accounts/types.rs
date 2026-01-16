@@ -441,6 +441,125 @@ impl IntoResponse for BalanceInfoError {
 }
 
 // ================================================================================================
+// Pool Asset Balances Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/pool-asset-balances endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolAssetBalancesQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    #[serde(default)]
+    pub at: Option<String>,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+
+    /// Optional list of asset IDs to query (queries all if omitted)
+    #[serde(default)]
+    pub assets: Vec<u32>,
+}
+
+/// Response for GET /accounts/{accountId}/pool-asset-balances
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolAssetBalancesResponse {
+    pub at: BlockInfo,
+    pub pool_assets: Vec<PoolAssetBalance>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Pool asset balance information
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolAssetBalance {
+    pub asset_id: u32,
+    /// Balance as string (u128 serialized as decimal string)
+    pub balance: String,
+    pub is_frozen: bool,
+    pub is_sufficient: bool,
+}
+
+// ================================================================================================
+// Pool Asset Balances Error Types
+// ================================================================================================
+
+#[derive(Debug, Error)]
+pub enum PoolAssetBalancesError {
+    #[error("Invalid block parameter: {0}")]
+    InvalidBlockParam(#[from] utils::BlockIdParseError),
+
+    #[error("Block resolution failed: {0}")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Invalid account address: {0}")]
+    InvalidAddress(String),
+
+    #[error("The runtime does not include the pool assets pallet at this block")]
+    PoolAssetsPalletNotAvailable,
+
+    #[error("Failed to query storage: {0}")]
+    StorageQueryFailed(#[from] StorageError),
+
+    #[error("Failed to get client at block: {0}")]
+    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+
+    #[error("useRcBlock is only supported on Asset Hub chains")]
+    UseRcBlockNotSupported,
+
+    #[error("Relay chain not configured for this Asset Hub")]
+    RelayChainNotConfigured,
+
+    #[error("Relay chain block mapping failed: {0}")]
+    RcBlockMappingFailed(#[from] RcBlockError),
+
+    #[error("Failed to decode storage value: {0}")]
+    DecodeFailed(#[from] parity_scale_codec::Error),
+
+    #[error("Failed to fetch storage entry")]
+    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+}
+
+impl IntoResponse for PoolAssetBalancesError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            PoolAssetBalancesError::InvalidBlockParam(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            PoolAssetBalancesError::InvalidAddress(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            PoolAssetBalancesError::PoolAssetsPalletNotAvailable => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            PoolAssetBalancesError::UseRcBlockNotSupported => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            PoolAssetBalancesError::RelayChainNotConfigured => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            PoolAssetBalancesError::BlockResolveFailed(_) => {
+                (StatusCode::NOT_FOUND, self.to_string())
+            }
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+
+        let body = Json(json!({
+            "error": message
+        }));
+        (status, body).into_response()
+    }
+}
+
+// ================================================================================================
 // Account Convert Types
 // ================================================================================================
 
