@@ -189,8 +189,12 @@ async fn handle_use_rc_block(
         .parse::<utils::BlockId>()?;
 
     let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().expect("relay chain client checked above"),
-        state.get_relay_chain_rpc().expect("relay chain rpc checked above"),
+        state
+            .get_relay_chain_rpc_client()
+            .expect("relay chain client checked above"),
+        state
+            .get_relay_chain_rpc()
+            .expect("relay chain rpc checked above"),
         Some(rc_block_id),
     )
     .await?;
@@ -246,10 +250,7 @@ where
     T: Config + 'client,
     C: OnlineClientAtBlockT<'client, T>,
 {
-    let asset_storage = client_at_block
-        .storage()
-        .entry("Assets", "Asset")
-        .ok()?;
+    let asset_storage = client_at_block.storage().entry("Assets", "Asset").ok()?;
 
     let asset_value = asset_storage.fetch([asset_id]).await.ok()??;
     let raw_bytes = asset_value.into_bytes();
@@ -280,10 +281,7 @@ where
     T: Config + 'client,
     C: OnlineClientAtBlockT<'client, T>,
 {
-    let metadata_storage = client_at_block
-        .storage()
-        .entry("Assets", "Metadata")
-        .ok()?;
+    let metadata_storage = client_at_block.storage().entry("Assets", "Metadata").ok()?;
 
     let metadata_value = metadata_storage.fetch([asset_id]).await.ok()??;
     let raw_bytes = metadata_value.into_bytes();
@@ -306,10 +304,7 @@ where
     T: Config + 'client,
     C: OnlineClientAtBlockT<'client, T>,
 {
-    let timestamp_entry = client_at_block
-        .storage()
-        .entry("Timestamp", "Now")
-        .ok()?;
+    let timestamp_entry = client_at_block.storage().entry("Timestamp", "Now").ok()?;
 
     let timestamp = timestamp_entry.fetch(()).await.ok()??;
     let timestamp_bytes = timestamp.into_bytes();

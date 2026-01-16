@@ -11,6 +11,7 @@ This project is a Rust-based alternative to substrate-api-sidecar, designed to p
 ### ⚠️ Breaking Changes ⚠️
 
 - All API endpoints are now versioned under the `/v1` prefix.
+- `/v1/pallets/assets/{assetId}/asset-info` - Now returns historical data when using the `?at=` query parameter. Sidecar's implementation returned current state regardless of the `at` parameter.
 
 ### API Changes
 
