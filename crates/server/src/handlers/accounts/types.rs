@@ -775,3 +775,116 @@ impl IntoResponse for AccountConvertError {
         (status, body).into_response()
     }
 }
+
+// ================================================================================================
+// Proxy Info Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/proxy-info endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyInfoQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    #[serde(default)]
+    pub at: Option<String>,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+}
+
+/// Response for GET /accounts/{accountId}/proxy-info
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyInfoResponse {
+    pub at: BlockInfo,
+
+    /// Array of delegated accounts with their proxy definitions
+    pub delegated_accounts: Vec<ProxyDefinition>,
+
+    /// The deposit held for the proxies
+    pub deposit_held: String,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// A proxy definition containing the delegate, proxy type, and delay
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyDefinition {
+    /// The delegate address that can act on behalf of the account
+    pub delegate: String,
+
+    /// The type of proxy (e.g., "Any", "Staking", "Governance", etc.)
+    pub proxy_type: String,
+
+    /// The announcement delay in blocks
+    pub delay: String,
+}
+
+// ================================================================================================
+// Proxy Info Error Types
+// ================================================================================================
+
+#[derive(Debug, Error)]
+pub enum ProxyInfoError {
+    #[error("Invalid block parameter: {0}")]
+    InvalidBlockParam(#[from] utils::BlockIdParseError),
+
+    #[error("Block resolution failed: {0}")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Invalid account address: {0}")]
+    InvalidAddress(String),
+
+    #[error("The runtime does not include the proxy pallet at this block")]
+    ProxyPalletNotAvailable,
+
+    #[error("Failed to query storage: {0}")]
+    StorageQueryFailed(#[from] StorageError),
+
+    #[error("Failed to get client at block: {0}")]
+    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+
+    #[error("useRcBlock is only supported on Asset Hub chains")]
+    UseRcBlockNotSupported,
+
+    #[error("Relay chain not configured for this Asset Hub")]
+    RelayChainNotConfigured,
+
+    #[error("Relay chain block mapping failed: {0}")]
+    RcBlockMappingFailed(#[from] RcBlockError),
+
+    #[error("Failed to decode storage value: {0}")]
+    DecodeFailed(#[from] parity_scale_codec::Error),
+
+    #[error("Failed to fetch storage entry")]
+    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+}
+
+impl IntoResponse for ProxyInfoError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            ProxyInfoError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            ProxyInfoError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            ProxyInfoError::ProxyPalletNotAvailable => (StatusCode::BAD_REQUEST, self.to_string()),
+            ProxyInfoError::UseRcBlockNotSupported => (StatusCode::BAD_REQUEST, self.to_string()),
+            ProxyInfoError::RelayChainNotConfigured => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            ProxyInfoError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+
+        let body = Json(json!({
+            "error": message
+        }));
+        (status, body).into_response()
+    }
+}
