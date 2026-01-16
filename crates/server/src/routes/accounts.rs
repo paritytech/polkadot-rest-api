@@ -19,4 +19,18 @@ pub fn accounts_routes(registry: &RouteRegistry) -> Router<AppState> {
             "get",
             get(accounts::get_asset_approvals),
         )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/accounts/:accountId/balance-info",
+            "get",
+            get(accounts::get_balance_info),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/accounts/:accountId/convert",
+            "get",
+            get(accounts::get_convert),
+        )
 }
