@@ -11,6 +11,7 @@ This project is a Rust-based alternative to substrate-api-sidecar, designed to p
 ### ⚠️ Breaking Changes ⚠️
 
 - All API endpoints are now versioned under the `/v1` prefix.
+- Type references in metadata responses use type names (e.g., `"U32"`) instead of type IDs (e.g., `42`)
 
 ### API Changes
 
