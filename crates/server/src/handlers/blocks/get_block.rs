@@ -107,7 +107,7 @@ async fn handle_use_rc_block(
     Ok(Json(json!(results)).into_response())
 }
 
-async fn build_block_response(
+pub(crate) async fn build_block_response(
     state: &AppState,
     block_id: String,
     params: &BlockQueryParams,
@@ -125,7 +125,7 @@ async fn build_block_response(
     .await
 }
 
-async fn build_block_response_for_hash(
+pub(crate) async fn build_block_response_for_hash(
     state: &AppState,
     block_hash: &str,
     block_number: u64,
