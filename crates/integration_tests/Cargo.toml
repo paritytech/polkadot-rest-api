@@ -23,6 +23,10 @@ path = "tests/use_rc_block.rs"
 name = "accounts_asset_balances"
 path = "tests/accounts_asset_balances.rs"
 
+[[test]]
+name = "accounts_vesting_info"
+path = "tests/accounts_vesting_info.rs"
+
 [[bin]]
 name = "update_fixtures"
 path = "src/bin/update_fixtures.rs"

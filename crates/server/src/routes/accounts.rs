@@ -68,4 +68,11 @@ pub fn accounts_routes(registry: &RouteRegistry) -> Router<AppState> {
             "get",
             get(accounts::get_staking_payouts),
         )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/accounts/:accountId/vesting-info",
+            "get",
+            get(accounts::get_vesting_info),
+        )
 }

@@ -1246,3 +1246,143 @@ impl IntoResponse for StakingPayoutsError {
         (status, body).into_response()
     }
 }
+
+// ================================================================================================
+// Vesting Info Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/vesting-info endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VestingInfoQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    #[serde(default)]
+    pub at: Option<String>,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+
+    /// When true, calculate and include vested amounts
+    #[serde(default)]
+    pub include_claimable: bool,
+}
+
+/// Response for GET /accounts/{accountId}/vesting-info
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VestingInfoResponse {
+    pub at: BlockInfo,
+
+    /// Array of vesting schedules (empty array if no vesting)
+    pub vesting: Vec<VestingSchedule>,
+
+    /// Total vested across all schedules (only when includeClaimable=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vested_balance: Option<String>,
+
+    /// Total locked across all schedules (only when includeClaimable=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vesting_total: Option<String>,
+
+    /// Actual claimable amount now (only when includeClaimable=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vested_claimable: Option<String>,
+
+    /// Block number used for calculations (only when includeClaimable=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_number_for_calculation: Option<String>,
+
+    /// Source of block number for calculations: "relay" or "self" (only when includeClaimable=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_number_source: Option<String>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// A vesting schedule
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VestingSchedule {
+    /// Total tokens locked at start of vesting
+    pub locked: String,
+
+    /// Tokens unlocked per block
+    pub per_block: String,
+
+    /// Block when vesting begins
+    pub starting_block: String,
+
+    /// Amount vested (only when includeClaimable=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vested: Option<String>,
+}
+
+// ================================================================================================
+// Vesting Info Error Types
+// ================================================================================================
+
+#[derive(Debug, Error)]
+pub enum VestingInfoError {
+    #[error("Invalid block parameter: {0}")]
+    InvalidBlockParam(#[from] utils::BlockIdParseError),
+
+    #[error("Block resolution failed: {0}")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Invalid account address: {0}")]
+    InvalidAddress(String),
+
+    #[error("The runtime does not include the vesting pallet at this block")]
+    VestingPalletNotAvailable,
+
+    #[error("Failed to query storage: {0}")]
+    StorageQueryFailed(#[from] StorageError),
+
+    #[error("Failed to get client at block: {0}")]
+    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+
+    #[error("useRcBlock is only supported on Asset Hub chains")]
+    UseRcBlockNotSupported,
+
+    #[error("Relay chain not configured for this Asset Hub")]
+    RelayChainNotConfigured,
+
+    #[error("Relay chain block mapping failed: {0}")]
+    RcBlockMappingFailed(#[from] RcBlockError),
+
+    #[error("Failed to decode storage value: {0}")]
+    DecodeFailed(#[from] parity_scale_codec::Error),
+
+    #[error("Failed to fetch storage entry")]
+    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+}
+
+impl IntoResponse for VestingInfoError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            VestingInfoError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            VestingInfoError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            VestingInfoError::VestingPalletNotAvailable => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            VestingInfoError::UseRcBlockNotSupported => (StatusCode::BAD_REQUEST, self.to_string()),
+            VestingInfoError::RelayChainNotConfigured => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            VestingInfoError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+
+        let body = Json(json!({
+            "error": message
+        }));
+        (status, body).into_response()
+    }
+}
