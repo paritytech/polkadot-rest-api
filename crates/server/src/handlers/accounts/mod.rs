@@ -7,6 +7,8 @@ mod get_convert;
 mod get_pool_asset_approvals;
 mod get_pool_asset_balances;
 mod get_proxy_info;
+mod get_staking_info;
+mod get_staking_payouts;
 mod types;
 mod utils;
 
@@ -17,4 +19,6 @@ pub use get_convert::get_convert;
 pub use get_pool_asset_approvals::get_pool_asset_approvals;
 pub use get_pool_asset_balances::get_pool_asset_balances;
 pub use get_proxy_info::get_proxy_info;
+pub use get_staking_info::get_staking_info;
+pub use get_staking_payouts::get_staking_payouts;
 pub use types::*;

@@ -54,4 +54,18 @@ pub fn accounts_routes(registry: &RouteRegistry) -> Router<AppState> {
             "get",
             get(accounts::get_proxy_info),
         )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/accounts/:accountId/staking-info",
+            "get",
+            get(accounts::get_staking_info),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/accounts/:accountId/staking-payouts",
+            "get",
+            get(accounts::get_staking_payouts),
+        )
 }

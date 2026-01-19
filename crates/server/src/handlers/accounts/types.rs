@@ -888,3 +888,361 @@ impl IntoResponse for ProxyInfoError {
         (status, body).into_response()
     }
 }
+
+// ================================================================================================
+// Staking Info Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/staking-info endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StakingInfoQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    #[serde(default)]
+    pub at: Option<String>,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+}
+
+/// Response for GET /accounts/{accountId}/staking-info
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StakingInfoResponse {
+    pub at: BlockInfo,
+
+    /// Controller address (may be same as stash after controller deprecation)
+    pub controller: String,
+
+    /// Reward destination configuration
+    pub reward_destination: RewardDestination,
+
+    /// Number of slashing spans
+    pub num_slashing_spans: u32,
+
+    /// Nomination info (null if not a nominator)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nominations: Option<NominationsInfo>,
+
+    /// Staking ledger information
+    pub staking: StakingLedger,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Reward destination - can be "Staked", "Stash", "Controller", or { "account": "..." }
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum RewardDestination {
+    /// Simple variant without account (Staked, Stash, Controller, None)
+    Simple(String),
+    /// Account variant with specific address
+    Account { account: String },
+}
+
+/// Nominations information for a nominator
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NominationsInfo {
+    /// List of validator addresses being nominated
+    pub targets: Vec<String>,
+
+    /// Era in which nomination was submitted
+    pub submitted_in: String,
+
+    /// Whether nominations are suppressed
+    pub suppressed: bool,
+}
+
+/// Staking ledger information
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StakingLedger {
+    /// Stash account address
+    pub stash: String,
+
+    /// Total locked balance (active + unlocking)
+    pub total: String,
+
+    /// Active staked balance
+    pub active: String,
+
+    /// Unlocking chunks
+    pub unlocking: Vec<UnlockingChunk>,
+}
+
+/// An unlocking chunk representing funds that are being unbonded
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlockingChunk {
+    /// Amount being unlocked
+    pub value: String,
+
+    /// Era when funds become available
+    pub era: String,
+}
+
+// ================================================================================================
+// Staking Info Error Types
+// ================================================================================================
+
+#[derive(Debug, Error)]
+pub enum StakingInfoError {
+    #[error("Invalid block parameter: {0}")]
+    InvalidBlockParam(#[from] utils::BlockIdParseError),
+
+    #[error("Block resolution failed: {0}")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Invalid account address: {0}")]
+    InvalidAddress(String),
+
+    #[error("The address is not a stash account")]
+    NotAStashAccount,
+
+    #[error("The runtime does not include the staking pallet at this block")]
+    StakingPalletNotAvailable,
+
+    #[error("Failed to query storage: {0}")]
+    StorageQueryFailed(#[from] StorageError),
+
+    #[error("Failed to get client at block: {0}")]
+    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+
+    #[error("useRcBlock is only supported on Asset Hub chains")]
+    UseRcBlockNotSupported,
+
+    #[error("Relay chain not configured for this Asset Hub")]
+    RelayChainNotConfigured,
+
+    #[error("Relay chain block mapping failed: {0}")]
+    RcBlockMappingFailed(#[from] RcBlockError),
+
+    #[error("Failed to decode storage value: {0}")]
+    DecodeFailed(#[from] parity_scale_codec::Error),
+
+    #[error("Failed to fetch storage entry")]
+    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+
+    #[error("Staking ledger not found for controller")]
+    LedgerNotFound,
+}
+
+impl IntoResponse for StakingInfoError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            StakingInfoError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            StakingInfoError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            StakingInfoError::NotAStashAccount => (StatusCode::BAD_REQUEST, self.to_string()),
+            StakingInfoError::StakingPalletNotAvailable => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            StakingInfoError::UseRcBlockNotSupported => (StatusCode::BAD_REQUEST, self.to_string()),
+            StakingInfoError::RelayChainNotConfigured => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            StakingInfoError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            StakingInfoError::LedgerNotFound => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+
+        let body = Json(json!({
+            "error": message
+        }));
+        (status, body).into_response()
+    }
+}
+
+// ================================================================================================
+// Staking Payouts Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/staking-payouts endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StakingPayoutsQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    #[serde(default)]
+    pub at: Option<String>,
+
+    /// Number of eras to query. Must be less than HISTORY_DEPTH. Defaults to 1.
+    #[serde(default = "default_depth")]
+    pub depth: u32,
+
+    /// The era to query at. Defaults to active_era - 1.
+    #[serde(default)]
+    pub era: Option<u32>,
+
+    /// Only show unclaimed rewards. Defaults to true.
+    #[serde(default = "default_unclaimed_only")]
+    pub unclaimed_only: bool,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+}
+
+fn default_depth() -> u32 {
+    1
+}
+
+fn default_unclaimed_only() -> bool {
+    true
+}
+
+/// Response for GET /accounts/{accountId}/staking-payouts
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StakingPayoutsResponse {
+    pub at: BlockInfo,
+
+    /// Array of era payouts
+    pub eras_payouts: Vec<EraPayouts>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Payouts for a single era - can be either actual payouts or an error message
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum EraPayouts {
+    /// Successful payout data for an era
+    Payouts(EraPayoutsData),
+    /// Error message when payouts cannot be calculated
+    Message { message: String },
+}
+
+/// Actual payout data for an era
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EraPayoutsData {
+    /// Era index
+    pub era: u32,
+
+    /// Total reward points for the era
+    pub total_era_reward_points: String,
+
+    /// Total payout for the era
+    pub total_era_payout: String,
+
+    /// Individual payouts for validators nominated
+    pub payouts: Vec<ValidatorPayout>,
+}
+
+/// Payout information for a single validator
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidatorPayout {
+    /// Validator stash account ID
+    pub validator_id: String,
+
+    /// Calculated payout amount for the nominator
+    pub nominator_staking_payout: String,
+
+    /// Whether the reward has been claimed
+    pub claimed: bool,
+
+    /// Validator's reward points for this era
+    pub total_validator_reward_points: String,
+
+    /// Validator's commission (as parts per billion, 0-1000000000)
+    pub validator_commission: String,
+
+    /// Total stake behind this validator
+    pub total_validator_exposure: String,
+
+    /// Nominator's stake behind this validator
+    pub nominator_exposure: String,
+}
+
+// ================================================================================================
+// Staking Payouts Error Types
+// ================================================================================================
+
+#[derive(Debug, Error)]
+pub enum StakingPayoutsError {
+    #[error("Invalid block parameter: {0}")]
+    InvalidBlockParam(#[from] utils::BlockIdParseError),
+
+    #[error("Block resolution failed: {0}")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Invalid account address: {0}")]
+    InvalidAddress(String),
+
+    #[error("The runtime does not include the staking pallet at this block")]
+    StakingPalletNotAvailable,
+
+    #[error("Failed to query storage: {0}")]
+    StorageQueryFailed(#[from] StorageError),
+
+    #[error("Failed to get client at block: {0}")]
+    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+
+    #[error("useRcBlock is only supported on Asset Hub chains")]
+    UseRcBlockNotSupported,
+
+    #[error("Relay chain not configured for this Asset Hub")]
+    RelayChainNotConfigured,
+
+    #[error("Relay chain block mapping failed: {0}")]
+    RcBlockMappingFailed(#[from] RcBlockError),
+
+    #[error("Failed to decode storage value: {0}")]
+    DecodeFailed(#[from] parity_scale_codec::Error),
+
+    #[error("Failed to fetch storage entry")]
+    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+
+    #[error("Invalid era: requested era {0} is beyond history depth")]
+    InvalidEra(u32),
+
+    #[error("Depth must be greater than 0 and less than history depth")]
+    InvalidDepth,
+
+    #[error("No active era found")]
+    NoActiveEra,
+}
+
+impl IntoResponse for StakingPayoutsError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            StakingPayoutsError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            StakingPayoutsError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            StakingPayoutsError::StakingPalletNotAvailable => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            StakingPayoutsError::UseRcBlockNotSupported => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            StakingPayoutsError::RelayChainNotConfigured => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            StakingPayoutsError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            StakingPayoutsError::InvalidEra(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            StakingPayoutsError::InvalidDepth => (StatusCode::BAD_REQUEST, self.to_string()),
+            StakingPayoutsError::NoActiveEra => (StatusCode::BAD_REQUEST, self.to_string()),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+
+        let body = Json(json!({
+            "error": message
+        }));
+        (status, body).into_response()
+    }
+}
