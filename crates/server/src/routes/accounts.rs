@@ -8,6 +8,13 @@ pub fn accounts_routes(registry: &RouteRegistry) -> Router<AppState> {
         .route_registered(
             registry,
             API_VERSION,
+            "/accounts/compare",
+            "get",
+            get(accounts::get_compare),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
             "/accounts/:accountId/asset-balances",
             "get",
             get(accounts::get_asset_balances),

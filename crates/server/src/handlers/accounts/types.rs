@@ -1388,6 +1388,76 @@ impl IntoResponse for VestingInfoError {
 }
 
 // ================================================================================================
+// Account Compare Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/compare endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountCompareQueryParams {
+    /// Comma-separated list of SS58 addresses to compare (max 30)
+    pub addresses: String,
+}
+
+/// Response for GET /accounts/compare
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountCompareResponse {
+    /// Whether all addresses have the same underlying public key
+    pub are_equal: bool,
+
+    /// Details for each address
+    pub addresses: Vec<AddressDetails>,
+}
+
+/// Details about a single address
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddressDetails {
+    /// The original SS58 format address
+    pub ss58_format: String,
+
+    /// The SS58 prefix (null if invalid)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ss58_prefix: Option<u16>,
+
+    /// The network name for the prefix (null if invalid/unknown)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+
+    /// The public key in hex format (null if invalid)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_key: Option<String>,
+}
+
+// ================================================================================================
+// Account Compare Error Types
+// ================================================================================================
+
+#[derive(Debug, Error)]
+pub enum AccountCompareError {
+    #[error("Please limit the amount of address parameters to 30")]
+    TooManyAddresses,
+
+    #[error("At least one address is required")]
+    NoAddresses,
+}
+
+impl IntoResponse for AccountCompareError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            AccountCompareError::TooManyAddresses => (StatusCode::BAD_REQUEST, self.to_string()),
+            AccountCompareError::NoAddresses => (StatusCode::BAD_REQUEST, self.to_string()),
+        };
+
+        let body = Json(json!({
+            "error": message
+        }));
+        (status, body).into_response()
+    }
+}
+
+// ================================================================================================
 // Account Validate Types
 // ================================================================================================
 
