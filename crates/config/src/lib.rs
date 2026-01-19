@@ -442,17 +442,20 @@ mod tests {
         let non_existent_file = ".env.non_existent";
 
         unsafe {
+            std::env::set_var("SAS_SUBSTRATE_URL", "ws://localhost:9944");
             std::env::set_var("SAS_EXPRESS_PORT", "8011");
             std::env::set_var("SAS_LOG_LEVEL", "debug");
         }
 
         let config = SidecarConfig::from_env_with_file(non_existent_file).unwrap();
 
+        assert_eq!(config.substrate.url, "ws://localhost:9944");
         assert_eq!(config.express.port, 8011);
         assert_eq!(config.log.level, "debug");
 
         // Clean up
         unsafe {
+            std::env::remove_var("SAS_SUBSTRATE_URL");
             std::env::remove_var("SAS_EXPRESS_PORT");
             std::env::remove_var("SAS_LOG_LEVEL");
         }
@@ -465,12 +468,34 @@ mod tests {
 
         let env_path = temp_dir.path().join(".env");
 
-        // Instead of SAS_EXPRESS_PORT setting SAS_EXPSS_PRT as environment variable
-        std::fs::write(&env_path, "SAS_EXPSS_PRT=8011\n").unwrap();
+        // Instead of SAS_EXPRESS_PORT setting SAS_EXPSS_PRT (typo) as environment variable
+        std::fs::write(
+            &env_path,
+            "SAS_SUBSTRATE_URL=ws://localhost:9944\nSAS_EXPSS_PRT=8011",
+        )
+        .unwrap();
 
         let result = SidecarConfig::from_env_with_file(env_path.to_str().unwrap());
 
-        // It will take the default enviroment variables hence the default SAS_EXPRESS_PORT=8080
+        // Unknown var `SAS_EXPSS_PRT` is ignored, default port 8080 is used
         assert_eq!(result.unwrap().express.port, 8080);
+    }
+
+    #[test]
+    fn test_env_file_working() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        std::env::set_current_dir(&temp_dir).unwrap();
+
+        let env_path = temp_dir.path().join(".env");
+
+        std::fs::write(
+            &env_path,
+            "SAS_SUBSTRATE_URL=ws://localhost:9944\nSAS_EXPRESS_PORT=8023\n",
+        )
+        .unwrap();
+
+        let result = SidecarConfig::from_env_with_file(env_path.to_str().unwrap());
+
+        assert_eq!(result.unwrap().express.port, 8023);
     }
 }
