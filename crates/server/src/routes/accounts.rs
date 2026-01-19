@@ -75,4 +75,11 @@ pub fn accounts_routes(registry: &RouteRegistry) -> Router<AppState> {
             "get",
             get(accounts::get_vesting_info),
         )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/accounts/:accountId/validate",
+            "get",
+            get(accounts::get_validate),
+        )
 }

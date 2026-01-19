@@ -1386,3 +1386,52 @@ impl IntoResponse for VestingInfoError {
         (status, body).into_response()
     }
 }
+
+// ================================================================================================
+// Account Validate Types
+// ================================================================================================
+
+/// Response for GET /accounts/{accountId}/validate
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountValidateResponse {
+    /// Whether the address is valid
+    pub is_valid: bool,
+
+    /// The SS58 prefix (null if invalid)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ss58_prefix: Option<String>,
+
+    /// The network name for the prefix (null if invalid/unknown)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+
+    /// The account ID in hex format (null if invalid)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
+}
+
+// ================================================================================================
+// Account Validate Error Types
+// ================================================================================================
+
+#[derive(Debug, Error)]
+pub enum AccountValidateError {
+    #[error("Internal error: {0}")]
+    InternalError(String),
+}
+
+impl IntoResponse for AccountValidateError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            AccountValidateError::InternalError(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+        };
+
+        let body = Json(json!({
+            "error": message
+        }));
+        (status, body).into_response()
+    }
+}

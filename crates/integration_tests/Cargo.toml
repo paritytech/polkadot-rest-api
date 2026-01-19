@@ -27,6 +27,10 @@ path = "tests/accounts_asset_balances.rs"
 name = "accounts_vesting_info"
 path = "tests/accounts_vesting_info.rs"
 
+[[test]]
+name = "accounts_validate"
+path = "tests/accounts_validate.rs"
+
 [[bin]]
 name = "update_fixtures"
 path = "src/bin/update_fixtures.rs"
