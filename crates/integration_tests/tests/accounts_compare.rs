@@ -29,10 +29,11 @@ async fn test_compare_same_account_different_formats() -> Result<()> {
     let local_client = get_client().await?;
 
     // Same account in different SS58 formats (Polkadot, Kusama, Substrate generic)
-    // These addresses all represent the same underlying public key
-    let polkadot_addr = "1xN1Q5eKQmS5AzASdjt6R6sHF76611vKR4PFpFjy1kXau4m";
-    let kusama_addr = "CpjsLDC1JFyrhm3ftC9Gs4QoyrkHKhZKtK7YqGTRFtTafgp";
-    let substrate_addr = "5C4hrfjw9DjXZTzV3MwzrrAr9P1MJhSrvWGWqi1eSuyUpnhM";
+    // These addresses all represent the same underlying public key:
+    // 0x2a39366f6620a6c2e2fed5990a3d419e6a19dd127fc7a50b515cf17e2dc5cc59
+    let polkadot_addr = "1xN1Q5eKQmS5AzASdjt6R6sHF76611vKR4PFpFjy1kXau4m"; // prefix 0
+    let kusama_addr = "DXgXPAT5zWtPHo6FhVvrDdiaDPgCNGxhJAeVBYLtiwW9hAc"; // prefix 2
+    let substrate_addr = "5D24s4paTdVxddyeUzgsxGGiRd7SPhTnEvKu6XGPQvj1QSYN"; // prefix 42
 
     let endpoint = format!(
         "/accounts/compare?addresses={},{},{}",
