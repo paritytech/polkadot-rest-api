@@ -124,40 +124,37 @@ async fn test_blocks_range_use_rc_block_matches_sidecar_fixture() -> Result<()> 
         .await
         .context("Local API is not ready")?;
 
-    let rc_block_number = 10554957u64;
-    let endpoint = format!(
-        "/v1/blocks?range={}-{}&useRcBlock=true",
-        rc_block_number, rc_block_number
-    );
+    let endpoint = "/v1/blocks?range=10293194-10293197&useRcBlock=true";
 
-    let (status, local_json) = client.get_json(&endpoint).await?;
+    let (status, local_json) = client.get_json(endpoint).await?;
     assert!(status.is_success(), "Local API returned status {}", status);
 
-    let fixture_path = get_fixture_path("use_rc_block_10554957.json")?;
+    let fixture_path =
+        get_fixture_path("asset-hub-polkadot/blocks_range_use_rc_block_10293194-10293197.json")?;
     let fixture_content = fs::read_to_string(&fixture_path)
         .with_context(|| format!("Failed to read fixture file: {:?}", fixture_path))?;
-    let sidecar_json: Value = serde_json::from_str(&fixture_content)
-        .context("Failed to parse expected sidecar response from fixture")?;
+    let expected_json: Value = serde_json::from_str(&fixture_content)
+        .context("Failed to parse expected response from fixture")?;
 
     let local_array = local_json
         .as_array()
         .expect("Local response is not an array");
-    let sidecar_array = sidecar_json
+    let expected_array = expected_json
         .as_array()
-        .expect("Sidecar response is not an array");
+        .expect("Expected response is not an array");
 
     assert_eq!(
         local_array.len(),
-        sidecar_array.len(),
-        "Block count mismatch: local={}, sidecar={}",
+        expected_array.len(),
+        "Block count mismatch: local={}, expected={}",
         local_array.len(),
-        sidecar_array.len()
+        expected_array.len()
     );
 
-    let comparison_result = compare_json(&local_json, &sidecar_json, &[])?;
+    let comparison_result = compare_json(&local_json, &expected_json, &[])?;
 
     if !comparison_result.is_match() {
-        let diff_output = comparison_result.format_diff(&sidecar_json, &local_json);
+        let diff_output = comparison_result.format_diff(&expected_json, &local_json);
         println!("{}", diff_output);
     }
 
@@ -182,7 +179,7 @@ async fn test_blocks_range_use_rc_block_empty_results() -> Result<()> {
         .await
         .context("Local API is not ready")?;
 
-    let rc_block_number = 10554958u64;
+    let rc_block_number = 10293195u64;
     let endpoint = format!(
         "/v1/blocks?range={}-{}&useRcBlock=true",
         rc_block_number, rc_block_number
