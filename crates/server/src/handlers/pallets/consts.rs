@@ -10,7 +10,7 @@
 
 use crate::handlers::pallets::common::{
     AtResponse, DeprecationInfo, PalletError, PalletQueryParams, RcBlockFields, find_pallet_v14,
-    find_pallet_v15,
+    find_pallet_v15, find_pallet_v16,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -22,7 +22,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use frame_metadata::RuntimeMetadata;
+use frame_metadata::{RuntimeMetadata, decode_different::DecodeDifferent};
 use parity_scale_codec::Decode;
 use serde::Serialize;
 
@@ -260,14 +260,450 @@ fn extract_consts_from_metadata(
     only_ids: bool,
     rc_fields: RcBlockFields,
 ) -> Result<PalletsConstsResponse, PalletError> {
+    use RuntimeMetadata::*;
     match metadata {
-        RuntimeMetadata::V14(meta) => extract_consts_v14(meta, pallet_id, at, only_ids, rc_fields),
-        RuntimeMetadata::V15(meta) => extract_consts_v15(meta, pallet_id, at, only_ids, rc_fields),
+        V9(meta) => extract_consts_v9(meta, pallet_id, at, only_ids, rc_fields),
+        V10(meta) => extract_consts_v10(meta, pallet_id, at, only_ids, rc_fields),
+        V11(meta) => extract_consts_v11(meta, pallet_id, at, only_ids, rc_fields),
+        V12(meta) => extract_consts_v12(meta, pallet_id, at, only_ids, rc_fields),
+        V13(meta) => extract_consts_v13(meta, pallet_id, at, only_ids, rc_fields),
+        V14(meta) => extract_consts_v14(meta, pallet_id, at, only_ids, rc_fields),
+        V15(meta) => extract_consts_v15(meta, pallet_id, at, only_ids, rc_fields),
+        V16(meta) => extract_consts_v16(meta, pallet_id, at, only_ids, rc_fields),
         _ => Err(PalletError::UnsupportedMetadataVersion),
     }
 }
 
 /// Extract constants from V14 metadata.
+
+/// Helper to extract a string from a DecodeDifferent type used in V9-V13 metadata.
+fn extract_str_const<'a>(dd: &'a DecodeDifferent<&'static str, String>) -> &'a str {
+    match dd {
+        DecodeDifferent::Decoded(s) => s.as_str(),
+        DecodeDifferent::Encode(s) => s,
+    }
+}
+
+/// Helper to extract bytes from DecodeDifferent<DefaultByteGetter, Vec<u8>> used in V9-V13 constants.
+fn extract_const_bytes<G>(value: &DecodeDifferent<G, Vec<u8>>) -> String {
+    match value {
+        DecodeDifferent::Decoded(v) => format!("0x{}", hex::encode(v)),
+        DecodeDifferent::Encode(_) => "0x".to_string(),
+    }
+}
+
+/// Helper to extract docs from DecodeDifferent used in V9-V13 metadata.
+fn extract_const_docs(docs: &DecodeDifferent<&'static [&'static str], Vec<String>>) -> Vec<String> {
+    match docs {
+        DecodeDifferent::Decoded(v) => v.clone(),
+        DecodeDifferent::Encode(s) => s.iter().map(|x| x.to_string()).collect(),
+    }
+}
+
+/// Extracts constants from V9 metadata.
+///
+/// V9 metadata uses `DecodeDifferent` for module names and constant names/values.
+/// The pallet index is derived from array position in V9.
+fn extract_consts_v9(
+    meta: &frame_metadata::v9::RuntimeMetadataV9,
+    pallet_id: &str,
+    at: AtResponse,
+    only_ids: bool,
+    rc_fields: RcBlockFields,
+) -> Result<PalletsConstsResponse, PalletError> {
+    let DecodeDifferent::Decoded(modules) = &meta.modules else {
+        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
+    };
+
+    // Find module by name (case-insensitive) or numeric index (array position)
+    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
+        modules
+            .get(idx)
+            .map(|m| (m, idx as u8))
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
+    } else {
+        modules
+            .iter()
+            .enumerate()
+            .find(|(_, m)| extract_str_const(&m.name).eq_ignore_ascii_case(pallet_id))
+            .map(|(i, m)| (m, i as u8))
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
+    };
+
+    let pallet_name = extract_str_const(&module.name).to_string();
+
+    // constants in V9 is DFnA<ModuleConstantMetadata> = DecodeDifferent<FnEncode<&'static [T]>, Vec<T>>
+    let DecodeDifferent::Decoded(constants) = &module.constants else {
+        // Fallback for non-decoded case
+        return Ok(PalletsConstsResponse {
+            at,
+            pallet: pallet_name.to_lowercase(),
+            pallet_index: module_index.to_string(),
+            items: if only_ids {
+                ConstsItems::OnlyIds(vec![])
+            } else {
+                ConstsItems::Full(vec![])
+            },
+            rc_block_hash: rc_fields.rc_block_hash,
+            rc_block_number: rc_fields.rc_block_number,
+            ah_timestamp: rc_fields.ah_timestamp,
+        });
+    };
+
+    let items = if only_ids {
+        ConstsItems::OnlyIds(
+            constants
+                .iter()
+                .map(|c| extract_str_const(&c.name).to_string())
+                .collect(),
+        )
+    } else {
+        ConstsItems::Full(
+            constants
+                .iter()
+                .map(|c| ConstItemMetadata {
+                    name: extract_str_const(&c.name).to_string(),
+                    ty: extract_str_const(&c.ty).to_string(),
+                    value: extract_const_bytes(&c.value),
+                    docs: extract_const_docs(&c.documentation),
+                    deprecation_info: Some(DeprecationInfo::NotDeprecated(None)),
+                })
+                .collect(),
+        )
+    };
+
+    Ok(PalletsConstsResponse {
+        at,
+        pallet: pallet_name.to_lowercase(),
+        pallet_index: module_index.to_string(),
+        items,
+        rc_block_hash: rc_fields.rc_block_hash,
+        rc_block_number: rc_fields.rc_block_number,
+        ah_timestamp: rc_fields.ah_timestamp,
+    })
+}
+
+/// Extracts constants from V10 metadata.
+///
+/// V10 is structurally similar to V9 for constants.
+/// The pallet index is derived from array position.
+fn extract_consts_v10(
+    meta: &frame_metadata::v10::RuntimeMetadataV10,
+    pallet_id: &str,
+    at: AtResponse,
+    only_ids: bool,
+    rc_fields: RcBlockFields,
+) -> Result<PalletsConstsResponse, PalletError> {
+    let DecodeDifferent::Decoded(modules) = &meta.modules else {
+        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
+    };
+
+    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
+        modules
+            .get(idx)
+            .map(|m| (m, idx as u8))
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
+    } else {
+        modules
+            .iter()
+            .enumerate()
+            .find(|(_, m)| extract_str_const(&m.name).eq_ignore_ascii_case(pallet_id))
+            .map(|(i, m)| (m, i as u8))
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
+    };
+
+    let pallet_name = extract_str_const(&module.name).to_string();
+
+    let DecodeDifferent::Decoded(constants) = &module.constants else {
+        return Ok(PalletsConstsResponse {
+            at,
+            pallet: pallet_name.to_lowercase(),
+            pallet_index: module_index.to_string(),
+            items: if only_ids {
+                ConstsItems::OnlyIds(vec![])
+            } else {
+                ConstsItems::Full(vec![])
+            },
+            rc_block_hash: rc_fields.rc_block_hash,
+            rc_block_number: rc_fields.rc_block_number,
+            ah_timestamp: rc_fields.ah_timestamp,
+        });
+    };
+
+    let items = if only_ids {
+        ConstsItems::OnlyIds(
+            constants
+                .iter()
+                .map(|c| extract_str_const(&c.name).to_string())
+                .collect(),
+        )
+    } else {
+        ConstsItems::Full(
+            constants
+                .iter()
+                .map(|c| ConstItemMetadata {
+                    name: extract_str_const(&c.name).to_string(),
+                    ty: extract_str_const(&c.ty).to_string(),
+                    value: extract_const_bytes(&c.value),
+                    docs: extract_const_docs(&c.documentation),
+                    deprecation_info: Some(DeprecationInfo::NotDeprecated(None)),
+                })
+                .collect(),
+        )
+    };
+
+    Ok(PalletsConstsResponse {
+        at,
+        pallet: pallet_name.to_lowercase(),
+        pallet_index: module_index.to_string(),
+        items,
+        rc_block_hash: rc_fields.rc_block_hash,
+        rc_block_number: rc_fields.rc_block_number,
+        ah_timestamp: rc_fields.ah_timestamp,
+    })
+}
+
+/// Extracts constants from V11 metadata.
+///
+/// V11 is structurally similar to V9/V10 for constants.
+/// The pallet index is derived from array position.
+fn extract_consts_v11(
+    meta: &frame_metadata::v11::RuntimeMetadataV11,
+    pallet_id: &str,
+    at: AtResponse,
+    only_ids: bool,
+    rc_fields: RcBlockFields,
+) -> Result<PalletsConstsResponse, PalletError> {
+    let DecodeDifferent::Decoded(modules) = &meta.modules else {
+        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
+    };
+
+    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
+        modules
+            .get(idx)
+            .map(|m| (m, idx as u8))
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
+    } else {
+        modules
+            .iter()
+            .enumerate()
+            .find(|(_, m)| extract_str_const(&m.name).eq_ignore_ascii_case(pallet_id))
+            .map(|(i, m)| (m, i as u8))
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
+    };
+
+    let pallet_name = extract_str_const(&module.name).to_string();
+
+    let DecodeDifferent::Decoded(constants) = &module.constants else {
+        return Ok(PalletsConstsResponse {
+            at,
+            pallet: pallet_name.to_lowercase(),
+            pallet_index: module_index.to_string(),
+            items: if only_ids {
+                ConstsItems::OnlyIds(vec![])
+            } else {
+                ConstsItems::Full(vec![])
+            },
+            rc_block_hash: rc_fields.rc_block_hash,
+            rc_block_number: rc_fields.rc_block_number,
+            ah_timestamp: rc_fields.ah_timestamp,
+        });
+    };
+
+    let items = if only_ids {
+        ConstsItems::OnlyIds(
+            constants
+                .iter()
+                .map(|c| extract_str_const(&c.name).to_string())
+                .collect(),
+        )
+    } else {
+        ConstsItems::Full(
+            constants
+                .iter()
+                .map(|c| ConstItemMetadata {
+                    name: extract_str_const(&c.name).to_string(),
+                    ty: extract_str_const(&c.ty).to_string(),
+                    value: extract_const_bytes(&c.value),
+                    docs: extract_const_docs(&c.documentation),
+                    deprecation_info: Some(DeprecationInfo::NotDeprecated(None)),
+                })
+                .collect(),
+        )
+    };
+
+    Ok(PalletsConstsResponse {
+        at,
+        pallet: pallet_name.to_lowercase(),
+        pallet_index: module_index.to_string(),
+        items,
+        rc_block_hash: rc_fields.rc_block_hash,
+        rc_block_number: rc_fields.rc_block_number,
+        ah_timestamp: rc_fields.ah_timestamp,
+    })
+}
+
+/// Extracts constants from V12 metadata.
+///
+/// V12 introduces an explicit `index` field on modules.
+/// Constants use `ModuleConstantMetadata` with explicit index.
+fn extract_consts_v12(
+    meta: &frame_metadata::v12::RuntimeMetadataV12,
+    pallet_id: &str,
+    at: AtResponse,
+    only_ids: bool,
+    rc_fields: RcBlockFields,
+) -> Result<PalletsConstsResponse, PalletError> {
+    let DecodeDifferent::Decoded(modules) = &meta.modules else {
+        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
+    };
+
+    // V12 has explicit .index field on modules
+    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<u8>() {
+        modules
+            .iter()
+            .find(|m| m.index == idx)
+            .map(|m| (m, m.index))
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
+    } else {
+        modules
+            .iter()
+            .find(|m| extract_str_const(&m.name).eq_ignore_ascii_case(pallet_id))
+            .map(|m| (m, m.index))
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
+    };
+
+    let pallet_name = extract_str_const(&module.name).to_string();
+
+    let DecodeDifferent::Decoded(constants) = &module.constants else {
+        return Ok(PalletsConstsResponse {
+            at,
+            pallet: pallet_name.to_lowercase(),
+            pallet_index: module_index.to_string(),
+            items: if only_ids {
+                ConstsItems::OnlyIds(vec![])
+            } else {
+                ConstsItems::Full(vec![])
+            },
+            rc_block_hash: rc_fields.rc_block_hash,
+            rc_block_number: rc_fields.rc_block_number,
+            ah_timestamp: rc_fields.ah_timestamp,
+        });
+    };
+
+    let items = if only_ids {
+        ConstsItems::OnlyIds(
+            constants
+                .iter()
+                .map(|c| extract_str_const(&c.name).to_string())
+                .collect(),
+        )
+    } else {
+        ConstsItems::Full(
+            constants
+                .iter()
+                .map(|c| ConstItemMetadata {
+                    name: extract_str_const(&c.name).to_string(),
+                    ty: extract_str_const(&c.ty).to_string(),
+                    value: extract_const_bytes(&c.value),
+                    docs: extract_const_docs(&c.documentation),
+                    deprecation_info: Some(DeprecationInfo::NotDeprecated(None)),
+                })
+                .collect(),
+        )
+    };
+
+    Ok(PalletsConstsResponse {
+        at,
+        pallet: pallet_name.to_lowercase(),
+        pallet_index: module_index.to_string(),
+        items,
+        rc_block_hash: rc_fields.rc_block_hash,
+        rc_block_number: rc_fields.rc_block_number,
+        ah_timestamp: rc_fields.ah_timestamp,
+    })
+}
+
+/// Extracts constants from V13 metadata.
+///
+/// V13 is structurally similar to V12, with explicit pallet index.
+fn extract_consts_v13(
+    meta: &frame_metadata::v13::RuntimeMetadataV13,
+    pallet_id: &str,
+    at: AtResponse,
+    only_ids: bool,
+    rc_fields: RcBlockFields,
+) -> Result<PalletsConstsResponse, PalletError> {
+    let DecodeDifferent::Decoded(modules) = &meta.modules else {
+        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
+    };
+
+    // V13 has explicit .index field on modules (same as V12)
+    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<u8>() {
+        modules
+            .iter()
+            .find(|m| m.index == idx)
+            .map(|m| (m, m.index))
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
+    } else {
+        modules
+            .iter()
+            .find(|m| extract_str_const(&m.name).eq_ignore_ascii_case(pallet_id))
+            .map(|m| (m, m.index))
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
+    };
+
+    let pallet_name = extract_str_const(&module.name).to_string();
+
+    let DecodeDifferent::Decoded(constants) = &module.constants else {
+        return Ok(PalletsConstsResponse {
+            at,
+            pallet: pallet_name.to_lowercase(),
+            pallet_index: module_index.to_string(),
+            items: if only_ids {
+                ConstsItems::OnlyIds(vec![])
+            } else {
+                ConstsItems::Full(vec![])
+            },
+            rc_block_hash: rc_fields.rc_block_hash,
+            rc_block_number: rc_fields.rc_block_number,
+            ah_timestamp: rc_fields.ah_timestamp,
+        });
+    };
+
+    let items = if only_ids {
+        ConstsItems::OnlyIds(
+            constants
+                .iter()
+                .map(|c| extract_str_const(&c.name).to_string())
+                .collect(),
+        )
+    } else {
+        ConstsItems::Full(
+            constants
+                .iter()
+                .map(|c| ConstItemMetadata {
+                    name: extract_str_const(&c.name).to_string(),
+                    ty: extract_str_const(&c.ty).to_string(),
+                    value: extract_const_bytes(&c.value),
+                    docs: extract_const_docs(&c.documentation),
+                    deprecation_info: Some(DeprecationInfo::NotDeprecated(None)),
+                })
+                .collect(),
+        )
+    };
+
+    Ok(PalletsConstsResponse {
+        at,
+        pallet: pallet_name.to_lowercase(),
+        pallet_index: module_index.to_string(),
+        items,
+        rc_block_hash: rc_fields.rc_block_hash,
+        rc_block_number: rc_fields.rc_block_number,
+        ah_timestamp: rc_fields.ah_timestamp,
+    })
+}
+
 fn extract_consts_v14(
     meta: &frame_metadata::v14::RuntimeMetadataV14,
     pallet_id: &str,
@@ -345,6 +781,52 @@ fn extract_consts_v15(
                     docs: c.docs.clone(),
                     // V15 has deprecation info but currently we default to not deprecated
                     // TODO: Extract actual deprecation info from V15 metadata when available
+                    deprecation_info: Some(DeprecationInfo::NotDeprecated(None)),
+                })
+                .collect(),
+        )
+    };
+
+    Ok(PalletsConstsResponse {
+        at,
+        pallet: pallet_name.to_lowercase(),
+        pallet_index: pallet_index.to_string(),
+        items,
+        rc_block_hash: rc_fields.rc_block_hash,
+        rc_block_number: rc_fields.rc_block_number,
+        ah_timestamp: rc_fields.ah_timestamp,
+    })
+}
+
+/// Extract constants from V16 metadata.
+fn extract_consts_v16(
+    meta: &frame_metadata::v16::RuntimeMetadataV16,
+    pallet_id: &str,
+    at: AtResponse,
+    only_ids: bool,
+    rc_fields: RcBlockFields,
+) -> Result<PalletsConstsResponse, PalletError> {
+    let (pallet_name, pallet_index) = find_pallet_v16(&meta.pallets, pallet_id)
+        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+
+    let pallet = meta
+        .pallets
+        .iter()
+        .find(|p| p.index == pallet_index)
+        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+
+    let items = if only_ids {
+        ConstsItems::OnlyIds(pallet.constants.iter().map(|c| c.name.clone()).collect())
+    } else {
+        ConstsItems::Full(
+            pallet
+                .constants
+                .iter()
+                .map(|c| ConstItemMetadata {
+                    name: c.name.clone(),
+                    ty: c.ty.id.to_string(),
+                    value: format!("0x{}", hex::encode(&c.value)),
+                    docs: c.docs.clone(),
                     deprecation_info: Some(DeprecationInfo::NotDeprecated(None)),
                 })
                 .collect(),

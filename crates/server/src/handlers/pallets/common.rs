@@ -280,3 +280,30 @@ mod tests {
         assert!(json.contains("\"height\":\"100\""));
     }
 }
+
+/// Find a pallet in V16 metadata by name (case-insensitive) or index.
+///
+/// Returns the pallet name and index if found.
+pub fn find_pallet_v16(
+    pallets: &[frame_metadata::v16::PalletMetadata<scale_info::form::PortableForm>],
+    pallet_id: &str,
+) -> Option<(String, u8)> {
+    // First, try to parse as a numeric index
+    if let Ok(index) = pallet_id.parse::<u8>() {
+        for pallet in pallets {
+            if pallet.index == index {
+                return Some((pallet.name.clone(), pallet.index));
+            }
+        }
+    }
+
+    // Otherwise, search by name (case-insensitive)
+    let pallet_id_lower = pallet_id.to_lowercase();
+    for pallet in pallets {
+        if pallet.name.to_lowercase() == pallet_id_lower {
+            return Some((pallet.name.clone(), pallet.index));
+        }
+    }
+
+    None
+}

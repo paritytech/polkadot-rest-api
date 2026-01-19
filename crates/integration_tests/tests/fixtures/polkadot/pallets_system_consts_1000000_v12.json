@@ -1,0 +1,76 @@
+{
+  "at": {
+    "hash": "0x490cd542b4a40ad743183c7d1088a4fe7b1edf21e50c850b86f29e389f31c5c1",
+    "height": "1000000"
+  },
+  "pallet": "system",
+  "palletIndex": "0",
+  "items": [
+    {
+      "name": "BlockHashCount",
+      "type": "T::BlockNumber",
+      "value": "0x60090000",
+      "docs": [
+        " The maximum number of blocks to allow in mortal eras."
+      ],
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "MaximumBlockWeight",
+      "type": "Weight",
+      "value": "0x00204aa9d1010000",
+      "docs": [
+        " The maximum weight of a block."
+      ],
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "DbWeight",
+      "type": "RuntimeDbWeight",
+      "value": "0x40787d010000000000e1f50500000000",
+      "docs": [
+        " The weight of runtime database operations the runtime can invoke."
+      ],
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "BlockExecutionWeight",
+      "type": "Weight",
+      "value": "0x00f2052a01000000",
+      "docs": [
+        " The base weight of executing a block, independent of the transactions in the block."
+      ],
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "ExtrinsicBaseWeight",
+      "type": "Weight",
+      "value": "0x4059730700000000",
+      "docs": [
+        " The base weight of an Extrinsic in the block, independent of the of extrinsic being executed."
+      ],
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "MaximumBlockLength",
+      "type": "u32",
+      "value": "0x00005000",
+      "docs": [
+        " The maximum length of a block (in bytes)."
+      ],
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    }
+  ]
+}

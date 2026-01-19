@@ -1,0 +1,80 @@
+{
+  "at": {
+    "hash": "0x8a8a7aa9ac863359b2cc609b836e3ebd7086d775c31f8c177f183ed9ffa71fa5",
+    "height": "5000000"
+  },
+  "pallet": "system",
+  "palletIndex": "0",
+  "items": [
+    {
+      "name": "BlockWeights",
+      "type": "limits::BlockWeights",
+      "value": "0x00f2052a0100000000204aa9d1010000405973070000000001c0766c8f58010000010098f73e5d010000010000000000000000405973070000000001c0febef9cc0100000100204aa9d1010000010088526a740000004059730700000000000000",
+      "docs": [
+        " Block & extrinsics weights: base values and limits."
+      ],
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "BlockLength",
+      "type": "limits::BlockLength",
+      "value": "0x00003c000000500000005000",
+      "docs": [
+        " The maximum length of a block (in bytes)."
+      ],
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "BlockHashCount",
+      "type": "T::BlockNumber",
+      "value": "0x60090000",
+      "docs": [
+        " Maximum number of block number to block hash mappings to keep (oldest pruned first)."
+      ],
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "DbWeight",
+      "type": "RuntimeDbWeight",
+      "value": "0x40787d010000000000e1f50500000000",
+      "docs": [
+        " The weight of runtime database operations the runtime can invoke."
+      ],
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "Version",
+      "type": "RuntimeVersion",
+      "value": "0x20706f6c6b61646f743c7061726974792d706f6c6b61646f74000000001e0000000000000030df6acb689907609b0300000037e397fc7c91f5e40100000040fe3ad401f8959a04000000d2bc9897eed08f1502000000f78b278be53f454c02000000af2c0297a23e6d3d01000000ed99c5acb25eedf502000000cbca25e39f14238702000000687ad44ad37f03c201000000ab3c0572291feb8b01000000bc9d89904f5b923f0100000037c8bb1350a9a2a80100000007000000",
+      "docs": [
+        " Get the chain's current version."
+      ],
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "SS58Prefix",
+      "type": "u8",
+      "value": "0x00",
+      "docs": [
+        " The designated SS85 prefix of this chain.",
+        "",
+        " This replaces the \"ss58Format\" property declared in the chain spec. Reason is",
+        " that the runtime should know about the prefix in order to make use of it as",
+        " an identifier of the chain."
+      ],
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    }
+  ]
+}
