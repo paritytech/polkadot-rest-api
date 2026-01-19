@@ -3,6 +3,9 @@
 //! These endpoints provide access to pallet metadata including
 //! storage items, constants, dispatchables, errors, and events.
 
+pub mod common;
+pub mod consts;
 pub mod storage;
 
+pub use consts::get_pallets_consts;
 pub use storage::get_pallets_storage;
