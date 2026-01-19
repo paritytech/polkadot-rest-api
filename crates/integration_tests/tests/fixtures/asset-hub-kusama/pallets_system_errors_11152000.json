@@ -1,0 +1,113 @@
+{
+  "at": {
+    "hash": "0x70c613cd0258cf801515f7b7f3e4bd9f00d1c597aa62a51b9b777528b284962f",
+    "height": "11152000"
+  },
+  "pallet": "system",
+  "palletIndex": "0",
+  "items": [
+    {
+      "name": "InvalidSpecName",
+      "fields": [],
+      "index": "0",
+      "docs": [
+        "The name of specification does not match between the current runtime",
+        "and the new runtime."
+      ],
+      "args": []
+    },
+    {
+      "name": "SpecVersionNeedsToIncrease",
+      "fields": [],
+      "index": "1",
+      "docs": [
+        "The specification version is not allowed to decrease between the current runtime",
+        "and the new runtime."
+      ],
+      "args": []
+    },
+    {
+      "name": "FailedToExtractRuntimeVersion",
+      "fields": [],
+      "index": "2",
+      "docs": [
+        "Failed to extract the runtime version from the new runtime.",
+        "",
+        "Either calling `Core_version` or decoding `RuntimeVersion` failed."
+      ],
+      "args": []
+    },
+    {
+      "name": "NonDefaultComposite",
+      "fields": [],
+      "index": "3",
+      "docs": [
+        "Suicide called when the account has non-default composite data."
+      ],
+      "args": []
+    },
+    {
+      "name": "NonZeroRefCount",
+      "fields": [],
+      "index": "4",
+      "docs": [
+        "There is a non-zero reference count preventing the account from being purged."
+      ],
+      "args": []
+    },
+    {
+      "name": "CallFiltered",
+      "fields": [],
+      "index": "5",
+      "docs": [
+        "The origin filter prevent the call to be dispatched."
+      ],
+      "args": []
+    },
+    {
+      "name": "MultiBlockMigrationsOngoing",
+      "fields": [],
+      "index": "6",
+      "docs": [
+        "A multi-block migration is ongoing and prevents the current code from being replaced."
+      ],
+      "args": []
+    },
+    {
+      "name": "InvalidTask",
+      "fields": [],
+      "index": "7",
+      "docs": [
+        "The specified [`Task`] is not valid."
+      ],
+      "args": []
+    },
+    {
+      "name": "FailedTask",
+      "fields": [],
+      "index": "8",
+      "docs": [
+        "The specified [`Task`] failed during execution."
+      ],
+      "args": []
+    },
+    {
+      "name": "NothingAuthorized",
+      "fields": [],
+      "index": "9",
+      "docs": [
+        "No upgrade authorized."
+      ],
+      "args": []
+    },
+    {
+      "name": "Unauthorized",
+      "fields": [],
+      "index": "10",
+      "docs": [
+        "The submitted code is not authorized."
+      ],
+      "args": []
+    }
+  ]
+}

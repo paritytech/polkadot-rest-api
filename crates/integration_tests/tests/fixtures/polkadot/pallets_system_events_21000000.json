@@ -1,0 +1,148 @@
+{
+  "at": {
+    "hash": "0x44bc3559c69ed5ce5827ce629adf5ed642e1131f9b91fce4342aafb80d96cd34",
+    "height": "21000000"
+  },
+  "pallet": "system",
+  "palletIndex": "0",
+  "items": [
+    {
+      "name": "ExtrinsicSuccess",
+      "fields": [
+        {
+          "name": "dispatch_info",
+          "type": "22",
+          "typeName": "DispatchInfo",
+          "docs": []
+        }
+      ],
+      "index": "0",
+      "docs": [
+        "An extrinsic completed successfully."
+      ],
+      "args": [
+        "{\"weight\":\"SpWeightsWeightV2Weight\",\"class\":\"FrameSupportDispatchDispatchClass\",\"paysFee\":\"FrameSupportDispatchPays\"}"
+      ]
+    },
+    {
+      "name": "ExtrinsicFailed",
+      "fields": [
+        {
+          "name": "dispatch_error",
+          "type": "25",
+          "typeName": "DispatchError",
+          "docs": []
+        },
+        {
+          "name": "dispatch_info",
+          "type": "22",
+          "typeName": "DispatchInfo",
+          "docs": []
+        }
+      ],
+      "index": "1",
+      "docs": [
+        "An extrinsic failed."
+      ],
+      "args": [
+        "{\"_enum\":{\"Other\":\"Null\",\"CannotLookup\":\"Null\",\"BadOrigin\":\"Null\",\"Module\":\"SpRuntimeModuleError\",\"ConsumerRemaining\":\"Null\",\"NoProviders\":\"Null\",\"TooManyConsumers\":\"Null\",\"Token\":\"SpRuntimeTokenError\",\"Arithmetic\":\"SpArithmeticArithmeticError\",\"Transactional\":\"SpRuntimeTransactionalError\",\"Exhausted\":\"Null\",\"Corruption\":\"Null\",\"Unavailable\":\"Null\",\"RootNotAllowed\":\"Null\"}}",
+        "{\"weight\":\"SpWeightsWeightV2Weight\",\"class\":\"FrameSupportDispatchDispatchClass\",\"paysFee\":\"FrameSupportDispatchPays\"}"
+      ]
+    },
+    {
+      "name": "CodeUpdated",
+      "fields": [],
+      "index": "2",
+      "docs": [
+        "`:code` was updated."
+      ],
+      "args": []
+    },
+    {
+      "name": "NewAccount",
+      "fields": [
+        {
+          "name": "account",
+          "type": "0",
+          "typeName": "T::AccountId",
+          "docs": []
+        }
+      ],
+      "index": "3",
+      "docs": [
+        "A new account was created."
+      ],
+      "args": [
+        "AccountId32"
+      ]
+    },
+    {
+      "name": "KilledAccount",
+      "fields": [
+        {
+          "name": "account",
+          "type": "0",
+          "typeName": "T::AccountId",
+          "docs": []
+        }
+      ],
+      "index": "4",
+      "docs": [
+        "An account was reaped."
+      ],
+      "args": [
+        "AccountId32"
+      ]
+    },
+    {
+      "name": "Remarked",
+      "fields": [
+        {
+          "name": "sender",
+          "type": "0",
+          "typeName": "T::AccountId",
+          "docs": []
+        },
+        {
+          "name": "hash",
+          "type": "12",
+          "typeName": "T::Hash",
+          "docs": []
+        }
+      ],
+      "index": "5",
+      "docs": [
+        "On on-chain remark happened."
+      ],
+      "args": [
+        "AccountId32",
+        "H256"
+      ]
+    },
+    {
+      "name": "UpgradeAuthorized",
+      "fields": [
+        {
+          "name": "code_hash",
+          "type": "12",
+          "typeName": "T::Hash",
+          "docs": []
+        },
+        {
+          "name": "check_version",
+          "type": "30",
+          "typeName": "bool",
+          "docs": []
+        }
+      ],
+      "index": "6",
+      "docs": [
+        "An upgrade was authorized."
+      ],
+      "args": [
+        "H256",
+        "bool"
+      ]
+    }
+  ]
+}

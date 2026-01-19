@@ -1,0 +1,59 @@
+{
+  "at": {
+    "hash": "0xd7426f1052682ee4fe82ceb47923201f9d2cbeaba3042aa605ee658da8fc6ac5",
+    "height": "1000000"
+  },
+  "pallet": "system",
+  "palletIndex": "0",
+  "items": [
+    {
+      "name": "InvalidSpecName",
+      "fields": [],
+      "index": "0",
+      "docs": [
+        " The name of specification does not match between the current runtime",
+        " and the new runtime."
+      ],
+      "args": []
+    },
+    {
+      "name": "SpecVersionNeedsToIncrease",
+      "fields": [],
+      "index": "1",
+      "docs": [
+        " The specification version is not allowed to decrease between the current runtime",
+        " and the new runtime."
+      ],
+      "args": []
+    },
+    {
+      "name": "FailedToExtractRuntimeVersion",
+      "fields": [],
+      "index": "2",
+      "docs": [
+        " Failed to extract the runtime version from the new runtime.",
+        "",
+        " Either calling `Core_version` or decoding `RuntimeVersion` failed."
+      ],
+      "args": []
+    },
+    {
+      "name": "NonDefaultComposite",
+      "fields": [],
+      "index": "3",
+      "docs": [
+        " Suicide called when the account has non-default composite data."
+      ],
+      "args": []
+    },
+    {
+      "name": "NonZeroRefCount",
+      "fields": [],
+      "index": "4",
+      "docs": [
+        " There is a non-zero reference count preventing the account from being purged."
+      ],
+      "args": []
+    }
+  ]
+}

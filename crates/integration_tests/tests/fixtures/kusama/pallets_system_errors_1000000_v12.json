@@ -1,0 +1,61 @@
+{
+  "at": {
+    "hash": "0xb267ffd706bbb93779eab04f47c7038031657b0a863794dbdd73170e3976c3e7",
+    "height": "1000000"
+  },
+  "pallet": "system",
+  "palletIndex": "0",
+  "items": [
+    {
+      "name": "InvalidSpecName",
+      "fields": [],
+      "index": "0",
+      "docs": [
+        " The name of specification does not match between the current runtime",
+        " and the new runtime."
+      ],
+      "args": []
+    },
+    {
+      "name": "SpecVersionNotAllowedToDecrease",
+      "fields": [],
+      "index": "1",
+      "docs": [
+        " The specification version is not allowed to decrease between the current runtime",
+        " and the new runtime."
+      ],
+      "args": []
+    },
+    {
+      "name": "ImplVersionNotAllowedToDecrease",
+      "fields": [],
+      "index": "2",
+      "docs": [
+        " The implementation version is not allowed to decrease between the current runtime",
+        " and the new runtime."
+      ],
+      "args": []
+    },
+    {
+      "name": "SpecOrImplVersionNeedToIncrease",
+      "fields": [],
+      "index": "3",
+      "docs": [
+        " The specification or the implementation version need to increase between the",
+        " current runtime and the new runtime."
+      ],
+      "args": []
+    },
+    {
+      "name": "FailedToExtractRuntimeVersion",
+      "fields": [],
+      "index": "4",
+      "docs": [
+        " Failed to extract the runtime version from the new runtime.",
+        "",
+        " Either calling `Core_version` or decoding `RuntimeVersion` failed."
+      ],
+      "args": []
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "at": {
+    "hash": "0x8a8a7aa9ac863359b2cc609b836e3ebd7086d775c31f8c177f183ed9ffa71fa5",
+    "height": "5000000"
+  },
+  "pallet": "system",
+  "palletIndex": "0",
+  "items": [
+    {
+      "name": "ExtrinsicSuccess",
+      "fields": [
+        {
+          "name": null,
+          "type": "18",
+          "typeName": null,
+          "docs": []
+        }
+      ],
+      "index": "0",
+      "docs": [
+        " An extrinsic completed successfully. \\[info\\]"
+      ],
+      "args": [
+        "DispatchInfo"
+      ]
+    },
+    {
+      "name": "ExtrinsicFailed",
+      "fields": [
+        {
+          "name": null,
+          "type": "19",
+          "typeName": null,
+          "docs": []
+        },
+        {
+          "name": null,
+          "type": "18",
+          "typeName": null,
+          "docs": []
+        }
+      ],
+      "index": "1",
+      "docs": [
+        " An extrinsic failed. \\[error, info\\]"
+      ],
+      "args": [
+        "DispatchError",
+        "DispatchInfo"
+      ]
+    },
+    {
+      "name": "CodeUpdated",
+      "fields": [],
+      "index": "2",
+      "docs": [
+        " `:code` was updated."
+      ],
+      "args": []
+    },
+    {
+      "name": "NewAccount",
+      "fields": [
+        {
+          "name": null,
+          "type": "20",
+          "typeName": null,
+          "docs": []
+        }
+      ],
+      "index": "3",
+      "docs": [
+        " A new \\[account\\] was created."
+      ],
+      "args": [
+        "AccountId"
+      ]
+    },
+    {
+      "name": "KilledAccount",
+      "fields": [
+        {
+          "name": null,
+          "type": "20",
+          "typeName": null,
+          "docs": []
+        }
+      ],
+      "index": "4",
+      "docs": [
+        " An \\[account\\] was reaped."
+      ],
+      "args": [
+        "AccountId"
+      ]
+    },
+    {
+      "name": "Remarked",
+      "fields": [
+        {
+          "name": null,
+          "type": "20",
+          "typeName": null,
+          "docs": []
+        },
+        {
+          "name": null,
+          "type": "21",
+          "typeName": null,
+          "docs": []
+        }
+      ],
+      "index": "5",
+      "docs": [
+        " On on-chain remark happened. \\[origin, remark_hash\\]"
+      ],
+      "args": [
+        "AccountId",
+        "Hash"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "at": {
+    "hash": "0xb267ffd706bbb93779eab04f47c7038031657b0a863794dbdd73170e3976c3e7",
+    "height": "1000000"
+  },
+  "pallet": "system",
+  "palletIndex": "0",
+  "items": [
+    {
+      "name": "ExtrinsicSuccess",
+      "fields": [
+        {
+          "name": null,
+          "type": "12",
+          "typeName": null,
+          "docs": []
+        }
+      ],
+      "index": "0",
+      "docs": [
+        " An extrinsic completed successfully."
+      ],
+      "args": [
+        "DispatchInfo"
+      ]
+    },
+    {
+      "name": "ExtrinsicFailed",
+      "fields": [
+        {
+          "name": null,
+          "type": "13",
+          "typeName": null,
+          "docs": []
+        },
+        {
+          "name": null,
+          "type": "12",
+          "typeName": null,
+          "docs": []
+        }
+      ],
+      "index": "1",
+      "docs": [
+        " An extrinsic failed."
+      ],
+      "args": [
+        "DispatchError",
+        "DispatchInfo"
+      ]
+    },
+    {
+      "name": "CodeUpdated",
+      "fields": [],
+      "index": "2",
+      "docs": [
+        " `:code` was updated."
+      ],
+      "args": []
+    }
+  ]
+}

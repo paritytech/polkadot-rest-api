@@ -1,0 +1,123 @@
+{
+  "at": {
+    "hash": "0xeb737eab71ea40b5cfcb79f4bdeb07c4fa8f16dee2dec7f351e34d1e7d4284bd",
+    "height": "1000000"
+  },
+  "pallet": "system",
+  "palletIndex": "0",
+  "items": [
+    {
+      "name": "ExtrinsicSuccess",
+      "fields": [
+        {
+          "name": "dispatch_info",
+          "type": "19",
+          "typeName": "DispatchInfo",
+          "docs": []
+        }
+      ],
+      "index": "0",
+      "docs": [
+        "An extrinsic completed successfully."
+      ],
+      "args": [
+        "{\"weight\":\"u64\",\"class\":\"FrameSupportWeightsDispatchClass\",\"paysFee\":\"FrameSupportWeightsPays\"}"
+      ]
+    },
+    {
+      "name": "ExtrinsicFailed",
+      "fields": [
+        {
+          "name": "dispatch_error",
+          "type": "22",
+          "typeName": "DispatchError",
+          "docs": []
+        },
+        {
+          "name": "dispatch_info",
+          "type": "19",
+          "typeName": "DispatchInfo",
+          "docs": []
+        }
+      ],
+      "index": "1",
+      "docs": [
+        "An extrinsic failed."
+      ],
+      "args": [
+        "{\"_enum\":{\"Other\":\"Null\",\"CannotLookup\":\"Null\",\"BadOrigin\":\"Null\",\"Module\":\"{\\\"index\\\":\\\"u8\\\",\\\"error\\\":\\\"u8\\\"}\",\"ConsumerRemaining\":\"Null\",\"NoProviders\":\"Null\",\"TooManyConsumers\":\"Null\",\"Token\":\"SpRuntimeTokenError\",\"Arithmetic\":\"SpRuntimeArithmeticError\"}}",
+        "{\"weight\":\"u64\",\"class\":\"FrameSupportWeightsDispatchClass\",\"paysFee\":\"FrameSupportWeightsPays\"}"
+      ]
+    },
+    {
+      "name": "CodeUpdated",
+      "fields": [],
+      "index": "2",
+      "docs": [
+        "`:code` was updated."
+      ],
+      "args": []
+    },
+    {
+      "name": "NewAccount",
+      "fields": [
+        {
+          "name": "account",
+          "type": "0",
+          "typeName": "T::AccountId",
+          "docs": []
+        }
+      ],
+      "index": "3",
+      "docs": [
+        "A new account was created."
+      ],
+      "args": [
+        "AccountId32"
+      ]
+    },
+    {
+      "name": "KilledAccount",
+      "fields": [
+        {
+          "name": "account",
+          "type": "0",
+          "typeName": "T::AccountId",
+          "docs": []
+        }
+      ],
+      "index": "4",
+      "docs": [
+        "An account was reaped."
+      ],
+      "args": [
+        "AccountId32"
+      ]
+    },
+    {
+      "name": "Remarked",
+      "fields": [
+        {
+          "name": "sender",
+          "type": "0",
+          "typeName": "T::AccountId",
+          "docs": []
+        },
+        {
+          "name": "hash",
+          "type": "9",
+          "typeName": "T::Hash",
+          "docs": []
+        }
+      ],
+      "index": "5",
+      "docs": [
+        "On on-chain remark happened."
+      ],
+      "args": [
+        "AccountId32",
+        "H256"
+      ]
+    }
+  ]
+}
