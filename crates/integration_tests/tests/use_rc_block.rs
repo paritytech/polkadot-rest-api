@@ -365,10 +365,7 @@ async fn test_use_rc_block_header_by_id() -> Result<()> {
 
     println!("{} Local API response: {}", "✓".green(), "OK".green());
 
-    println!(
-        "{} Loading expected response from fixture",
-        "→".cyan()
-    );
+    println!("{} Loading expected response from fixture", "→".cyan());
     let fixture_path = get_fixture_path("use_rc_block_header_10293194.json")?;
     let fixture_content = fs::read_to_string(&fixture_path)
         .with_context(|| format!("Failed to read fixture file: {:?}", fixture_path))?;

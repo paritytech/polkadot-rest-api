@@ -207,7 +207,10 @@ mod tests {
         assert!(json_output.get("extrinsicsRoot").is_some());
         assert!(json_output.get("digest").is_some());
 
-        assert!(json_output.get("hash").is_none(), "hash should not be present");
+        assert!(
+            json_output.get("hash").is_none(),
+            "hash should not be present"
+        );
         assert!(
             json_output.get("rcBlockHash").is_none(),
             "rcBlockHash should not be present"
@@ -236,8 +239,8 @@ mod tests {
             number: "10554981".to_string(),
             state_root: "0x4ada77d75a8e7380685115b3edbd53228da52d696a3f99e9c4cbef869e597433"
                 .to_string(),
-            extrinsics_root:
-                "0x0ebf421f78b267b7ec29b126e4d4d4f64b0d5cf9f695be9b76be7e6cca6955cc".to_string(),
+            extrinsics_root: "0x0ebf421f78b267b7ec29b126e4d4d4f64b0d5cf9f695be9b76be7e6cca6955cc"
+                .to_string(),
             digest: json!({ "logs": [] }),
             hash: None,
             rc_block_hash: Some(
@@ -258,7 +261,10 @@ mod tests {
         assert!(json_output.get("rcBlockNumber").is_some());
         assert!(json_output.get("ahTimestamp").is_some());
 
-        assert!(json_output.get("hash").is_none(), "hash should not be present");
+        assert!(
+            json_output.get("hash").is_none(),
+            "hash should not be present"
+        );
 
         assert_eq!(json_output["rcBlockNumber"], "28808029");
         assert_eq!(json_output["ahTimestamp"], "1764157944000");
