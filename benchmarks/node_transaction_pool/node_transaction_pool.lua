@@ -1,7 +1,7 @@
 -- Node transaction pool endpoint benchmark script
 -- Tests the /v1/node/transaction-pool endpoint for latency and throughput
 
-local util = require("../util")
+local util = require("util")
 
 -- Setup the request
 request = function()

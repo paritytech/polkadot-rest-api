@@ -1,7 +1,7 @@
 -- Node network endpoint benchmark script
 -- Tests the /v1/node/network endpoint for latency and throughput
 
-local util = require("../util")
+local util = require("util")
 
 -- Setup the request
 request = function()

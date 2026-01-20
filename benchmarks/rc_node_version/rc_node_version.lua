@@ -1,7 +1,7 @@
 -- RC node version endpoint benchmark script
 -- Tests the /v1/rc/node/version endpoint for latency and throughput
 
-local util = require("../util")
+local util = require("util")
 
 -- Setup the request
 request = function()

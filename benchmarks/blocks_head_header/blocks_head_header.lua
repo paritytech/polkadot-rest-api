@@ -1,11 +1,11 @@
 -- Blocks head header endpoint benchmark script
 -- Tests the /blocks/head/header endpoint for latency and throughput
 
-local util = require("../util")
+local util = require("util")
 
 -- Setup the request
 request = function()
-    return wrk.format("GET", "/blocks/head/header")
+    return wrk.format("GET", "/v1/blocks/head/header")
 end
 
 -- No delay between requests for maximum throughput
