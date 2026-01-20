@@ -259,17 +259,31 @@ pub async fn fetch_block_events(
                         let json_value = event_field.value.clone();
                         let type_name = event_field.type_name.as_ref();
 
-                        if let Some(tn) = type_name
-                            && (tn == "AccountId32" || tn == "MultiAddress" || tn == "AccountId")
-                        {
-                            // For AccountId fields, try SS58 conversion
-                            let with_hex = convert_bytes_to_hex(json_value.clone());
-                            if let Some(ss58_value) = try_convert_accountid_to_ss58(
-                                &with_hex,
-                                state.chain_info.ss58_prefix,
-                            ) {
-                                return ss58_value;
+                        match type_name {
+                            Some(tn) => {
+                                if tn == "AccountId32" || tn == "MultiAddress" || tn == "AccountId"
+                                {
+                                    let with_hex = convert_bytes_to_hex(json_value.clone());
+                                    if let Some(ss58_value) = try_convert_accountid_to_ss58(
+                                        &with_hex,
+                                        state.chain_info.ss58_prefix,
+                                    ) {
+                                        return ss58_value;
+                                    }
+                                } else if tn == "RewardDestination" {
+                                    let with_hex =
+                                        convert_bytes_to_hex(json_value["account"].clone());
+                                    if let Some(ss58_value) = try_convert_accountid_to_ss58(
+                                        &with_hex,
+                                        state.chain_info.ss58_prefix,
+                                    ) {
+                                        return serde_json::json!({
+                                            "account": ss58_value
+                                        });
+                                    }
+                                }
                             }
+                            None => {}
                         }
 
                         // Apply remaining transformations (bytes to hex, numbers to strings, camelCase keys)
