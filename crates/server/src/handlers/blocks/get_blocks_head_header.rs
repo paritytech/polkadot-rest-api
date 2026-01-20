@@ -1,5 +1,5 @@
 use crate::handlers::blocks::common::decode_digest_logs;
-use crate::handlers::blocks::types::DigestLog;
+use crate::handlers::blocks::types::{BlockHeaderResponse, convert_digest_logs_to_sidecar_format};
 use crate::state::AppState;
 use crate::types::BlockHash;
 use crate::utils::{
@@ -15,6 +15,7 @@ use axum::{
 use config::ChainType;
 use heck::ToLowerCamelCase;
 use serde::{Deserialize, Serialize};
+use parity_scale_codec::Decode;
 use serde_json::json;
 use subxt::error::OnlineClientAtBlockError;
 use subxt_rpcs::rpc_params;
@@ -33,38 +34,6 @@ pub struct BlockQueryParams {
 
 fn default_finalized() -> bool {
     true
-}
-
-fn convert_digest_logs_to_sidecar_format(logs: Vec<DigestLog>) -> Vec<serde_json::Value> {
-    logs.into_iter()
-        .map(|log| {
-            let log_type_camel = log.log_type.to_lower_camel_case();
-            let mut obj = serde_json::Map::new();
-            obj.insert(log_type_camel, log.value);
-            serde_json::Value::Object(obj)
-        })
-        .collect()
-}
-
-/// Lightweight block header information (no author/logs decoding)
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BlockHeaderResponse {
-    pub number: String,
-    pub hash: String,
-    pub parent_hash: String,
-    pub state_root: String,
-    pub extrinsics_root: String,
-    pub digest: serde_json::Value,
-    /// Relay Chain block hash (only present when useRcBlock=true)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rc_block_hash: Option<String>,
-    /// Relay Chain block number (only present when useRcBlock=true)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rc_block_number: Option<String>,
-    /// Asset Hub block timestamp (only present when useRcBlock=true)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ah_timestamp: Option<String>,
 }
 
 /// Error types for /blocks/head/header endpoint
@@ -213,14 +182,14 @@ pub async fn get_blocks_head_header(
 
     // Build lightweight header response
     let response = BlockHeaderResponse {
-        number: block_number.to_string(),
-        hash: block_hash,
         parent_hash,
+        number: block_number.to_string(),
         state_root,
         extrinsics_root,
         digest: json!({
             "logs": digest_logs_formatted
         }),
+        hash: Some(block_hash),
         rc_block_hash: None,
         rc_block_number: None,
         ah_timestamp: None,
@@ -332,14 +301,14 @@ async fn handle_use_rc_block(
         let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
         results.push(BlockHeaderResponse {
-            number: ah_block.number.to_string(),
-            hash: ah_block.hash,
             parent_hash,
+            number: ah_block.number.to_string(),
             state_root,
             extrinsics_root,
             digest: json!({
                 "logs": digest_logs_formatted
             }),
+            hash: Some(ah_block.hash),
             rc_block_hash: Some(rc_block_hash.clone()),
             rc_block_number: Some(rc_block_number.clone()),
             ah_timestamp,
