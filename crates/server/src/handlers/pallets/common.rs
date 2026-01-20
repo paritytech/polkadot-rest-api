@@ -31,6 +31,12 @@ pub enum PalletError {
     #[error("Pallet not found: {0}")]
     PalletNotFound(String),
 
+    /// The requested constant was not found in the pallet.
+    #[error(
+        "Could not find constants item (\"{0}\") in metadata. constants item names are expected to be in camel case, e.g. 'storageItemId'"
+    )]
+    ConstantNotFound(String),
+
     /// The metadata version is not supported.
     #[error("Unsupported metadata version")]
     UnsupportedMetadataVersion,
@@ -62,7 +68,9 @@ impl IntoResponse for PalletError {
             Self::InvalidBlockParam(_) | Self::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
-            Self::PalletNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            Self::PalletNotFound(_) | Self::ConstantNotFound(_) => {
+                (StatusCode::NOT_FOUND, self.to_string())
+            }
             Self::ClientAtBlockFailed(err) => {
                 if crate::utils::is_online_client_at_block_disconnected(err) {
                     (
@@ -104,6 +112,22 @@ pub struct PalletQueryParams {
     /// If `true`, only return the names of items without full metadata.
     #[serde(default)]
     pub only_ids: bool,
+
+    /// If `true`, resolve the block from the relay chain (Asset Hub only).
+    #[serde(default)]
+    pub use_rc_block: bool,
+}
+
+/// Query parameters for single item endpoints (e.g., `/pallets/{palletId}/consts/{constantId}`).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PalletItemQueryParams {
+    /// Block hash or number to query at. If not provided, uses the latest block.
+    pub at: Option<String>,
+
+    /// If `true`, include full metadata for the item.
+    #[serde(default)]
+    pub metadata: bool,
 
     /// If `true`, resolve the block from the relay chain (Asset Hub only).
     #[serde(default)]

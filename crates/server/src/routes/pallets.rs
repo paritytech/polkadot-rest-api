@@ -19,4 +19,11 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             "get",
             get(pallets::get_pallets_consts),
         )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/:palletId/consts/:constantId",
+            "get",
+            get(pallets::get_pallet_const_item),
+        )
 }
