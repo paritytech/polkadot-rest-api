@@ -5,6 +5,7 @@ use axum::{
     extract::{Query, State},
     response::{IntoResponse, Response},
 };
+use futures::stream::{self, StreamExt, TryStreamExt};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -120,31 +121,39 @@ pub async fn get_blocks(
     };
 
     if params.use_rc_block {
-        let blocks = handle_use_rc_block_range(state, &base_block_params, start, end).await?;
+        let blocks =
+            handle_use_rc_block_range(state.clone(), &base_block_params, start, end).await?;
         return Ok(Json(blocks).into_response());
     }
 
-    let mut blocks: Vec<BlockResponse> = Vec::with_capacity((end - start + 1) as usize);
+    let concurrency = state.config.express.block_fetch_concurrency;
 
-    for number in start..=end {
-        let block_hash = state
-            .get_block_hash_at_number(number)
-            .await
-            .map_err(GetBlockError::HeaderFetchFailed)?
-            .ok_or_else(|| {
-                GetBlocksError::BlockError(GetBlockError::BlockResolveFailed(
-                    utils::BlockResolveError::NotFound(format!(
-                        "Block at height {} not found",
-                        number
-                    )),
-                ))
-            })?;
+    let blocks: Vec<BlockResponse> = stream::iter(start..=end)
+        .map(|number| {
+            let state = state.clone();
+            let params = base_block_params.clone();
+            async move {
+                let block_hash = state
+                    .get_block_hash_at_number(number)
+                    .await
+                    .map_err(GetBlockError::HeaderFetchFailed)?
+                    .ok_or_else(|| {
+                        GetBlocksError::BlockError(GetBlockError::BlockResolveFailed(
+                            utils::BlockResolveError::NotFound(format!(
+                                "Block at height {} not found",
+                                number
+                            )),
+                        ))
+                    })?;
 
-        let block =
-            build_block_response_for_hash(&state, &block_hash, number, false, &base_block_params)
-                .await?;
-        blocks.push(block);
-    }
+                build_block_response_for_hash(&state, &block_hash, number, false, &params)
+                    .await
+                    .map_err(GetBlocksError::from)
+            }
+        })
+        .buffered(concurrency)
+        .try_collect()
+        .await?;
 
     Ok(Json(blocks).into_response())
 }
@@ -168,52 +177,72 @@ async fn handle_use_rc_block_range(
 
     let rc_rpc = state
         .get_relay_chain_rpc_client()
-        .ok_or(GetBlocksError::RelayChainNotConfigured)?;
+        .ok_or(GetBlocksError::RelayChainNotConfigured)?
+        .clone();
     let rc_legacy_rpc = state
         .get_relay_chain_rpc()
-        .ok_or(GetBlocksError::RelayChainNotConfigured)?;
+        .ok_or(GetBlocksError::RelayChainNotConfigured)?
+        .clone();
 
-    let mut results: Vec<BlockResponse> = Vec::new();
+    let concurrency = state.config.express.block_fetch_concurrency;
 
-    for rc_number in start..=end {
-        let rc_resolved_block = resolve_rc_block(rc_rpc, rc_legacy_rpc, rc_number).await?;
+    // Fetch RC blocks in parallel, each returning a Vec of AH BlockResponses
+    let nested_results: Vec<Vec<BlockResponse>> = stream::iter(start..=end)
+        .map(|rc_number| {
+            let state = state.clone();
+            let params = params.clone();
+            let rc_rpc = rc_rpc.clone();
+            let rc_legacy_rpc = rc_legacy_rpc.clone();
+            async move {
+                let rc_resolved_block =
+                    resolve_rc_block(&rc_rpc, &rc_legacy_rpc, rc_number).await?;
 
-        let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+                let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
-        if ah_blocks.is_empty() {
-            continue;
-        }
-
-        let rc_block_number = rc_resolved_block.number.to_string();
-        let rc_block_hash = rc_resolved_block.hash.clone();
-
-        for ah_block in ah_blocks {
-            let mut response = build_block_response_for_hash(
-                &state,
-                &ah_block.hash,
-                ah_block.number,
-                true,
-                params,
-            )
-            .await?;
-
-            response.rc_block_hash = Some(rc_block_hash.clone());
-            response.rc_block_number = Some(rc_block_number.clone());
-
-            let client_at_block = state.client.at(ah_block.number).await?;
-            if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
-                && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
-            {
-                let timestamp_bytes = timestamp.into_bytes();
-                let mut cursor = &timestamp_bytes[..];
-                if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                    response.ah_timestamp = Some(timestamp_value.to_string());
+                if ah_blocks.is_empty() {
+                    return Ok::<Vec<BlockResponse>, GetBlocksError>(Vec::new());
                 }
-            }
 
-            results.push(response);
-        }
-    }
+                let rc_block_number = rc_resolved_block.number.to_string();
+                let rc_block_hash = rc_resolved_block.hash.clone();
+
+                let mut responses = Vec::with_capacity(ah_blocks.len());
+                for ah_block in ah_blocks {
+                    let mut response = build_block_response_for_hash(
+                        &state,
+                        &ah_block.hash,
+                        ah_block.number,
+                        true,
+                        &params,
+                    )
+                    .await?;
+
+                    response.rc_block_hash = Some(rc_block_hash.clone());
+                    response.rc_block_number = Some(rc_block_number.clone());
+
+                    let client_at_block = state.client.at(ah_block.number).await?;
+                    if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
+                        && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
+                    {
+                        let timestamp_bytes = timestamp.into_bytes();
+                        let mut cursor = &timestamp_bytes[..];
+                        if let Ok(timestamp_value) = u64::decode(&mut cursor) {
+                            response.ah_timestamp = Some(timestamp_value.to_string());
+                        }
+                    }
+
+                    responses.push(response);
+                }
+
+                Ok(responses)
+            }
+        })
+        .buffered(concurrency)
+        .try_collect()
+        .await?;
+
+    // Flatten and sort results
+    let mut results: Vec<BlockResponse> = nested_results.into_iter().flatten().collect();
 
     results.sort_by(|a, b| {
         let a_num = a.number.parse::<u64>().unwrap_or_default();
