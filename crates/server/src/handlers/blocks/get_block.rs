@@ -3,7 +3,7 @@
 //! This module provides the main handler for fetching block information.
 
 use crate::state::AppState;
-use crate::utils::{self, find_ah_blocks_in_rc_block};
+use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -11,7 +11,6 @@ use axum::{
 };
 use config::ChainType;
 use heck::{ToSnakeCase, ToUpperCamelCase};
-use parity_scale_codec::Decode;
 use serde_json::json;
 
 use super::common::{
@@ -90,16 +89,7 @@ async fn handle_use_rc_block(
         response.rc_block_number = Some(rc_block_number.clone());
 
         let client_at_block = state.client.at(ah_block.number).await?;
-        if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
-            && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
-        {
-            // Timestamp is a u64 (milliseconds) - decode from storage value
-            let timestamp_bytes = timestamp.into_bytes();
-            let mut cursor = &timestamp_bytes[..];
-            if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                response.ah_timestamp = Some(timestamp_value.to_string());
-            }
-        }
+        response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
         results.push(response);
     }

@@ -1,5 +1,7 @@
 use crate::state::AppState;
-use crate::utils::{self, RcBlockError, ResolvedBlock, find_ah_blocks_in_rc_block};
+use crate::utils::{
+    self, RcBlockError, ResolvedBlock, fetch_block_timestamp, find_ah_blocks_in_rc_block,
+};
 use axum::{
     Json,
     extract::{Query, State},
@@ -26,6 +28,7 @@ pub struct BlocksRangeQueryParams {
     pub no_fees: bool,
     #[serde(default)]
     pub use_rc_block: bool,
+    // TODO: Implement EVM format support for block responses
     #[serde(default)]
     pub use_evm_format: bool,
 }
@@ -165,7 +168,6 @@ async fn handle_use_rc_block_range(
     end: u64,
 ) -> Result<Vec<BlockResponse>, GetBlocksError> {
     use config::ChainType;
-    use parity_scale_codec::Decode;
 
     if state.chain_info.chain_type != ChainType::AssetHub {
         return Err(GetBlocksError::UseRcBlockNotSupported);
@@ -221,15 +223,7 @@ async fn handle_use_rc_block_range(
                     response.rc_block_number = Some(rc_block_number.clone());
 
                     let client_at_block = state.client.at(ah_block.number).await?;
-                    if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
-                        && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
-                    {
-                        let timestamp_bytes = timestamp.into_bytes();
-                        let mut cursor = &timestamp_bytes[..];
-                        if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                            response.ah_timestamp = Some(timestamp_value.to_string());
-                        }
-                    }
+                    response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
                     responses.push(response);
                 }
@@ -284,7 +278,7 @@ fn parse_range(range: &str) -> Result<(u64, u64), GetBlocksError> {
         .parse()
         .map_err(|_| GetBlocksError::InvalidRangeMax)?;
 
-    if start > end {
+    if start >= end {
         return Err(GetBlocksError::InvalidRangeMinMax);
     }
 

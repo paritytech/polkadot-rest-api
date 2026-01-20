@@ -6,7 +6,7 @@ pub mod hash;
 pub mod rc_block;
 
 pub use block::{
-    BlockId, BlockIdParseError, BlockResolveError, ResolvedBlock,
+    BlockId, BlockIdParseError, BlockResolveError, ResolvedBlock, fetch_block_timestamp,
     get_block_number_from_hash_with_rpc, resolve_block, resolve_block_with_rpc,
 };
 pub use extrinsic::{
