@@ -631,12 +631,11 @@ fn extract_class_length_from_decoded(
         }
     }
 
-    if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) = &max_val.value {
-        if let Some((_, class_val)) = named_fields.iter().find(|(name, _)| name == class)
-            && let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &class_val.value
-        {
-            return Some(*n as u64);
-        }
+    if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) = &max_val.value
+        && let Some((_, class_val)) = named_fields.iter().find(|(name, _)| name == class)
+        && let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &class_val.value
+    {
+        return Some(*n as u64);
     }
 
     None
