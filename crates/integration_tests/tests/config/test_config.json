@@ -274,6 +274,14 @@
         "query_params": {},
         "fixture_path": "asset-hub-polkadot/blocks_10260000_post_migration.json",
         "description": "Test block endpoint at Asset Hub Polkadot block 10,260,000 (post-migration, Asset Hub era, after migration ended at 10,259,208)"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 11308795,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/blocks_11308795.json",
+        "description": "Test block endpoint at Asset Hub Polkadot block 11,308,795, for staking event test"
       }
     ],
     "asset-hub-kusama": [
