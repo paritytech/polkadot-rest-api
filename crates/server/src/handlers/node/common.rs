@@ -26,6 +26,24 @@ pub enum FetchError {
 
     #[error("Constant not found: {0}")]
     ConstantNotFound(String),
+
+    #[error("Tip extraction failed: {0}")]
+    TipExtraction(#[from] TipExtractionError),
+}
+
+#[derive(Debug, PartialEq, thiserror::Error)]
+pub enum TipExtractionError {
+    #[error("Empty extrinsic")]
+    Empty,
+
+    #[error("Malformed extrinsic: {0}")]
+    Malformed(&'static str),
+
+    #[error("Unknown MultiAddress variant: 0x{0:02x}")]
+    UnknownAddressVariant(u8),
+
+    #[error("Unknown MultiSignature variant: 0x{0:02x}")]
+    UnknownSignatureVariant(u8),
 }
 
 // ============================================================================
@@ -216,7 +234,7 @@ pub async fn fetch_transaction_pool_with_fees(
         let hash = format!("0x{}", hex::encode(hash_bytes));
 
         let encoded_length = extrinsic_bytes.len();
-        let tip = extract_tip_from_extrinsic_bytes(&extrinsic_bytes);
+        let tip = extract_tip_from_extrinsic_bytes(&extrinsic_bytes)?;
 
         let fee_info = query_fee_info(rpc_client, &encoded_extrinsic, &latest_hash)
             .await
@@ -253,86 +271,140 @@ pub async fn fetch_transaction_pool_with_fees(
     Ok(TransactionPoolResponse { pool })
 }
 
-pub fn extract_tip_from_extrinsic_bytes(bytes: &[u8]) -> Option<String> {
+/// Extracts the tip from a SCALE-encoded signed extrinsic.
+///
+/// # Extrinsic Structure (signed, version 4)
+///
+/// ```text
+/// [ length (compact) | version | address | signature | era | nonce | tip | call_data ]
+///                      ^^^^^^^   ^^^^^^^   ^^^^^^^^^   ^^^   ^^^^^   ^^^
+///                      1 byte    varies    varies      1-2   compact compact
+/// ```
+///
+/// - **version**: High bit (0x80) indicates signed; low bits are version number
+/// - **address**: MultiAddress enum (AccountId32, Index, Raw, Address32, Address20)
+/// - **signature**: MultiSignature enum (Ed25519/Sr25519 = 64 bytes, Ecdsa = 65 bytes)
+/// - **era**: Mortal (2 bytes) or Immortal (1 byte)
+/// - **nonce**: Compact-encoded account nonce
+/// - **tip**: Compact-encoded u128 balance
+///
+/// # Returns
+///
+/// - `Ok(Some(tip))` as a decimal string for signed extrinsics
+/// - `Ok(None)` for unsigned extrinsics (no tip field exists)
+/// - `Err(...)` for malformed extrinsics or unknown variants
+pub fn extract_tip_from_extrinsic_bytes(
+    bytes: &[u8],
+) -> Result<Option<String>, TipExtractionError> {
     use parity_scale_codec::Compact;
     use sp_runtime::generic::Era;
 
     if bytes.is_empty() {
-        return None;
+        return Err(TipExtractionError::Empty);
     }
 
+    // Skip the compact-encoded extrinsic length prefix
     let mut cursor = bytes;
-    Compact::<u32>::decode(&mut cursor).ok()?;
+    Compact::<u32>::decode(&mut cursor)
+        .map_err(|_| TipExtractionError::Malformed("invalid length prefix"))?;
 
     if cursor.is_empty() {
-        return None;
+        return Err(TipExtractionError::Malformed(
+            "truncated after length prefix",
+        ));
     }
 
+    // Check the version byte: high bit indicates signed extrinsic
     let version = cursor[0];
     if version & 0b1000_0000 == 0 {
-        return Some("0".to_string());
+        // Unsigned extrinsic - no tip field exists
+        return Ok(None);
     }
 
     cursor = &cursor[1..];
 
-    let addr_variant = u8::decode(&mut cursor).ok()?;
+    // Skip the MultiAddress (sender)
+    let addr_variant = u8::decode(&mut cursor)
+        .map_err(|_| TipExtractionError::Malformed("missing address variant"))?;
     match addr_variant {
         0x00 => {
+            // AccountId (32 bytes)
             if cursor.len() < 32 {
-                return None;
+                return Err(TipExtractionError::Malformed("truncated AccountId address"));
             }
             cursor = &cursor[32..];
         }
         0x01 => {
-            Compact::<u32>::decode(&mut cursor).ok()?;
+            // Index (compact u32)
+            Compact::<u32>::decode(&mut cursor)
+                .map_err(|_| TipExtractionError::Malformed("invalid Index address"))?;
         }
         0x02 => {
-            let Compact(len) = Compact::<u32>::decode(&mut cursor).ok()?;
+            // Raw (variable length bytes)
+            let Compact(len) = Compact::<u32>::decode(&mut cursor)
+                .map_err(|_| TipExtractionError::Malformed("invalid Raw address length"))?;
             let len = len as usize;
             if cursor.len() < len {
-                return None;
+                return Err(TipExtractionError::Malformed("truncated Raw address"));
             }
             cursor = &cursor[len..];
         }
         0x03 => {
+            // Address32 (32 bytes)
             if cursor.len() < 32 {
-                return None;
+                return Err(TipExtractionError::Malformed("truncated Address32"));
             }
             cursor = &cursor[32..];
         }
         0x04 => {
+            // Address20 (20 bytes, e.g., Ethereum-style)
             if cursor.len() < 20 {
-                return None;
+                return Err(TipExtractionError::Malformed("truncated Address20"));
             }
             cursor = &cursor[20..];
         }
-        _ => return None,
+        unknown => {
+            return Err(TipExtractionError::UnknownAddressVariant(unknown));
+        }
     }
 
-    let sig_variant = u8::decode(&mut cursor).ok()?;
+    // Skip the MultiSignature
+    let sig_variant = u8::decode(&mut cursor)
+        .map_err(|_| TipExtractionError::Malformed("missing signature variant"))?;
     match sig_variant {
         0x00 | 0x01 => {
+            // Ed25519 or Sr25519 (64 bytes)
             if cursor.len() < 64 {
-                return None;
+                return Err(TipExtractionError::Malformed(
+                    "truncated Ed25519/Sr25519 signature",
+                ));
             }
             cursor = &cursor[64..];
         }
         0x02 => {
+            // Ecdsa (65 bytes)
             if cursor.len() < 65 {
-                return None;
+                return Err(TipExtractionError::Malformed("truncated Ecdsa signature"));
             }
             cursor = &cursor[65..];
         }
-        _ => return None,
+        unknown => {
+            return Err(TipExtractionError::UnknownSignatureVariant(unknown));
+        }
     }
 
-    Era::decode(&mut cursor).ok()?;
+    // Skip Era (mortal or immortal)
+    Era::decode(&mut cursor).map_err(|_| TipExtractionError::Malformed("invalid era"))?;
 
-    Compact::<u32>::decode(&mut cursor).ok()?;
+    // Skip nonce (compact u32)
+    Compact::<u32>::decode(&mut cursor)
+        .map_err(|_| TipExtractionError::Malformed("invalid nonce"))?;
 
-    let Compact(tip) = Compact::<u128>::decode(&mut cursor).ok()?;
+    // Decode the tip (compact u128)
+    let Compact(tip) = Compact::<u128>::decode(&mut cursor)
+        .map_err(|_| TipExtractionError::Malformed("invalid tip"))?;
 
-    Some(tip.to_string())
+    Ok(Some(tip.to_string()))
 }
 
 async fn query_fee_info(
@@ -390,8 +462,15 @@ async fn calculate_priority(
                 .ok_or_else(|| FetchError::ConstantNotFound("weight".to_string()))?
         };
 
-    let max_block_weight = get_max_block_weight(rpc_client, latest_hash).await?;
-    let max_length = get_max_block_length(rpc_client, latest_hash, &class_str).await?;
+    let metadata = get_runtime_metadata(rpc_client, latest_hash).await?;
+
+    let max_block_weight = extract_max_block_weight(&metadata).ok_or_else(|| {
+        FetchError::ConstantNotFound("System::BlockWeights::maxBlock::refTime".to_string())
+    })?;
+
+    let max_length = extract_max_block_length(&metadata, &class_str).ok_or_else(|| {
+        FetchError::ConstantNotFound(format!("System::BlockLength::max[{}]", class_str))
+    })?;
 
     let bounded_weight = cmp::max(cmp::min(versioned_weight, max_block_weight), 1);
     let bounded_length = cmp::max(cmp::min(encoded_length, max_length as usize), 1);
@@ -435,7 +514,11 @@ async fn calculate_priority(
                         let final_fee = computed_inclusion_fee.saturating_add(tip);
 
                         let operational_fee_multiplier =
-                            get_operational_fee_multiplier(rpc_client, latest_hash).await?;
+                            extract_operational_fee_multiplier(&metadata).ok_or_else(|| {
+                                FetchError::ConstantNotFound(
+                                    "TransactionPayment::operationalFeeMultiplier".to_string(),
+                                )
+                            })?;
 
                         let virtual_tip = final_fee.saturating_mul(operational_fee_multiplier);
                         let scaled_virtual_tip =
@@ -453,33 +536,6 @@ async fn calculate_priority(
     };
 
     Ok(Some(priority))
-}
-
-async fn get_max_block_weight(rpc_client: &RpcClient, block_hash: &str) -> Result<u64, FetchError> {
-    let metadata = get_runtime_metadata(rpc_client, block_hash).await?;
-    extract_max_block_weight(&metadata).ok_or_else(|| {
-        FetchError::ConstantNotFound("System::BlockWeights::maxBlock::refTime".to_string())
-    })
-}
-
-async fn get_max_block_length(
-    rpc_client: &RpcClient,
-    block_hash: &str,
-    class: &str,
-) -> Result<u64, FetchError> {
-    let metadata = get_runtime_metadata(rpc_client, block_hash).await?;
-    extract_max_block_length(&metadata, class)
-        .ok_or_else(|| FetchError::ConstantNotFound(format!("System::BlockLength::max[{}]", class)))
-}
-
-async fn get_operational_fee_multiplier(
-    rpc_client: &RpcClient,
-    block_hash: &str,
-) -> Result<u128, FetchError> {
-    let metadata = get_runtime_metadata(rpc_client, block_hash).await?;
-    extract_operational_fee_multiplier(&metadata).ok_or_else(|| {
-        FetchError::ConstantNotFound("TransactionPayment::operationalFeeMultiplier".to_string())
-    })
 }
 
 async fn get_runtime_metadata(
@@ -500,65 +556,59 @@ async fn get_runtime_metadata(
         .map_err(FetchError::MetadataDecodeFailed)
 }
 
+fn extract_ref_time_from_decoded(decoded: &scale_value::Value<u32>) -> Option<u64> {
+    let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value else {
+        return None;
+    };
+
+    let (_, max_block_val) = fields.iter().find(|(name, _)| name == "maxBlock")?;
+
+    let ValueDef::Composite(scale_value::Composite::Named(weight_fields)) = &max_block_val.value
+    else {
+        return None;
+    };
+
+    let (_, ref_time_val) = weight_fields.iter().find(|(name, _)| name == "refTime")?;
+
+    let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &ref_time_val.value else {
+        return None;
+    };
+
+    Some(*n as u64)
+}
+
 fn extract_max_block_weight(metadata: &RuntimeMetadataPrefixed) -> Option<u64> {
     use frame_metadata::RuntimeMetadata;
 
-    match &metadata.1 {
+    let (registry, constant_value, type_id) = match &metadata.1 {
         RuntimeMetadata::V14(m) => {
-            let registry = &m.types;
             let system_pallet = m.pallets.iter().find(|p| p.name == "System")?;
-            let block_weights_constant = system_pallet
+            let constant = system_pallet
                 .constants
                 .iter()
                 .find(|c| c.name == "BlockWeights")?;
-
-            let mut bytes = &block_weights_constant.value[..];
-            let decoded =
-                decode_as_type(&mut bytes, block_weights_constant.ty.id, registry).ok()?;
-
-            if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value
-                && let Some((_, max_block_val)) = fields.iter().find(|(name, _)| name == "maxBlock")
-                && let ValueDef::Composite(scale_value::Composite::Named(weight_fields)) =
-                    &max_block_val.value
-                && let Some((_, ref_time_val)) =
-                    weight_fields.iter().find(|(name, _)| name == "refTime")
-                && let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &ref_time_val.value
-            {
-                return Some(*n as u64);
-            }
-            None
+            (&m.types, &constant.value[..], constant.ty.id)
         }
         RuntimeMetadata::V15(m) => {
-            let registry = &m.types;
             let system_pallet = m.pallets.iter().find(|p| p.name == "System")?;
-            let block_weights_constant = system_pallet
+            let constant = system_pallet
                 .constants
                 .iter()
                 .find(|c| c.name == "BlockWeights")?;
-
-            let mut bytes = &block_weights_constant.value[..];
-            let decoded =
-                decode_as_type(&mut bytes, block_weights_constant.ty.id, registry).ok()?;
-
-            if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value
-                && let Some((_, max_block_val)) = fields.iter().find(|(name, _)| name == "maxBlock")
-                && let ValueDef::Composite(scale_value::Composite::Named(weight_fields)) =
-                    &max_block_val.value
-                && let Some((_, ref_time_val)) =
-                    weight_fields.iter().find(|(name, _)| name == "refTime")
-                && let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &ref_time_val.value
-            {
-                return Some(*n as u64);
-            }
-            None
+            (&m.types, &constant.value[..], constant.ty.id)
         }
-        _ => None,
-    }
+        _ => return None,
+    };
+
+    let mut bytes = constant_value;
+    let decoded = decode_as_type(&mut bytes, type_id, registry).ok()?;
+    extract_ref_time_from_decoded(&decoded)
 }
 
-fn extract_max_block_length(metadata: &RuntimeMetadataPrefixed, class: &str) -> Option<u64> {
-    use frame_metadata::RuntimeMetadata;
-
+fn extract_class_length_from_decoded(
+    decoded: &scale_value::Value<u32>,
+    class: &str,
+) -> Option<u64> {
     let class_index = match class {
         "normal" => 0,
         "operational" => 1,
@@ -566,135 +616,88 @@ fn extract_max_block_length(metadata: &RuntimeMetadataPrefixed, class: &str) -> 
         _ => return None,
     };
 
-    match &metadata.1 {
+    let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value else {
+        return None;
+    };
+
+    let (_, max_val) = fields.iter().find(|(name, _)| name == "max")?;
+
+    if let ValueDef::Composite(scale_value::Composite::Unnamed(array_fields)) = &max_val.value {
+        let fields_vec: Vec<_> = array_fields.iter().collect();
+        if let Some(class_val) = fields_vec.get(class_index)
+            && let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &class_val.value
+        {
+            return Some(*n as u64);
+        }
+    }
+
+    if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) = &max_val.value {
+        if let Some((_, class_val)) = named_fields.iter().find(|(name, _)| name == class)
+            && let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &class_val.value
+        {
+            return Some(*n as u64);
+        }
+    }
+
+    None
+}
+
+fn extract_max_block_length(metadata: &RuntimeMetadataPrefixed, class: &str) -> Option<u64> {
+    use frame_metadata::RuntimeMetadata;
+
+    let (registry, constant_value, type_id) = match &metadata.1 {
         RuntimeMetadata::V14(m) => {
-            let registry = &m.types;
             let system_pallet = m.pallets.iter().find(|p| p.name == "System")?;
-            let block_length_constant = system_pallet
+            let constant = system_pallet
                 .constants
                 .iter()
                 .find(|c| c.name == "BlockLength")?;
-
-            let mut bytes = &block_length_constant.value[..];
-            let decoded = decode_as_type(&mut bytes, block_length_constant.ty.id, registry).ok()?;
-
-            if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value
-                && let Some((_, max_val)) = fields.iter().find(|(name, _)| name == "max")
-            {
-                if let ValueDef::Composite(scale_value::Composite::Unnamed(array_fields)) =
-                    &max_val.value
-                {
-                    let fields_vec: Vec<_> = array_fields.iter().collect();
-                    if let Some(class_val) = fields_vec.get(class_index)
-                        && let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
-                            &class_val.value
-                    {
-                        return Some(*n as u64);
-                    }
-                } else if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) =
-                    &max_val.value
-                {
-                    let class_name = match class_index {
-                        0 => "normal",
-                        1 => "operational",
-                        2 => "mandatory",
-                        _ => return None,
-                    };
-                    if let Some((_, class_val)) =
-                        named_fields.iter().find(|(name, _)| name == class_name)
-                        && let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
-                            &class_val.value
-                    {
-                        return Some(*n as u64);
-                    }
-                }
-            }
-            None
+            (&m.types, &constant.value[..], constant.ty.id)
         }
         RuntimeMetadata::V15(m) => {
-            let registry = &m.types;
             let system_pallet = m.pallets.iter().find(|p| p.name == "System")?;
-            let block_length_constant = system_pallet
+            let constant = system_pallet
                 .constants
                 .iter()
                 .find(|c| c.name == "BlockLength")?;
-
-            let mut bytes = &block_length_constant.value[..];
-            let decoded = decode_as_type(&mut bytes, block_length_constant.ty.id, registry).ok()?;
-
-            if let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value
-                && let Some((_, max_val)) = fields.iter().find(|(name, _)| name == "max")
-            {
-                if let ValueDef::Composite(scale_value::Composite::Unnamed(array_fields)) =
-                    &max_val.value
-                {
-                    let fields_vec: Vec<_> = array_fields.iter().collect();
-                    if let Some(class_val) = fields_vec.get(class_index)
-                        && let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
-                            &class_val.value
-                    {
-                        return Some(*n as u64);
-                    }
-                } else if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) =
-                    &max_val.value
-                {
-                    let class_name = match class_index {
-                        0 => "normal",
-                        1 => "operational",
-                        2 => "mandatory",
-                        _ => return None,
-                    };
-                    if let Some((_, class_val)) =
-                        named_fields.iter().find(|(name, _)| name == class_name)
-                        && let ValueDef::Primitive(scale_value::Primitive::U128(n)) =
-                            &class_val.value
-                    {
-                        return Some(*n as u64);
-                    }
-                }
-            }
-            None
+            (&m.types, &constant.value[..], constant.ty.id)
         }
-        _ => None,
-    }
+        _ => return None,
+    };
+
+    let mut bytes = constant_value;
+    let decoded = decode_as_type(&mut bytes, type_id, registry).ok()?;
+    extract_class_length_from_decoded(&decoded, class)
 }
 
 fn extract_operational_fee_multiplier(metadata: &RuntimeMetadataPrefixed) -> Option<u128> {
     use frame_metadata::RuntimeMetadata;
 
-    match &metadata.1 {
+    let (registry, constant_value, type_id) = match &metadata.1 {
         RuntimeMetadata::V14(m) => {
-            let registry = &m.types;
             let tx_payment_pallet = m.pallets.iter().find(|p| p.name == "TransactionPayment")?;
             let constant = tx_payment_pallet
                 .constants
                 .iter()
                 .find(|c| c.name == "OperationalFeeMultiplier")?;
-
-            let mut bytes = &constant.value[..];
-            let decoded = decode_as_type(&mut bytes, constant.ty.id, registry).ok()?;
-
-            match &decoded.value {
-                ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n),
-                _ => None,
-            }
+            (&m.types, &constant.value[..], constant.ty.id)
         }
         RuntimeMetadata::V15(m) => {
-            let registry = &m.types;
             let tx_payment_pallet = m.pallets.iter().find(|p| p.name == "TransactionPayment")?;
             let constant = tx_payment_pallet
                 .constants
                 .iter()
                 .find(|c| c.name == "OperationalFeeMultiplier")?;
-
-            let mut bytes = &constant.value[..];
-            let decoded = decode_as_type(&mut bytes, constant.ty.id, registry).ok()?;
-
-            match &decoded.value {
-                ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n),
-                _ => None,
-            }
+            (&m.types, &constant.value[..], constant.ty.id)
         }
+        _ => return None,
+    };
+
+    let mut bytes = constant_value;
+    let decoded = decode_as_type(&mut bytes, type_id, registry).ok()?;
+
+    match &decoded.value {
+        ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n),
         _ => None,
     }
 }
@@ -740,7 +743,7 @@ mod tests {
 
         for (name, hex, expected_tip) in test_cases {
             let bytes = hex::decode(hex.trim_start_matches("0x")).unwrap();
-            let tip = extract_tip_from_extrinsic_bytes(&bytes);
+            let tip = extract_tip_from_extrinsic_bytes(&bytes).expect("should parse");
             assert_eq!(tip, Some(expected_tip.to_string()), "Failed for: {}", name);
         }
     }
@@ -751,7 +754,7 @@ mod tests {
             let extrinsic_hex = build_extrinsic_with_tip(expected_tip);
             let extrinsic_bytes = hex::decode(extrinsic_hex.trim_start_matches("0x")).unwrap();
 
-            let tip = extract_tip_from_extrinsic_bytes(&extrinsic_bytes);
+            let tip = extract_tip_from_extrinsic_bytes(&extrinsic_bytes).expect("should parse");
             assert_eq!(
                 tip,
                 Some(expected_tip.to_string()),
@@ -763,16 +766,20 @@ mod tests {
 
     #[test]
     fn test_extract_tip_edge_cases() {
-        assert!(extract_tip_from_extrinsic_bytes(&[]).is_none());
-        assert!(extract_tip_from_extrinsic_bytes(&[0x00]).is_none());
+        assert!(matches!(
+            extract_tip_from_extrinsic_bytes(&[]),
+            Err(TipExtractionError::Empty)
+        ));
+
+        assert!(matches!(
+            extract_tip_from_extrinsic_bytes(&[0x00]),
+            Err(TipExtractionError::Malformed(_))
+        ));
 
         let body = vec![0x04, 0x00, 0x00];
         let mut unsigned = Vec::new();
         Compact(body.len() as u32).encode_to(&mut unsigned);
         unsigned.extend(body);
-        assert_eq!(
-            extract_tip_from_extrinsic_bytes(&unsigned),
-            Some("0".to_string())
-        );
+        assert_eq!(extract_tip_from_extrinsic_bytes(&unsigned), Ok(None));
     }
 }

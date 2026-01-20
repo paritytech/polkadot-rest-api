@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
 
-use super::common::{FetchError, fetch_transaction_pool_simple, fetch_transaction_pool_with_fees};
+use super::common::{
+    FetchError, TipExtractionError, fetch_transaction_pool_simple, fetch_transaction_pool_with_fees,
+};
 
 // Re-export for tests
 #[cfg(test)]
@@ -37,6 +39,9 @@ pub enum GetNodeTransactionPoolError {
 
     #[error("Constant not found: {0}")]
     ConstantNotFound(String),
+
+    #[error("Tip extraction failed: {0}")]
+    TipExtractionFailed(#[from] TipExtractionError),
 }
 
 impl From<FetchError> for GetNodeTransactionPoolError {
@@ -47,6 +52,7 @@ impl From<FetchError> for GetNodeTransactionPoolError {
                 GetNodeTransactionPoolError::MetadataDecodeFailed(e)
             }
             FetchError::ConstantNotFound(s) => GetNodeTransactionPoolError::ConstantNotFound(s),
+            FetchError::TipExtraction(e) => GetNodeTransactionPoolError::TipExtractionFailed(e),
         }
     }
 }
@@ -62,7 +68,8 @@ impl IntoResponse for GetNodeTransactionPoolError {
             | GetNodeTransactionPoolError::BlockHashFailed(err)
             | GetNodeTransactionPoolError::MetadataFailed(err) => utils::rpc_error_to_status(err),
             GetNodeTransactionPoolError::MetadataDecodeFailed(_)
-            | GetNodeTransactionPoolError::ConstantNotFound(_) => {
+            | GetNodeTransactionPoolError::ConstantNotFound(_)
+            | GetNodeTransactionPoolError::TipExtractionFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -303,7 +310,7 @@ mod tests {
 
         for (name, hex, expected_tip) in test_cases {
             let bytes = hex::decode(hex.trim_start_matches("0x")).unwrap();
-            let tip = extract_tip_from_extrinsic_bytes(&bytes);
+            let tip = extract_tip_from_extrinsic_bytes(&bytes).expect("should parse");
             assert_eq!(tip, Some(expected_tip.to_string()), "Failed for: {}", name);
         }
     }
@@ -314,7 +321,7 @@ mod tests {
             let extrinsic_hex = build_extrinsic_with_tip(expected_tip);
             let extrinsic_bytes = hex::decode(extrinsic_hex.trim_start_matches("0x")).unwrap();
 
-            let tip = extract_tip_from_extrinsic_bytes(&extrinsic_bytes);
+            let tip = extract_tip_from_extrinsic_bytes(&extrinsic_bytes).expect("should parse");
             assert_eq!(
                 tip,
                 Some(expected_tip.to_string()),
@@ -327,17 +334,18 @@ mod tests {
     #[test]
     fn test_extract_tip_edge_cases() {
         use parity_scale_codec::{Compact, Encode};
-        assert!(extract_tip_from_extrinsic_bytes(&[]).is_none());
 
-        assert!(extract_tip_from_extrinsic_bytes(&[0x00]).is_none());
+        // Empty input should return an error
+        assert!(extract_tip_from_extrinsic_bytes(&[]).is_err());
 
+        // Single byte is malformed
+        assert!(extract_tip_from_extrinsic_bytes(&[0x00]).is_err());
+
+        // Unsigned extrinsic should return Ok(None)
         let body = vec![0x04, 0x00, 0x00];
         let mut unsigned = Vec::new();
         Compact(body.len() as u32).encode_to(&mut unsigned);
         unsigned.extend(body);
-        assert_eq!(
-            extract_tip_from_extrinsic_bytes(&unsigned),
-            Some("0".to_string())
-        );
+        assert_eq!(extract_tip_from_extrinsic_bytes(&unsigned), Ok(None));
     }
 }
