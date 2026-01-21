@@ -152,12 +152,20 @@ pub async fn get_finalized_block_number(state: &AppState) -> Result<u64, GetBloc
 pub async fn get_validators_at_block(
     client_at_block: &BlockClient,
 ) -> Result<Vec<AccountId32>, GetBlockError> {
-    // Use dynamic storage address for Session::Validators
-    // Note: For dynamic storage, we need to specify the value type
-    let addr = subxt::dynamic::storage::<(), scale_value::Value>("Session", "Validators");
-    let validators_value = client_at_block.storage().fetch(addr, ()).await?;
-    let raw_bytes = validators_value.into_bytes();
-    let validators_raw: Vec<[u8; 32]> = Vec::<[u8; 32]>::decode(&mut &raw_bytes[..])?;
+    // Use typed dynamic storage to decode as raw account bytes, then convert to AccountId32
+    // Note: AccountId32 from sp_runtime doesn't implement IntoVisitor, so we decode as [u8; 32]
+    let addr = subxt::dynamic::storage::<(), Vec<[u8; 32]>>("Session", "Validators");
+    let validators_raw = client_at_block
+        .storage()
+        .fetch(addr, ())
+        .await?
+        .decode()
+        .map_err(|e| {
+            tracing::debug!("Failed to decode validators: {}", e);
+            GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
+                "Failed to decode validators",
+            ))
+        })?;
     let validators: Vec<AccountId32> = validators_raw.into_iter().map(AccountId32::from).collect();
 
     if validators.is_empty() {
