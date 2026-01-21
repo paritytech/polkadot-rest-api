@@ -224,8 +224,10 @@ pub async fn extract_extrinsics(
                         if let Ok(t) = ext.decode_unchecked_as::<scale_value::Value>()
                             && let Ok(json_val) = serde_json::to_value(&t)
                         {
-                            // If extraction fails, tip_value remains None (serialized as null)
-                            tip_value = extract_numeric_string(&json_val);
+                            tip_value =
+                                Some(extract_numeric_string(&json_val).unwrap_or("0".to_string()));
+                        } else {
+                            tip_value = Some("0".to_string());
                         }
                     }
                     "CheckMortality" | "CheckEra" => {
