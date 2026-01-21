@@ -3,7 +3,8 @@ use crate::handlers::blocks::types::DigestLog;
 use crate::state::AppState;
 use crate::types::BlockHash;
 use crate::utils::{
-    self, RcBlockError, compute_block_hash_from_header_json, find_ah_blocks_in_rc_block,
+    self, RcBlockError, compute_block_hash_from_header_json, fetch_block_timestamp,
+    find_ah_blocks_in_rc_block,
 };
 use axum::{
     Json,
@@ -323,18 +324,12 @@ async fn handle_use_rc_block(
         let digest_logs = decode_digest_logs(&header_json);
         let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
 
-        let mut ah_timestamp = None;
         let client_at_block = state
             .client
             .at_block(ah_block.number)
             .await
             .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?;
-        let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
-        if let Ok(timestamp) = client_at_block.storage().fetch(timestamp_addr, ()).await
-            && let Ok(timestamp_value) = timestamp.decode()
-        {
-            ah_timestamp = Some(timestamp_value.to_string());
-        }
+        let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
         results.push(BlockHeaderResponse {
             number: ah_block.number.to_string(),

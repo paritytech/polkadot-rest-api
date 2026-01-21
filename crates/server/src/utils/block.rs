@@ -1,6 +1,7 @@
 use crate::state::{AppState, SubstrateLegacyRpc};
 use primitive_types::H256;
 use std::str::FromStr;
+use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 use subxt_rpcs::{RpcClient, rpc_params};
 use thiserror::Error;
 
@@ -72,6 +73,21 @@ pub struct ResolvedBlock {
     pub hash: String,
     /// Block number
     pub number: u64,
+}
+
+/// Fetch the timestamp from the Timestamp.Now storage entry at a given block.
+pub async fn fetch_block_timestamp(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<String> {
+    // Use typed dynamic storage to decode timestamp directly as u64
+    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
+    let timestamp = client_at_block
+        .storage()
+        .fetch(timestamp_addr, ())
+        .await
+        .ok()?;
+    let timestamp_value = timestamp.decode().ok()?;
+    Some(timestamp_value.to_string())
 }
 
 /// Helper function to get header JSON and extract block number from hash

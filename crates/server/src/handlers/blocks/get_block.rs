@@ -3,7 +3,7 @@
 //! This module provides the main handler for fetching block information.
 
 use crate::state::AppState;
-use crate::utils::{self, find_ah_blocks_in_rc_block};
+use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -103,12 +103,7 @@ async fn handle_use_rc_block(
         response.rc_block_hash = Some(rc_block_hash.clone());
         response.rc_block_number = Some(rc_block_number.clone());
 
-        let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
-        if let Ok(timestamp) = client_at_block.storage().fetch(timestamp_addr, ()).await
-            && let Ok(timestamp_value) = timestamp.decode()
-        {
-            response.ah_timestamp = Some(timestamp_value.to_string());
-        }
+        response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
         results.push(response);
     }
@@ -116,7 +111,7 @@ async fn handle_use_rc_block(
     Ok(Json(json!(results)).into_response())
 }
 
-async fn build_block_response(
+pub(crate) async fn build_block_response(
     state: &AppState,
     block_id: String,
     params: &BlockQueryParams,
@@ -147,7 +142,7 @@ async fn build_block_response(
     .await
 }
 
-async fn build_block_response_for_hash(
+pub(crate) async fn build_block_response_for_hash(
     state: &AppState,
     block_hash: &str,
     block_number: u64,
