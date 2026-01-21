@@ -13,7 +13,6 @@ use axum::{
 };
 use config::ChainType;
 use heck::ToLowerCamelCase;
-use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use subxt::error::OnlineClientAtBlockError;
@@ -330,13 +329,11 @@ async fn handle_use_rc_block(
             .at_block(ah_block.number)
             .await
             .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?;
-        let timestamp_addr = subxt::dynamic::storage::<(), scale_value::Value>("Timestamp", "Now");
-        if let Ok(timestamp) = client_at_block.storage().fetch(timestamp_addr, ()).await {
-            let timestamp_bytes = timestamp.into_bytes();
-            let mut cursor = &timestamp_bytes[..];
-            if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                ah_timestamp = Some(timestamp_value.to_string());
-            }
+        let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
+        if let Ok(timestamp) = client_at_block.storage().fetch(timestamp_addr, ()).await
+            && let Ok(timestamp_value) = timestamp.decode()
+        {
+            ah_timestamp = Some(timestamp_value.to_string());
         }
 
         results.push(BlockHeaderResponse {
