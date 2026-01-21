@@ -5,6 +5,11 @@
 //! - Categorizing events by phase (onInitialize, per-extrinsic, onFinalize)
 //! - Extracting extrinsic outcomes (success/failure, fees, weights) from events
 
+// TODO: Consider using `client_at_block.events()` API from subxt 0.50 for fetching and working
+// with events. This would handle decoding automatically without needing custom visitors/handlers,
+// and could potentially simplify most of the code in this module.
+// See: https://github.com/polkadot-api/polkadot-rest-api/pull/XXX#discussion_rXXXXXXXXX
+
 use crate::state::AppState;
 use serde_json::Value;
 
