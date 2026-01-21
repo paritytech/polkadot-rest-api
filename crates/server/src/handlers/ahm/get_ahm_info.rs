@@ -158,12 +158,9 @@ mod tests {
             ss58_prefix: 42,
         };
 
-        let client = subxt::OnlineClient::from_rpc_client_with_config(
-            subxt::SubstrateConfig::new(),
-            (*rpc_client).clone(),
-        )
-        .await
-        .expect("Failed to create test OnlineClient");
+        let client = subxt::OnlineClient::from_rpc_client((*rpc_client).clone())
+            .await
+            .expect("Failed to create test OnlineClient");
 
         AppState {
             config,

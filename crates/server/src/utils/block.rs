@@ -399,12 +399,9 @@ mod tests {
         // Note: Creating an OnlineClient requires metadata from the node.
         // For tests, we attempt to create one but tests should be designed
         // to not rely on OnlineClient functionality when using mocks.
-        let client = subxt::OnlineClient::from_rpc_client_with_config(
-            subxt::SubstrateConfig::new(),
-            (*rpc_client).clone(),
-        )
-        .await
-        .expect("Failed to create test OnlineClient - ensure mock provides required metadata");
+        let client = subxt::OnlineClient::from_rpc_client((*rpc_client).clone())
+            .await
+            .expect("Failed to create test OnlineClient - ensure mock provides required metadata");
 
         AppState {
             config,

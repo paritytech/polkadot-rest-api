@@ -1,7 +1,7 @@
 //! Test fixtures and helpers for mocking subxt clients with real metadata.
 //!
 //! This module provides utilities for creating mock RPC clients that can be used
-//! with `OnlineClient::from_rpc_client_with_config()` for testing handlers that
+//! with `OnlineClient::from_rpc_client()` for testing handlers that
 //! use `client.at_block()` or `client.at_current_block()`.
 
 use parity_scale_codec::{Compact, Encode};
@@ -193,11 +193,7 @@ mod tests {
         let rpc_client = RpcClient::new(mock_client);
 
         // This should succeed with our mock handlers
-        let result = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client_with_config(
-            subxt::SubstrateConfig::new(),
-            rpc_client,
-        )
-        .await;
+        let result = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client(rpc_client).await;
 
         assert!(
             result.is_ok(),
@@ -211,12 +207,9 @@ mod tests {
         let mock_client = create_mock_rpc_client();
         let rpc_client = RpcClient::new(mock_client);
 
-        let client = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client_with_config(
-            subxt::SubstrateConfig::new(),
-            rpc_client,
-        )
-        .await
-        .expect("Failed to create OnlineClient");
+        let client = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client(rpc_client)
+            .await
+            .expect("Failed to create OnlineClient");
 
         let result = client.at_current_block().await;
         assert!(
@@ -234,12 +227,9 @@ mod tests {
         let mock_client = create_mock_rpc_client();
         let rpc_client = RpcClient::new(mock_client);
 
-        let client = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client_with_config(
-            subxt::SubstrateConfig::new(),
-            rpc_client,
-        )
-        .await
-        .expect("Failed to create OnlineClient");
+        let client = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client(rpc_client)
+            .await
+            .expect("Failed to create OnlineClient");
 
         let result = client.at_block(42u64).await;
         assert!(
