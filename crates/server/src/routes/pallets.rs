@@ -1,7 +1,10 @@
-use crate::handlers::pallets;
-use crate::routes::{API_VERSION, RegisterRoute, RouteRegistry};
-use crate::state::AppState;
 use axum::{Router, routing::get};
+
+use crate::{
+    handlers::pallets,
+    routes::{API_VERSION, RegisterRoute, RouteRegistry},
+    state::AppState,
+};
 
 pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
     Router::new()
@@ -26,4 +29,12 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             "get",
             get(pallets::get_pallet_const_item),
         )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/assets/:asset_id/asset-info",
+            "get",
+            get(pallets::pallets_assets_asset_info),
+        )
 }
+

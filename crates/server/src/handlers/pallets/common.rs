@@ -31,6 +31,10 @@ pub enum PalletError {
     #[error("Pallet not found: {0}")]
     PalletNotFound(String),
 
+    /// The requested asset was not found.
+    #[error("Asset not found: {0}")]
+    AssetNotFound(String),
+
     /// The requested constant was not found in the pallet.
     #[error(
         "Could not find constants item (\"{0}\") in metadata. constants item names are expected to be in camel case, e.g. 'storageItemId'"
@@ -68,7 +72,7 @@ impl IntoResponse for PalletError {
             Self::InvalidBlockParam(_) | Self::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
-            Self::PalletNotFound(_) | Self::ConstantNotFound(_) => {
+            Self::PalletNotFound(_) | Self::ConstantNotFound(_) | Self::AssetNotFound(_) => {
                 (StatusCode::NOT_FOUND, self.to_string())
             }
             Self::ClientAtBlockFailed(err) => {
@@ -250,6 +254,33 @@ pub fn find_pallet_v15(
     None
 }
 
+/// Find a pallet in V16 metadata by name (case-insensitive) or index.
+///
+/// Returns the pallet name and index if found.
+pub fn find_pallet_v16(
+    pallets: &[frame_metadata::v16::PalletMetadata<scale_info::form::PortableForm>],
+    pallet_id: &str,
+) -> Option<(String, u8)> {
+    // First, try to parse as a numeric index
+    if let Ok(index) = pallet_id.parse::<u8>() {
+        for pallet in pallets {
+            if pallet.index == index {
+                return Some((pallet.name.clone(), pallet.index));
+            }
+        }
+    }
+
+    // Otherwise, search by name (case-insensitive)
+    let pallet_id_lower = pallet_id.to_lowercase();
+    for pallet in pallets {
+        if pallet.name.to_lowercase() == pallet_id_lower {
+            return Some((pallet.name.clone(), pallet.index));
+        }
+    }
+
+    None
+}
+
 // ============================================================================
 // Unit Tests
 // ============================================================================
@@ -303,31 +334,4 @@ mod tests {
         assert!(json.contains("\"hash\":\"0x123\""));
         assert!(json.contains("\"height\":\"100\""));
     }
-}
-
-/// Find a pallet in V16 metadata by name (case-insensitive) or index.
-///
-/// Returns the pallet name and index if found.
-pub fn find_pallet_v16(
-    pallets: &[frame_metadata::v16::PalletMetadata<scale_info::form::PortableForm>],
-    pallet_id: &str,
-) -> Option<(String, u8)> {
-    // First, try to parse as a numeric index
-    if let Ok(index) = pallet_id.parse::<u8>() {
-        for pallet in pallets {
-            if pallet.index == index {
-                return Some((pallet.name.clone(), pallet.index));
-            }
-        }
-    }
-
-    // Otherwise, search by name (case-insensitive)
-    let pallet_id_lower = pallet_id.to_lowercase();
-    for pallet in pallets {
-        if pallet.name.to_lowercase() == pallet_id_lower {
-            return Some((pallet.name.clone(), pallet.index));
-        }
-    }
-
-    None
 }
