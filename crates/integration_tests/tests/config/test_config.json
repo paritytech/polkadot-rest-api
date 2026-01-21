@@ -167,6 +167,24 @@
         },
         "fixture_path": "polkadot/blocks_28490503_decode_xcm.json",
         "description": "Test block endpoint at Polkadot block 10,000,006"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}/para-inclusions",
+        "block_height": 10293194,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "polkadot/blocks_10293194_para_inclusions.json",
+        "description": "Test para-inclusions endpoint at Polkadot block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}/para-inclusions",
+        "block_height": 10293194,
+        "account_id": null,
+        "query_params": {
+          "paraId": "1000"
+        },
+        "fixture_path": "polkadot/blocks_10293194_para_inclusions_para_id_1000.json",
+        "description": "Test para-inclusions endpoint with paraId filter at Polkadot block 10,293,194"
       }
     ],
     "kusama": [

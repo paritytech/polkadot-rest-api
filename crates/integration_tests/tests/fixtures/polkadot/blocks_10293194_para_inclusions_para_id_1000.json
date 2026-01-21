@@ -1,0 +1,24 @@
+{
+  "at": {
+    "hash": "0xb3776c31cdcec764c7b9d508b14c813c512226abeef4f55ca4e743426bd40c94",
+    "height": "10293194"
+  },
+  "inclusions": [
+    {
+      "paraId": "1000",
+      "paraBlockNumber": "1276963",
+      "paraBlockHash": "0xb8f4e8190a22d14e5a15d5851792a5f0d55795a31a0aa900590f21a6ad548f2e",
+      "descriptor": {
+        "relayParent": "0x24f125b565b361abf695c9233c8eece1ee67892c0009922e0ae99f1cb60b4ce0",
+        "persistedValidationDataHash": "0x1d6de461f897aa8888f39a26396c3982aec5d46f2ba615914faab6b316aa5748",
+        "povHash": "0x651ad326908ed24eed5d6f90e99d8d98e87afd6fdd92ad45cf2fa9bb31dfeb88",
+        "erasureRoot": "0xdd48e8006f4291bae29f0f1b34d359165baed77d2bd798e5243a65b3de65f61f",
+        "paraHead": "0xb8f4e8190a22d14e5a15d5851792a5f0d55795a31a0aa900590f21a6ad548f2e",
+        "validationCodeHash": "0x3ef62993199d2253ec1f49508e4cff7e6d293555e405ab024a0c87db5c5008c0"
+      },
+      "commitmentsHash": "0xa0663f6431ebadc955dddd1c916c8aedaf369b565650e605719a0dfa37dbebf5",
+      "coreIndex": "0",
+      "groupIndex": "8"
+    }
+  ]
+}

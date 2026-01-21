@@ -1,0 +1,88 @@
+{
+  "at": {
+    "hash": "0xb3776c31cdcec764c7b9d508b14c813c512226abeef4f55ca4e743426bd40c94",
+    "height": "10293194"
+  },
+  "inclusions": [
+    {
+      "paraId": "1000",
+      "paraBlockNumber": "1276963",
+      "paraBlockHash": "0xb8f4e8190a22d14e5a15d5851792a5f0d55795a31a0aa900590f21a6ad548f2e",
+      "descriptor": {
+        "relayParent": "0x24f125b565b361abf695c9233c8eece1ee67892c0009922e0ae99f1cb60b4ce0",
+        "persistedValidationDataHash": "0x1d6de461f897aa8888f39a26396c3982aec5d46f2ba615914faab6b316aa5748",
+        "povHash": "0x651ad326908ed24eed5d6f90e99d8d98e87afd6fdd92ad45cf2fa9bb31dfeb88",
+        "erasureRoot": "0xdd48e8006f4291bae29f0f1b34d359165baed77d2bd798e5243a65b3de65f61f",
+        "paraHead": "0xb8f4e8190a22d14e5a15d5851792a5f0d55795a31a0aa900590f21a6ad548f2e",
+        "validationCodeHash": "0x3ef62993199d2253ec1f49508e4cff7e6d293555e405ab024a0c87db5c5008c0"
+      },
+      "commitmentsHash": "0xa0663f6431ebadc955dddd1c916c8aedaf369b565650e605719a0dfa37dbebf5",
+      "coreIndex": "0",
+      "groupIndex": "8"
+    },
+    {
+      "paraId": "2004",
+      "paraBlockNumber": "1020087",
+      "paraBlockHash": "0x4c829882da71f19f16b1cc07a293f05e421bcc112fe1475c5a48dae58765ac3d",
+      "descriptor": {
+        "relayParent": "0x24f125b565b361abf695c9233c8eece1ee67892c0009922e0ae99f1cb60b4ce0",
+        "persistedValidationDataHash": "0x924b0935a866471aa627a4a9474f2e9bc216ec918eb4d78d2d965fb01c7a400d",
+        "povHash": "0x87346ccd79a612db5a32484ce85d7a0828930b7a90e5c16fb71bfcc9f913f137",
+        "erasureRoot": "0xeda928f05087ec52e51a9a352aaa2cef340d97cec8bc8567d7e4832a6fe32762",
+        "paraHead": "0x4c829882da71f19f16b1cc07a293f05e421bcc112fe1475c5a48dae58765ac3d",
+        "validationCodeHash": "0xb8039ecbf277587c7f47845bf64ec41383aba545f832d92a1a2d65210a6719d2"
+      },
+      "commitmentsHash": "0x43d70aca7ba68d49113e94942a9fbc183fe0d3b1686e8bf7e42801c8fc33995d",
+      "coreIndex": "3",
+      "groupIndex": "11"
+    },
+    {
+      "paraId": "2011",
+      "paraBlockNumber": "170548",
+      "paraBlockHash": "0x82e55b478fa514124d93dfa8693f276701952b8a41d60082d9db637447e0763c",
+      "descriptor": {
+        "relayParent": "0x24f125b565b361abf695c9233c8eece1ee67892c0009922e0ae99f1cb60b4ce0",
+        "persistedValidationDataHash": "0xe8e7a34cc92cedf67144d0f8116a084efba888284d4364ffc20bd930f2c6ace7",
+        "povHash": "0xdf6fbaf5795c8f8abc2d49cb4efe747b49e18ffa4eb35eefdea6023d1a63e5fb",
+        "erasureRoot": "0x792fe8e85fd948df1fdd39eb9bf8ce6a7a2727696874382030211d8a3a0ddf32",
+        "paraHead": "0x82e55b478fa514124d93dfa8693f276701952b8a41d60082d9db637447e0763c",
+        "validationCodeHash": "0x01e7e7ae531582b2fbce47f8f6d93e96cd380ce299beac27819f7c07b1d60634"
+      },
+      "commitmentsHash": "0xe688a46760ba7a7c4407b09cff868f96ad946694a3e38f032bee12512a8bd638",
+      "coreIndex": "5",
+      "groupIndex": "13"
+    },
+    {
+      "paraId": "2012",
+      "paraBlockNumber": "954296",
+      "paraBlockHash": "0xc3771ac43e2531fa2e79f638df4e462ef45e7e7e35d3b3aadb0cef7949a56098",
+      "descriptor": {
+        "relayParent": "0x24f125b565b361abf695c9233c8eece1ee67892c0009922e0ae99f1cb60b4ce0",
+        "persistedValidationDataHash": "0xe41ceaf360c54b237564f203d0f281c5fa8fcfdfa1d63a530933d157e772a2c4",
+        "povHash": "0x716d3b65d3120c0f6668925b8bed3c3c24f0abea4f6919cbfeaaa94e6bfb0589",
+        "erasureRoot": "0xe5e9cdb9647cf512fab3da4559e9886845bf48e2b02d943761ae0c77a90535d6",
+        "paraHead": "0xc3771ac43e2531fa2e79f638df4e462ef45e7e7e35d3b3aadb0cef7949a56098",
+        "validationCodeHash": "0xe8ccb2b7a1fa25156203d56e986892ced6fe66dbdc6deeb409062a8f2dbb7aeb"
+      },
+      "commitmentsHash": "0xcb15fcb5aefd6df8c95d0addd3bcf3ed5bf7a83e678f8ea09cdc4338daa8c071",
+      "coreIndex": "6",
+      "groupIndex": "14"
+    },
+    {
+      "paraId": "2031",
+      "paraBlockNumber": "419102",
+      "paraBlockHash": "0xe4f074cd62459a44677c6fc2999d3eedc3c86e9d4a2fa55e5c23fcaaae1cb46d",
+      "descriptor": {
+        "relayParent": "0x24f125b565b361abf695c9233c8eece1ee67892c0009922e0ae99f1cb60b4ce0",
+        "persistedValidationDataHash": "0x03f1143647b4b6b19b7f760b7c263eaec08123d97a8b772911c386da1f793986",
+        "povHash": "0xbfa7260729477168a80682541f94eb55f254696604f2112b0e5941c3b4992434",
+        "erasureRoot": "0x474e5a70e7ba6215f9fe68b90162cdf8c362597b9a7e1111b6ddeac8e228f3a7",
+        "paraHead": "0xe4f074cd62459a44677c6fc2999d3eedc3c86e9d4a2fa55e5c23fcaaae1cb46d",
+        "validationCodeHash": "0x024aab592ae76eaa458cc18f9a80819fcec1caec087eb5263efcd4a1d163facb"
+      },
+      "commitmentsHash": "0x3948fb9cec3c25543929668a73376d219c770d2ceee29b36c3f0cb331c75154b",
+      "coreIndex": "10",
+      "groupIndex": "18"
+    }
+  ]
+}
