@@ -7,10 +7,10 @@
 use crate::state::AppState;
 use crate::utils;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use parity_scale_codec::Decode;
 use scale_value::{Composite, Value, ValueDef};
@@ -90,9 +90,15 @@ pub enum ParaInclusionsError {
 impl IntoResponse for ParaInclusionsError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            ParaInclusionsError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            ParaInclusionsError::BlockResolveFailed(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            ParaInclusionsError::NoParaInclusionsFound => (StatusCode::BAD_REQUEST, self.to_string()),
+            ParaInclusionsError::InvalidBlockParam(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            ParaInclusionsError::BlockResolveFailed(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            ParaInclusionsError::NoParaInclusionsFound => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
             ParaInclusionsError::ClientAtBlockFailed(err) => {
                 if crate::utils::is_online_client_at_block_disconnected(err) {
                     (
@@ -139,7 +145,9 @@ pub async fn get_block_para_inclusions(
         .fetch(())
         .await
         .map_err(|e| ParaInclusionsError::StorageFetchFailed(e.to_string()))?
-        .ok_or_else(|| ParaInclusionsError::StorageFetchFailed("Events storage not found".to_string()))?;
+        .ok_or_else(|| {
+            ParaInclusionsError::StorageFetchFailed("Events storage not found".to_string())
+        })?;
 
     let events_decoded: Value<()> = events_value
         .decode_as()
@@ -148,9 +156,8 @@ pub async fn get_block_para_inclusions(
     let mut inclusions = extract_para_inclusions(&events_decoded)?;
 
     if let Some(filter_para_id) = params.para_id {
-        inclusions.retain(|inclusion| {
-            inclusion.para_id.parse::<u32>().ok() == Some(filter_para_id)
-        });
+        inclusions
+            .retain(|inclusion| inclusion.para_id.parse::<u32>().ok() == Some(filter_para_id));
     }
 
     inclusions.sort_by_key(|inc| inc.para_id.parse::<u32>().unwrap_or(0));
@@ -170,7 +177,9 @@ pub async fn get_block_para_inclusions(
     Ok(Json(response).into_response())
 }
 
-fn extract_para_inclusions(events_decoded: &Value<()>) -> Result<Vec<ParaInclusion>, ParaInclusionsError> {
+fn extract_para_inclusions(
+    events_decoded: &Value<()>,
+) -> Result<Vec<ParaInclusion>, ParaInclusionsError> {
     let mut inclusions = Vec::new();
 
     let events_composite = match &events_decoded.value {
@@ -269,7 +278,8 @@ fn extract_inclusion_from_event(event_data: &Composite<()>) -> Option<ParaInclus
 
     let group_index = values.get(3)?;
 
-    let (descriptor, commitments_hash, para_id) = extract_candidate_receipt_data(candidate_receipt)?;
+    let (descriptor, commitments_hash, para_id) =
+        extract_candidate_receipt_data(candidate_receipt)?;
 
     let (para_block_number, para_block_hash) = extract_head_data(head_data)?;
 
@@ -287,7 +297,9 @@ fn extract_inclusion_from_event(event_data: &Composite<()>) -> Option<ParaInclus
     })
 }
 
-fn extract_candidate_receipt_data(candidate_receipt: &Value<()>) -> Option<(CandidateDescriptor, String, u32)> {
+fn extract_candidate_receipt_data(
+    candidate_receipt: &Value<()>,
+) -> Option<(CandidateDescriptor, String, u32)> {
     let receipt_composite = match &candidate_receipt.value {
         ValueDef::Composite(c) => c,
         _ => return None,
@@ -299,27 +311,41 @@ fn extract_candidate_receipt_data(candidate_receipt: &Value<()>) -> Option<(Cand
         _ => return None,
     };
 
-    let para_id_value = get_field_from_composite(descriptor_composite, &["para_id", "paraId"], Some(0))?;
+    let para_id_value =
+        get_field_from_composite(descriptor_composite, &["para_id", "paraId"], Some(0))?;
     let para_id = extract_u32_from_value(para_id_value)?;
 
-    let relay_parent = get_field_from_composite(descriptor_composite, &["relay_parent", "relayParent"], Some(1))
-        .and_then(value_to_hex_string)?;
+    let relay_parent = get_field_from_composite(
+        descriptor_composite,
+        &["relay_parent", "relayParent"],
+        Some(1),
+    )
+    .and_then(value_to_hex_string)?;
 
     let persisted_validation_data_hash = get_field_from_composite(
         descriptor_composite,
-        &["persisted_validation_data_hash", "persistedValidationDataHash"],
+        &[
+            "persisted_validation_data_hash",
+            "persistedValidationDataHash",
+        ],
         Some(2),
     )
     .and_then(value_to_hex_string)?;
 
-    let pov_hash = get_field_from_composite(descriptor_composite, &["pov_hash", "povHash"], Some(3))
-        .and_then(value_to_hex_string)?;
+    let pov_hash =
+        get_field_from_composite(descriptor_composite, &["pov_hash", "povHash"], Some(3))
+            .and_then(value_to_hex_string)?;
 
-    let erasure_root = get_field_from_composite(descriptor_composite, &["erasure_root", "erasureRoot"], Some(4))
-        .and_then(value_to_hex_string)?;
+    let erasure_root = get_field_from_composite(
+        descriptor_composite,
+        &["erasure_root", "erasureRoot"],
+        Some(4),
+    )
+    .and_then(value_to_hex_string)?;
 
-    let para_head = get_field_from_composite(descriptor_composite, &["para_head", "paraHead"], Some(5))
-        .and_then(value_to_hex_string)?;
+    let para_head =
+        get_field_from_composite(descriptor_composite, &["para_head", "paraHead"], Some(5))
+            .and_then(value_to_hex_string)?;
 
     let validation_code_hash = get_field_from_composite(
         descriptor_composite,
@@ -337,8 +363,12 @@ fn extract_candidate_receipt_data(candidate_receipt: &Value<()>) -> Option<(Cand
         validation_code_hash,
     };
 
-    let commitments_hash = get_field_from_composite(receipt_composite, &["commitments_hash", "commitmentsHash"], Some(1))
-        .and_then(value_to_hex_string)?;
+    let commitments_hash = get_field_from_composite(
+        receipt_composite,
+        &["commitments_hash", "commitmentsHash"],
+        Some(1),
+    )
+    .and_then(value_to_hex_string)?;
 
     Some((descriptor, commitments_hash, para_id))
 }
