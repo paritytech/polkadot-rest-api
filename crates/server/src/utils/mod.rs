@@ -1,4 +1,5 @@
 pub mod block;
+pub mod capabilities;
 pub mod extrinsic;
 pub mod fee;
 pub mod format;
