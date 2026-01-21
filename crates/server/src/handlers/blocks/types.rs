@@ -22,7 +22,7 @@ pub const CONSENSUS_ENGINE_ID_LEN: usize = 4;
 // ================================================================================================
 
 /// Query parameters for /blocks/{blockId} endpoint
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockQueryParams {
     /// When true, include documentation for events

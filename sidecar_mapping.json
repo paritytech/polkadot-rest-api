@@ -14,6 +14,11 @@
       "local_endpoint": "/v1/version",
       "sidecar_endpoint": "/node/version",
       "description": "Node version information"
+    },
+    "blocks": {
+      "local_endpoint": "/v1/blocks",
+      "sidecar_endpoint": "/blocks",
+      "description": "Block range information (array of blocks)"
     }
   },
   "benchmarks": {
