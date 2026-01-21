@@ -52,7 +52,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtrinsicQueryParams {
     /// When true, include documentation for events
@@ -64,16 +64,6 @@ pub struct ExtrinsicQueryParams {
     /// When true, skip fee calculation for extrinsics (info will be empty object)
     #[serde(default)]
     pub no_fees: bool,
-}
-
-impl Default for ExtrinsicQueryParams {
-    fn default() -> Self {
-        Self {
-            event_docs: false,
-            extrinsic_docs: false,
-            no_fees: false,
-        }
-    }
 }
 
 impl Default for BlockQueryParams {
