@@ -523,8 +523,6 @@ fn extract_const_item_from_metadata(
     }
 }
 
-/// Extract constants from V14 metadata.
-
 /// Helper to extract a string from a DecodeDifferent type used in V9-V13 metadata.
 fn extract_str_const<'a>(dd: &'a DecodeDifferent<&'static str, String>) -> &'a str {
     match dd {

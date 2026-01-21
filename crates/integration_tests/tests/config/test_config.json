@@ -79,6 +79,24 @@
       "query_params": [{}],
       "requires_block_height": false,
       "requires_account": false
+    },
+    {
+      "path": "/v1/pallets/system/consts",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
+    },
+    {
+      "path": "/v1/pallets/system/consts",
+      "query_params": [{"onlyIds": "true"}],
+      "requires_block_height": false,
+      "requires_account": false
+    },
+    {
+      "path": "/v1/pallets/system/consts/BlockHashCount",
+      "query_params": [{}],
+      "requires_block_height": false,
+      "requires_account": false
     }
   ],
   "historical_tests": {
@@ -255,6 +273,30 @@
         "query_params": { "at": "5000000" },
         "fixture_path": "polkadot/pallets_system_consts_5000000_v13.json",
         "description": "Test pallets system consts at Polkadot block 5,000,000 (V13)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/consts/BlockHashCount",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "21000000" },
+        "fixture_path": "polkadot/pallets_system_consts_item_BlockHashCount_21000000.json",
+        "description": "Test single constant item BlockHashCount at Polkadot block 21,000,000 (V14)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/consts/BlockHashCount",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "5000000" },
+        "fixture_path": "polkadot/pallets_system_consts_item_BlockHashCount_5000000_v13.json",
+        "description": "Test single constant item BlockHashCount at Polkadot block 5,000,000 (V13)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/consts/BlockHashCount",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "1000000" },
+        "fixture_path": "polkadot/pallets_system_consts_item_BlockHashCount_1000000_v12.json",
+        "description": "Test single constant item BlockHashCount at Polkadot block 1,000,000 (V12)"
       }
     ],
     "kusama": [
@@ -369,6 +411,30 @@
         "query_params": { "at": "8000000" },
         "fixture_path": "kusama/pallets_system_consts_8000000_v13.json",
         "description": "Test pallets system consts at Kusama block 8,000,000 (V13)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/consts/BlockHashCount",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "24000000" },
+        "fixture_path": "kusama/pallets_system_consts_item_BlockHashCount_24000000.json",
+        "description": "Test single constant item BlockHashCount at Kusama block 24,000,000 (V14)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/consts/BlockHashCount",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "8000000" },
+        "fixture_path": "kusama/pallets_system_consts_item_BlockHashCount_8000000_v13.json",
+        "description": "Test single constant item BlockHashCount at Kusama block 8,000,000 (V13)"
+      },
+      {
+        "endpoint": "/v1/pallets/system/consts/BlockHashCount",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "3000000" },
+        "fixture_path": "kusama/pallets_system_consts_item_BlockHashCount_3000000_v12.json",
+        "description": "Test single constant item BlockHashCount at Kusama block 3,000,000 (V12)"
       }
     ],
     "asset-hub-polkadot": [
@@ -474,6 +540,14 @@
         "query_params": { "at": "10260000" },
         "fixture_path": "asset-hub-polkadot/pallets_system_consts_10260000.json",
         "description": "Test pallets system consts at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/pallets/system/consts/BlockHashCount",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "10260000" },
+        "fixture_path": "asset-hub-polkadot/pallets_system_consts_item_BlockHashCount_10260000.json",
+        "description": "Test single constant item BlockHashCount at Asset Hub Polkadot block 10,260,000 (V14)"
       }
     ],
     "asset-hub-kusama": [
@@ -580,6 +654,14 @@
         "query_params": { "at": "11152000" },
         "fixture_path": "asset-hub-kusama/pallets_system_consts_11152000.json",
         "description": "Test pallets system consts at Asset Hub Kusama block 11,152,000"
+      },
+      {
+        "endpoint": "/v1/pallets/system/consts/BlockHashCount",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "7860000" },
+        "fixture_path": "asset-hub-kusama/pallets_system_consts_item_BlockHashCount_7860000.json",
+        "description": "Test single constant item BlockHashCount at Asset Hub Kusama block 7,860,000 (V14)"
       }
     ]
   }
