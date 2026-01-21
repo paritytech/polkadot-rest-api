@@ -83,18 +83,26 @@ async fn handle_use_rc_block(
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {
-        let mut response =
-            build_block_response_for_hash(&state, &ah_block.hash, ah_block.number, true, &params)
-                .await?;
-
-        response.rc_block_hash = Some(rc_block_hash.clone());
-        response.rc_block_number = Some(rc_block_number.clone());
-
+        // Create client_at_block for this Asset Hub block
         let client_at_block = state
             .client
             .at_block(ah_block.number)
             .await
             .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+
+        let mut response = build_block_response_for_hash(
+            &state,
+            &ah_block.hash,
+            ah_block.number,
+            true,
+            &client_at_block,
+            &params,
+        )
+        .await?;
+
+        response.rc_block_hash = Some(rc_block_hash.clone());
+        response.rc_block_number = Some(rc_block_number.clone());
+
         let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
         if let Ok(timestamp) = client_at_block.storage().fetch(timestamp_addr, ()).await
             && let Ok(timestamp_value) = timestamp.decode()
@@ -115,12 +123,25 @@ async fn build_block_response(
 ) -> Result<BlockResponse, GetBlockError> {
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
     let queried_by_hash = matches!(block_id_parsed, utils::BlockId::Hash(_));
-    let resolved_block = utils::resolve_block(state, Some(block_id_parsed)).await?;
+
+    // Create client_at_block directly from parsed input - saves 1 RPC call
+    // by letting subxt resolve hash<->number internally
+    let client_at_block = match &block_id_parsed {
+        utils::BlockId::Hash(hash) => state.client.at_block(*hash).await,
+        utils::BlockId::Number(number) => state.client.at_block(*number).await,
+    }
+    .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+
+    // Extract hash and number from the resolved client
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_number = client_at_block.block_number();
+
     build_block_response_for_hash(
         state,
-        &resolved_block.hash,
-        resolved_block.number,
+        &block_hash,
+        block_number,
         queried_by_hash,
+        &client_at_block,
         params,
     )
     .await
@@ -131,6 +152,7 @@ async fn build_block_response_for_hash(
     block_hash: &str,
     block_number: u64,
     queried_by_hash: bool,
+    client_at_block: &super::common::BlockClient,
     params: &BlockQueryParams,
 ) -> Result<BlockResponse, GetBlockError> {
     let header_json = state
@@ -158,17 +180,10 @@ async fn build_block_response_for_hash(
 
     let logs = decode_digest_logs(&header_json);
 
-    // Create client_at_block once and reuse for all operations
-    let client_at_block = state
-        .client
-        .at_block(block_number)
-        .await
-        .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
-
     let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
-        extract_author(state, &client_at_block, &logs, block_number),
-        extract_extrinsics(state, &client_at_block, block_number),
-        fetch_block_events(state, &client_at_block, block_number),
+        extract_author(state, client_at_block, &logs, block_number),
+        extract_extrinsics(state, client_at_block, block_number),
+        fetch_block_events(state, client_at_block, block_number),
         // Only fetch canonical hash if queried by hash (needed for fork detection)
         async {
             if params.finalized_key {

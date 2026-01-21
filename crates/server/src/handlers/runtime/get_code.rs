@@ -11,9 +11,6 @@ pub enum GetCodeError {
     #[error("Invalid block parameter")]
     InvalidBlockParam(#[from] crate::utils::BlockIdParseError),
 
-    #[error("Block resolution failed")]
-    BlockResolveFailed(#[from] crate::utils::BlockResolveError),
-
     #[error("Failed to get client at block")]
     ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 
@@ -27,9 +24,7 @@ pub enum GetCodeError {
 impl IntoResponse for GetCodeError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
-            GetCodeError::InvalidBlockParam(_) | GetCodeError::BlockResolveFailed(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
+            GetCodeError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             GetCodeError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
@@ -86,19 +81,30 @@ pub async fn runtime_code(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
 ) -> Result<Json<RuntimeCodeResponse>, GetCodeError> {
-    // Parse and resolve the block identifier
-    let block_id = params
-        .at
-        .map(|s| s.parse::<crate::utils::BlockId>())
-        .transpose()?;
-    let resolved_block = utils::resolve_block(&state, block_id).await?;
+    // Create client at the specified block - saves RPC calls by letting subxt
+    // resolve hash<->number internally
+    let client_at_block = match params.at {
+        None => {
+            // Use current finalized block
+            state
+                .client
+                .at_current_block()
+                .await
+                .map_err(|e| GetCodeError::ClientAtBlockFailed(Box::new(e)))?
+        }
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<crate::utils::BlockId>()?;
+            match block_id {
+                crate::utils::BlockId::Hash(hash) => state.client.at_block(hash).await,
+                crate::utils::BlockId::Number(number) => state.client.at_block(number).await,
+            }
+            .map_err(|e| GetCodeError::ClientAtBlockFailed(Box::new(e)))?
+        }
+    };
 
-    // Get the client at the specific block
-    let client_at_block = state
-        .client
-        .at_block(resolved_block.number)
-        .await
-        .map_err(|e| GetCodeError::ClientAtBlockFailed(Box::new(e)))?;
+    // Extract hash and number from the resolved client
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_number = client_at_block.block_number();
 
     // Get the runtime code using subxt's built-in helper
     let wasm_blob: Vec<u8> = client_at_block
@@ -112,8 +118,8 @@ pub async fn runtime_code(
 
     Ok(Json(RuntimeCodeResponse {
         at: BlockInfo {
-            hash: resolved_block.hash,
-            height: resolved_block.number.to_string(),
+            hash: block_hash,
+            height: block_number.to_string(),
         },
         code,
     }))
@@ -122,6 +128,7 @@ pub async fn runtime_code(
 mod tests {
     use super::*;
     use crate::state::AppState;
+    use crate::test_fixtures::{TEST_BLOCK_HASH, TEST_BLOCK_NUMBER, mock_rpc_client_builder};
     use axum::extract::{Query, State};
     use config::SidecarConfig;
     use std::sync::Arc;
@@ -163,100 +170,57 @@ mod tests {
         }
     }
 
+    /// Test WASM code blob (minimal valid WASM module)
+    const TEST_WASM_CODE: &str = "0x0061736d0100000001";
+
     #[tokio::test]
-    #[ignore] // Requires proper subxt at_block() mocking for runtime_wasm_code()
     async fn test_runtime_code_at_block_hash() {
-        let mock_client = MockRpcClient::builder()
-            .method_handler("rpc_methods", async |_params| {
-                MockJson(serde_json::json!({ "methods": [] }))
-            })
-            .method_handler("chain_getBlockHash", async |_params| {
-                MockJson("0x0000000000000000000000000000000000000000000000000000000000000000")
-            })
-            .method_handler("chain_getHeader", async |_params| {
-                MockJson(serde_json::json!({
-                    "number": "0x100",
-                }))
-            })
-            .method_handler("state_getStorage", async |_params| {
-                MockJson("0x0061736d0100000001")
-            })
+        // Use test fixtures builder and add state_getStorage handler for runtime code
+        let mock_client = mock_rpc_client_builder()
+            .method_handler("state_getStorage", async |_params| MockJson(TEST_WASM_CODE))
             .build();
 
         let state = create_test_state_with_mock(mock_client).await;
         let params = AtBlockParam {
-            at: Some(
-                "0x1234567890123456789012345678901234567890123456789012345678901234".to_string(),
-            ),
+            at: Some(TEST_BLOCK_HASH.to_string()),
         };
 
         let result = runtime_code(State(state), Query(params)).await;
         assert!(result.is_ok());
 
         let response = result.unwrap().0;
-        assert_eq!(response.at.height, "256");
-        assert_eq!(response.code, "0x0061736d0100000001");
+        assert_eq!(response.at.height, TEST_BLOCK_NUMBER.to_string());
+        assert_eq!(response.code, TEST_WASM_CODE);
     }
 
     #[tokio::test]
-    #[ignore] // Requires proper subxt at_block() mocking for runtime_wasm_code()
     async fn test_runtime_code_at_block_number() {
-        let mock_client = MockRpcClient::builder()
-            .method_handler("rpc_methods", async |_params| {
-                MockJson(serde_json::json!({ "methods": [] }))
-            })
-            .method_handler("chain_getBlockHash", async |_params| {
-                // Return test hash for block number lookups
-                MockJson("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-            })
-            .method_handler("chain_getHeader", async |_params| {
-                MockJson(serde_json::json!({
-                    "number": "0x2710",
-                }))
-            })
-            .method_handler("state_getStorage", async |_params| {
-                MockJson("0x0061736d0100000001")
-            })
+        // Use test fixtures builder and add state_getStorage handler for runtime code
+        let mock_client = mock_rpc_client_builder()
+            .method_handler("state_getStorage", async |_params| MockJson(TEST_WASM_CODE))
             .build();
 
         let state = create_test_state_with_mock(mock_client).await;
         let params = AtBlockParam {
-            at: Some("10000".to_string()),
+            at: Some(TEST_BLOCK_NUMBER.to_string()),
         };
 
         let result = runtime_code(State(state), Query(params)).await;
         assert!(result.is_ok());
 
         let response = result.unwrap().0;
-        assert_eq!(response.at.height, "10000");
-        assert_eq!(
-            response.at.hash,
-            "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-        );
-        assert_eq!(response.code, "0x0061736d0100000001");
+        // Block number should match the request
+        assert_eq!(response.at.height, TEST_BLOCK_NUMBER.to_string());
+        // Hash should be resolved from the mock
+        assert_eq!(response.at.hash, TEST_BLOCK_HASH);
+        assert_eq!(response.code, TEST_WASM_CODE);
     }
 
     #[tokio::test]
-    #[ignore] // Requires proper subxt at_block() mocking for runtime_wasm_code()
     async fn test_runtime_code_latest_block() {
-        let mock_client = MockRpcClient::builder()
-            .method_handler("rpc_methods", async |_params| {
-                MockJson(serde_json::json!({ "methods": [] }))
-            })
-            .method_handler("chain_getBlockHash", async |_params| {
-                MockJson("0x0000000000000000000000000000000000000000000000000000000000000000")
-            })
-            .method_handler("chain_getFinalizedHead", async |_params| {
-                MockJson("0xfeedfacedeadbeef1234567890abcdef1234567890abcdef1234567890abcdef")
-            })
-            .method_handler("chain_getHeader", async |_params| {
-                MockJson(serde_json::json!({
-                    "number": "0x1e8480",
-                }))
-            })
-            .method_handler("state_getStorage", async |_params| {
-                MockJson("0x0061736d0100000001deadbeef")
-            })
+        // Use test fixtures builder and add state_getStorage handler for runtime code
+        let mock_client = mock_rpc_client_builder()
+            .method_handler("state_getStorage", async |_params| MockJson(TEST_WASM_CODE))
             .build();
 
         let state = create_test_state_with_mock(mock_client).await;
@@ -266,7 +230,8 @@ mod tests {
         assert!(result.is_ok());
 
         let response = result.unwrap().0;
-        assert_eq!(response.at.height, "2000000");
-        assert_eq!(response.code, "0x0061736d0100000001deadbeef");
+        // Should use finalized head from test fixtures
+        assert_eq!(response.at.height, TEST_BLOCK_NUMBER.to_string());
+        assert_eq!(response.code, TEST_WASM_CODE);
     }
 }
