@@ -256,7 +256,11 @@ async fn fetch_asset_info(
     // Use dynamic storage with key parts as second argument
     // Specify scale_value::Value as the decode type to get raw bytes
     let asset_addr = subxt::dynamic::storage::<_, scale_value::Value>("Assets", "Asset");
-    let asset_value = match client_at_block.storage().fetch(asset_addr, (asset_id,)).await {
+    let asset_value = match client_at_block
+        .storage()
+        .fetch(asset_addr, (asset_id,))
+        .await
+    {
         Ok(value) => value,
         Err(_) => return None,
     };
@@ -287,7 +291,11 @@ async fn fetch_asset_metadata(
     // Use dynamic storage with key parts as second argument
     // Specify scale_value::Value as the decode type to get raw bytes
     let metadata_addr = subxt::dynamic::storage::<_, scale_value::Value>("Assets", "Metadata");
-    let metadata_value = match client_at_block.storage().fetch(metadata_addr, (asset_id,)).await {
+    let metadata_value = match client_at_block
+        .storage()
+        .fetch(metadata_addr, (asset_id,))
+        .await
+    {
         Ok(value) => value,
         Err(_) => return None,
     };
@@ -304,9 +312,7 @@ async fn fetch_asset_metadata(
 }
 
 /// Fetches timestamp from Timestamp::Now storage.
-async fn fetch_timestamp(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Option<String> {
+async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<String> {
     // Use typed dynamic storage to decode timestamp directly as u64
     let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
     let timestamp = client_at_block

@@ -193,7 +193,8 @@ mod tests {
         let rpc_client = RpcClient::new(mock_client);
 
         // This should succeed with our mock handlers
-        let result = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client(rpc_client).await;
+        let result =
+            subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client(rpc_client).await;
 
         assert!(
             result.is_ok(),

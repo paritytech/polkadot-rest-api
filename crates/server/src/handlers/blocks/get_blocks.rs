@@ -68,7 +68,7 @@ pub enum GetBlocksError {
     BlockResolveFailed(#[from] utils::BlockResolveError),
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 
     #[error(transparent)]
     BlockError(#[from] GetBlockError),
@@ -141,7 +141,7 @@ pub async fn get_blocks(
                     .client
                     .at_block(number)
                     .await
-                    .map_err(GetBlocksError::ClientAtBlockFailed)?;
+                    .map_err(|e| GetBlocksError::ClientAtBlockFailed(Box::new(e)))?;
 
                 let block_hash = format!("{:#x}", client_at_block.block_hash());
 
@@ -214,7 +214,11 @@ async fn handle_use_rc_block_range(
                 let mut responses = Vec::with_capacity(ah_blocks.len());
                 for ah_block in ah_blocks {
                     // Create client_at_block first - needed for build_block_response_for_hash
-                    let client_at_block = state.client.at_block(ah_block.number).await?;
+                    let client_at_block = state
+                        .client
+                        .at_block(ah_block.number)
+                        .await
+                        .map_err(|e| GetBlocksError::ClientAtBlockFailed(Box::new(e)))?;
 
                     let mut response = build_block_response_for_hash(
                         &state,
