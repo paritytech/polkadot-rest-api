@@ -673,8 +673,7 @@ fn build_empty_rc_response(rc_resolved_block: &utils::ResolvedBlock) -> Response
 
 async fn fetch_validator_count<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
-) -> Result<u32, PalletError>
-{
+) -> Result<u32, PalletError> {
     let storage = client_at_block
         .storage()
         .entry("Staking", "ValidatorCount")
@@ -692,8 +691,7 @@ async fn fetch_validator_count<'client>(
 
 async fn fetch_force_era<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
-) -> Result<Forcing, PalletError>
-{
+) -> Result<Forcing, PalletError> {
     let storage = client_at_block
         .storage()
         .entry("Staking", "ForceEra")
@@ -711,8 +709,7 @@ async fn fetch_force_era<'client>(
 
 async fn fetch_active_era<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
-) -> Result<ActiveEraInfo, PalletError>
-{
+) -> Result<ActiveEraInfo, PalletError> {
     let storage = client_at_block
         .storage()
         .entry("Staking", "ActiveEra")
@@ -755,8 +752,7 @@ async fn fetch_active_era<'client>(
 
 async fn fetch_bonded_eras<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
-) -> Result<Vec<(u32, u32)>, PalletError>
-{
+) -> Result<Vec<(u32, u32)>, PalletError> {
     let storage = client_at_block
         .storage()
         .entry("Staking", "BondedEras")
@@ -775,8 +771,7 @@ async fn fetch_bonded_eras<'client>(
 async fn fetch_staking_validators<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
     ss58_prefix: u16,
-) -> Result<Vec<String>, PalletError>
-{
+) -> Result<Vec<String>, PalletError> {
     if let Ok(storage) = client_at_block.storage().entry("Staking", "Validators")
         && let Ok(Some(value)) = storage.fetch(()).await
     {
@@ -828,8 +823,7 @@ async fn fetch_staking_validators<'client>(
 async fn fetch_unapplied_slashes<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
     ss58_prefix: u16,
-) -> Vec<UnappliedSlash>
-{
+) -> Vec<UnappliedSlash> {
     use futures::StreamExt;
 
     let storage = match client_at_block
@@ -893,8 +887,7 @@ async fn fetch_unapplied_slashes<'client>(
 
 async fn fetch_election_status<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
-) -> Option<ElectionStatus>
-{
+) -> Option<ElectionStatus> {
     let storage = client_at_block
         .storage()
         .entry("Staking", "EraElectionStatus")
@@ -907,8 +900,7 @@ async fn fetch_election_status<'client>(
 
 async fn fetch_timestamp<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
-) -> Option<String>
-{
+) -> Option<String> {
     let storage = client_at_block.storage().entry("Timestamp", "Now").ok()?;
     let value = storage.fetch(()).await.ok()??;
     let bytes = value.into_bytes();
@@ -923,8 +915,7 @@ async fn fetch_timestamp<'client>(
 async fn derive_session_era_progress_relay<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
     spec_name: &str,
-) -> Result<SessionEraProgress, PalletError>
-{
+) -> Result<SessionEraProgress, PalletError> {
     // Fetch BABE storage items
     let current_slot = fetch_babe_current_slot(client_at_block).await?;
     let epoch_index = fetch_babe_epoch_index(client_at_block).await?;
@@ -969,8 +960,7 @@ async fn derive_session_era_progress_relay<'client>(
 async fn derive_session_era_progress_asset_hub<'client>(
     state: &AppState,
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
-) -> Result<SessionEraProgress, PalletError>
-{
+) -> Result<SessionEraProgress, PalletError> {
     let babe_params = get_asset_hub_babe_params(&state.chain_info.spec_name)
         .ok_or(PalletError::StakingPalletNotFound)?;
 
@@ -1029,8 +1019,7 @@ async fn derive_session_era_progress_asset_hub<'client>(
 #[allow(dead_code)]
 async fn fetch_relay_skipped_epochs<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
-) -> Vec<(u64, u32)>
-{
+) -> Vec<(u64, u32)> {
     let storage = match client_at_block.storage().entry("Babe", "SkippedEpochs") {
         Ok(s) => s,
         Err(_) => return vec![],
@@ -1072,8 +1061,7 @@ fn calculate_session_from_skipped_epochs(epoch_index: u64, skipped_epochs: &[(u6
 
 async fn fetch_babe_current_slot<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
-) -> Result<u64, PalletError>
-{
+) -> Result<u64, PalletError> {
     let storage = client_at_block
         .storage()
         .entry("Babe", "CurrentSlot")
@@ -1091,8 +1079,7 @@ async fn fetch_babe_current_slot<'client>(
 
 async fn fetch_babe_epoch_index<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
-) -> Result<u64, PalletError>
-{
+) -> Result<u64, PalletError> {
     let storage = client_at_block
         .storage()
         .entry("Babe", "EpochIndex")
@@ -1110,8 +1097,7 @@ async fn fetch_babe_epoch_index<'client>(
 
 async fn fetch_babe_genesis_slot<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
-) -> Result<u64, PalletError>
-{
+) -> Result<u64, PalletError> {
     let storage = client_at_block
         .storage()
         .entry("Babe", "GenesisSlot")
@@ -1129,8 +1115,7 @@ async fn fetch_babe_genesis_slot<'client>(
 
 async fn fetch_session_current_index<'client>(
     client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
-) -> Result<u32, PalletError>
-{
+) -> Result<u32, PalletError> {
     let storage = client_at_block
         .storage()
         .entry("Session", "CurrentIndex")
