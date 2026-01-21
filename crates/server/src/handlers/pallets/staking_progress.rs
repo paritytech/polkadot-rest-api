@@ -8,15 +8,12 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use frame_metadata::RuntimeMetadata;
 use hex;
 use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use subxt_historic::{
-    SubstrateConfig,
-    client::{ClientAtBlock, OnlineClientAtBlock},
-};
+use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StakingProgressQueryParams {
@@ -193,21 +190,29 @@ pub async fn pallets_staking_progress(
         return handle_use_rc_block(state, params).await;
     }
 
-    // Resolve block
-    let block_id = params.at.map(|s| s.parse::<utils::BlockId>()).transpose()?;
-    let resolved_block = utils::resolve_block(&state, block_id).await?;
-    let client_at_block = state.client.at(resolved_block.number).await?;
+    // Create client at the specified block - saves RPC calls by letting subxt resolve hash<->number internally
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
+    };
 
     let at = AtResponse {
-        hash: resolved_block.hash.clone(),
-        height: resolved_block.number.to_string(),
+        hash: format!("{:#x}", client_at_block.block_hash()),
+        height: client_at_block.block_number().to_string(),
     };
 
     // Check for bad staking blocks
-    if is_bad_staking_block(&state.chain_info.spec_name, resolved_block.number) {
+    let block_number = client_at_block.block_number();
+    if is_bad_staking_block(&state.chain_info.spec_name, block_number) {
         return Err(PalletError::BadStakingBlock(format!(
             "Block {} is a known bad staking block for {}",
-            resolved_block.number, state.chain_info.spec_name
+            block_number, state.chain_info.spec_name
         )));
     }
 
@@ -250,7 +255,7 @@ pub async fn pallets_staking_progress(
             } else {
                 0
             };
-            let relay_client_at_block = relay_client.at(relay_block_number).await?;
+            let relay_client_at_block = relay_client.at_block(relay_block_number).await?;
             fetch_staking_validators(&relay_client_at_block, relay_chain_info.ss58_prefix).await?
         } else {
             fetch_staking_validators(&client_at_block, state.chain_info.ss58_prefix).await?
@@ -265,7 +270,7 @@ pub async fn pallets_staking_progress(
     };
 
     // Calculate next session estimate
-    let current_block_number = resolved_block.number;
+    let current_block_number = block_number;
     let next_session = progress
         .session_length
         .saturating_sub(progress.session_progress)
@@ -384,15 +389,15 @@ pub async fn rc_pallets_staking_progress(
         resolved_block.hash
     );
 
-    let client_at_block = relay_client.at(resolved_block.number).await?;
+    let client_at_block = relay_client.at_block(resolved_block.number).await?;
     tracing::debug!(
         "RC staking progress: created client at block {}",
-        resolved_block.number
+        client_at_block.block_number()
     );
 
     let at = AtResponse {
-        hash: resolved_block.hash.clone(),
-        height: resolved_block.number.to_string(),
+        hash: format!("{:#x}", client_at_block.block_hash()),
+        height: client_at_block.block_number().to_string(),
     };
 
     // Fetch base staking data from relay chain
@@ -410,7 +415,7 @@ pub async fn rc_pallets_staking_progress(
         derive_session_era_progress_relay(&client_at_block, &relay_chain_info.spec_name).await?;
 
     // Calculate next session estimate
-    let current_block_number = resolved_block.number;
+    let current_block_number = client_at_block.block_number();
     let next_session = progress
         .session_length
         .saturating_sub(progress.session_progress)
@@ -537,7 +542,7 @@ async fn handle_use_rc_block(
     }
 
     let ah_block = &ah_blocks[0];
-    let client_at_block = state.client.at(ah_block.number).await?;
+    let client_at_block = state.client.at_block(ah_block.number).await?;
 
     let at = AtResponse {
         hash: ah_block.hash.clone(),
@@ -671,62 +676,43 @@ fn build_empty_rc_response(rc_resolved_block: &utils::ResolvedBlock) -> Response
         .into_response()
 }
 
-async fn fetch_validator_count<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_validator_count(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u32, PalletError> {
-    let storage = client_at_block
+    let storage_addr = subxt::dynamic::storage::<(), u32>("Staking", "ValidatorCount");
+    let value = client_at_block
         .storage()
-        .entry("Staking", "ValidatorCount")
-        .map_err(|_| PalletError::StakingPalletNotFound)?;
-
-    let value = storage
-        .fetch(())
+        .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::StakingPalletNotFound)?
-        .ok_or(PalletError::StakingPalletNotFound)?;
-
-    let bytes = value.into_bytes();
-    u32::decode(&mut &bytes[..]).map_err(|_| PalletError::StakingPalletNotFound)
+        .map_err(|_| PalletError::StakingPalletNotFound)?;
+    value
+        .decode()
+        .map_err(|_| PalletError::StakingPalletNotFound)
 }
 
-async fn fetch_force_era<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_force_era(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Forcing, PalletError> {
-    let storage = client_at_block
+    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "ForceEra");
+    let value = client_at_block
         .storage()
-        .entry("Staking", "ForceEra")
-        .map_err(|_| PalletError::StakingPalletNotFound)?;
-
-    let value = storage
-        .fetch(())
+        .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::StakingPalletNotFound)?
-        .ok_or(PalletError::StakingPalletNotFound)?;
-
+        .map_err(|_| PalletError::StakingPalletNotFound)?;
     let bytes = value.into_bytes();
     Forcing::decode(&mut &bytes[..]).map_err(|_| PalletError::StakingPalletNotFound)
 }
 
-async fn fetch_active_era<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_active_era(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<ActiveEraInfo, PalletError> {
-    let storage = client_at_block
+    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "ActiveEra");
+    let value = client_at_block
         .storage()
-        .entry("Staking", "ActiveEra")
-        .map_err(|e| {
-            tracing::error!("Failed to get Staking.ActiveEra storage entry: {:?}", e);
-            PalletError::StakingPalletNotFound
-        })?;
-
-    let value = storage
-        .fetch(())
+        .fetch(storage_addr, ())
         .await
         .map_err(|e| {
             tracing::error!("Failed to fetch Staking.ActiveEra: {:?}", e);
-            PalletError::StakingPalletNotFound
-        })?
-        .ok_or_else(|| {
-            tracing::error!("Staking.ActiveEra storage entry does not exist at this block");
             PalletError::ActiveEraNotFound
         })?;
 
@@ -750,31 +736,26 @@ async fn fetch_active_era<'client>(
     })
 }
 
-async fn fetch_bonded_eras<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_bonded_eras(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<(u32, u32)>, PalletError> {
-    let storage = client_at_block
+    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "BondedEras");
+    let value = client_at_block
         .storage()
-        .entry("Staking", "BondedEras")
-        .map_err(|_| PalletError::StakingPalletNotFound)?;
-
-    let value = storage
-        .fetch(())
+        .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::StakingPalletNotFound)?
-        .ok_or(PalletError::EraStartSessionNotFound)?;
-
+        .map_err(|_| PalletError::EraStartSessionNotFound)?;
     let bytes = value.into_bytes();
     Vec::<(u32, u32)>::decode(&mut &bytes[..]).map_err(|_| PalletError::EraStartSessionNotFound)
 }
 
-async fn fetch_staking_validators<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_staking_validators(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
 ) -> Result<Vec<String>, PalletError> {
-    if let Ok(storage) = client_at_block.storage().entry("Staking", "Validators")
-        && let Ok(Some(value)) = storage.fetch(()).await
-    {
+    // Try Staking.Validators first (this storage entry may exist in some chains)
+    let staking_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "Validators");
+    if let Ok(value) = client_at_block.storage().fetch(staking_addr, ()).await {
         let bytes = value.into_bytes();
         if let Ok(validators) = Vec::<[u8; 32]>::decode(&mut &bytes[..]) {
             tracing::debug!(
@@ -788,23 +769,14 @@ async fn fetch_staking_validators<'client>(
         }
     }
 
-    let storage = client_at_block
+    // Fall back to Session.Validators
+    let session_addr = subxt::dynamic::storage::<(), scale_value::Value>("Session", "Validators");
+    let value = client_at_block
         .storage()
-        .entry("Session", "Validators")
-        .map_err(|e| {
-            tracing::debug!("Session.Validators not found: {:?}", e);
-            PalletError::SessionPalletNotFound
-        })?;
-
-    let value = storage
-        .fetch(())
+        .fetch(session_addr, ())
         .await
         .map_err(|e| {
             tracing::debug!("Failed to fetch Session.Validators: {:?}", e);
-            PalletError::SessionPalletNotFound
-        })?
-        .ok_or_else(|| {
-            tracing::debug!("Session.Validators storage is empty");
             PalletError::SessionPalletNotFound
         })?;
 
@@ -820,21 +792,17 @@ async fn fetch_staking_validators<'client>(
         .collect())
 }
 
-async fn fetch_unapplied_slashes<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_unapplied_slashes(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
 ) -> Vec<UnappliedSlash> {
     use futures::StreamExt;
 
-    let storage = match client_at_block
-        .storage()
-        .entry("Staking", "UnappliedSlashes")
-    {
-        Ok(s) => s,
-        Err(_) => return vec![],
-    };
-
-    let mut stream = match storage.iter(()).await {
+    // Use (u32,) for the key type since UnappliedSlashes is a map with era as key
+    let storage_addr =
+        subxt::dynamic::storage::<(u32,), scale_value::Value>("Staking", "UnappliedSlashes");
+    // Pass () as partial keys to iterate over all entries
+    let mut stream = match client_at_block.storage().iter(storage_addr, ()).await {
         Ok(s) => s,
         Err(_) => return vec![],
     };
@@ -847,7 +815,9 @@ async fn fetch_unapplied_slashes<'client>(
             Err(_) => continue,
         };
 
-        let (key_bytes, value_bytes) = entry.into_key_and_value_bytes();
+        // Get key bytes and value bytes
+        let key_bytes = entry.key_bytes();
+        let value_bytes = entry.value().bytes();
 
         // Key format: 16 bytes pallet prefix + 16 bytes entry prefix + 8 bytes twox64 hash + 4 bytes era
         // Total: 44 bytes, era starts at byte 40
@@ -885,35 +855,40 @@ async fn fetch_unapplied_slashes<'client>(
     result
 }
 
-async fn fetch_election_status<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_election_status(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Option<ElectionStatus> {
-    let storage = client_at_block
+    let storage_addr =
+        subxt::dynamic::storage::<(), scale_value::Value>("Staking", "EraElectionStatus");
+    let value = client_at_block
         .storage()
-        .entry("Staking", "EraElectionStatus")
+        .fetch(storage_addr, ())
+        .await
         .ok()?;
-
-    let value = storage.fetch(()).await.ok()??;
     let bytes = value.into_bytes();
     ElectionStatus::decode(&mut &bytes[..]).ok()
 }
 
-async fn fetch_timestamp<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_timestamp(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Option<String> {
-    let storage = client_at_block.storage().entry("Timestamp", "Now").ok()?;
-    let value = storage.fetch(()).await.ok()??;
-    let bytes = value.into_bytes();
-    let timestamp = u64::decode(&mut &bytes[..]).ok()?;
-    Some(timestamp.to_string())
+    // Use typed dynamic storage to decode timestamp directly as u64
+    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
+    let timestamp = client_at_block
+        .storage()
+        .fetch(timestamp_addr, ())
+        .await
+        .ok()?;
+    let timestamp_value = timestamp.decode().ok()?;
+    Some(timestamp_value.to_string())
 }
 
 // ============================================================================
 // Session/Era Progress Derivation
 // ============================================================================
 
-async fn derive_session_era_progress_relay<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn derive_session_era_progress_relay(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     spec_name: &str,
 ) -> Result<SessionEraProgress, PalletError> {
     // Fetch BABE storage items
@@ -929,7 +904,7 @@ async fn derive_session_era_progress_relay<'client>(
     let bonded_eras = fetch_bonded_eras(client_at_block).await?;
 
     // Get chain constants from metadata
-    let sessions_per_era = get_sessions_per_era_from_metadata(client_at_block.metadata())
+    let sessions_per_era = get_sessions_per_era_from_metadata(&client_at_block.metadata())
         .ok_or(PalletError::StakingPalletNotFound)?;
     let epoch_duration = get_babe_epoch_duration(spec_name);
 
@@ -957,9 +932,9 @@ async fn derive_session_era_progress_relay<'client>(
     })
 }
 
-async fn derive_session_era_progress_asset_hub<'client>(
+async fn derive_session_era_progress_asset_hub(
     state: &AppState,
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<SessionEraProgress, PalletError> {
     let babe_params = get_asset_hub_babe_params(&state.chain_info.spec_name)
         .ok_or(PalletError::StakingPalletNotFound)?;
@@ -977,7 +952,7 @@ async fn derive_session_era_progress_asset_hub<'client>(
     let bonded_eras = fetch_bonded_eras(client_at_block).await?;
 
     // Get sessions per era from metadata
-    let sessions_per_era = get_sessions_per_era_from_metadata(client_at_block.metadata())
+    let sessions_per_era = get_sessions_per_era_from_metadata(&client_at_block.metadata())
         .ok_or(PalletError::StakingPalletNotFound)?;
 
     // Find active era start session index
@@ -1017,17 +992,13 @@ async fn derive_session_era_progress_asset_hub<'client>(
 
 // Reserved for future implementation when relay chain block resolution is added
 #[allow(dead_code)]
-async fn fetch_relay_skipped_epochs<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_relay_skipped_epochs(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Vec<(u64, u32)> {
-    let storage = match client_at_block.storage().entry("Babe", "SkippedEpochs") {
-        Ok(s) => s,
+    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Babe", "SkippedEpochs");
+    let value = match client_at_block.storage().fetch(storage_addr, ()).await {
+        Ok(v) => v,
         Err(_) => return vec![],
-    };
-
-    let value = match storage.fetch(()).await {
-        Ok(Some(v)) => v,
-        _ => return vec![],
     };
 
     let bytes = value.into_bytes();
@@ -1059,118 +1030,64 @@ fn calculate_session_from_skipped_epochs(epoch_index: u64, skipped_epochs: &[(u6
     }
 }
 
-async fn fetch_babe_current_slot<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_babe_current_slot(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u64, PalletError> {
-    let storage = client_at_block
+    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "CurrentSlot");
+    let value = client_at_block
         .storage()
-        .entry("Babe", "CurrentSlot")
-        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))?;
-
-    let value = storage
-        .fetch(())
+        .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))?
-        .ok_or(PalletError::PalletNotFound("Babe".to_string()))?;
-
-    let bytes = value.into_bytes();
-    u64::decode(&mut &bytes[..]).map_err(|_| PalletError::PalletNotFound("Babe".to_string()))
+        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))?;
+    value
+        .decode()
+        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))
 }
 
-async fn fetch_babe_epoch_index<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_babe_epoch_index(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u64, PalletError> {
-    let storage = client_at_block
+    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "EpochIndex");
+    let value = client_at_block
         .storage()
-        .entry("Babe", "EpochIndex")
-        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))?;
-
-    let value = storage
-        .fetch(())
+        .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))?
-        .ok_or(PalletError::PalletNotFound("Babe".to_string()))?;
-
-    let bytes = value.into_bytes();
-    u64::decode(&mut &bytes[..]).map_err(|_| PalletError::PalletNotFound("Babe".to_string()))
+        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))?;
+    value
+        .decode()
+        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))
 }
 
-async fn fetch_babe_genesis_slot<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_babe_genesis_slot(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u64, PalletError> {
-    let storage = client_at_block
+    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "GenesisSlot");
+    let value = client_at_block
         .storage()
-        .entry("Babe", "GenesisSlot")
-        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))?;
-
-    let value = storage
-        .fetch(())
+        .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))?
-        .ok_or(PalletError::PalletNotFound("Babe".to_string()))?;
-
-    let bytes = value.into_bytes();
-    u64::decode(&mut &bytes[..]).map_err(|_| PalletError::PalletNotFound("Babe".to_string()))
+        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))?;
+    value
+        .decode()
+        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))
 }
 
-async fn fetch_session_current_index<'client>(
-    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
+async fn fetch_session_current_index(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u32, PalletError> {
-    let storage = client_at_block
+    let storage_addr = subxt::dynamic::storage::<(), u32>("Session", "CurrentIndex");
+    let value = client_at_block
         .storage()
-        .entry("Session", "CurrentIndex")
-        .map_err(|_| PalletError::SessionPalletNotFound)?;
-
-    let value = storage
-        .fetch(())
+        .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::SessionPalletNotFound)?
-        .ok_or(PalletError::SessionPalletNotFound)?;
-
-    let bytes = value.into_bytes();
-    u32::decode(&mut &bytes[..]).map_err(|_| PalletError::SessionPalletNotFound)
+        .map_err(|_| PalletError::SessionPalletNotFound)?;
+    value.decode().map_err(|_| PalletError::SessionPalletNotFound)
 }
 
-fn get_sessions_per_era_from_metadata(metadata: &RuntimeMetadata) -> Option<u32> {
-    match metadata {
-        RuntimeMetadata::V14(m) => {
-            for pallet in &m.pallets {
-                if pallet.name == "Staking" {
-                    for constant in &pallet.constants {
-                        if constant.name == "SessionsPerEra" {
-                            return u32::decode(&mut &constant.value[..]).ok();
-                        }
-                    }
-                }
-            }
-            None
-        }
-        RuntimeMetadata::V15(m) => {
-            for pallet in &m.pallets {
-                if pallet.name == "Staking" {
-                    for constant in &pallet.constants {
-                        if constant.name == "SessionsPerEra" {
-                            return u32::decode(&mut &constant.value[..]).ok();
-                        }
-                    }
-                }
-            }
-            None
-        }
-        RuntimeMetadata::V16(m) => {
-            for pallet in &m.pallets {
-                if pallet.name == "Staking" {
-                    for constant in &pallet.constants {
-                        if constant.name == "SessionsPerEra" {
-                            return u32::decode(&mut &constant.value[..]).ok();
-                        }
-                    }
-                }
-            }
-            None
-        }
-        _ => None,
-    }
+fn get_sessions_per_era_from_metadata(metadata: &subxt::Metadata) -> Option<u32> {
+    let pallet = metadata.pallet_by_name("Staking")?;
+    let constant = pallet.constant_by_name("SessionsPerEra")?;
+    u32::decode(&mut &constant.value()[..]).ok()
 }
 
 fn get_babe_epoch_duration(spec_name: &str) -> u64 {
