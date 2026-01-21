@@ -11,7 +11,7 @@ use futures::stream::{self, StreamExt, TryStreamExt};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
-use subxt_historic::error::OnlineClientAtBlockError;
+use subxt::error::OnlineClientAtBlockError;
 
 use super::get_block::build_block_response_for_hash;
 use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
@@ -68,7 +68,7 @@ pub enum GetBlocksError {
     BlockResolveFailed(#[from] utils::BlockResolveError),
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 
     #[error(transparent)]
     BlockError(#[from] GetBlockError),
@@ -136,22 +136,25 @@ pub async fn get_blocks(
             let state = state.clone();
             let params = base_block_params.clone();
             async move {
-                let block_hash = state
-                    .get_block_hash_at_number(number)
+                // Create client_at_block - this also resolves hash internally
+                let client_at_block = state
+                    .client
+                    .at_block(number)
                     .await
-                    .map_err(GetBlockError::HeaderFetchFailed)?
-                    .ok_or_else(|| {
-                        GetBlocksError::BlockError(GetBlockError::BlockResolveFailed(
-                            utils::BlockResolveError::NotFound(format!(
-                                "Block at height {} not found",
-                                number
-                            )),
-                        ))
-                    })?;
+                    .map_err(|e| GetBlocksError::ClientAtBlockFailed(Box::new(e)))?;
 
-                build_block_response_for_hash(&state, &block_hash, number, false, &params)
-                    .await
-                    .map_err(GetBlocksError::from)
+                let block_hash = format!("{:#x}", client_at_block.block_hash());
+
+                build_block_response_for_hash(
+                    &state,
+                    &block_hash,
+                    number,
+                    false,
+                    &client_at_block,
+                    &params,
+                )
+                .await
+                .map_err(GetBlocksError::from)
             }
         })
         .buffered(concurrency)
@@ -210,19 +213,25 @@ async fn handle_use_rc_block_range(
 
                 let mut responses = Vec::with_capacity(ah_blocks.len());
                 for ah_block in ah_blocks {
+                    // Create client_at_block first - needed for build_block_response_for_hash
+                    let client_at_block = state
+                        .client
+                        .at_block(ah_block.number)
+                        .await
+                        .map_err(|e| GetBlocksError::ClientAtBlockFailed(Box::new(e)))?;
+
                     let mut response = build_block_response_for_hash(
                         &state,
                         &ah_block.hash,
                         ah_block.number,
                         true,
+                        &client_at_block,
                         &params,
                     )
                     .await?;
 
                     response.rc_block_hash = Some(rc_block_hash.clone());
                     response.rc_block_number = Some(rc_block_number.clone());
-
-                    let client_at_block = state.client.at(ah_block.number).await?;
                     response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
                     responses.push(response);
@@ -249,7 +258,7 @@ async fn handle_use_rc_block_range(
 
 async fn resolve_rc_block(
     rc_rpc_client: &Arc<subxt_rpcs::RpcClient>,
-    rc_legacy_rpc: &Arc<subxt_rpcs::LegacyRpcMethods<subxt_historic::SubstrateConfig>>,
+    rc_legacy_rpc: &Arc<crate::state::SubstrateLegacyRpc>,
     rc_number: u64,
 ) -> Result<ResolvedBlock, GetBlocksError> {
     let block_id = utils::BlockId::Number(rc_number);

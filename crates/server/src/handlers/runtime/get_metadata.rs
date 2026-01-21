@@ -27,9 +27,6 @@ pub enum GetMetadataError {
     #[error("Invalid block parameter")]
     InvalidBlockParam(#[from] crate::utils::BlockIdParseError),
 
-    #[error("Block resolution failed")]
-    BlockResolveFailed(#[from] crate::utils::BlockResolveError),
-
     #[error("Failed to get metadata from RPC")]
     RpcFailed(#[source] subxt_rpcs::Error),
 
@@ -58,22 +55,23 @@ pub enum GetMetadataError {
 
     #[error("Service temporarily unavailable: {0}")]
     ServiceUnavailable(String),
+
+    #[error("Block not found: {0}")]
+    BlockNotFound(String),
 }
 
 impl IntoResponse for GetMetadataError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
             GetMetadataError::InvalidBlockParam(_)
-            | GetMetadataError::BlockResolveFailed(_)
             | GetMetadataError::InvalidVersionFormat(_)
             | GetMetadataError::VersionNotAvailable(_)
-            | GetMetadataError::MetadataVersionsNotAvailable => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
+            | GetMetadataError::MetadataVersionsNotAvailable
+            | GetMetadataError::BlockNotFound(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             GetMetadataError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
-            GetMetadataError::RpcFailed(err) => crate::utils::rpc_error_to_status(err),
+            GetMetadataError::RpcFailed(err) => utils::rpc_error_to_status(err),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
@@ -82,6 +80,48 @@ impl IntoResponse for GetMetadataError {
         }));
 
         (status, body).into_response()
+    }
+}
+
+/// Resolve a block identifier to just the block hash string.
+/// This is optimized for handlers that only need the hash (not the number).
+async fn resolve_block_hash(
+    state: &AppState,
+    at: Option<&str>,
+) -> Result<String, GetMetadataError> {
+    match at {
+        None => {
+            // Get latest finalized block hash
+            let hash = state
+                .legacy_rpc
+                .chain_get_finalized_head()
+                .await
+                .map_err(GetMetadataError::RpcFailed)?;
+            Ok(format!("{:#x}", hash))
+        }
+        Some(at_str) => {
+            let block_id = at_str.parse::<crate::utils::BlockId>()?;
+            match block_id {
+                crate::utils::BlockId::Hash(hash) => {
+                    // Already have the hash, just format it
+                    Ok(format!("{:#x}", hash))
+                }
+                crate::utils::BlockId::Number(number) => {
+                    // Need to fetch hash from number
+                    let hash = state
+                        .get_block_hash_at_number(number)
+                        .await
+                        .map_err(GetMetadataError::RpcFailed)?
+                        .ok_or_else(|| {
+                            GetMetadataError::BlockNotFound(format!(
+                                "Block at height {} not found",
+                                number
+                            ))
+                        })?;
+                    Ok(hash)
+                }
+            }
+        }
     }
 }
 
@@ -101,15 +141,12 @@ pub async fn runtime_metadata(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
 ) -> Result<Json<RuntimeMetadataResponse>, GetMetadataError> {
-    let block_id = params
-        .at
-        .map(|s| s.parse::<crate::utils::BlockId>())
-        .transpose()?;
-    let resolved_block = utils::resolve_block(&state, block_id).await?;
+    // Get block hash - only fetch what we need (saves RPC call when hash provided)
+    let block_hash = resolve_block_hash(&state, params.at.as_deref()).await?;
 
     let metadata_hex: String = state
         .rpc_client
-        .request("state_getMetadata", rpc_params![&resolved_block.hash])
+        .request("state_getMetadata", rpc_params![&block_hash])
         .await
         .map_err(GetMetadataError::RpcFailed)?;
 
@@ -145,11 +182,8 @@ pub async fn runtime_metadata_versions(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
 ) -> Result<Json<Vec<String>>, GetMetadataError> {
-    let block_id = params
-        .at
-        .map(|s| s.parse::<crate::utils::BlockId>())
-        .transpose()?;
-    let resolved_block = utils::resolve_block(&state, block_id).await?;
+    // Get block hash - only fetch what we need (saves RPC call when hash provided)
+    let block_hash = resolve_block_hash(&state, params.at.as_deref()).await?;
 
     // Call state_call with Metadata_metadata_versions
     // The call takes no parameters, so we just encode empty bytes
@@ -159,11 +193,7 @@ pub async fn runtime_metadata_versions(
         .rpc_client
         .request(
             "state_call",
-            rpc_params![
-                "Metadata_metadata_versions",
-                &call_data,
-                &resolved_block.hash
-            ],
+            rpc_params!["Metadata_metadata_versions", &call_data, &block_hash],
         )
         .await
         .map_err(|e| {
@@ -210,11 +240,8 @@ pub async fn runtime_metadata_versioned(
         None => return Err(GetMetadataError::InvalidVersionFormat(version.clone())),
     };
 
-    let block_id = params
-        .at
-        .map(|s| s.parse::<crate::utils::BlockId>())
-        .transpose()?;
-    let resolved_block = utils::resolve_block(&state, block_id).await?;
+    // Get block hash - only fetch what we need (saves RPC call when hash provided)
+    let block_hash = resolve_block_hash(&state, params.at.as_deref()).await?;
 
     // First, check if the version is available
     let versions_call_data = "0x".to_string();
@@ -225,7 +252,7 @@ pub async fn runtime_metadata_versioned(
             rpc_params![
                 "Metadata_metadata_versions",
                 &versions_call_data,
-                &resolved_block.hash
+                &block_hash
             ],
         )
         .await
@@ -258,11 +285,7 @@ pub async fn runtime_metadata_versioned(
         .rpc_client
         .request(
             "state_call",
-            rpc_params![
-                "Metadata_metadata_at_version",
-                &call_data,
-                &resolved_block.hash
-            ],
+            rpc_params!["Metadata_metadata_at_version", &call_data, &block_hash],
         )
         .await
         .map_err(|e| {

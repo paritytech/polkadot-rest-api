@@ -4,10 +4,7 @@
 //! - `EventsVisitor` for extracting event information from System.Events storage
 //! - Post-processing functions for transforming decoded event data to JSON
 //!
-//! For enum types, it distinguishes between "basic" enums (all variants have no data)
-//! and "non-basic" enums (any variant has data):
-//! - Basic enums serialize as strings: `"Normal"`, `"Yes"`
-//! - Non-basic enums serialize as objects: `{"unlimited": null}`, `{"limited": {...}}`
+//! Updated for subxt 0.50.0 which uses PortableRegistry.
 
 use heck::ToLowerCamelCase;
 use scale_decode::{
@@ -17,29 +14,21 @@ use scale_decode::{
         types::{Composite, Sequence, Variant},
     },
 };
+use scale_info::PortableRegistry;
 use scale_type_resolver::TypeResolver;
 use serde_json::Value as JsonValue;
 use sp_core::crypto::{AccountId32, Ss58Codec};
 
 /// Check if an enum type is "basic" (all variants have no associated data).
-///
-/// Basic enums should serialize as strings (e.g., `"Normal"`, `"Yes"`),
-/// while non-basic enums serialize as objects (e.g., `{"unlimited": null}`).
-///
-/// This determination is made at the TYPE level, not the variant level.
-fn is_basic_enum<R: TypeResolver>(resolver: &R, type_id: R::TypeId) -> bool
-where
-    R::TypeId: Clone,
-{
+fn is_basic_enum(resolver: &PortableRegistry, type_id: u32) -> bool {
     let type_visitor =
         scale_type_resolver::visitor::new((), |_, _| false).visit_variant(|_, _path, variants| {
-            // Check if ANY variant has fields - if so, NOT basic
             for variant in variants {
                 if variant.fields.len() > 0 {
                     return false;
                 }
             }
-            true // All variants have no fields = IS basic
+            true
         });
 
     resolver
@@ -52,7 +41,6 @@ where
 // ================================================================================================
 
 /// Lowercase the first character only, preserving the rest
-/// e.g., "ParaInclusion" -> "paraInclusion", "System" -> "system"
 fn lowercase_first_char(s: &str) -> String {
     let mut chars = s.chars();
     match chars.next() {
@@ -86,24 +74,21 @@ pub enum EventPhase {
 }
 
 /// Visitor that collects all events with their field type information
-pub struct EventsVisitor<'r, R> {
-    resolver: &'r R,
+/// Specialized for PortableRegistry.
+pub struct EventsVisitor<'r> {
+    resolver: &'r PortableRegistry,
 }
 
-impl<'r, R> EventsVisitor<'r, R> {
-    pub fn new(resolver: &'r R) -> Self {
+impl<'r> EventsVisitor<'r> {
+    pub fn new(resolver: &'r PortableRegistry) -> Self {
         Self { resolver }
     }
 }
 
-impl<'r, R> Visitor for EventsVisitor<'r, R>
-where
-    R: TypeResolver,
-    R::TypeId: Clone,
-{
+impl<'r> Visitor for EventsVisitor<'r> {
     type Value<'scale, 'resolver> = Vec<EventInfo>;
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     fn visit_sequence<'scale, 'resolver>(
         self,
@@ -112,14 +97,12 @@ where
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         let mut events = Vec::new();
 
-        // Iterate through each EventRecord in the Vec
         while let Some(event_record_result) =
             value.decode_item(EventRecordVisitor::new(self.resolver))
         {
             match event_record_result {
                 Ok(Some(event_info)) => events.push(event_info),
                 Ok(None) => {
-                    // Skip events we couldn't parse
                     tracing::debug!("Skipped unparseable event");
                 }
                 Err(e) => {
@@ -139,41 +122,33 @@ where
     }
 }
 
-/// Visitor for a single EventRecord (composite with phase, event, topics)
-struct EventRecordVisitor<'r, R> {
-    resolver: &'r R,
+/// Visitor for a single EventRecord
+struct EventRecordVisitor<'r> {
+    resolver: &'r PortableRegistry,
 }
 
-impl<'r, R> EventRecordVisitor<'r, R> {
-    fn new(resolver: &'r R) -> Self {
+impl<'r> EventRecordVisitor<'r> {
+    fn new(resolver: &'r PortableRegistry) -> Self {
         Self { resolver }
     }
 }
 
-impl<'r, R> Visitor for EventRecordVisitor<'r, R>
-where
-    R: TypeResolver,
-    R::TypeId: Clone,
-{
+impl<'r> Visitor for EventRecordVisitor<'r> {
     type Value<'scale, 'resolver> = Option<EventInfo>;
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     fn visit_composite<'scale, 'resolver>(
         self,
         value: &mut Composite<'scale, 'resolver, Self::TypeResolver>,
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        // EventRecord has 3 fields: phase (0), event (1), topics (2)
-
-        // Field 0: Extract phase
         let phase = if let Some(phase_result) = value.decode_item(PhaseExtractor::new()) {
             phase_result?
         } else {
-            EventPhase::Finalization // Default fallback
+            EventPhase::Finalization
         };
 
-        // Field 1: Get the actual event
         if let Some(event_result) = value.decode_item(PalletEventVisitor::new(phase, self.resolver))
         {
             return event_result;
@@ -191,25 +166,18 @@ where
 }
 
 /// Visitor that extracts the phase from EventRecord
-struct PhaseExtractor<R> {
-    _marker: core::marker::PhantomData<R>,
-}
+struct PhaseExtractor;
 
-impl<R> PhaseExtractor<R> {
+impl PhaseExtractor {
     fn new() -> Self {
-        Self {
-            _marker: core::marker::PhantomData,
-        }
+        Self
     }
 }
 
-impl<R> Visitor for PhaseExtractor<R>
-where
-    R: TypeResolver,
-{
+impl Visitor for PhaseExtractor {
     type Value<'scale, 'resolver> = EventPhase;
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     fn visit_variant<'scale, 'resolver>(
         self,
@@ -221,7 +189,6 @@ where
 
         match variant_name {
             "ApplyExtrinsic" => {
-                // Extract the extrinsic index (u32)
                 if let Some(index_result) = fields.decode_item(U32Extractor::new()) {
                     Ok(EventPhase::ApplyExtrinsic(index_result?))
                 } else {
@@ -246,25 +213,18 @@ where
 }
 
 /// Helper visitor to extract u32 values
-struct U32Extractor<R> {
-    _marker: core::marker::PhantomData<R>,
-}
+struct U32Extractor;
 
-impl<R> U32Extractor<R> {
+impl U32Extractor {
     fn new() -> Self {
-        Self {
-            _marker: core::marker::PhantomData,
-        }
+        Self
     }
 }
 
-impl<R> Visitor for U32Extractor<R>
-where
-    R: TypeResolver,
-{
+impl Visitor for U32Extractor {
     type Value<'scale, 'resolver> = u32;
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     fn visit_u32<'scale, 'resolver>(
         self,
@@ -282,40 +242,31 @@ where
     }
 }
 
-/// Visitor for the pallet-level variant (e.g., Balances, System, etc.)
-struct PalletEventVisitor<'r, R> {
+/// Visitor for the pallet-level variant
+struct PalletEventVisitor<'r> {
     phase: EventPhase,
-    resolver: &'r R,
+    resolver: &'r PortableRegistry,
 }
 
-impl<'r, R> PalletEventVisitor<'r, R> {
-    fn new(phase: EventPhase, resolver: &'r R) -> Self {
+impl<'r> PalletEventVisitor<'r> {
+    fn new(phase: EventPhase, resolver: &'r PortableRegistry) -> Self {
         Self { phase, resolver }
     }
 }
 
-impl<'r, R> Visitor for PalletEventVisitor<'r, R>
-where
-    R: TypeResolver,
-    R::TypeId: Clone,
-{
+impl<'r> Visitor for PalletEventVisitor<'r> {
     type Value<'scale, 'resolver> = Option<EventInfo>;
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     fn visit_variant<'scale, 'resolver>(
         self,
         value: &mut Variant<'scale, 'resolver, Self::TypeResolver>,
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        // The variant name is the pallet name (e.g., "Balances", "System")
-        // Lowercase the first char to match substrate-api-sidecar format
         let pallet_name = lowercase_first_char(value.name());
-
-        // The variant contains fields - get the composite to access them
         let fields_composite = value.fields();
 
-        // The first field should be the inner event variant
         if let Some(inner_event_result) = fields_composite.decode_item(ActualEventVisitor::new(
             self.phase,
             pallet_name,
@@ -335,15 +286,15 @@ where
     }
 }
 
-/// Visitor for the actual event variant (e.g., Transfer, Withdraw, etc.)
-struct ActualEventVisitor<'r, R> {
+/// Visitor for the actual event variant
+struct ActualEventVisitor<'r> {
     phase: EventPhase,
     pallet_name: String,
-    resolver: &'r R,
+    resolver: &'r PortableRegistry,
 }
 
-impl<'r, R> ActualEventVisitor<'r, R> {
-    fn new(phase: EventPhase, pallet_name: String, resolver: &'r R) -> Self {
+impl<'r> ActualEventVisitor<'r> {
+    fn new(phase: EventPhase, pallet_name: String, resolver: &'r PortableRegistry) -> Self {
         Self {
             phase,
             pallet_name,
@@ -352,14 +303,10 @@ impl<'r, R> ActualEventVisitor<'r, R> {
     }
 }
 
-impl<'r, R> Visitor for ActualEventVisitor<'r, R>
-where
-    R: TypeResolver,
-    R::TypeId: Clone,
-{
+impl<'r> Visitor for ActualEventVisitor<'r> {
     type Value<'scale, 'resolver> = Option<EventInfo>;
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     fn visit_variant<'scale, 'resolver>(
         self,
@@ -369,10 +316,8 @@ where
         let event_name = value.name().to_string();
         let mut event_fields = Vec::new();
 
-        // Get the fields composite
         let fields_composite = value.fields();
 
-        // Decode each field and extract both type name and value
         while let Some(field_result) =
             fields_composite.decode_item(FieldWithTypeExtractor::new(self.resolver))
         {
@@ -406,35 +351,28 @@ where
 }
 
 /// Visitor that extracts both the type name and JSON value for a field
-struct FieldWithTypeExtractor<'r, R> {
-    resolver: &'r R,
+struct FieldWithTypeExtractor<'r> {
+    resolver: &'r PortableRegistry,
 }
 
-impl<'r, R> FieldWithTypeExtractor<'r, R> {
-    fn new(resolver: &'r R) -> Self {
+impl<'r> FieldWithTypeExtractor<'r> {
+    fn new(resolver: &'r PortableRegistry) -> Self {
         Self { resolver }
     }
 }
 
-impl<'r, R> Visitor for FieldWithTypeExtractor<'r, R>
-where
-    R: TypeResolver,
-    R::TypeId: Clone,
-{
+impl<'r> Visitor for FieldWithTypeExtractor<'r> {
     type Value<'scale, 'resolver> = (Option<String>, JsonValue);
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     fn visit_composite<'scale, 'resolver>(
         self,
         value: &mut Composite<'scale, 'resolver, Self::TypeResolver>,
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        // Get type name from path
         let type_name = value.path().last().map(|s| s.to_string());
 
-        // Special handling for AccountId32 - return as hex string instead of decoding fields
-        // Only do this if the bytes are EXACTLY 32 (a raw AccountId32), not larger composite structures
         if type_name.as_deref() == Some("AccountId32") || type_name.as_deref() == Some("AccountId")
         {
             let bytes = value.bytes_from_start();
@@ -444,7 +382,6 @@ where
             }
         }
 
-        // Collect field names before decoding (since decode_item consumes them)
         let field_names: Vec<Option<String>> = value
             .fields()
             .iter()
@@ -455,16 +392,11 @@ where
         let mut field_values = Vec::new();
         while let Some(field_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
             match field_result {
-                Ok(json_val) => {
-                    field_values.push(json_val);
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to decode composite field: {:?}", e);
-                }
+                Ok(json_val) => field_values.push(json_val),
+                Err(e) => tracing::warn!("Failed to decode composite field: {:?}", e),
             }
         }
 
-        // Create an object if we have named fields, otherwise an array
         let json_value = if has_named_fields && field_names.len() == field_values.len() {
             let obj: serde_json::Map<String, JsonValue> = field_names
                 .into_iter()
@@ -484,13 +416,10 @@ where
         value: &mut Variant<'scale, 'resolver, Self::TypeResolver>,
         type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        // Get type name from path
         let type_name = value.path().last().map(|s| s.to_string());
         let variant_name = value.name();
 
-        // Special handling for Option::None - return null
         if variant_name == "None" {
-            // Consume fields
             let fields_composite = value.fields();
             while let Some(field_result) =
                 fields_composite.decode_item(ValueExtractor::new(self.resolver))
@@ -500,7 +429,6 @@ where
             return Ok((type_name, JsonValue::Null));
         }
 
-        // Special handling for Option::Some - unwrap and return just the inner value
         if variant_name == "Some" {
             let fields_composite = value.fields();
             if let Some(field_result) =
@@ -514,22 +442,17 @@ where
             return Ok((type_name, JsonValue::Null));
         }
 
-        // Special handling for MultiAddress::Id variant - extract AccountId32 as hex
         if type_name.as_deref() == Some("MultiAddress") && variant_name == "Id" {
             let bytes = value.bytes_from_start();
-            // Skip the variant index byte, then read 32 bytes for AccountId32
             if bytes.len() >= 33 {
                 let hex_string = format!("0x{}", hex::encode(&bytes[1..33]));
                 return Ok((type_name, JsonValue::String(hex_string)));
             }
         }
 
-        // Check if this is a basic enum (all variants have no data)
         let is_basic = is_basic_enum(self.resolver, type_id);
 
-        // For basic enums, return just the variant name as a string
         if is_basic {
-            // Consume fields (there shouldn't be any)
             let fields_composite = value.fields();
             while let Some(field_result) =
                 fields_composite.decode_item(ValueExtractor::new(self.resolver))
@@ -539,7 +462,6 @@ where
             return Ok((type_name, JsonValue::String(variant_name.to_string())));
         }
 
-        // Non-basic enum - decode fields and wrap in object
         let mut fields = Vec::new();
         let fields_composite = value.fields();
         while let Some(field_result) =
@@ -547,16 +469,11 @@ where
         {
             match field_result {
                 Ok(json_val) => fields.push(json_val),
-                Err(e) => {
-                    tracing::warn!("Failed to decode variant field: {:?}", e);
-                }
+                Err(e) => tracing::warn!("Failed to decode variant field: {:?}", e),
             }
         }
 
-        // Convert variant name to lowerCamelCase for the key
         let key = lowercase_first_char(variant_name);
-
-        // Create variant JSON representation as {"variantName": value}
         let json_value = if fields.is_empty() {
             serde_json::json!({ key: JsonValue::Null })
         } else if fields.len() == 1 {
@@ -573,17 +490,13 @@ where
         value: &mut Sequence<'scale, 'resolver, Self::TypeResolver>,
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        // Decode all sequence items
         let mut items = Vec::new();
         while let Some(item_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
             match item_result {
                 Ok(json_val) => items.push(json_val),
-                Err(e) => {
-                    tracing::warn!("Failed to decode sequence item: {:?}", e);
-                }
+                Err(e) => tracing::warn!("Failed to decode sequence item: {:?}", e),
             }
         }
-
         Ok((None, JsonValue::Array(items)))
     }
 
@@ -592,19 +505,14 @@ where
         value: &mut scale_decode::visitor::types::Array<'scale, 'resolver, Self::TypeResolver>,
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        // Decode all array items
         let mut items = Vec::new();
         while let Some(item_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
             match item_result {
                 Ok(json_val) => items.push(json_val),
-                Err(e) => {
-                    tracing::warn!("Failed to decode array item: {:?}", e);
-                }
+                Err(e) => tracing::warn!("Failed to decode array item: {:?}", e),
             }
         }
 
-        // Check if this is a byte array (all items are u8 numbers)
-        // Convert to hex string if so
         if items.len() >= 2 {
             let mut is_byte_array = true;
             let mut bytes = Vec::with_capacity(items.len());
@@ -687,32 +595,26 @@ where
 }
 
 /// Visitor that extracts just the JSON value without type information
-/// Used for recursive decoding of composite/variant/sequence fields
-struct ValueExtractor<'r, R> {
-    resolver: &'r R,
+struct ValueExtractor<'r> {
+    resolver: &'r PortableRegistry,
 }
 
-impl<'r, R> ValueExtractor<'r, R> {
-    fn new(resolver: &'r R) -> Self {
+impl<'r> ValueExtractor<'r> {
+    fn new(resolver: &'r PortableRegistry) -> Self {
         Self { resolver }
     }
 }
 
-impl<'r, R> Visitor for ValueExtractor<'r, R>
-where
-    R: TypeResolver,
-    R::TypeId: Clone,
-{
+impl<'r> Visitor for ValueExtractor<'r> {
     type Value<'scale, 'resolver> = JsonValue;
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     fn visit_composite<'scale, 'resolver>(
         self,
         value: &mut Composite<'scale, 'resolver, Self::TypeResolver>,
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        // Collect field names before decoding (since decode_item consumes them)
         let field_names: Vec<Option<String>> = value
             .fields()
             .iter()
@@ -724,9 +626,7 @@ where
         while let Some(field_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
             match field_result {
                 Ok(json_val) => field_values.push(json_val),
-                Err(e) => {
-                    tracing::warn!("Failed to decode composite field: {:?}", e);
-                }
+                Err(e) => tracing::warn!("Failed to decode composite field: {:?}", e),
             }
         }
 
@@ -749,9 +649,7 @@ where
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         let variant_name = value.name();
 
-        // Special handling for Option::None - return null
         if variant_name == "None" {
-            // Consume fields
             let fields_composite = value.fields();
             while let Some(field_result) =
                 fields_composite.decode_item(ValueExtractor::new(self.resolver))
@@ -761,7 +659,6 @@ where
             return Ok(JsonValue::Null);
         }
 
-        // Special handling for Option::Some - unwrap and return just the inner value
         if variant_name == "Some" {
             let fields_composite = value.fields();
             if let Some(field_result) =
@@ -775,12 +672,9 @@ where
             return Ok(JsonValue::Null);
         }
 
-        // Check if this is a basic enum (all variants have no data)
         let is_basic = is_basic_enum(self.resolver, type_id);
 
-        // For basic enums, return just the variant name as a string
         if is_basic {
-            // Consume fields (there shouldn't be any)
             let fields_composite = value.fields();
             while let Some(field_result) =
                 fields_composite.decode_item(ValueExtractor::new(self.resolver))
@@ -790,7 +684,6 @@ where
             return Ok(JsonValue::String(variant_name.to_string()));
         }
 
-        // Non-basic enum - decode fields and wrap in object
         let mut fields = Vec::new();
         let fields_composite = value.fields();
         while let Some(field_result) =
@@ -798,16 +691,11 @@ where
         {
             match field_result {
                 Ok(json_val) => fields.push(json_val),
-                Err(e) => {
-                    tracing::warn!("Failed to decode variant field: {:?}", e);
-                }
+                Err(e) => tracing::warn!("Failed to decode variant field: {:?}", e),
             }
         }
 
-        // Convert variant name to lowerCamelCase for the key
         let key = lowercase_first_char(variant_name);
-
-        // Create variant JSON representation as {"variantName": value}
         if fields.is_empty() {
             Ok(serde_json::json!({ key: JsonValue::Null }))
         } else if fields.len() == 1 {
@@ -826,9 +714,7 @@ where
         while let Some(item_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
             match item_result {
                 Ok(json_val) => items.push(json_val),
-                Err(e) => {
-                    tracing::warn!("Failed to decode sequence item: {:?}", e);
-                }
+                Err(e) => tracing::warn!("Failed to decode sequence item: {:?}", e),
             }
         }
         Ok(JsonValue::Array(items))
@@ -839,19 +725,14 @@ where
         value: &mut scale_decode::visitor::types::Array<'scale, 'resolver, Self::TypeResolver>,
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        // Decode all array items
         let mut items = Vec::new();
         while let Some(item_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
             match item_result {
                 Ok(json_val) => items.push(json_val),
-                Err(e) => {
-                    tracing::warn!("Failed to decode array item: {:?}", e);
-                }
+                Err(e) => tracing::warn!("Failed to decode array item: {:?}", e),
             }
         }
 
-        // Check if this is a byte array (all items are u8 numbers)
-        // Convert to hex string if so
         if items.len() >= 2 {
             let mut is_byte_array = true;
             let mut bytes = Vec::with_capacity(items.len());
@@ -935,18 +816,10 @@ where
 // ================================================================================================
 
 /// Convert JSON value, replacing byte arrays with hex strings and all numbers with strings recursively
-///
-/// This matches substrate-api-sidecar's behavior of returning all numeric values as strings
-/// for consistency across the API.
 pub fn convert_bytes_to_hex(value: JsonValue) -> JsonValue {
     match value {
-        JsonValue::Number(n) => {
-            // Convert all numbers to strings to match substrate-api-sidecar behavior
-            JsonValue::String(n.to_string())
-        }
+        JsonValue::Number(n) => JsonValue::String(n.to_string()),
         JsonValue::Array(arr) => {
-            // Check if this is a byte array (non-empty and all elements are numbers 0-255)
-            // We must check !arr.is_empty() to avoid converting empty arrays to "0x"
             let is_byte_array = !arr.is_empty()
                 && arr.iter().all(|v| match v {
                     JsonValue::Number(n) => n.as_u64().is_some_and(|val| val <= 255),
@@ -954,18 +827,13 @@ pub fn convert_bytes_to_hex(value: JsonValue) -> JsonValue {
                 });
 
             if is_byte_array {
-                // Convert to hex string
                 let bytes: Vec<u8> = arr
                     .iter()
                     .filter_map(|v| v.as_u64().map(|n| n as u8))
                     .collect();
                 JsonValue::String(format!("0x{}", hex::encode(&bytes)))
             } else {
-                // Recurse into array elements
                 let converted: Vec<JsonValue> = arr.into_iter().map(convert_bytes_to_hex).collect();
-
-                // If array has single element, unwrap it (this handles cases like ["0x..."] -> "0x...")
-                // This is specific to how the data is formatted in substrate-api-sidecar
                 match converted.len() {
                     1 => match converted.into_iter().next() {
                         Some(v) => v,
@@ -976,34 +844,24 @@ pub fn convert_bytes_to_hex(value: JsonValue) -> JsonValue {
             }
         }
         JsonValue::Object(mut map) => {
-            // Check if this is a bitvec object (scale-value represents bitvecs specially)
             if let Some(JsonValue::Array(bits)) = map.get("__bitvec__values__") {
-                // Convert boolean array to bytes, then to hex
-                // BitVec uses LSB0 ordering (least significant bit first within each byte)
                 let mut bytes = Vec::new();
                 let mut current_byte = 0u8;
-
                 for (i, bit) in bits.iter().enumerate() {
                     if let Some(true) = bit.as_bool() {
                         current_byte |= 1 << (i % 8);
                     }
-
-                    // Every 8 bits, push the byte and reset
                     if (i + 1) % 8 == 0 {
                         bytes.push(current_byte);
                         current_byte = 0;
                     }
                 }
-
-                // Push any remaining bits
                 if bits.len() % 8 != 0 {
                     bytes.push(current_byte);
                 }
-
                 return JsonValue::String(format!("0x{}", hex::encode(&bytes)));
             }
 
-            // Recurse into object values
             for (_, v) in map.iter_mut() {
                 *v = convert_bytes_to_hex(v.clone());
             }
@@ -1013,29 +871,11 @@ pub fn convert_bytes_to_hex(value: JsonValue) -> JsonValue {
     }
 }
 
-/// Unified transformation function that combines byte-to-hex conversion and structural transformations
-/// in a single pass through the JSON tree.
-///
-/// This performs all of the following transformations in one traversal:
-/// - Converts byte arrays to hex strings
-/// - Converts numbers to strings
-/// - Handles bitvec special encoding
-/// - Transforms snake_case keys to camelCase
-/// - Optionally decodes AccountId32 to SS58 format
-/// - Unwraps single-element arrays
-///
-/// Note: Enum serialization (basic vs non-basic) should be handled at the type level
-/// in the visitor chain using `is_basic_enum()`.
+/// Unified transformation function
 pub fn transform_json_unified(value: JsonValue, ss58_prefix: Option<u16>) -> JsonValue {
     match value {
-        JsonValue::Number(n) => {
-            // Convert all numbers to strings to match substrate-api-sidecar behavior
-            JsonValue::String(n.to_string())
-        }
+        JsonValue::Number(n) => JsonValue::String(n.to_string()),
         JsonValue::Array(arr) => {
-            // Check if this is a byte array (all elements are numbers 0-255)
-            // Require at least 2 elements - single-element arrays are typically newtype wrappers
-            // (e.g., ValidatorIndex(32) -> [32]), not actual byte data
             let is_byte_array = arr.len() > 1
                 && arr.iter().all(|v| match v {
                     JsonValue::Number(n) => n.as_u64().is_some_and(|val| val <= 255),
@@ -1043,20 +883,16 @@ pub fn transform_json_unified(value: JsonValue, ss58_prefix: Option<u16>) -> Jso
                 });
 
             if is_byte_array {
-                // Convert to hex string
                 let bytes: Vec<u8> = arr
                     .iter()
                     .filter_map(|v| v.as_u64().map(|n| n as u8))
                     .collect();
                 JsonValue::String(format!("0x{}", hex::encode(&bytes)))
             } else {
-                // Recurse into array elements
                 let converted: Vec<JsonValue> = arr
                     .into_iter()
                     .map(|v| transform_json_unified(v, ss58_prefix))
                     .collect();
-
-                // If array has single element, unwrap it
                 match converted.len() {
                     1 => match converted.into_iter().next() {
                         Some(v) => v,
@@ -1067,33 +903,24 @@ pub fn transform_json_unified(value: JsonValue, ss58_prefix: Option<u16>) -> Jso
             }
         }
         JsonValue::Object(map) => {
-            // Check if this is a bitvec object (scale-value represents bitvecs specially)
             if let Some(JsonValue::Array(bits)) = map.get("__bitvec__values__") {
-                // Convert boolean array to bytes, then to hex
                 let mut bytes = Vec::new();
                 let mut current_byte = 0u8;
-
                 for (i, bit) in bits.iter().enumerate() {
                     if let Some(true) = bit.as_bool() {
                         current_byte |= 1 << (i % 8);
                     }
-
                     if (i + 1) % 8 == 0 {
                         bytes.push(current_byte);
                         current_byte = 0;
                     }
                 }
-
                 if bits.len() % 8 != 0 {
                     bytes.push(current_byte);
                 }
-
                 return JsonValue::String(format!("0x{}", hex::encode(&bytes)));
             }
 
-            // Regular object: transform keys from snake_case to camelCase and recurse
-            // Note: Heuristic for SCALE enum variants removed - enum serialization should be
-            // handled at the type level in the visitor chain using is_basic_enum()
             let transformed: serde_json::Map<String, JsonValue> = map
                 .into_iter()
                 .map(|(key, val)| {
@@ -1104,7 +931,6 @@ pub fn transform_json_unified(value: JsonValue, ss58_prefix: Option<u16>) -> Jso
             JsonValue::Object(transformed)
         }
         JsonValue::String(s) => {
-            // Try to decode as SS58 address if ss58_prefix is provided
             if let Some(prefix) = ss58_prefix
                 && s.starts_with("0x")
                 && (s.len() == 66 || s.len() == 68)
@@ -1112,7 +938,6 @@ pub fn transform_json_unified(value: JsonValue, ss58_prefix: Option<u16>) -> Jso
             {
                 return JsonValue::String(ss58_addr);
             }
-
             JsonValue::String(s)
         }
         other => other,

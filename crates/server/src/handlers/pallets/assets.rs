@@ -13,8 +13,7 @@ use axum::{
 use config::ChainType;
 use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
-use subxt_historic::client::OnlineClientAtBlockT;
-use subxt_historic::config::Config;
+use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 // ============================================================================
 // Request/Response Types
@@ -134,13 +133,21 @@ pub async fn pallets_assets_asset_info(
         return handle_use_rc_block(state, asset_id, params).await;
     }
 
-    let block_id = params.at.map(|s| s.parse::<utils::BlockId>()).transpose()?;
-    let resolved_block = utils::resolve_block(&state, block_id).await?;
-    let client_at_block = state.client.at(resolved_block.number).await?;
+    // Create client at the specified block - saves RPC calls by letting subxt resolve hash<->number internally
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
+    };
 
     let at = AtResponse {
-        hash: resolved_block.hash,
-        height: resolved_block.number.to_string(),
+        hash: format!("{:#x}", client_at_block.block_hash()),
+        height: client_at_block.block_number().to_string(),
     };
 
     let ss58_prefix = state.chain_info.ss58_prefix;
@@ -206,7 +213,7 @@ async fn handle_use_rc_block(
     }
 
     let ah_block = &ah_blocks[0];
-    let client_at_block = state.client.at(ah_block.number).await?;
+    let client_at_block = state.client.at_block(ah_block.number).await?;
 
     let at = AtResponse {
         hash: ah_block.hash.clone(),
@@ -241,18 +248,22 @@ async fn handle_use_rc_block(
 // ============================================================================
 
 /// Fetches asset details from Assets::Asset storage.
-async fn fetch_asset_info<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_asset_info(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     asset_id: u32,
     ss58_prefix: u16,
-) -> Option<AssetInfo>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
-{
-    let asset_storage = client_at_block.storage().entry("Assets", "Asset").ok()?;
-
-    let asset_value = asset_storage.fetch([asset_id]).await.ok()??;
+) -> Option<AssetInfo> {
+    // Use dynamic storage with key parts as second argument
+    // Specify scale_value::Value as the decode type to get raw bytes
+    let asset_addr = subxt::dynamic::storage::<_, scale_value::Value>("Assets", "Asset");
+    let asset_value = match client_at_block
+        .storage()
+        .fetch(asset_addr, (asset_id,))
+        .await
+    {
+        Ok(value) => value,
+        Err(_) => return None,
+    };
     let raw_bytes = asset_value.into_bytes();
     let details = AssetDetails::decode(&mut &raw_bytes[..]).ok()?;
 
@@ -273,17 +284,21 @@ where
 }
 
 /// Fetches asset metadata from Assets::Metadata storage.
-async fn fetch_asset_metadata<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_asset_metadata(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     asset_id: u32,
-) -> Option<AssetMetadata>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
-{
-    let metadata_storage = client_at_block.storage().entry("Assets", "Metadata").ok()?;
-
-    let metadata_value = metadata_storage.fetch([asset_id]).await.ok()??;
+) -> Option<AssetMetadata> {
+    // Use dynamic storage with key parts as second argument
+    // Specify scale_value::Value as the decode type to get raw bytes
+    let metadata_addr = subxt::dynamic::storage::<_, scale_value::Value>("Assets", "Metadata");
+    let metadata_value = match client_at_block
+        .storage()
+        .fetch(metadata_addr, (asset_id,))
+        .await
+    {
+        Ok(value) => value,
+        Err(_) => return None,
+    };
     let raw_bytes = metadata_value.into_bytes();
     let metadata = AssetMetadataStorage::decode(&mut &raw_bytes[..]).ok()?;
 
@@ -297,19 +312,15 @@ where
 }
 
 /// Fetches timestamp from Timestamp::Now storage.
-async fn fetch_timestamp<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
-) -> Option<String>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
-{
-    let timestamp_entry = client_at_block.storage().entry("Timestamp", "Now").ok()?;
-
-    let timestamp = timestamp_entry.fetch(()).await.ok()??;
-    let timestamp_bytes = timestamp.into_bytes();
-    let timestamp_value = u64::decode(&mut &timestamp_bytes[..]).ok()?;
-
+async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<String> {
+    // Use typed dynamic storage to decode timestamp directly as u64
+    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
+    let timestamp = client_at_block
+        .storage()
+        .fetch(timestamp_addr, ())
+        .await
+        .ok()?;
+    let timestamp_value = timestamp.decode().ok()?;
     Some(timestamp_value.to_string())
 }
 
