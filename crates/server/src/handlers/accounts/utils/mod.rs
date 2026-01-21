@@ -4,7 +4,7 @@ use scale_value::{Value, ValueDef};
 use sp_core::crypto::AccountId32;
 use std::str::FromStr;
 
-use super::types::{AssetBalancesError};
+use super::types::AssetBalancesError;
 
 mod assets;
 mod pool_assets;

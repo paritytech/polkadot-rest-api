@@ -13,7 +13,7 @@ mod get_staking_payouts;
 mod get_validate;
 mod get_vesting_info;
 mod types;
-mod utils;
+pub mod utils;
 
 pub use get_asset_approvals::get_asset_approvals;
 pub use get_asset_balances::get_asset_balances;

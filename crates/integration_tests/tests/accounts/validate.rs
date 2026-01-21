@@ -1,28 +1,7 @@
 //! Integration tests for /accounts/{accountId}/validate endpoint
+
+use super::{get_client, Colorize};
 use anyhow::{Context, Result};
-use colored::Colorize;
-use integration_tests::{client::TestClient, constants::API_READY_TIMEOUT_SECONDS};
-use std::env;
-use std::sync::OnceLock;
-
-static CLIENT: OnceLock<TestClient> = OnceLock::new();
-
-async fn get_client() -> Result<TestClient> {
-    let client = CLIENT.get_or_init(|| {
-        init_tracing();
-        let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
-        TestClient::new(api_url)
-    });
-
-    // Wait for API readiness (only blocks on first call, idempotent after)
-    client
-        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
-        .await
-        .context("Local API is not ready")?;
-
-    // Return a cheap clone - tests can use this concurrently
-    Ok(client.clone())
-}
 
 #[tokio::test]
 async fn test_validate_polkadot_address() -> Result<()> {
@@ -193,7 +172,6 @@ async fn test_validate_hex_polkadot_address() -> Result<()> {
     let local_client = get_client().await?;
 
     // A valid hex-encoded Polkadot address
-    // Format: prefix (1 byte) + account id (32 bytes) + checksum (2 bytes)
     let polkadot_hex = "0x002a39366f6620a6c2e2fed5990a3d419e6a19dd127fc7a50b515cf17e2dc5cc592312";
     let endpoint = format!("/accounts/{}/validate", polkadot_hex);
 
@@ -467,10 +445,4 @@ async fn test_validate_response_structure() -> Result<()> {
     println!("{} Response structure validated!", "✓".green().bold());
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
-}
-
-fn init_tracing() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init();
 }

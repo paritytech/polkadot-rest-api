@@ -6,6 +6,7 @@ pub mod health;
 pub mod metrics;
 pub mod node;
 pub mod pallets;
+pub mod common;
 pub mod rc;
 pub mod runtime;
 pub mod transaction;

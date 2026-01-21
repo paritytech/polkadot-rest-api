@@ -1,6 +1,7 @@
 use super::types::{BlockInfo, ProxyDefinition, ProxyInfoError, ProxyInfoQueryParams, ProxyInfoResponse};
 use super::utils::validate_and_parse_address;
 use crate::handlers::accounts::utils::fetch_timestamp;
+use crate::handlers::common::accounts::{query_proxy_info as query_proxy_info_shared, RawProxyInfo};
 use crate::state::AppState;
 use crate::utils::{self, find_ah_blocks_in_rc_block};
 use axum::{
@@ -9,9 +10,8 @@ use axum::{
     Json,
 };
 use config::ChainType;
-use scale_value::{Composite, Value, ValueDef};
 use serde_json::json;
-use sp_core::crypto::{AccountId32, Ss58Codec};
+use sp_core::crypto::AccountId32;
 
 // ================================================================================================
 // Main Handler
@@ -44,227 +44,44 @@ pub async fn get_proxy_info(
         account, resolved_block.number
     );
 
-    let response = query_proxy_info(&state, &account, &resolved_block).await?;
+    let raw_info = query_proxy_info_shared(&state.client, &account, &resolved_block).await?;
+
+    let response = format_response(&raw_info, None, None, None);
 
     Ok(Json(response).into_response())
 }
 
-async fn query_proxy_info(
-    state: &AppState,
-    account: &AccountId32,
-    block: &utils::ResolvedBlock,
-) -> Result<ProxyInfoResponse, ProxyInfoError> {
-    let client_at_block = state.client.at(block.number).await?;
+// ================================================================================================
+// Response Formatting
+// ================================================================================================
 
-    let proxy_exists = client_at_block
-        .storage()
-        .entry("Proxy", "Proxies")
-        .is_ok();
+fn format_response(
+    raw: &RawProxyInfo,
+    rc_block_hash: Option<String>,
+    rc_block_number: Option<String>,
+    ah_timestamp: Option<String>,
+) -> ProxyInfoResponse {
+    let delegated_accounts = raw
+        .delegated_accounts
+        .iter()
+        .map(|def| ProxyDefinition {
+            delegate: def.delegate.clone(),
+            proxy_type: def.proxy_type.clone(),
+            delay: def.delay.clone(),
+        })
+        .collect();
 
-    if !proxy_exists {
-        return Err(ProxyInfoError::ProxyPalletNotAvailable);
-    }
-
-    let storage_entry = client_at_block.storage().entry("Proxy", "Proxies")?;
-
-    // Storage key for Proxies: (account)
-    let account_bytes: [u8; 32] = *account.as_ref();
-    let storage_value = storage_entry.fetch(&(&account_bytes,)).await?;
-
-    let (delegated_accounts, deposit_held) = if let Some(value) = storage_value {
-        decode_proxy_info(&value).await?
-    } else {
-        (Vec::new(), "0".to_string())
-    };
-
-    Ok(ProxyInfoResponse {
+    ProxyInfoResponse {
         at: BlockInfo {
-            hash: block.hash.clone(),
-            height: block.number.to_string(),
+            hash: raw.block.hash.clone(),
+            height: raw.block.number.to_string(),
         },
         delegated_accounts,
-        deposit_held,
-        rc_block_hash: None,
-        rc_block_number: None,
-        ah_timestamp: None,
-    })
-}
-
-// ================================================================================================
-// Proxy Info Decoding
-// ================================================================================================
-
-/// Decode proxy info from storage value
-/// The storage value is a tuple: (Vec<ProxyDefinition>, Balance)
-async fn decode_proxy_info(
-    value: &subxt_historic::storage::StorageValue<'_>,
-) -> Result<(Vec<ProxyDefinition>, String), ProxyInfoError> {
-    // Decode as scale_value::Value to inspect structure
-    let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        ProxyInfoError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode storage value",
-        ))
-    })?;
-
-    // The storage value is a tuple: (Vec<ProxyDefinition>, Balance)
-    match &decoded.value {
-        ValueDef::Composite(Composite::Unnamed(values)) => {
-            // First element is the Vec of proxy definitions
-            let proxy_definitions = if let Some(proxies_value) = values.first() {
-                decode_proxy_definitions(proxies_value)?
-            } else {
-                Vec::new()
-            };
-
-            // Second element is the deposit
-            let deposit = if let Some(deposit_value) = values.get(1) {
-                match &deposit_value.value {
-                    ValueDef::Primitive(scale_value::Primitive::U128(val)) => val.to_string(),
-                    _ => "0".to_string(),
-                }
-            } else {
-                "0".to_string()
-            };
-
-            Ok((proxy_definitions, deposit))
-        }
-        _ => Ok((Vec::new(), "0".to_string())),
+        deposit_held: raw.deposit_held.clone(),
+        rc_block_hash,
+        rc_block_number,
+        ah_timestamp,
     }
-}
-
-/// Decode proxy definitions from a Value
-fn decode_proxy_definitions(value: &Value<()>) -> Result<Vec<ProxyDefinition>, ProxyInfoError> {
-    let mut definitions = Vec::new();
-
-    // The value should be a sequence/array of proxy definitions
-    match &value.value {
-        ValueDef::Composite(Composite::Unnamed(items)) => {
-            for item in items {
-                if let Some(def) = decode_single_proxy_definition(item)? {
-                    definitions.push(def);
-                }
-            }
-        }
-        _ => {}
-    }
-
-    Ok(definitions)
-}
-
-/// Decode a single proxy definition
-fn decode_single_proxy_definition(
-    value: &Value<()>,
-) -> Result<Option<ProxyDefinition>, ProxyInfoError> {
-    match &value.value {
-        ValueDef::Composite(Composite::Named(fields)) => {
-            let delegate = extract_account_id_field(fields, "delegate")
-                .or_else(|| extract_account_id_field(fields, "Delegate"))
-                .unwrap_or_else(|| "unknown".to_string());
-
-            let proxy_type = extract_proxy_type_field(fields, "proxyType")
-                .or_else(|| extract_proxy_type_field(fields, "proxy_type"))
-                .unwrap_or_else(|| "Unknown".to_string());
-
-            let delay = extract_u32_field(fields, "delay")
-                .map(|d| d.to_string())
-                .unwrap_or_else(|| "0".to_string());
-
-            Ok(Some(ProxyDefinition {
-                delegate,
-                proxy_type,
-                delay,
-            }))
-        }
-        ValueDef::Composite(Composite::Unnamed(values)) => {
-            // Tuple-style: (delegate, proxy_type, delay)
-            let delegate = values
-                .first()
-                .and_then(|v| extract_account_id_from_value(v))
-                .unwrap_or_else(|| "unknown".to_string());
-
-            let proxy_type = values
-                .get(1)
-                .and_then(|v| extract_proxy_type_from_value(v))
-                .unwrap_or_else(|| "Unknown".to_string());
-
-            let delay = values
-                .get(2)
-                .and_then(|v| match &v.value {
-                    ValueDef::Primitive(scale_value::Primitive::U128(val)) => Some(val.to_string()),
-                    _ => None,
-                })
-                .unwrap_or_else(|| "0".to_string());
-
-            Ok(Some(ProxyDefinition {
-                delegate,
-                proxy_type,
-                delay,
-            }))
-        }
-        _ => Ok(None),
-    }
-}
-
-/// Extract an AccountId field from named fields and convert to SS58
-fn extract_account_id_field(fields: &[(String, Value<()>)], field_name: &str) -> Option<String> {
-    fields
-        .iter()
-        .find(|(name, _)| name == field_name)
-        .and_then(|(_, value)| extract_account_id_from_value(value))
-}
-
-/// Extract an AccountId from a Value and convert to SS58
-fn extract_account_id_from_value(value: &Value<()>) -> Option<String> {
-    match &value.value {
-        ValueDef::Composite(Composite::Unnamed(bytes)) => {
-            // This might be a raw byte array
-            let byte_vec: Vec<u8> = bytes
-                .iter()
-                .filter_map(|v| match &v.value {
-                    ValueDef::Primitive(scale_value::Primitive::U128(b)) => Some(*b as u8),
-                    _ => None,
-                })
-                .collect();
-
-            if byte_vec.len() == 32 {
-                let mut arr = [0u8; 32];
-                arr.copy_from_slice(&byte_vec);
-                let account_id = AccountId32::from(arr);
-                // Use generic substrate prefix (42)
-                Some(account_id.to_ss58check())
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
-}
-
-/// Extract proxy type from named fields
-fn extract_proxy_type_field(fields: &[(String, Value<()>)], field_name: &str) -> Option<String> {
-    fields
-        .iter()
-        .find(|(name, _)| name == field_name)
-        .and_then(|(_, value)| extract_proxy_type_from_value(value))
-}
-
-/// Extract proxy type from a Value (usually a variant/enum)
-fn extract_proxy_type_from_value(value: &Value<()>) -> Option<String> {
-    match &value.value {
-        ValueDef::Variant(variant) => Some(variant.name.clone()),
-        _ => None,
-    }
-}
-
-/// Extract u32 field from named fields (stored as u128 in scale_value)
-fn extract_u32_field(fields: &[(String, Value<()>)], field_name: &str) -> Option<u32> {
-    fields
-        .iter()
-        .find(|(name, _)| name == field_name)
-        .and_then(|(_, value)| match &value.value {
-            ValueDef::Primitive(scale_value::Primitive::U128(val)) => Some(*val as u32),
-            _ => None,
-        })
 }
 
 // ================================================================================================
@@ -315,16 +132,17 @@ async fn handle_use_rc_block(
             number: ah_block.number,
         };
 
-        let mut response = query_proxy_info(&state, &account, &ah_resolved).await?;
-
-        // Add RC block info
-        response.rc_block_hash = Some(rc_block_hash.clone());
-        response.rc_block_number = Some(rc_block_number.clone());
+        let raw_info = query_proxy_info_shared(&state.client, &account, &ah_resolved).await?;
 
         // Fetch AH timestamp
-        if let Ok(timestamp) = fetch_timestamp(&state, ah_block.number).await {
-            response.ah_timestamp = Some(timestamp);
-        }
+        let ah_timestamp = fetch_timestamp(&state, ah_block.number).await.ok();
+
+        let response = format_response(
+            &raw_info,
+            Some(rc_block_hash.clone()),
+            Some(rc_block_number.clone()),
+            ah_timestamp,
+        );
 
         results.push(response);
     }

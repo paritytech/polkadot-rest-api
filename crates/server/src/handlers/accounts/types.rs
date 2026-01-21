@@ -1,5 +1,6 @@
 //! Types for account-related handlers.
 
+use crate::handlers::common::accounts::StakingPayoutsQueryError;
 use crate::utils::{self, RcBlockError};
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
@@ -409,6 +410,9 @@ pub enum BalanceInfoError {
 
     #[error("Invalid token: {0}")]
     InvalidToken(String),
+
+    #[error("Balance query failed: {0}")]
+    BalanceQueryFailed(#[from] crate::handlers::common::accounts::BalanceQueryError),
 }
 
 impl IntoResponse for BalanceInfoError {
@@ -843,15 +847,6 @@ pub enum ProxyInfoError {
     #[error("Invalid account address: {0}")]
     InvalidAddress(String),
 
-    #[error("The runtime does not include the proxy pallet at this block")]
-    ProxyPalletNotAvailable,
-
-    #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] StorageError),
-
-    #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
-
     #[error("useRcBlock is only supported on Asset Hub chains")]
     UseRcBlockNotSupported,
 
@@ -861,11 +856,8 @@ pub enum ProxyInfoError {
     #[error("Relay chain block mapping failed: {0}")]
     RcBlockMappingFailed(#[from] RcBlockError),
 
-    #[error("Failed to decode storage value: {0}")]
-    DecodeFailed(#[from] parity_scale_codec::Error),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+    #[error("Proxy query failed: {0}")]
+    ProxyQueryFailed(#[from] crate::handlers::common::accounts::ProxyQueryError),
 }
 
 impl IntoResponse for ProxyInfoError {
@@ -873,13 +865,17 @@ impl IntoResponse for ProxyInfoError {
         let (status, message) = match &self {
             ProxyInfoError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             ProxyInfoError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            ProxyInfoError::ProxyPalletNotAvailable => (StatusCode::BAD_REQUEST, self.to_string()),
             ProxyInfoError::UseRcBlockNotSupported => (StatusCode::BAD_REQUEST, self.to_string()),
             ProxyInfoError::RelayChainNotConfigured => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
             ProxyInfoError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            ProxyInfoError::RcBlockMappingFailed(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            ProxyInfoError::ProxyQueryFailed(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
         };
 
         let body = Json(json!({
@@ -1004,18 +1000,6 @@ pub enum StakingInfoError {
     #[error("Invalid account address: {0}")]
     InvalidAddress(String),
 
-    #[error("The address is not a stash account")]
-    NotAStashAccount,
-
-    #[error("The runtime does not include the staking pallet at this block")]
-    StakingPalletNotAvailable,
-
-    #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] StorageError),
-
-    #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
-
     #[error("useRcBlock is only supported on Asset Hub chains")]
     UseRcBlockNotSupported,
 
@@ -1025,14 +1009,8 @@ pub enum StakingInfoError {
     #[error("Relay chain block mapping failed: {0}")]
     RcBlockMappingFailed(#[from] RcBlockError),
 
-    #[error("Failed to decode storage value: {0}")]
-    DecodeFailed(#[from] parity_scale_codec::Error),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
-
-    #[error("Staking ledger not found for controller")]
-    LedgerNotFound,
+    #[error("Staking query failed: {0}")]
+    StakingQueryFailed(#[from] crate::handlers::common::accounts::StakingQueryError),
 }
 
 impl IntoResponse for StakingInfoError {
@@ -1040,19 +1018,17 @@ impl IntoResponse for StakingInfoError {
         let (status, message) = match &self {
             StakingInfoError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             StakingInfoError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            StakingInfoError::NotAStashAccount => (StatusCode::BAD_REQUEST, self.to_string()),
-            StakingInfoError::StakingPalletNotAvailable => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
             StakingInfoError::UseRcBlockNotSupported => (StatusCode::BAD_REQUEST, self.to_string()),
             StakingInfoError::RelayChainNotConfigured => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
             StakingInfoError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            StakingInfoError::LedgerNotFound => {
+            StakingInfoError::RcBlockMappingFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            StakingInfoError::StakingQueryFailed(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
         };
 
         let body = Json(json!({
@@ -1188,12 +1164,6 @@ pub enum StakingPayoutsError {
     #[error("The runtime does not include the staking pallet at this block")]
     StakingPalletNotAvailable,
 
-    #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] StorageError),
-
-    #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
-
     #[error("useRcBlock is only supported on Asset Hub chains")]
     UseRcBlockNotSupported,
 
@@ -1203,12 +1173,6 @@ pub enum StakingPayoutsError {
     #[error("Relay chain block mapping failed: {0}")]
     RcBlockMappingFailed(#[from] RcBlockError),
 
-    #[error("Failed to decode storage value: {0}")]
-    DecodeFailed(#[from] parity_scale_codec::Error),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
-
     #[error("Invalid era: requested era {0} is beyond history depth")]
     InvalidEra(u32),
 
@@ -1217,6 +1181,21 @@ pub enum StakingPayoutsError {
 
     #[error("No active era found")]
     NoActiveEra,
+
+    #[error("Staking payouts query failed: {0}")]
+    StakingPayoutsQueryFailed(StakingPayoutsQueryError),
+}
+
+impl From<StakingPayoutsQueryError> for StakingPayoutsError {
+    fn from(err: StakingPayoutsQueryError) -> Self {
+        match err {
+            StakingPayoutsQueryError::StakingPalletNotAvailable => StakingPayoutsError::StakingPalletNotAvailable,
+            StakingPayoutsQueryError::NoActiveEra => StakingPayoutsError::NoActiveEra,
+            StakingPayoutsQueryError::InvalidEra(era) => StakingPayoutsError::InvalidEra(era),
+            StakingPayoutsQueryError::InvalidDepth => StakingPayoutsError::InvalidDepth,
+            other => StakingPayoutsError::StakingPayoutsQueryFailed(other),
+        }
+    }
 }
 
 impl IntoResponse for StakingPayoutsError {
@@ -1339,15 +1318,6 @@ pub enum VestingInfoError {
     #[error("Invalid account address: {0}")]
     InvalidAddress(String),
 
-    #[error("The runtime does not include the vesting pallet at this block")]
-    VestingPalletNotAvailable,
-
-    #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] StorageError),
-
-    #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
-
     #[error("useRcBlock is only supported on Asset Hub chains")]
     UseRcBlockNotSupported,
 
@@ -1357,11 +1327,8 @@ pub enum VestingInfoError {
     #[error("Relay chain block mapping failed: {0}")]
     RcBlockMappingFailed(#[from] RcBlockError),
 
-    #[error("Failed to decode storage value: {0}")]
-    DecodeFailed(#[from] parity_scale_codec::Error),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+    #[error("Vesting query failed: {0}")]
+    VestingQueryFailed(#[from] crate::handlers::common::accounts::VestingQueryError),
 }
 
 impl IntoResponse for VestingInfoError {
@@ -1369,15 +1336,17 @@ impl IntoResponse for VestingInfoError {
         let (status, message) = match &self {
             VestingInfoError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             VestingInfoError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            VestingInfoError::VestingPalletNotAvailable => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
             VestingInfoError::UseRcBlockNotSupported => (StatusCode::BAD_REQUEST, self.to_string()),
             VestingInfoError::RelayChainNotConfigured => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
             VestingInfoError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            VestingInfoError::RcBlockMappingFailed(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            VestingInfoError::VestingQueryFailed(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
         };
 
         let body = Json(json!({

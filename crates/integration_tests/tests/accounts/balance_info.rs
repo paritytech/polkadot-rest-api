@@ -1,12 +1,7 @@
 //! Integration tests for /accounts/{accountId}/balance-info endpoint
 //! Tests both standard (/accounts) and relay chain (/rc/accounts) endpoints
+use super::{get_client, Colorize};
 use anyhow::{Context, Result};
-use colored::Colorize;
-use integration_tests::{client::TestClient, constants::API_READY_TIMEOUT_SECONDS};
-use std::env;
-use std::sync::OnceLock;
-
-static CLIENT: OnceLock<TestClient> = OnceLock::new();
 
 // ================================================================================================
 // Endpoint Type Abstraction
@@ -53,31 +48,6 @@ impl EndpointType {
             None => format!("{}/{}/balance-info", self.base_path(), account_id),
         }
     }
-}
-
-// ================================================================================================
-// Test Client Setup
-// ================================================================================================
-
-async fn get_client() -> Result<TestClient> {
-    let client = CLIENT.get_or_init(|| {
-        init_tracing();
-        let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
-        TestClient::new(api_url)
-    });
-
-    client
-        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
-        .await
-        .context("Local API is not ready")?;
-
-    Ok(client.clone())
-}
-
-fn init_tracing() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init();
 }
 
 // ================================================================================================
