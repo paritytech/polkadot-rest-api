@@ -541,18 +541,36 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // Cannot test block-not-found with mock because OnlineClient init also calls chain_getBlockHash
     async fn test_resolve_block_number_not_found() {
+        use crate::test_fixtures::mock_rpc_client_builder;
+        use serde_json::value::RawValue;
+
         let test_number = 999999u64;
 
-        let mock_client = MockRpcClient::builder()
-            .method_handler("rpc_methods", async |_params| {
-                Json(json!({ "methods": [] }))
-            })
-            .method_handler("chain_getBlockHash", async |_params| {
-                // Return null - block not found
-                Json(json!(null))
-            })
+        // Use test fixtures as base, but override chain_getBlockHash to return null for test_number
+        let mock_client = mock_rpc_client_builder()
+            .method_handler(
+                "chain_getBlockHash",
+                move |params: Option<Box<RawValue>>| async move {
+                    // Parse the block number from params
+                    let block_num = params
+                        .and_then(|p| serde_json::from_str::<serde_json::Value>(p.get()).ok())
+                        .and_then(|v| v.get(0).and_then(|n| n.as_u64()));
+
+                    match block_num {
+                        // Return valid hash for genesis (block 0) - needed for OnlineClient init
+                        Some(0) | None => Json(json!(
+                            "0x0000000000000000000000000000000000000000000000000000000000000000"
+                        )),
+                        // Return null for test block number - not found
+                        Some(n) if n == 999999 => Json(json!(null)),
+                        // Return valid hash for other blocks
+                        _ => Json(json!(
+                            "0x1234567890123456789012345678901234567890123456789012345678901234"
+                        )),
+                    }
+                },
+            )
             .build();
 
         let state = create_test_state_with_mock(mock_client).await;
