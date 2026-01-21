@@ -332,6 +332,14 @@
         "query_params": {},
         "fixture_path": "asset-hub-polkadot/blocks_11308795.json",
         "description": "Test block endpoint at Asset Hub Polkadot block 11,308,795, for staking event test"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}/extrinsics-raw",
+        "block_height": 1276963,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/blocks_1276963_extrinsics_raw.json",
+        "description": "Test extrinsics-raw endpoint at Asset Hub Polkadot block 1,276,963"
       }
     ],
     "asset-hub-kusama": [

@@ -30,6 +30,13 @@ pub fn blocks_routes(registry: &RouteRegistry) -> Router<AppState> {
         .route_registered(
             registry,
             API_VERSION,
+            "/blocks/:blockId/extrinsics-raw",
+            "get",
+            get(blocks::get_block_extrinsics_raw),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
             "/blocks/:blockId",
             "get",
             get(blocks::get_block),
