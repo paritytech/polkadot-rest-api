@@ -13,9 +13,10 @@ use hex;
 use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use subxt_historic::client::OnlineClientAtBlockT;
-use subxt_historic::config::Config;
-
+use subxt_historic::{
+    SubstrateConfig,
+    client::{ClientAtBlock, OnlineClientAtBlock},
+};
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StakingProgressQueryParams {
@@ -670,12 +671,9 @@ fn build_empty_rc_response(rc_resolved_block: &utils::ResolvedBlock) -> Response
         .into_response()
 }
 
-async fn fetch_validator_count<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_validator_count<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
 ) -> Result<u32, PalletError>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     let storage = client_at_block
         .storage()
@@ -692,12 +690,9 @@ where
     u32::decode(&mut &bytes[..]).map_err(|_| PalletError::StakingPalletNotFound)
 }
 
-async fn fetch_force_era<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_force_era<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
 ) -> Result<Forcing, PalletError>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     let storage = client_at_block
         .storage()
@@ -714,12 +709,9 @@ where
     Forcing::decode(&mut &bytes[..]).map_err(|_| PalletError::StakingPalletNotFound)
 }
 
-async fn fetch_active_era<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_active_era<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
 ) -> Result<ActiveEraInfo, PalletError>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     let storage = client_at_block
         .storage()
@@ -761,12 +753,9 @@ where
     })
 }
 
-async fn fetch_bonded_eras<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_bonded_eras<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
 ) -> Result<Vec<(u32, u32)>, PalletError>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     let storage = client_at_block
         .storage()
@@ -783,13 +772,10 @@ where
     Vec::<(u32, u32)>::decode(&mut &bytes[..]).map_err(|_| PalletError::EraStartSessionNotFound)
 }
 
-async fn fetch_staking_validators<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_staking_validators<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
     ss58_prefix: u16,
 ) -> Result<Vec<String>, PalletError>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     if let Ok(storage) = client_at_block.storage().entry("Staking", "Validators")
         && let Ok(Some(value)) = storage.fetch(()).await
@@ -839,13 +825,10 @@ where
         .collect())
 }
 
-async fn fetch_unapplied_slashes<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_unapplied_slashes<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
     ss58_prefix: u16,
 ) -> Vec<UnappliedSlash>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     use futures::StreamExt;
 
@@ -908,12 +891,9 @@ where
     result
 }
 
-async fn fetch_election_status<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_election_status<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
 ) -> Option<ElectionStatus>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     let storage = client_at_block
         .storage()
@@ -925,12 +905,9 @@ where
     ElectionStatus::decode(&mut &bytes[..]).ok()
 }
 
-async fn fetch_timestamp<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_timestamp<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
 ) -> Option<String>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     let storage = client_at_block.storage().entry("Timestamp", "Now").ok()?;
     let value = storage.fetch(()).await.ok()??;
@@ -943,13 +920,10 @@ where
 // Session/Era Progress Derivation
 // ============================================================================
 
-async fn derive_session_era_progress_relay<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn derive_session_era_progress_relay<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
     spec_name: &str,
 ) -> Result<SessionEraProgress, PalletError>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     // Fetch BABE storage items
     let current_slot = fetch_babe_current_slot(client_at_block).await?;
@@ -992,13 +966,10 @@ where
     })
 }
 
-async fn derive_session_era_progress_asset_hub<'client, T, C>(
+async fn derive_session_era_progress_asset_hub<'client>(
     state: &AppState,
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
 ) -> Result<SessionEraProgress, PalletError>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     let babe_params = get_asset_hub_babe_params(&state.chain_info.spec_name)
         .ok_or(PalletError::StakingPalletNotFound)?;
@@ -1056,12 +1027,9 @@ where
 
 // Reserved for future implementation when relay chain block resolution is added
 #[allow(dead_code)]
-async fn fetch_relay_skipped_epochs<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_relay_skipped_epochs<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
 ) -> Vec<(u64, u32)>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     let storage = match client_at_block.storage().entry("Babe", "SkippedEpochs") {
         Ok(s) => s,
@@ -1102,12 +1070,9 @@ fn calculate_session_from_skipped_epochs(epoch_index: u64, skipped_epochs: &[(u6
     }
 }
 
-async fn fetch_babe_current_slot<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_babe_current_slot<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
 ) -> Result<u64, PalletError>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     let storage = client_at_block
         .storage()
@@ -1124,12 +1089,9 @@ where
     u64::decode(&mut &bytes[..]).map_err(|_| PalletError::PalletNotFound("Babe".to_string()))
 }
 
-async fn fetch_babe_epoch_index<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_babe_epoch_index<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
 ) -> Result<u64, PalletError>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     let storage = client_at_block
         .storage()
@@ -1146,12 +1108,9 @@ where
     u64::decode(&mut &bytes[..]).map_err(|_| PalletError::PalletNotFound("Babe".to_string()))
 }
 
-async fn fetch_babe_genesis_slot<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_babe_genesis_slot<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
 ) -> Result<u64, PalletError>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     let storage = client_at_block
         .storage()
@@ -1168,12 +1127,9 @@ where
     u64::decode(&mut &bytes[..]).map_err(|_| PalletError::PalletNotFound("Babe".to_string()))
 }
 
-async fn fetch_session_current_index<'client, T, C>(
-    client_at_block: &'client subxt_historic::client::ClientAtBlock<C, T>,
+async fn fetch_session_current_index<'client>(
+    client_at_block: &ClientAtBlock<OnlineClientAtBlock<'client, SubstrateConfig>, SubstrateConfig>,
 ) -> Result<u32, PalletError>
-where
-    T: Config + 'client,
-    C: OnlineClientAtBlockT<'client, T>,
 {
     let storage = client_at_block
         .storage()
