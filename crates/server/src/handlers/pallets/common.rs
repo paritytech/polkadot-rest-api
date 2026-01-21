@@ -40,6 +40,21 @@ pub enum PalletError {
 
     #[error("at parameter is required when useRcBlock=true")]
     AtParameterRequired,
+
+    #[error("Staking pallet not found")]
+    StakingPalletNotFound,
+
+    #[error("Session pallet not found")]
+    SessionPalletNotFound,
+
+    #[error("Active era is None when Some was expected")]
+    ActiveEraNotFound,
+
+    #[error("Era start session index not found")]
+    EraStartSessionNotFound,
+
+    #[error("Bad staking block: {0}")]
+    BadStakingBlock(String),
 }
 
 impl IntoResponse for PalletError {
@@ -63,6 +78,13 @@ impl IntoResponse for PalletError {
             PalletError::RelayChainNotConfigured => (StatusCode::BAD_REQUEST, self.to_string()),
             PalletError::RcBlockError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             PalletError::AtParameterRequired => (StatusCode::BAD_REQUEST, self.to_string()),
+            PalletError::StakingPalletNotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::SessionPalletNotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::ActiveEraNotFound => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            PalletError::EraStartSessionNotFound => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            PalletError::BadStakingBlock(_) => (StatusCode::BAD_REQUEST, self.to_string()),
         };
 
         let body = Json(json!({
@@ -81,4 +103,10 @@ impl IntoResponse for PalletError {
 pub struct AtResponse {
     pub hash: String,
     pub height: String,
+}
+
+/// Formats a 32-byte account ID to SS58 format.
+pub fn format_account_id(account: &[u8; 32], ss58_prefix: u16) -> String {
+    use sp_core::crypto::Ss58Codec;
+    sp_core::sr25519::Public::from_raw(*account).to_ss58check_with_version(ss58_prefix.into())
 }
