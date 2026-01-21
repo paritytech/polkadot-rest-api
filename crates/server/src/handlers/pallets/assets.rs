@@ -128,7 +128,7 @@ pub async fn pallets_assets_asset_info(
 ) -> Result<Response, PalletError> {
     let asset_id: u32 = asset_id
         .parse()
-        .map_err(|_| PalletError::PalletNotFound(format!("Invalid asset ID: {}", asset_id)))?;
+        .map_err(|_| PalletError::AssetNotFound(format!("Invalid asset ID: {}", asset_id)))?;
 
     if params.use_rc_block {
         return handle_use_rc_block(state, asset_id, params).await;
