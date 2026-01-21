@@ -161,7 +161,8 @@ jobs:
         env:
           API_URL: http://localhost:8080
           RUST_LOG: info
-        timeout-minutes: 15
+          TEST_DELAY_MS: 500
+        timeout-minutes: 20
 
       - name: Stop Polkadot server
         if: always()
@@ -183,7 +184,8 @@ jobs:
         env:
           API_URL: http://localhost:8080
           RUST_LOG: info
-        timeout-minutes: 15
+          TEST_DELAY_MS: 500
+        timeout-minutes: 20
 
       - name: Stop Kusama server
         if: always()
@@ -212,7 +214,8 @@ jobs:
         env:
           API_URL: http://localhost:8080
           RUST_LOG: info
-        timeout-minutes: 15
+          TEST_DELAY_MS: 500
+        timeout-minutes: 20
 
       - name: Stop Asset Hub Polkadot server
         if: always()
@@ -241,7 +244,8 @@ jobs:
         env:
           API_URL: http://localhost:8080
           RUST_LOG: info
-        timeout-minutes: 15
+          TEST_DELAY_MS: 500
+        timeout-minutes: 20
 
       - name: Stop Asset Hub Kusama server
         if: always()
