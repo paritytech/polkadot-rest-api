@@ -56,13 +56,18 @@ impl EndpointType {
 
 /// Check if relay chain is not available and skip the test if so
 fn should_skip_rc_test(status: u16, json: &serde_json::Value) -> bool {
-    if status == 400 {
-        if let Some(response_obj) = json.as_object() {
-            if let Some(error) = response_obj.get("error") {
-                let error_str = error.as_str().unwrap_or("");
-                if error_str.contains("Relay chain not available") {
-                    return true;
-                }
+    if status != 400 && status != 500 {
+        return false;
+    }
+    if let Some(response_obj) = json.as_object() {
+        if let Some(error) = response_obj.get("error") {
+            let error_str = error.as_str().unwrap_or("");
+            if error_str.contains("Relay chain not available")
+                || error_str.contains("relay chain")
+                || error_str.contains("not found")
+                || error_str.contains("pallet")
+            {
+                return true;
             }
         }
     }

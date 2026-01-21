@@ -20,16 +20,8 @@ name = "use_rc_block"
 path = "tests/use_rc_block.rs"
 
 [[test]]
-name = "accounts_asset_balances"
-path = "tests/accounts_asset_balances.rs"
-
-[[test]]
-name = "accounts_vesting_info"
-path = "tests/accounts_vesting_info.rs"
-
-[[test]]
-name = "accounts_validate"
-path = "tests/accounts_validate.rs"
+name = "accounts"
+path = "tests/accounts/mod.rs"
 
 [[bin]]
 name = "update_fixtures"

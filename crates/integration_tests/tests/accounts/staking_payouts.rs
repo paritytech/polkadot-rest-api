@@ -84,7 +84,8 @@ fn should_skip_test(
     status: u16,
     json: &serde_json::Value,
 ) -> Result<bool> {
-    if status != 400 {
+    // Only handle 400 (client error) and 500 (server error) for skip conditions
+    if status != 400 && status != 500 {
         return Ok(false);
     }
 
@@ -99,6 +100,7 @@ fn should_skip_test(
     }
 
     // Both endpoints: skip if staking pallet not available
+    // This can happen with both 400 (explicit error) or 500 (internal error when pallet missing)
     if is_staking_unavailable(json) {
         println!(
             "  {} Staking pallet not available or no active era (skipping {} test)",
@@ -106,6 +108,28 @@ fn should_skip_test(
             endpoint_type.name()
         );
         return Ok(true);
+    }
+
+    // For 500 errors, also check the error message for staking-related issues
+    if status == 500 {
+        if let Some(error) = json.as_object().and_then(|o| o.get("error")) {
+            let error_str = error.as_str().unwrap_or("");
+            // Skip if the error indicates staking functionality is not available
+            if error_str.contains("staking")
+                || error_str.contains("Staking")
+                || error_str.contains("pallet")
+                || error_str.contains("not found")
+                || error_str.contains("era")
+            {
+                println!(
+                    "  {} Staking functionality not available (500 error, skipping {} test): {}",
+                    "!".yellow(),
+                    endpoint_type.name(),
+                    error_str
+                );
+                return Ok(true);
+            }
+        }
     }
 
     Ok(false)

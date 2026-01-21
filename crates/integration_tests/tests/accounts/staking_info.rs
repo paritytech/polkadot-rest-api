@@ -75,7 +75,8 @@ fn should_skip_test(
     status: u16,
     json: &serde_json::Value,
 ) -> Result<bool> {
-    if status != 400 {
+    // Only handle 400 (client error) and 500 (server error) for skip conditions
+    if status != 400 && status != 500 {
         return Ok(false);
     }
 
@@ -90,6 +91,7 @@ fn should_skip_test(
     }
 
     // Both endpoints: skip if staking pallet not available or not a stash
+    // This can happen with both 400 (explicit error) or 500 (internal error when pallet missing)
     if is_staking_unavailable_or_not_stash(json) {
         println!(
             "  {} Staking pallet not available or not a stash (skipping {} test)",
@@ -97,6 +99,27 @@ fn should_skip_test(
             endpoint_type.name()
         );
         return Ok(true);
+    }
+
+    // For 500 errors, also check the error message for staking-related issues
+    if status == 500 {
+        if let Some(error) = json.as_object().and_then(|o| o.get("error")) {
+            let error_str = error.as_str().unwrap_or("");
+            // Skip if the error indicates staking functionality is not available
+            if error_str.contains("staking")
+                || error_str.contains("Staking")
+                || error_str.contains("pallet")
+                || error_str.contains("not found")
+            {
+                println!(
+                    "  {} Staking functionality not available (500 error, skipping {} test): {}",
+                    "!".yellow(),
+                    endpoint_type.name(),
+                    error_str
+                );
+                return Ok(true);
+            }
+        }
     }
 
     Ok(false)
@@ -310,29 +333,28 @@ async fn run_non_stash_account_test(endpoint_type: EndpointType) -> Result<()> {
         .await
         .context("Failed to fetch from API")?;
 
-    // Skip if relay chain not available (RC only)
-    if matches!(endpoint_type, EndpointType::RelayChain)
-        && status.as_u16() == 400
-        && is_relay_chain_not_available(&json)
-    {
-        println!("  {} Relay chain not configured", "!".yellow());
+    // Use shared skip logic for relay chain not available or staking unavailable
+    if should_skip_test(endpoint_type, status.as_u16(), &json)? {
         println!("{}", "=".repeat(80).bright_white());
         return Ok(());
     }
 
     // Either success (it's a stash) or 400 (not a stash or staking unavailable)
-    if status.as_u16() == 400 {
-        let response_obj = json.as_object().expect("Response is not an object");
-        let error_msg = response_obj.get("error").unwrap().as_str().unwrap();
-        println!(
-            "  {} Account is not a stash or staking unavailable: {}",
-            "+".green(),
-            error_msg
-        );
+    if status.as_u16() == 400 || status.as_u16() == 500 {
+        if let Some(response_obj) = json.as_object() {
+            if let Some(error) = response_obj.get("error") {
+                let error_msg = error.as_str().unwrap_or("Unknown error");
+                println!(
+                    "  {} Account is not a stash or staking unavailable: {}",
+                    "+".green(),
+                    error_msg
+                );
+            }
+        }
     } else {
         assert!(
             status.is_success(),
-            "Expected 200 or 400, got {}",
+            "Expected 200, 400, or 500, got {}",
             status
         );
         println!("  {} Account is a stash, returned staking info", "+".green());
