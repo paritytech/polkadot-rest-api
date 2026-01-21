@@ -13,8 +13,7 @@ use heck::ToUpperCamelCase;
 use parity_scale_codec::Decode;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
-use subxt_historic::SubstrateConfig;
-use subxt_historic::client::{ClientAtBlock, OnlineClientAtBlock};
+use subxt::{OnlineClientAtBlock, SubstrateConfig};
 
 use super::docs::Docs;
 use super::types::{
@@ -24,7 +23,7 @@ use super::types::{
 /// Type alias for the ClientAtBlock type used throughout the codebase.
 /// This represents a client pinned to a specific block height with access to
 /// storage, extrinsics, and metadata for that block.
-pub type BlockClient<'a> = ClientAtBlock<OnlineClientAtBlock<'a, SubstrateConfig>, SubstrateConfig>;
+pub type BlockClient = OnlineClientAtBlock<SubstrateConfig>;
 
 // ================================================================================================
 // Digest Processing
@@ -151,15 +150,22 @@ pub async fn get_finalized_block_number(state: &AppState) -> Result<u64, GetBloc
 
 /// Fetch validator set from chain state at a specific block
 pub async fn get_validators_at_block(
-    client_at_block: &BlockClient<'_>,
+    client_at_block: &BlockClient,
 ) -> Result<Vec<AccountId32>, GetBlockError> {
-    let storage_entry = client_at_block.storage().entry("Session", "Validators")?;
-    let validators_value = storage_entry.fetch(()).await?.ok_or_else(|| {
-        // Use the parity_scale_codec::Error for missing validators which will be converted to StorageDecodeFailed
-        parity_scale_codec::Error::from("validators storage not found")
-    })?;
-    let raw_bytes = validators_value.into_bytes();
-    let validators_raw: Vec<[u8; 32]> = Vec::<[u8; 32]>::decode(&mut &raw_bytes[..])?;
+    // Use typed dynamic storage to decode as raw account bytes, then convert to AccountId32
+    // Note: AccountId32 from sp_runtime doesn't implement IntoVisitor, so we decode as [u8; 32]
+    let addr = subxt::dynamic::storage::<(), Vec<[u8; 32]>>("Session", "Validators");
+    let validators_raw = client_at_block
+        .storage()
+        .fetch(addr, ())
+        .await?
+        .decode()
+        .map_err(|e| {
+            tracing::debug!("Failed to decode validators: {}", e);
+            GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
+                "Failed to decode validators",
+            ))
+        })?;
     let validators: Vec<AccountId32> = validators_raw.into_iter().map(AccountId32::from).collect();
 
     if validators.is_empty() {
@@ -172,7 +178,7 @@ pub async fn get_validators_at_block(
 /// Extract author ID from block header digest logs by mapping authority index to validator
 pub async fn extract_author(
     state: &AppState,
-    client_at_block: &BlockClient<'_>,
+    client_at_block: &BlockClient,
     logs: &[DigestLog],
     block_number: u64,
 ) -> Option<String> {
@@ -289,12 +295,12 @@ pub async fn extract_author(
 // ================================================================================================
 
 /// Add documentation to events if eventDocs is enabled
-pub fn add_docs_to_events(events: &mut [Event], metadata: &frame_metadata::RuntimeMetadata) {
+pub fn add_docs_to_events(events: &mut [Event], metadata: &subxt::Metadata) {
     for event in events.iter_mut() {
         // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
         // We need to convert back: "system" -> "System", "balances" -> "Balances"
         let pallet_name = event.method.pallet.to_upper_camel_case();
-        event.docs =
-            Docs::for_event(metadata, &pallet_name, &event.method.method).map(|d| d.to_string());
+        event.docs = Docs::for_event_subxt(metadata, &pallet_name, &event.method.method)
+            .map(|d| d.to_string());
     }
 }

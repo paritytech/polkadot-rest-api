@@ -16,7 +16,7 @@ use config::ChainType;
 use heck::ToLowerCamelCase;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use subxt_historic::error::OnlineClientAtBlockError;
+use subxt::error::OnlineClientAtBlockError;
 use subxt_rpcs::rpc_params;
 use thiserror::Error;
 
@@ -83,7 +83,7 @@ pub enum GetBlockHeadHeaderError {
     ServiceUnavailable(String),
 
     #[error("Failed to find Asset Hub blocks in Relay Chain block")]
-    RcBlockError(#[from] RcBlockError),
+    RcBlockError(#[source] Box<RcBlockError>),
 
     #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
     UseRcBlockNotSupported,
@@ -97,7 +97,7 @@ pub enum GetBlockHeadHeaderError {
     BlockResolveFailed(#[from] crate::utils::BlockResolveError),
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 }
 
 impl IntoResponse for GetBlockHeadHeaderError {
@@ -283,7 +283,9 @@ async fn handle_use_rc_block(
         return Err(GetBlockHeadHeaderError::RelayChainNotConfigured);
     };
 
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
+        .await
+        .map_err(|e| GetBlockHeadHeaderError::RcBlockError(Box::new(e)))?;
 
     if ah_blocks.is_empty() {
         return Ok(Json(json!([])).into_response());
@@ -322,7 +324,11 @@ async fn handle_use_rc_block(
         let digest_logs = decode_digest_logs(&header_json);
         let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
 
-        let client_at_block = state.client.at(ah_block.number).await?;
+        let client_at_block = state
+            .client
+            .at_block(ah_block.number)
+            .await
+            .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?;
         let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
         results.push(BlockHeaderResponse {

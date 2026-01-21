@@ -7,7 +7,7 @@ use crate::utils::{self, EraInfo, RcBlockError};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use subxt_historic::error::{OnlineClientAtBlockError, StorageEntryIsNotAPlainValue, StorageError};
+use subxt::error::{OnlineClientAtBlockError, StorageError};
 use thiserror::Error;
 
 // ================================================================================================
@@ -85,13 +85,10 @@ pub enum GetBlockError {
     HeaderFieldMissing(String),
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 
     #[error("Failed to fetch chain storage")]
     StorageFetchFailed(#[from] StorageError),
-
-    #[error("Storage entry is not a plain value")]
-    StorageNotPlainValue(#[from] StorageEntryIsNotAPlainValue),
 
     #[error("Failed to decode storage value")]
     StorageDecodeFailed(#[from] parity_scale_codec::Error),
@@ -115,7 +112,7 @@ pub enum GetBlockError {
     CanonicalHashFailed(#[source] subxt_rpcs::Error),
 
     #[error("Failed to find Asset Hub blocks in Relay Chain block")]
-    RcBlockError(#[from] RcBlockError),
+    RcBlockError(#[source] Box<RcBlockError>),
 
     #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
     UseRcBlockNotSupported,
@@ -162,7 +159,6 @@ impl IntoResponse for GetBlockError {
             GetBlockError::HeaderFieldMissing(_)
             | GetBlockError::ClientAtBlockFailed(_)
             | GetBlockError::StorageFetchFailed(_)
-            | GetBlockError::StorageNotPlainValue(_)
             | GetBlockError::StorageDecodeFailed(_)
             | GetBlockError::ExtrinsicsFetchFailed(_)
             | GetBlockError::MissingSignatureBytes

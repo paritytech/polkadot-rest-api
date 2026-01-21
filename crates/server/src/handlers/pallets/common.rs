@@ -21,7 +21,7 @@ pub enum PalletError {
     BlockResolveFailed(#[from] crate::utils::BlockResolveError),
 
     #[error("Failed to get client at block")]
-    ClientAtBlockFailed(#[from] subxt_historic::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
 
     #[error("Pallet not found: {0}")]
     PalletNotFound(String),

@@ -133,13 +133,22 @@ mod tests {
     use super::*;
     use crate::state::{AppState, ChainInfo};
     use config::SidecarConfig;
+    use serde_json::json;
     use std::sync::Arc;
+    use subxt_rpcs::client::mock_rpc_client::Json;
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
     /// Helper to create a test AppState with mocked RPC client and custom chain info
-    fn create_test_state_with_chain_info(chain_type: ChainType, spec_name: &str) -> AppState {
+    async fn create_test_state_with_chain_info(chain_type: ChainType, spec_name: &str) -> AppState {
         let config = SidecarConfig::default();
-        let mock_client = MockRpcClient::builder().build();
+        let mock_client = MockRpcClient::builder()
+            .method_handler("rpc_methods", async |_params| {
+                Json(json!({ "methods": [] }))
+            })
+            .method_handler("chain_getBlockHash", async |_params| {
+                Json("0x0000000000000000000000000000000000000000000000000000000000000000")
+            })
+            .build();
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
         let chain_info = ChainInfo {
@@ -149,12 +158,13 @@ mod tests {
             ss58_prefix: 42,
         };
 
+        let client = subxt::OnlineClient::from_rpc_client((*rpc_client).clone())
+            .await
+            .expect("Failed to create test OnlineClient");
+
         AppState {
             config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
+            client: Arc::new(client),
             legacy_rpc,
             rpc_client,
             chain_info,
@@ -172,7 +182,7 @@ mod tests {
     #[tokio::test]
     async fn test_ahm_info_asset_hub_westmint() {
         // Test: Asset Hub with static boundaries (westmint)
-        let state = create_test_state_with_chain_info(ChainType::AssetHub, "westmint");
+        let state = create_test_state_with_chain_info(ChainType::AssetHub, "westmint").await;
 
         let result = ahm_info(State(state)).await;
 
@@ -188,7 +198,7 @@ mod tests {
     #[tokio::test]
     async fn test_ahm_info_asset_hub_statemint() {
         // Test: Asset Hub Polkadot (statemint)
-        let state = create_test_state_with_chain_info(ChainType::AssetHub, "statemint");
+        let state = create_test_state_with_chain_info(ChainType::AssetHub, "statemint").await;
 
         let result = ahm_info(State(state)).await;
 
@@ -204,7 +214,7 @@ mod tests {
     #[tokio::test]
     async fn test_ahm_info_asset_hub_statemine() {
         // Test: Asset Hub Kusama (statemine)
-        let state = create_test_state_with_chain_info(ChainType::AssetHub, "statemine");
+        let state = create_test_state_with_chain_info(ChainType::AssetHub, "statemine").await;
 
         let result = ahm_info(State(state)).await;
 
@@ -220,7 +230,7 @@ mod tests {
     #[tokio::test]
     async fn test_ahm_info_relay_westend() {
         // Test: Relay Chain (Westend) maps to westmint
-        let state = create_test_state_with_chain_info(ChainType::Relay, "westend");
+        let state = create_test_state_with_chain_info(ChainType::Relay, "westend").await;
 
         let result = ahm_info(State(state)).await;
 
@@ -236,7 +246,7 @@ mod tests {
     #[tokio::test]
     async fn test_ahm_info_relay_polkadot() {
         // Test: Relay Chain (Polkadot) maps to statemint
-        let state = create_test_state_with_chain_info(ChainType::Relay, "polkadot");
+        let state = create_test_state_with_chain_info(ChainType::Relay, "polkadot").await;
 
         let result = ahm_info(State(state)).await;
 
@@ -252,7 +262,7 @@ mod tests {
     #[tokio::test]
     async fn test_ahm_info_relay_kusama() {
         // Test: Relay Chain (Kusama) maps to statemine
-        let state = create_test_state_with_chain_info(ChainType::Relay, "kusama");
+        let state = create_test_state_with_chain_info(ChainType::Relay, "kusama").await;
 
         let result = ahm_info(State(state)).await;
 
@@ -268,7 +278,7 @@ mod tests {
     #[tokio::test]
     async fn test_ahm_info_invalid_chain_type() {
         // Test: Parachain type should return error
-        let state = create_test_state_with_chain_info(ChainType::Parachain, "some-parachain");
+        let state = create_test_state_with_chain_info(ChainType::Parachain, "some-parachain").await;
 
         let result = ahm_info(State(state)).await;
 
@@ -284,7 +294,7 @@ mod tests {
     #[tokio::test]
     async fn test_ahm_info_unknown_relay() {
         // Test: Unknown relay chain should return error
-        let state = create_test_state_with_chain_info(ChainType::Relay, "unknown-relay");
+        let state = create_test_state_with_chain_info(ChainType::Relay, "unknown-relay").await;
 
         let result = ahm_info(State(state)).await;
 
@@ -298,7 +308,8 @@ mod tests {
     #[tokio::test]
     async fn test_ahm_info_unknown_asset_hub() {
         // Test: Unknown asset hub should return error
-        let state = create_test_state_with_chain_info(ChainType::AssetHub, "unknown-asset-hub");
+        let state =
+            create_test_state_with_chain_info(ChainType::AssetHub, "unknown-asset-hub").await;
 
         let result = ahm_info(State(state)).await;
 
