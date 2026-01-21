@@ -412,20 +412,18 @@ fn extract_u32_from_value(value: &Value<()>) -> Option<u32> {
         return u32::try_from(n).ok();
     }
 
-    if let Some(arr) = json.as_array() {
-        if let Some(first) = arr.first() {
-            if let Some(n) = first.as_u64() {
-                return u32::try_from(n).ok();
-            }
-        }
+    if let Some(arr) = json.as_array()
+        && let Some(first) = arr.first()
+        && let Some(n) = first.as_u64()
+    {
+        return u32::try_from(n).ok();
     }
 
-    if let Some(obj) = json.as_object() {
-        if let Some(val) = obj.values().next() {
-            if let Some(n) = val.as_u64() {
-                return u32::try_from(n).ok();
-            }
-        }
+    if let Some(obj) = json.as_object()
+        && let Some(val) = obj.values().next()
+        && let Some(n) = val.as_u64()
+    {
+        return u32::try_from(n).ok();
     }
 
     None
