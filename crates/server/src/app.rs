@@ -15,6 +15,7 @@ pub fn create_app(state: AppState) -> Router {
         .merge(routes::blocks::blocks_routes(registry))
         .merge(routes::capabilities::routes(registry))
         .merge(routes::health::routes(registry))
+        .merge(routes::pallets::routes(registry))
         .merge(routes::runtime::routes(registry))
         .merge(routes::version::routes(registry))
         .with_state(state.clone());

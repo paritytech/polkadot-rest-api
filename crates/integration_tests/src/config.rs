@@ -47,6 +47,8 @@ pub struct HistoricalTestCase {
     pub block_height: Option<u64>,
     /// Account identifier to test
     pub account_id: Option<String>,
+    /// Asset identifier to test
+    pub asset_id: Option<String>,
     /// Query parameters (if any)
     #[serde(default)]
     pub query_params: HashMap<String, String>,
