@@ -162,6 +162,24 @@ pub enum GetBlockError {
 
     #[error("Invalid extrinsic index: {0}")]
     InvalidExtrinsicIndex(String),
+
+    #[error("range query parameter must be inputted.")]
+    MissingRange,
+
+    #[error("Incorrect range format. Expected example: 0-999")]
+    InvalidRangeFormat,
+
+    #[error("Inputted min value for range must be an unsigned integer.")]
+    InvalidRangeMin,
+
+    #[error("Inputted max value for range must be an unsigned non zero integer.")]
+    InvalidRangeMax,
+
+    #[error("Inputted min value cannot be greater than or equal to the max value.")]
+    InvalidRangeMinMax,
+
+    #[error("Inputted range is greater than the 500 range limit.")]
+    RangeTooLarge,
 }
 
 impl From<OnlineClientAtBlockError> for GetBlockError {
@@ -177,9 +195,13 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::BlockResolveFailed(_)
             | GetBlockError::RelayChainNotConfigured
             | GetBlockError::ExtrinsicIndexNotFound
-            | GetBlockError::InvalidExtrinsicIndex(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
+            | GetBlockError::InvalidExtrinsicIndex(_)
+            | GetBlockError::MissingRange
+            | GetBlockError::InvalidRangeFormat
+            | GetBlockError::InvalidRangeMin
+            | GetBlockError::InvalidRangeMax
+            | GetBlockError::InvalidRangeMinMax
+            | GetBlockError::RangeTooLarge => (StatusCode::BAD_REQUEST, self.to_string()),
             GetBlockError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }

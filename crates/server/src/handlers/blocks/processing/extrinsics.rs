@@ -204,9 +204,8 @@ async fn extract_extrinsics_impl(
             let era_info = utils::extract_era_from_extrinsic_bytes(extrinsic.bytes());
 
             let signer_hex = format!("0x{}", hex::encode(addr_bytes));
-            let signer_ss58 =
-                utils::decode_address_to_ss58(&signer_hex, ss58_prefix)
-                    .unwrap_or_else(|| signer_hex.clone());
+            let signer_ss58 = utils::decode_address_to_ss58(&signer_hex, ss58_prefix)
+                .unwrap_or_else(|| signer_hex.clone());
 
             // Strip the signature type prefix byte (0x00=Ed25519, 0x01=Sr25519, 0x02=Ecdsa)
             let signature_without_type_prefix = if sig_bytes.len() > 1 {

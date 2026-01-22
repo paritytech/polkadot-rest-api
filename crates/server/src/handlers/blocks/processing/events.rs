@@ -301,20 +301,18 @@ async fn fetch_block_events_impl(
                         if let Some(tn) = type_name {
                             if tn == "AccountId32" || tn == "MultiAddress" || tn == "AccountId" {
                                 let with_hex = convert_bytes_to_hex(json_value.clone());
-                                if let Some(ss58_value) = try_convert_accountid_to_ss58(
-                                    &with_hex,
-                                    ss58_prefix,
-                                ) {
+                                if let Some(ss58_value) =
+                                    try_convert_accountid_to_ss58(&with_hex, ss58_prefix)
+                                {
                                     return ss58_value;
                                 }
                             } else if tn == "RewardDestination"
                                 && let Some(account_value) = json_value.get("account")
                             {
                                 let with_hex = convert_bytes_to_hex(account_value.clone());
-                                if let Some(ss58_value) = try_convert_accountid_to_ss58(
-                                    &with_hex,
-                                    ss58_prefix,
-                                ) {
+                                if let Some(ss58_value) =
+                                    try_convert_accountid_to_ss58(&with_hex, ss58_prefix)
+                                {
                                     return serde_json::json!({
                                         "account": ss58_value
                                     });

@@ -280,6 +280,7 @@ pub(crate) async fn build_block_response_for_hash(
                     let extrinsic = &extrinsics_with_events[i];
                     extract_fee_info_for_extrinsic(
                         state,
+                        None,
                         &extrinsic.raw_hex,
                         &extrinsic.events,
                         extrinsic_outcomes.get(i),
