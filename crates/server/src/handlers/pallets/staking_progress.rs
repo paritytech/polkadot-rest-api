@@ -1,4 +1,8 @@
 use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::constants::{
+    derive_election_lookahead, get_asset_hub_babe_params, get_babe_epoch_duration,
+    is_bad_staking_block,
+};
 use crate::state::AppState;
 use crate::utils;
 use axum::{
@@ -139,46 +143,6 @@ struct SessionEraProgress {
     active_era: u32,
     #[allow(dead_code)]
     current_session_index: u32,
-}
-
-struct AssetHubBabeParams {
-    epoch_duration: u64,
-    genesis_slot: u64,
-    slot_duration_ms: u64,
-}
-
-fn get_asset_hub_babe_params(spec_name: &str) -> Option<AssetHubBabeParams> {
-    match spec_name {
-        "statemint" | "asset-hub-polkadot" => Some(AssetHubBabeParams {
-            epoch_duration: 2400,
-            genesis_slot: 265084563,
-            slot_duration_ms: 6000,
-        }),
-        "statemine" | "asset-hub-kusama" => Some(AssetHubBabeParams {
-            epoch_duration: 600,
-            genesis_slot: 262493679,
-            slot_duration_ms: 6000,
-        }),
-        "westmint" | "asset-hub-westend" => Some(AssetHubBabeParams {
-            epoch_duration: 600,
-            genesis_slot: 264379767,
-            slot_duration_ms: 6000,
-        }),
-        "asset-hub-paseo" => Some(AssetHubBabeParams {
-            epoch_duration: 600,
-            genesis_slot: 284730328,
-            slot_duration_ms: 6000,
-        }),
-        _ => None,
-    }
-}
-
-fn is_bad_staking_block(spec_name: &str, block_number: u64) -> bool {
-    match spec_name {
-        // Westend Asset Hub had issues in block range 11716733 - 11746809
-        "westmint" | "asset-hub-westend" => (11716733..=11746809).contains(&block_number),
-        _ => false,
-    }
 }
 
 pub async fn pallets_staking_progress(
@@ -969,8 +933,19 @@ async fn derive_session_era_progress_asset_hub(
     let epoch_index =
         (current_slot.saturating_sub(babe_params.genesis_slot)) / babe_params.epoch_duration;
 
-    // Assume session = epoch (skipped epochs handling can be enhanced later)
-    let current_index = epoch_index as u32;
+    // Calculate session index accounting for skipped epochs from relay chain
+    let current_index = if let Some(relay_client) = state.get_relay_chain_client() {
+        // Get relay chain client at current block to fetch skipped epochs
+        let relay_client_at_block = relay_client
+            .at_current_block()
+            .await
+            .map_err(|_| PalletError::RelayChainNotConfigured)?;
+        let skipped_epochs = fetch_relay_skipped_epochs(&relay_client_at_block).await;
+        calculate_session_from_skipped_epochs(epoch_index, &skipped_epochs)
+    } else {
+        // Fallback: assume session = epoch if no relay chain configured
+        epoch_index as u32
+    };
 
     // Calculate progress
     let epoch_start_slot = epoch_index * babe_params.epoch_duration + babe_params.genesis_slot;
@@ -990,8 +965,10 @@ async fn derive_session_era_progress_asset_hub(
     })
 }
 
-// Reserved for future implementation when relay chain block resolution is added
-#[allow(dead_code)]
+/// Fetch skipped epochs from the relay chain's Babe pallet.
+///
+/// Skipped epochs occur when no blocks are produced in a slot window,
+/// causing a discontinuity between epoch index and session index.
 async fn fetch_relay_skipped_epochs(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Vec<(u64, u32)> {
@@ -1005,7 +982,11 @@ async fn fetch_relay_skipped_epochs(
     Vec::<(u64, u32)>::decode(&mut &bytes[..]).unwrap_or_default()
 }
 
-#[allow(dead_code)]
+/// Calculate the session index from epoch index, accounting for skipped epochs.
+///
+/// When epochs are skipped, the session index doesn't advance even though
+/// the epoch index does. This function uses the SkippedEpochs storage to
+/// find the correct mapping.
 fn calculate_session_from_skipped_epochs(epoch_index: u64, skipped_epochs: &[(u64, u32)]) -> u32 {
     if skipped_epochs.is_empty() {
         return epoch_index as u32;
@@ -1088,19 +1069,4 @@ fn get_sessions_per_era_from_metadata(metadata: &subxt::Metadata) -> Option<u32>
     let pallet = metadata.pallet_by_name("Staking")?;
     let constant = pallet.constant_by_name("SessionsPerEra")?;
     u32::decode(&mut &constant.value()[..]).ok()
-}
-
-fn get_babe_epoch_duration(spec_name: &str) -> u64 {
-    match spec_name {
-        "polkadot" => 2400,
-        _ => 600,
-    }
-}
-
-fn derive_election_lookahead(spec_name: &str, epoch_duration: u64) -> u64 {
-    let divisor = match spec_name {
-        "polkadot" | "statemint" | "asset-hub-polkadot" => 16,
-        _ => 4,
-    };
-    epoch_duration / divisor
 }
