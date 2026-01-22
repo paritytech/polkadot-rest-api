@@ -397,6 +397,58 @@
         "query_params": {},
         "fixture_path": "asset-hub-polkadot/blocks_10293194_rc_extrinsics_raw.json",
         "description": "Test RC extrinsics-raw endpoint at Polkadot Relay Chain block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/rc/blocks",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "range": "10293194-10293197",
+          "eventDocs": "false",
+          "extrinsicDocs": "false",
+          "noFees": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/rc_blocks_10293194-10293197_no_fees.json",
+        "description": "Test rc/blocks endpoint with noFees=true for Polkadot relay chain blocks 10,293,194-10,293,197"
+      },
+      {
+        "endpoint": "/v1/rc/blocks",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "range": "10293194-10293197",
+          "eventDocs": "true",
+          "extrinsicDocs": "true",
+          "noFees": "false"
+        },
+        "fixture_path": "asset-hub-polkadot/rc_blocks_10293194-10293197_with_docs.json",
+        "description": "Test rc/blocks endpoint with eventDocs and extrinsicDocs for Polkadot relay chain blocks 10,293,194-10,293,197"
+      },
+      {
+        "endpoint": "/v1/rc/blocks",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "range": "24500000-24500010",
+          "eventDocs": "false",
+          "extrinsicDocs": "false",
+          "noFees": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/rc_blocks_24500000-24500010_no_fees.json",
+        "description": "Test rc/blocks endpoint with noFees=true for recent Polkadot relay chain blocks 24,500,000-24,500,010"
+      },
+      {
+        "endpoint": "/v1/rc/blocks",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "range": "24500000-24500010",
+          "eventDocs": "true",
+          "extrinsicDocs": "true",
+          "noFees": "false"
+        },
+        "fixture_path": "asset-hub-polkadot/rc_blocks_24500000-24500010_with_docs.json",
+        "description": "Test rc/blocks endpoint with fees (fromEvent) for recent Polkadot relay chain blocks 24,500,000-24,500,010"
       }
     ],
     "asset-hub-kusama": [

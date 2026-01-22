@@ -20,9 +20,43 @@ use super::super::types::{
 };
 use super::super::utils::extract_numeric_string;
 
+/// Extract extrinsics from a block using subxt with explicit ss58_prefix
+///
+/// This version allows specifying the ss58_prefix explicitly, useful for
+/// processing blocks from different chains (e.g., relay chain blocks).
+pub async fn extract_extrinsics_with_prefix(
+    ss58_prefix: u16,
+    client_at_block: &BlockClient,
+    block_number: u64,
+) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
+    extract_extrinsics_impl(ss58_prefix, client_at_block, block_number).await
+}
+
+/// Extract extrinsics from a block using the client_at_block only
+///
+/// This version is useful when you don't have access to AppState.
+/// It uses ss58_prefix 0 (Polkadot) as default.
+pub async fn extract_extrinsics_with_client(
+    client_at_block: &BlockClient,
+    block_number: u64,
+) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
+    // Use default Polkadot prefix - callers should use extract_extrinsics_with_prefix
+    // if they need a specific prefix
+    extract_extrinsics_impl(0, client_at_block, block_number).await
+}
+
 /// Extract extrinsics from a block using subxt
 pub async fn extract_extrinsics(
     state: &AppState,
+    client_at_block: &BlockClient,
+    block_number: u64,
+) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
+    extract_extrinsics_impl(state.chain_info.ss58_prefix, client_at_block, block_number).await
+}
+
+/// Internal implementation for extracting extrinsics
+async fn extract_extrinsics_impl(
+    ss58_prefix: u16,
     client_at_block: &BlockClient,
     block_number: u64,
 ) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
@@ -94,7 +128,7 @@ pub async fn extract_extrinsics(
 
             if is_account_type {
                 let mut decoded_account = false;
-                let ss58_prefix = state.chain_info.ss58_prefix;
+                let ss58_prefix = ss58_prefix;
                 let bytes_to_ss58 = |bytes: &[u8; 32]| {
                     let account_id = AccountId32::from(*bytes);
                     account_id.to_ss58check_with_version(ss58_prefix.into())
@@ -140,7 +174,7 @@ pub async fn extract_extrinsics(
             // - Preserving arrays for Vec<T> sequences
             // - Converting byte arrays to hex
             // - Basic enums as strings, non-basic enums as objects
-            match field.visit(JsonVisitor::new(state.chain_info.ss58_prefix, &resolver)) {
+            match field.visit(JsonVisitor::new(ss58_prefix, &resolver)) {
                 Ok(json_value) => {
                     args_map.insert(field_key, json_value);
                 }
@@ -171,7 +205,7 @@ pub async fn extract_extrinsics(
 
             let signer_hex = format!("0x{}", hex::encode(addr_bytes));
             let signer_ss58 =
-                utils::decode_address_to_ss58(&signer_hex, state.chain_info.ss58_prefix)
+                utils::decode_address_to_ss58(&signer_hex, ss58_prefix)
                     .unwrap_or_else(|| signer_hex.clone());
 
             // Strip the signature type prefix byte (0x00=Ed25519, 0x01=Sr25519, 0x02=Ecdsa)

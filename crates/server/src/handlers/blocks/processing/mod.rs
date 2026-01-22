@@ -18,6 +18,7 @@ pub mod fees;
 pub use events::{
     categorize_events, extract_class_from_event_data, extract_fee_from_transaction_paid_event,
     extract_pays_fee_from_event_data, extract_weight_from_event_data, fetch_block_events,
+    fetch_block_events_with_client, fetch_block_events_with_prefix,
 };
-pub use extrinsics::extract_extrinsics;
-pub use fees::{extract_fee_info_for_extrinsic, get_query_info};
+pub use extrinsics::{extract_extrinsics, extract_extrinsics_with_client, extract_extrinsics_with_prefix};
+pub use fees::{extract_fee_info_for_extrinsic, extract_fee_info_for_extrinsic_with_client, get_query_info};

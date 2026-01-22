@@ -1,6 +1,6 @@
 pub mod common;
 pub mod decode;
-mod docs;
+pub mod docs;
 pub mod get_block;
 pub mod get_block_extrinsics_raw;
 pub mod get_block_head;
