@@ -4,7 +4,15 @@ use scale_value::{Value, ValueDef};
 use sp_core::crypto::AccountId32;
 use std::str::FromStr;
 
-use super::types::AssetBalancesError;
+// ================================================================================================
+// Address Validation Error
+// ================================================================================================
+
+/// Error type for address validation failures.
+/// This is a standalone error type that can be converted to handler-specific errors via #[from].
+#[derive(Debug, thiserror::Error)]
+#[error("Invalid address: {0}")]
+pub struct AddressValidationError(pub String);
 
 mod assets;
 mod pool_assets;
@@ -18,7 +26,7 @@ pub use timestamp::fetch_timestamp;
 // ================================================================================================
 
 /// Validate and parse account address (supports SS58 and hex formats)
-pub fn validate_and_parse_address(addr: &str) -> Result<AccountId32, AssetBalancesError> {
+pub fn validate_and_parse_address(addr: &str) -> Result<AccountId32, AddressValidationError> {
     // Try SS58 format first (any network prefix)
     if let Ok(account) = AccountId32::from_str(addr) {
         return Ok(account);
@@ -36,7 +44,7 @@ pub fn validate_and_parse_address(addr: &str) -> Result<AccountId32, AssetBalanc
         }
     }
 
-    Err(AssetBalancesError::InvalidAddress(addr.to_string()))
+    Err(AddressValidationError(addr.to_string()))
 }
 
 

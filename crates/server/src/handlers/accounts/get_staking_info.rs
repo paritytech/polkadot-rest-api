@@ -1,6 +1,6 @@
 use super::types::{
-    BlockInfo, NominationsInfo, RewardDestination, StakingInfoError, StakingInfoQueryParams,
-    StakingInfoResponse, StakingLedger, UnlockingChunk,
+    BlockInfo, NominationsInfo, RewardDestination, AccountsError, StakingInfoQueryParams,
+    StakingInfoResponse, StakingLedger,
 };
 use super::utils::validate_and_parse_address;
 use crate::handlers::accounts::utils::fetch_timestamp;
@@ -33,9 +33,8 @@ pub async fn get_staking_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
     Query(params): Query<StakingInfoQueryParams>,
-) -> Result<Response, StakingInfoError> {
-    let account = validate_and_parse_address(&account_id)
-        .map_err(|_| StakingInfoError::InvalidAddress(account_id.clone()))?;
+) -> Result<Response, AccountsError> {
+    let account = validate_and_parse_address(&account_id)?;
 
     if params.use_rc_block {
         return handle_use_rc_block(state, account, params).await;
@@ -79,19 +78,20 @@ fn format_response(
         suppressed: n.suppressed,
     });
 
+    // Sum all unlocking chunks to get total unlocking amount
+    let unlocking_total: u128 = raw
+        .staking
+        .unlocking
+        .iter()
+        .filter_map(|c| c.value.parse::<u128>().ok())
+        .sum();
+
     let staking = StakingLedger {
         stash: raw.staking.stash.clone(),
         total: raw.staking.total.clone(),
         active: raw.staking.active.clone(),
-        unlocking: raw
-            .staking
-            .unlocking
-            .iter()
-            .map(|c| UnlockingChunk {
-                value: c.value.clone(),
-                era: c.era.clone(),
-            })
-            .collect(),
+        unlocking: unlocking_total.to_string(),
+        claimed_rewards: None, // TODO: Implement when include_claimed_rewards is true
     };
 
     StakingInfoResponse {
@@ -118,15 +118,16 @@ async fn handle_use_rc_block(
     state: AppState,
     account: AccountId32,
     params: StakingInfoQueryParams,
-) -> Result<Response, StakingInfoError> {
+) -> Result<Response, AccountsError> {
     // Validate Asset Hub
     if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(StakingInfoError::UseRcBlockNotSupported);
+        return Err(AccountsError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(StakingInfoError::RelayChainNotConfigured);
-    }
+    let rc_rpc_client = state.get_relay_chain_rpc_client()
+        .ok_or(AccountsError::RelayChainNotConfigured)?;
+    let rc_rpc = state.get_relay_chain_rpc()
+        .ok_or(AccountsError::RelayChainNotConfigured)?;
 
     // Resolve RC block
     let rc_block_id = params
@@ -134,8 +135,8 @@ async fn handle_use_rc_block(
         .unwrap_or_else(|| "head".to_string())
         .parse::<utils::BlockId>()?;
     let rc_resolved = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().unwrap(),
-        state.get_relay_chain_rpc().unwrap(),
+        rc_rpc_client,
+        rc_rpc,
         Some(rc_block_id),
     )
     .await?;

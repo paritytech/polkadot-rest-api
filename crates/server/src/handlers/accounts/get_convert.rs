@@ -1,4 +1,4 @@
-use super::types::{AccountConvertError, AccountConvertQueryParams, AccountConvertResponse};
+use super::types::{AccountsError, AccountConvertQueryParams, AccountConvertResponse};
 use axum::{
     Json,
     extract::{Path, Query},
@@ -24,26 +24,26 @@ use sp_core::crypto::{AccountId32, Ss58AddressFormat, Ss58Codec};
 pub async fn get_convert(
     Path(account_id): Path<String>,
     Query(params): Query<AccountConvertQueryParams>,
-) -> Result<Response, AccountConvertError> {
+) -> Result<Response, AccountsError> {
     // Validate scheme
     let scheme = params.scheme.to_lowercase();
     if scheme != "ed25519" && scheme != "sr25519" && scheme != "ecdsa" {
-        return Err(AccountConvertError::InvalidScheme);
+        return Err(AccountsError::InvalidScheme);
     }
 
     // Validate that account_id is valid hex
     let account_id_clean = account_id.trim_start_matches("0x");
     if !is_valid_hex(account_id_clean) {
-        return Err(AccountConvertError::InvalidHexAccountId);
+        return Err(AccountsError::InvalidHexAccountId);
     }
 
     // Get the network name for this prefix
     let network = get_network_name(params.prefix)
-        .ok_or(AccountConvertError::InvalidPrefix)?;
+        .ok_or(AccountsError::InvalidPrefix)?;
 
     // Decode the hex to bytes
     let account_bytes = hex::decode(account_id_clean)
-        .map_err(|_| AccountConvertError::InvalidHexAccountId)?;
+        .map_err(|_| AccountsError::InvalidHexAccountId)?;
 
     // For ecdsa with public key > 32 bytes, we need to hash it first
     let final_bytes = if params.public_key && scheme == "ecdsa" && account_bytes.len() > 32 {
@@ -55,7 +55,7 @@ pub async fn get_convert(
 
     // Convert to AccountId32 (requires exactly 32 bytes)
     if final_bytes.len() != 32 {
-        return Err(AccountConvertError::EncodingFailed(format!(
+        return Err(AccountsError::EncodingFailed(format!(
             "Expected 32 bytes, got {}",
             final_bytes.len()
         )));

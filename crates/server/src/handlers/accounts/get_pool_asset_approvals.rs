@@ -1,5 +1,5 @@
 use super::types::{
-    BlockInfo, DecodedPoolAssetApproval, PoolAssetApprovalError, PoolAssetApprovalQueryParams,
+    BlockInfo, DecodedPoolAssetApproval, AccountsError, PoolAssetApprovalQueryParams,
     PoolAssetApprovalResponse,
 };
 use super::utils::validate_and_parse_address;
@@ -33,12 +33,11 @@ pub async fn get_pool_asset_approvals(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
     Query(params): Query<PoolAssetApprovalQueryParams>,
-) -> Result<Response, PoolAssetApprovalError> {
-    let account = validate_and_parse_address(&account_id)
-        .map_err(|_| PoolAssetApprovalError::InvalidAddress(account_id.clone()))?;
+) -> Result<Response, AccountsError> {
+    let account = validate_and_parse_address(&account_id)?;
 
     let delegate = validate_and_parse_address(&params.delegate)
-        .map_err(|_| PoolAssetApprovalError::InvalidDelegateAddress(params.delegate.clone()))?;
+        .map_err(|_| AccountsError::InvalidDelegateAddress(params.delegate.clone()))?;
 
     if params.use_rc_block {
         return handle_use_rc_block(state, account, delegate, params).await;
@@ -70,7 +69,7 @@ async fn query_pool_asset_approval(
     delegate: &AccountId32,
     asset_id: u32,
     block: &utils::ResolvedBlock,
-) -> Result<PoolAssetApprovalResponse, PoolAssetApprovalError> {
+) -> Result<PoolAssetApprovalResponse, AccountsError> {
     let client_at_block = state.client.at(block.number).await?;
 
     let approvals_exists = client_at_block
@@ -79,7 +78,7 @@ async fn query_pool_asset_approval(
         .is_ok();
 
     if !approvals_exists {
-        return Err(PoolAssetApprovalError::PoolAssetsPalletNotAvailable);
+        return Err(AccountsError::PalletNotAvailable("PoolAssets".to_string()));
     }
 
     let storage_entry = client_at_block
@@ -127,10 +126,10 @@ async fn query_pool_asset_approval(
 /// Decode pool asset approval from storage value
 async fn decode_pool_asset_approval(
     value: &subxt_historic::storage::StorageValue<'_>,
-) -> Result<Option<DecodedPoolAssetApproval>, PoolAssetApprovalError> {
+) -> Result<Option<DecodedPoolAssetApproval>, AccountsError> {
     // Decode as scale_value::Value to inspect structure
     let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        PoolAssetApprovalError::DecodeFailed(parity_scale_codec::Error::from(
+        AccountsError::DecodeFailed(parity_scale_codec::Error::from(
             "Failed to decode storage value",
         ))
     })?;
@@ -174,7 +173,7 @@ async fn decode_pool_asset_approval(
 /// Decode approval from a composite structure
 fn decode_approval_composite(
     composite: &Composite<()>,
-) -> Result<Option<DecodedPoolAssetApproval>, PoolAssetApprovalError> {
+) -> Result<Option<DecodedPoolAssetApproval>, AccountsError> {
     match composite {
         Composite::Named(fields) => {
             // Extract amount and deposit fields
@@ -215,15 +214,16 @@ async fn handle_use_rc_block(
     account: AccountId32,
     delegate: AccountId32,
     params: PoolAssetApprovalQueryParams,
-) -> Result<Response, PoolAssetApprovalError> {
+) -> Result<Response, AccountsError> {
     // Validate Asset Hub
     if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(PoolAssetApprovalError::UseRcBlockNotSupported);
+        return Err(AccountsError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(PoolAssetApprovalError::RelayChainNotConfigured);
-    }
+    let rc_rpc_client = state.get_relay_chain_rpc_client()
+        .ok_or(AccountsError::RelayChainNotConfigured)?;
+    let rc_rpc = state.get_relay_chain_rpc()
+        .ok_or(AccountsError::RelayChainNotConfigured)?;
 
     // Resolve RC block
     let rc_block_id = params
@@ -231,8 +231,8 @@ async fn handle_use_rc_block(
         .unwrap_or_else(|| "head".to_string())
         .parse::<utils::BlockId>()?;
     let rc_resolved = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().unwrap(),
-        state.get_relay_chain_rpc().unwrap(),
+        rc_rpc_client,
+        rc_rpc,
         Some(rc_block_id),
     )
     .await?;

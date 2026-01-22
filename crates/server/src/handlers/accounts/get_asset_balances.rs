@@ -1,6 +1,6 @@
 
 use super::types::{
-    AssetBalancesError, AssetBalancesQueryParams, AssetBalancesResponse, BlockInfo,
+    AccountsError, AssetBalancesQueryParams, AssetBalancesResponse, BlockInfo,
 };
 use super::utils::{validate_and_parse_address};
 use crate::handlers::accounts::utils::{fetch_timestamp, query_all_assets_id, query_assets};
@@ -31,7 +31,7 @@ pub async fn get_asset_balances(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
     Query(params): Query<AssetBalancesQueryParams>,
-) -> Result<Response, AssetBalancesError> {
+) -> Result<Response, AccountsError> {
 
     let account = validate_and_parse_address(&account_id)?;
 
@@ -60,13 +60,13 @@ async fn query_asset_balances(
     account: &AccountId32,
     block: &utils::ResolvedBlock,
     asset_ids: &[u32],
-) -> Result<AssetBalancesResponse, AssetBalancesError> {
+) -> Result<AssetBalancesResponse, AccountsError> {
     let client_at_block = state.client.at(block.number).await?;
 
     let assets_exists = client_at_block.storage().entry("Assets", "Account").is_ok();
 
     if !assets_exists {
-        return Err(AssetBalancesError::AssetsPalletNotAvailable);
+        return Err(AccountsError::PalletNotAvailable("Assets".to_string()));
     }
 
     // Determine which assets to query
@@ -75,8 +75,9 @@ async fn query_asset_balances(
         let assets = query_all_assets_id(&state, block.number).await;
         match assets {
             Ok(ids) => ids,
-            Err(_e) => {
-                return Err(AssetBalancesError::AssetsPalletNotAvailable);
+            Err(e) => {
+                tracing::warn!("Failed to query all asset IDs: {e}");
+                return Err(AccountsError::PalletNotAvailable("Assets".to_string()));
             }
         }
     } else {
@@ -84,12 +85,7 @@ async fn query_asset_balances(
     };
 
     // Query each asset balance in parallel
-    let balances = query_assets(&state, block.number, account, &assets_to_query).await?;
-    // Collect successful results
-    let mut assets = Vec::new();
-    for balance in balances {
-        assets.push(balance);
-    }
+    let assets = query_assets(&state, block.number, account, &assets_to_query).await?;
 
     Ok(AssetBalancesResponse {
         at: BlockInfo {
@@ -112,15 +108,16 @@ async fn handle_use_rc_block(
     state: AppState,
     account: AccountId32,
     params: AssetBalancesQueryParams,
-) -> Result<Response, AssetBalancesError> {
+) -> Result<Response, AccountsError> {
     // Validate Asset Hub
     if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(AssetBalancesError::UseRcBlockNotSupported);
+        return Err(AccountsError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(AssetBalancesError::RelayChainNotConfigured);
-    }
+    let rc_rpc_client = state.get_relay_chain_rpc_client()
+        .ok_or(AccountsError::RelayChainNotConfigured)?;
+    let rc_rpc = state.get_relay_chain_rpc()
+        .ok_or(AccountsError::RelayChainNotConfigured)?;
 
     // Resolve RC block
     let rc_block_id = params
@@ -128,8 +125,8 @@ async fn handle_use_rc_block(
         .unwrap_or_else(|| "head".to_string())
         .parse::<utils::BlockId>()?;
     let rc_resolved = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().unwrap(),
-        state.get_relay_chain_rpc().unwrap(),
+        rc_rpc_client,
+        rc_rpc,
         Some(rc_block_id),
     )
     .await?;

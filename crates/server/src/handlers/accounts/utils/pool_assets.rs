@@ -5,7 +5,7 @@
 use crate::{
     handlers::accounts::{
         utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field},
-        PoolAssetBalance, PoolAssetBalancesError,
+        PoolAssetBalance, AccountsError,
     },
     state::AppState,
 };
@@ -53,7 +53,7 @@ pub async fn query_pool_assets(
     block_number: u64,
     account: &AccountId32,
     assets: &[u32],
-) -> Result<Vec<PoolAssetBalance>, PoolAssetBalancesError> {
+) -> Result<Vec<PoolAssetBalance>, AccountsError> {
     let client_at_block = state.client.at(block_number).await?;
     let storage_entry = client_at_block.storage().entry("PoolAssets", "Account")?;
 
@@ -99,10 +99,10 @@ pub struct DecodedPoolAssetBalance {
 /// Decode pool asset balance from storage value, handling multiple runtime versions
 pub async fn decode_pool_asset_balance(
     value: &StorageValue<'_>,
-) -> Result<Option<DecodedPoolAssetBalance>, PoolAssetBalancesError> {
+) -> Result<Option<DecodedPoolAssetBalance>, AccountsError> {
     // Decode as scale_value::Value to inspect structure
     let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        PoolAssetBalancesError::DecodeFailed(parity_scale_codec::Error::from(
+        AccountsError::DecodeFailed(parity_scale_codec::Error::from(
             "Failed to decode storage value",
         ))
     })?;
@@ -155,7 +155,7 @@ pub async fn decode_pool_asset_balance(
 /// Decode pool balance from a composite structure
 fn decode_pool_balance_composite(
     composite: &Composite<()>,
-) -> Result<Option<DecodedPoolAssetBalance>, PoolAssetBalancesError> {
+) -> Result<Option<DecodedPoolAssetBalance>, AccountsError> {
     match composite {
         Composite::Named(fields) => {
             // Extract fields by name

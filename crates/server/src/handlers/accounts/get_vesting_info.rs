@@ -1,4 +1,4 @@
-use super::types::{BlockInfo, VestingInfoError, VestingInfoQueryParams, VestingInfoResponse, VestingSchedule};
+use super::types::{BlockInfo, AccountsError, VestingInfoQueryParams, VestingInfoResponse, VestingSchedule};
 use super::utils::validate_and_parse_address;
 use crate::handlers::accounts::utils::fetch_timestamp;
 use crate::handlers::common::accounts::{query_vesting_info as query_vesting_info_shared, RawVestingInfo};
@@ -29,9 +29,8 @@ pub async fn get_vesting_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
     Query(params): Query<VestingInfoQueryParams>,
-) -> Result<Response, VestingInfoError> {
-    let account = validate_and_parse_address(&account_id)
-        .map_err(|_| VestingInfoError::InvalidAddress(account_id.clone()))?;
+) -> Result<Response, AccountsError> {
+    let account = validate_and_parse_address(&account_id)?;
 
     if params.use_rc_block {
         return handle_use_rc_block(state, account, params).await;
@@ -49,14 +48,7 @@ pub async fn get_vesting_info(
         account, resolved_block.number
     );
 
-    let raw_info = query_vesting_info_shared(
-        &state.client,
-        &account,
-        &resolved_block,
-        params.include_claimable,
-        None,
-    )
-    .await?;
+    let raw_info = query_vesting_info_shared(&state.client, &account, &resolved_block).await?;
 
     let response = format_response(&raw_info, None, None, None);
 
@@ -80,7 +72,6 @@ fn format_response(
             locked: s.locked.clone(),
             per_block: s.per_block.clone(),
             starting_block: s.starting_block.clone(),
-            vested: s.vested.clone(),
         })
         .collect();
 
@@ -90,11 +81,6 @@ fn format_response(
             height: raw.block.number.to_string(),
         },
         vesting: schedules,
-        vested_balance: raw.vested_balance.clone(),
-        vesting_total: raw.vesting_total.clone(),
-        vested_claimable: raw.vested_claimable.clone(),
-        block_number_for_calculation: raw.block_number_for_calculation.clone(),
-        block_number_source: raw.block_number_source.clone(),
         rc_block_hash,
         rc_block_number,
         ah_timestamp,
@@ -109,15 +95,16 @@ async fn handle_use_rc_block(
     state: AppState,
     account: AccountId32,
     params: VestingInfoQueryParams,
-) -> Result<Response, VestingInfoError> {
+) -> Result<Response, AccountsError> {
     // Validate Asset Hub
     if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(VestingInfoError::UseRcBlockNotSupported);
+        return Err(AccountsError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(VestingInfoError::RelayChainNotConfigured);
-    }
+    let rc_rpc_client = state.get_relay_chain_rpc_client()
+        .ok_or(AccountsError::RelayChainNotConfigured)?;
+    let rc_rpc = state.get_relay_chain_rpc()
+        .ok_or(AccountsError::RelayChainNotConfigured)?;
 
     // Resolve RC block
     let rc_block_id = params
@@ -126,8 +113,8 @@ async fn handle_use_rc_block(
         .unwrap_or_else(|| "head".to_string())
         .parse::<utils::BlockId>()?;
     let rc_resolved = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().unwrap(),
-        state.get_relay_chain_rpc().unwrap(),
+        rc_rpc_client,
+        rc_rpc,
         Some(rc_block_id),
     )
     .await?;
@@ -150,15 +137,7 @@ async fn handle_use_rc_block(
             number: ah_block.number,
         };
 
-        // When using RC block, pass the RC block number for vesting calculations
-        let raw_info = query_vesting_info_shared(
-            &state.client,
-            &account,
-            &ah_resolved,
-            params.include_claimable,
-            Some(rc_resolved.number),
-        )
-        .await?;
+        let raw_info = query_vesting_info_shared(&state.client, &account, &ah_resolved).await?;
 
         // Fetch AH timestamp
         let ah_timestamp = fetch_timestamp(&state, ah_block.number).await.ok();

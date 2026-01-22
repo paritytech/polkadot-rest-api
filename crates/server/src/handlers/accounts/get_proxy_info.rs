@@ -1,4 +1,4 @@
-use super::types::{BlockInfo, ProxyDefinition, ProxyInfoError, ProxyInfoQueryParams, ProxyInfoResponse};
+use super::types::{BlockInfo, ProxyDefinition, AccountsError, ProxyInfoQueryParams, ProxyInfoResponse};
 use super::utils::validate_and_parse_address;
 use crate::handlers::accounts::utils::fetch_timestamp;
 use crate::handlers::common::accounts::{query_proxy_info as query_proxy_info_shared, RawProxyInfo};
@@ -28,9 +28,8 @@ pub async fn get_proxy_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
     Query(params): Query<ProxyInfoQueryParams>,
-) -> Result<Response, ProxyInfoError> {
-    let account = validate_and_parse_address(&account_id)
-        .map_err(|_| ProxyInfoError::InvalidAddress(account_id.clone()))?;
+) -> Result<Response, AccountsError> {
+    let account = validate_and_parse_address(&account_id)?;
 
     if params.use_rc_block {
         return handle_use_rc_block(state, account, params).await;
@@ -92,15 +91,16 @@ async fn handle_use_rc_block(
     state: AppState,
     account: AccountId32,
     params: ProxyInfoQueryParams,
-) -> Result<Response, ProxyInfoError> {
+) -> Result<Response, AccountsError> {
     // Validate Asset Hub
     if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(ProxyInfoError::UseRcBlockNotSupported);
+        return Err(AccountsError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(ProxyInfoError::RelayChainNotConfigured);
-    }
+    let rc_rpc_client = state.get_relay_chain_rpc_client()
+        .ok_or(AccountsError::RelayChainNotConfigured)?;
+    let rc_rpc = state.get_relay_chain_rpc()
+        .ok_or(AccountsError::RelayChainNotConfigured)?;
 
     // Resolve RC block
     let rc_block_id = params
@@ -108,8 +108,8 @@ async fn handle_use_rc_block(
         .unwrap_or_else(|| "head".to_string())
         .parse::<utils::BlockId>()?;
     let rc_resolved = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().unwrap(),
-        state.get_relay_chain_rpc().unwrap(),
+        rc_rpc_client,
+        rc_rpc,
         Some(rc_block_id),
     )
     .await?;

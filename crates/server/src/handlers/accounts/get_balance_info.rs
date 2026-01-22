@@ -1,4 +1,4 @@
-use super::types::{BalanceInfoError, BalanceInfoQueryParams, BalanceInfoResponse, BalanceLock, BlockInfo};
+use super::types::{AccountsError, BalanceInfoQueryParams, BalanceInfoResponse, BalanceLock, BlockInfo};
 use super::utils::{fetch_timestamp, validate_and_parse_address};
 use crate::handlers::common::accounts::{
     format_balance, format_frozen_fields, format_locks, format_transferable,
@@ -31,9 +31,8 @@ pub async fn get_balance_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
     Query(params): Query<BalanceInfoQueryParams>,
-) -> Result<Response, BalanceInfoError> {
-    let account = validate_and_parse_address(&account_id)
-        .map_err(|_| BalanceInfoError::InvalidAddress(account_id.clone()))?;
+) -> Result<Response, AccountsError> {
+    let account = validate_and_parse_address(&account_id)?;
 
     if params.use_rc_block {
         return handle_use_rc_block(state, account, params).await;
@@ -116,15 +115,16 @@ async fn handle_use_rc_block(
     state: AppState,
     account: sp_core::crypto::AccountId32,
     params: BalanceInfoQueryParams,
-) -> Result<Response, BalanceInfoError> {
+) -> Result<Response, AccountsError> {
     // Validate Asset Hub
     if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(BalanceInfoError::UseRcBlockNotSupported);
+        return Err(AccountsError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(BalanceInfoError::RelayChainNotConfigured);
-    }
+    let rc_rpc_client = state.get_relay_chain_rpc_client()
+        .ok_or(AccountsError::RelayChainNotConfigured)?;
+    let rc_rpc = state.get_relay_chain_rpc()
+        .ok_or(AccountsError::RelayChainNotConfigured)?;
 
     // Resolve RC block
     let rc_block_id = params
@@ -133,8 +133,8 @@ async fn handle_use_rc_block(
         .unwrap_or_else(|| "head".to_string())
         .parse::<utils::BlockId>()?;
     let rc_resolved = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().unwrap(),
-        state.get_relay_chain_rpc().unwrap(),
+        rc_rpc_client,
+        rc_rpc,
         Some(rc_block_id),
     )
     .await?;

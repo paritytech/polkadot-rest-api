@@ -1,5 +1,6 @@
 //! Types for account-related handlers.
 
+use super::utils::AddressValidationError;
 use crate::handlers::common::accounts::StakingPayoutsQueryError;
 use crate::utils::{self, RcBlockError};
 use axum::{http::StatusCode, response::IntoResponse, Json};
@@ -9,6 +10,40 @@ use subxt_historic::error::{OnlineClientAtBlockError, StorageError};
 use thiserror::Error;
 
 // ================================================================================================
+// Error Response Helpers
+// ================================================================================================
+
+/// Creates a JSON error response with the given status code and message.
+fn error_response(status: StatusCode, message: String) -> axum::response::Response {
+    let body = Json(json!({ "error": message }));
+    (status, body).into_response()
+}
+
+/// Macro to implement IntoResponse for error types with status code mapping.
+///
+/// Usage:
+/// ```ignore
+/// impl_error_response!(MyError,
+///     InvalidBlockParam(_) => BAD_REQUEST,
+///     InvalidAddress(_) => BAD_REQUEST,
+///     BlockResolveFailed(_) => NOT_FOUND,
+///     _ => INTERNAL_SERVER_ERROR
+/// );
+/// ```
+macro_rules! impl_error_response {
+    ($error_type:ty, $($variant:pat => $status:ident),+ $(,)?) => {
+        impl IntoResponse for $error_type {
+            fn into_response(self) -> axum::response::Response {
+                let status = match &self {
+                    $($variant => StatusCode::$status,)+
+                };
+                error_response(status, self.to_string())
+            }
+        }
+    };
+}
+
+// ================================================================================================
 // Query Parameters
 // ================================================================================================
 
@@ -16,11 +51,11 @@ use thiserror::Error;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetBalancesQueryParams {
-    /// Block identifier (hash or height) - defaults to latest finalized
+    /// Optional Block identifier (hash or height) - defaults to latest finalized
     #[serde(default)]
     pub at: Option<String>,
 
-    /// When true, treat 'at' as relay chain block identifier
+    /// Optional When true, treat 'at' as relay chain block identifier
     #[serde(default)]
     pub use_rc_block: bool,
 
@@ -129,11 +164,12 @@ pub struct DecodedAssetApproval {
 }
 
 // ================================================================================================
-// Error Types
+// Unified Accounts Error Type
 // ================================================================================================
 
 #[derive(Debug, Error)]
-pub enum AssetBalancesError {
+pub enum AccountsError {
+    // ---- Common errors ----
     #[error("Invalid block parameter: {0}")]
     InvalidBlockParam(#[from] utils::BlockIdParseError),
 
@@ -141,78 +177,13 @@ pub enum AssetBalancesError {
     BlockResolveFailed(#[from] utils::BlockResolveError),
 
     #[error("Invalid account address: {0}")]
-    InvalidAddress(String),
-
-    #[error("The runtime does not include the assets pallet at this block")]
-    AssetsPalletNotAvailable,
-
-    #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] StorageError),
-
-    #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
-
-    #[error("useRcBlock is only supported on Asset Hub chains")]
-    UseRcBlockNotSupported,
-
-    #[error("Relay chain not configured for this Asset Hub")]
-    RelayChainNotConfigured,
-
-    #[error("Relay chain block mapping failed: {0}")]
-    RcBlockMappingFailed(#[from] RcBlockError),
-
-    #[error("Failed to decode storage value: {0}")]
-    DecodeFailed(#[from] parity_scale_codec::Error),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
-}
-
-impl IntoResponse for AssetBalancesError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            AssetBalancesError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            AssetBalancesError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            AssetBalancesError::AssetsPalletNotAvailable => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            AssetBalancesError::UseRcBlockNotSupported => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            AssetBalancesError::RelayChainNotConfigured => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            AssetBalancesError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-        };
-
-        let body = Json(json!({
-            "error": message
-        }));
-        (status, body).into_response()
-    }
-}
-
-// ================================================================================================
-// Asset Approval Error Types
-// ================================================================================================
-
-#[derive(Debug, Error)]
-pub enum AssetApprovalError {
-    #[error("Invalid block parameter: {0}")]
-    InvalidBlockParam(#[from] utils::BlockIdParseError),
-
-    #[error("Block resolution failed: {0}")]
-    BlockResolveFailed(#[from] utils::BlockResolveError),
-
-    #[error("Invalid account address: {0}")]
-    InvalidAddress(String),
+    InvalidAddress(#[from] AddressValidationError),
 
     #[error("Invalid delegate address: {0}")]
     InvalidDelegateAddress(String),
 
-    #[error("The runtime does not include the assets pallet at this block")]
-    AssetsPalletNotAvailable,
+    #[error("The runtime does not include the {0} pallet at this block")]
+    PalletNotAvailable(String),
 
     #[error("Failed to query storage: {0}")]
     StorageQueryFailed(#[from] StorageError),
@@ -220,49 +191,122 @@ pub enum AssetApprovalError {
     #[error("Failed to get client at block: {0}")]
     ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
 
+    #[error("Failed to decode storage value: {0}")]
+    DecodeFailed(#[from] parity_scale_codec::Error),
+
+    #[error("Failed to fetch storage entry")]
+    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+
+    // ---- Relay chain errors ----
     #[error("useRcBlock is only supported on Asset Hub chains")]
     UseRcBlockNotSupported,
 
     #[error("Relay chain not configured for this Asset Hub")]
     RelayChainNotConfigured,
 
+    #[error("Relay chain not available. This endpoint requires a relay chain connection.")]
+    RelayChainNotAvailable,
+
     #[error("Relay chain block mapping failed: {0}")]
     RcBlockMappingFailed(#[from] RcBlockError),
 
-    #[error("Failed to decode storage value: {0}")]
-    DecodeFailed(#[from] parity_scale_codec::Error),
+    // ---- Balance-specific errors ----
+    #[error("Invalid use of denominated parameter: this chain doesn't have valid decimals")]
+    InvalidDenominatedParam,
 
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+    #[error("Invalid token: {0}")]
+    InvalidToken(String),
+
+    #[error("Balance query failed: {0}")]
+    BalanceQueryFailed(#[from] crate::handlers::common::accounts::BalanceQueryError),
+
+    // ---- Proxy-specific errors ----
+    #[error("Proxy query failed: {0}")]
+    ProxyQueryFailed(#[from] crate::handlers::common::accounts::ProxyQueryError),
+
+    // ---- Staking-specific errors ----
+    #[error("Staking query failed: {0}")]
+    StakingQueryFailed(#[from] crate::handlers::common::accounts::StakingQueryError),
+
+    #[error("Staking payouts query failed: {0}")]
+    StakingPayoutsQueryFailed(StakingPayoutsQueryError),
+
+    #[error("Invalid era: requested era {0} is beyond history depth")]
+    InvalidEra(u32),
+
+    #[error("Depth must be greater than 0 and less than history depth")]
+    InvalidDepth,
+
+    #[error("No active era found")]
+    NoActiveEra,
+
+    #[error("The address is not a stash account")]
+    NotAStashAccount,
+
+    // ---- Vesting-specific errors ----
+    #[error("Vesting query failed: {0}")]
+    VestingQueryFailed(#[from] crate::handlers::common::accounts::VestingQueryError),
+
+    // ---- Account convert errors ----
+    #[error("The `accountId` parameter provided is not a valid hex value")]
+    InvalidHexAccountId,
+
+    #[error("The given `prefix` query parameter does not correspond to an existing network")]
+    InvalidPrefix,
+
+    #[error("The `scheme` query parameter provided can be one of the following three values: [ed25519, sr25519, ecdsa]")]
+    InvalidScheme,
+
+    #[error("Failed to encode address: {0}")]
+    EncodingFailed(String),
+
+    // ---- Account compare errors ----
+    #[error("Please limit the amount of address parameters to 30")]
+    TooManyAddresses,
+
+    #[error("At least one address is required")]
+    NoAddresses,
+
+    // ---- Generic internal error ----
+    #[error("Internal error: {0}")]
+    InternalError(String),
 }
 
-impl IntoResponse for AssetApprovalError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            AssetApprovalError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            AssetApprovalError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            AssetApprovalError::InvalidDelegateAddress(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
+impl From<StakingPayoutsQueryError> for AccountsError {
+    fn from(err: StakingPayoutsQueryError) -> Self {
+        match err {
+            StakingPayoutsQueryError::StakingPalletNotAvailable => {
+                AccountsError::PalletNotAvailable("Staking".to_string())
             }
-            AssetApprovalError::AssetsPalletNotAvailable => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            AssetApprovalError::UseRcBlockNotSupported => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            AssetApprovalError::RelayChainNotConfigured => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            AssetApprovalError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-        };
-
-        let body = Json(json!({
-            "error": message
-        }));
-        (status, body).into_response()
+            StakingPayoutsQueryError::NoActiveEra => AccountsError::NoActiveEra,
+            StakingPayoutsQueryError::InvalidEra(era) => AccountsError::InvalidEra(era),
+            StakingPayoutsQueryError::InvalidDepth => AccountsError::InvalidDepth,
+            other => AccountsError::StakingPayoutsQueryFailed(other),
+        }
     }
 }
+
+impl_error_response!(AccountsError,
+    AccountsError::InvalidBlockParam(_) => BAD_REQUEST,
+    AccountsError::InvalidAddress(_) => BAD_REQUEST,
+    AccountsError::InvalidDelegateAddress(_) => BAD_REQUEST,
+    AccountsError::PalletNotAvailable(_) => BAD_REQUEST,
+    AccountsError::UseRcBlockNotSupported => BAD_REQUEST,
+    AccountsError::RelayChainNotAvailable => BAD_REQUEST,
+    AccountsError::BlockResolveFailed(_) => NOT_FOUND,
+    AccountsError::InvalidDenominatedParam => BAD_REQUEST,
+    AccountsError::InvalidToken(_) => BAD_REQUEST,
+    AccountsError::InvalidEra(_) => BAD_REQUEST,
+    AccountsError::InvalidDepth => BAD_REQUEST,
+    AccountsError::NoActiveEra => BAD_REQUEST,
+    AccountsError::NotAStashAccount => BAD_REQUEST,
+    AccountsError::InvalidHexAccountId => BAD_REQUEST,
+    AccountsError::InvalidPrefix => BAD_REQUEST,
+    AccountsError::InvalidScheme => BAD_REQUEST,
+    AccountsError::TooManyAddresses => BAD_REQUEST,
+    AccountsError::NoAddresses => BAD_REQUEST,
+    _ => INTERNAL_SERVER_ERROR
+);
 
 // ================================================================================================
 // Balance Info Types
@@ -366,83 +410,6 @@ pub struct DecodedBalanceLock {
     pub reasons: String,
 }
 
-// ================================================================================================
-// Balance Info Error Types
-// ================================================================================================
-
-#[derive(Debug, Error)]
-pub enum BalanceInfoError {
-    #[error("Invalid block parameter: {0}")]
-    InvalidBlockParam(#[from] utils::BlockIdParseError),
-
-    #[error("Block resolution failed: {0}")]
-    BlockResolveFailed(#[from] utils::BlockResolveError),
-
-    #[error("Invalid account address: {0}")]
-    InvalidAddress(String),
-
-    #[error("The runtime does not include the balances pallet at this block")]
-    BalancesPalletNotAvailable,
-
-    #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] StorageError),
-
-    #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
-
-    #[error("useRcBlock is only supported on Asset Hub chains")]
-    UseRcBlockNotSupported,
-
-    #[error("Relay chain not configured for this Asset Hub")]
-    RelayChainNotConfigured,
-
-    #[error("Relay chain block mapping failed: {0}")]
-    RcBlockMappingFailed(#[from] RcBlockError),
-
-    #[error("Failed to decode storage value: {0}")]
-    DecodeFailed(#[from] parity_scale_codec::Error),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
-
-    #[error("Invalid use of denominated parameter: this chain doesn't have valid decimals")]
-    InvalidDenominatedParam,
-
-    #[error("Invalid token: {0}")]
-    InvalidToken(String),
-
-    #[error("Balance query failed: {0}")]
-    BalanceQueryFailed(#[from] crate::handlers::common::accounts::BalanceQueryError),
-}
-
-impl IntoResponse for BalanceInfoError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            BalanceInfoError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            BalanceInfoError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            BalanceInfoError::BalancesPalletNotAvailable => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            BalanceInfoError::UseRcBlockNotSupported => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            BalanceInfoError::RelayChainNotConfigured => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            BalanceInfoError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            BalanceInfoError::InvalidDenominatedParam => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            BalanceInfoError::InvalidToken(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-        };
-
-        let body = Json(json!({
-            "error": message
-        }));
-        (status, body).into_response()
-    }
-}
 
 // ================================================================================================
 // Pool Asset Balances Types
@@ -492,76 +459,6 @@ pub struct PoolAssetBalance {
     pub is_sufficient: bool,
 }
 
-// ================================================================================================
-// Pool Asset Balances Error Types
-// ================================================================================================
-
-#[derive(Debug, Error)]
-pub enum PoolAssetBalancesError {
-    #[error("Invalid block parameter: {0}")]
-    InvalidBlockParam(#[from] utils::BlockIdParseError),
-
-    #[error("Block resolution failed: {0}")]
-    BlockResolveFailed(#[from] utils::BlockResolveError),
-
-    #[error("Invalid account address: {0}")]
-    InvalidAddress(String),
-
-    #[error("The runtime does not include the pool assets pallet at this block")]
-    PoolAssetsPalletNotAvailable,
-
-    #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] StorageError),
-
-    #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
-
-    #[error("useRcBlock is only supported on Asset Hub chains")]
-    UseRcBlockNotSupported,
-
-    #[error("Relay chain not configured for this Asset Hub")]
-    RelayChainNotConfigured,
-
-    #[error("Relay chain block mapping failed: {0}")]
-    RcBlockMappingFailed(#[from] RcBlockError),
-
-    #[error("Failed to decode storage value: {0}")]
-    DecodeFailed(#[from] parity_scale_codec::Error),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
-}
-
-impl IntoResponse for PoolAssetBalancesError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            PoolAssetBalancesError::InvalidBlockParam(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            PoolAssetBalancesError::InvalidAddress(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            PoolAssetBalancesError::PoolAssetsPalletNotAvailable => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            PoolAssetBalancesError::UseRcBlockNotSupported => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            PoolAssetBalancesError::RelayChainNotConfigured => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            PoolAssetBalancesError::BlockResolveFailed(_) => {
-                (StatusCode::NOT_FOUND, self.to_string())
-            }
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-        };
-
-        let body = Json(json!({
-            "error": message
-        }));
-        (status, body).into_response()
-    }
-}
 
 // ================================================================================================
 // Pool Asset Approvals Types
@@ -614,82 +511,6 @@ pub struct DecodedPoolAssetApproval {
     pub deposit: u128,
 }
 
-// ================================================================================================
-// Pool Asset Approval Error Types
-// ================================================================================================
-
-#[derive(Debug, Error)]
-pub enum PoolAssetApprovalError {
-    #[error("Invalid block parameter: {0}")]
-    InvalidBlockParam(#[from] utils::BlockIdParseError),
-
-    #[error("Block resolution failed: {0}")]
-    BlockResolveFailed(#[from] utils::BlockResolveError),
-
-    #[error("Invalid account address: {0}")]
-    InvalidAddress(String),
-
-    #[error("Invalid delegate address: {0}")]
-    InvalidDelegateAddress(String),
-
-    #[error("The runtime does not include the pool assets pallet at this block")]
-    PoolAssetsPalletNotAvailable,
-
-    #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] StorageError),
-
-    #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
-
-    #[error("useRcBlock is only supported on Asset Hub chains")]
-    UseRcBlockNotSupported,
-
-    #[error("Relay chain not configured for this Asset Hub")]
-    RelayChainNotConfigured,
-
-    #[error("Relay chain block mapping failed: {0}")]
-    RcBlockMappingFailed(#[from] RcBlockError),
-
-    #[error("Failed to decode storage value: {0}")]
-    DecodeFailed(#[from] parity_scale_codec::Error),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
-}
-
-impl IntoResponse for PoolAssetApprovalError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            PoolAssetApprovalError::InvalidBlockParam(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            PoolAssetApprovalError::InvalidAddress(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            PoolAssetApprovalError::InvalidDelegateAddress(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            PoolAssetApprovalError::PoolAssetsPalletNotAvailable => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            PoolAssetApprovalError::UseRcBlockNotSupported => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            PoolAssetApprovalError::RelayChainNotConfigured => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            PoolAssetApprovalError::BlockResolveFailed(_) => {
-                (StatusCode::NOT_FOUND, self.to_string())
-            }
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-        };
-
-        let body = Json(json!({
-            "error": message
-        }));
-        (status, body).into_response()
-    }
-}
 
 // ================================================================================================
 // Account Convert Types
@@ -743,42 +564,6 @@ pub struct AccountConvertResponse {
     pub public_key: bool,
 }
 
-// ================================================================================================
-// Account Convert Error Types
-// ================================================================================================
-
-#[derive(Debug, Error)]
-pub enum AccountConvertError {
-    #[error("The `accountId` parameter provided is not a valid hex value")]
-    InvalidHexAccountId,
-
-    #[error("The given `prefix` query parameter does not correspond to an existing network")]
-    InvalidPrefix,
-
-    #[error("The `scheme` query parameter provided can be one of the following three values: [ed25519, sr25519, ecdsa]")]
-    InvalidScheme,
-
-    #[error("Failed to encode address: {0}")]
-    EncodingFailed(String),
-}
-
-impl IntoResponse for AccountConvertError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            AccountConvertError::InvalidHexAccountId => (StatusCode::BAD_REQUEST, self.to_string()),
-            AccountConvertError::InvalidPrefix => (StatusCode::BAD_REQUEST, self.to_string()),
-            AccountConvertError::InvalidScheme => (StatusCode::BAD_REQUEST, self.to_string()),
-            AccountConvertError::EncodingFailed(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-        };
-
-        let body = Json(json!({
-            "error": message
-        }));
-        (status, body).into_response()
-    }
-}
 
 // ================================================================================================
 // Proxy Info Types
@@ -832,58 +617,6 @@ pub struct ProxyDefinition {
     pub delay: String,
 }
 
-// ================================================================================================
-// Proxy Info Error Types
-// ================================================================================================
-
-#[derive(Debug, Error)]
-pub enum ProxyInfoError {
-    #[error("Invalid block parameter: {0}")]
-    InvalidBlockParam(#[from] utils::BlockIdParseError),
-
-    #[error("Block resolution failed: {0}")]
-    BlockResolveFailed(#[from] utils::BlockResolveError),
-
-    #[error("Invalid account address: {0}")]
-    InvalidAddress(String),
-
-    #[error("useRcBlock is only supported on Asset Hub chains")]
-    UseRcBlockNotSupported,
-
-    #[error("Relay chain not configured for this Asset Hub")]
-    RelayChainNotConfigured,
-
-    #[error("Relay chain block mapping failed: {0}")]
-    RcBlockMappingFailed(#[from] RcBlockError),
-
-    #[error("Proxy query failed: {0}")]
-    ProxyQueryFailed(#[from] crate::handlers::common::accounts::ProxyQueryError),
-}
-
-impl IntoResponse for ProxyInfoError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            ProxyInfoError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            ProxyInfoError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            ProxyInfoError::UseRcBlockNotSupported => (StatusCode::BAD_REQUEST, self.to_string()),
-            ProxyInfoError::RelayChainNotConfigured => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            ProxyInfoError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            ProxyInfoError::RcBlockMappingFailed(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            ProxyInfoError::ProxyQueryFailed(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-        };
-
-        let body = Json(json!({
-            "error": message
-        }));
-        (status, body).into_response()
-    }
-}
 
 // ================================================================================================
 // Staking Info Types
@@ -900,6 +633,10 @@ pub struct StakingInfoQueryParams {
     /// When true, treat 'at' as relay chain block identifier
     #[serde(default)]
     pub use_rc_block: bool,
+
+    /// When true, include claimed rewards in the response
+    #[serde(default)]
+    pub include_claimed_rewards: bool,
 }
 
 /// Response for GET /accounts/{accountId}/staking-info
@@ -908,7 +645,7 @@ pub struct StakingInfoQueryParams {
 pub struct StakingInfoResponse {
     pub at: BlockInfo,
 
-    /// Controller address (may be same as stash after controller deprecation)
+    /// Controller address 
     pub controller: String,
 
     /// Reward destination configuration
@@ -970,73 +707,25 @@ pub struct StakingLedger {
     /// Active staked balance
     pub active: String,
 
-    /// Unlocking chunks
-    pub unlocking: Vec<UnlockingChunk>,
+    /// Total amount being unlocked
+    pub unlocking: String,
+
+    /// Claimed rewards per era (only when includeClaimedRewards=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claimed_rewards: Option<Vec<ClaimedReward>>,
 }
 
-/// An unlocking chunk representing funds that are being unbonded
+/// Claimed reward status for a specific era
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UnlockingChunk {
-    /// Amount being unlocked
-    pub value: String,
-
-    /// Era when funds become available
+pub struct ClaimedReward {
+    /// Era index
     pub era: String,
+
+    /// Claim status ("claimed" or "unclaimed")
+    pub status: String,
 }
 
-// ================================================================================================
-// Staking Info Error Types
-// ================================================================================================
-
-#[derive(Debug, Error)]
-pub enum StakingInfoError {
-    #[error("Invalid block parameter: {0}")]
-    InvalidBlockParam(#[from] utils::BlockIdParseError),
-
-    #[error("Block resolution failed: {0}")]
-    BlockResolveFailed(#[from] utils::BlockResolveError),
-
-    #[error("Invalid account address: {0}")]
-    InvalidAddress(String),
-
-    #[error("useRcBlock is only supported on Asset Hub chains")]
-    UseRcBlockNotSupported,
-
-    #[error("Relay chain not configured for this Asset Hub")]
-    RelayChainNotConfigured,
-
-    #[error("Relay chain block mapping failed: {0}")]
-    RcBlockMappingFailed(#[from] RcBlockError),
-
-    #[error("Staking query failed: {0}")]
-    StakingQueryFailed(#[from] crate::handlers::common::accounts::StakingQueryError),
-}
-
-impl IntoResponse for StakingInfoError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            StakingInfoError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            StakingInfoError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            StakingInfoError::UseRcBlockNotSupported => (StatusCode::BAD_REQUEST, self.to_string()),
-            StakingInfoError::RelayChainNotConfigured => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            StakingInfoError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            StakingInfoError::RcBlockMappingFailed(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            StakingInfoError::StakingQueryFailed(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-        };
-
-        let body = Json(json!({
-            "error": message
-        }));
-        (status, body).into_response()
-    }
-}
 
 // ================================================================================================
 // Staking Payouts Types
@@ -1146,85 +835,6 @@ pub struct ValidatorPayout {
     pub nominator_exposure: String,
 }
 
-// ================================================================================================
-// Staking Payouts Error Types
-// ================================================================================================
-
-#[derive(Debug, Error)]
-pub enum StakingPayoutsError {
-    #[error("Invalid block parameter: {0}")]
-    InvalidBlockParam(#[from] utils::BlockIdParseError),
-
-    #[error("Block resolution failed: {0}")]
-    BlockResolveFailed(#[from] utils::BlockResolveError),
-
-    #[error("Invalid account address: {0}")]
-    InvalidAddress(String),
-
-    #[error("The runtime does not include the staking pallet at this block")]
-    StakingPalletNotAvailable,
-
-    #[error("useRcBlock is only supported on Asset Hub chains")]
-    UseRcBlockNotSupported,
-
-    #[error("Relay chain not configured for this Asset Hub")]
-    RelayChainNotConfigured,
-
-    #[error("Relay chain block mapping failed: {0}")]
-    RcBlockMappingFailed(#[from] RcBlockError),
-
-    #[error("Invalid era: requested era {0} is beyond history depth")]
-    InvalidEra(u32),
-
-    #[error("Depth must be greater than 0 and less than history depth")]
-    InvalidDepth,
-
-    #[error("No active era found")]
-    NoActiveEra,
-
-    #[error("Staking payouts query failed: {0}")]
-    StakingPayoutsQueryFailed(StakingPayoutsQueryError),
-}
-
-impl From<StakingPayoutsQueryError> for StakingPayoutsError {
-    fn from(err: StakingPayoutsQueryError) -> Self {
-        match err {
-            StakingPayoutsQueryError::StakingPalletNotAvailable => StakingPayoutsError::StakingPalletNotAvailable,
-            StakingPayoutsQueryError::NoActiveEra => StakingPayoutsError::NoActiveEra,
-            StakingPayoutsQueryError::InvalidEra(era) => StakingPayoutsError::InvalidEra(era),
-            StakingPayoutsQueryError::InvalidDepth => StakingPayoutsError::InvalidDepth,
-            other => StakingPayoutsError::StakingPayoutsQueryFailed(other),
-        }
-    }
-}
-
-impl IntoResponse for StakingPayoutsError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            StakingPayoutsError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            StakingPayoutsError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            StakingPayoutsError::StakingPalletNotAvailable => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            StakingPayoutsError::UseRcBlockNotSupported => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            StakingPayoutsError::RelayChainNotConfigured => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            StakingPayoutsError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            StakingPayoutsError::InvalidEra(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            StakingPayoutsError::InvalidDepth => (StatusCode::BAD_REQUEST, self.to_string()),
-            StakingPayoutsError::NoActiveEra => (StatusCode::BAD_REQUEST, self.to_string()),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-        };
-
-        let body = Json(json!({
-            "error": message
-        }));
-        (status, body).into_response()
-    }
-}
 
 // ================================================================================================
 // Vesting Info Types
@@ -1241,10 +851,6 @@ pub struct VestingInfoQueryParams {
     /// When true, treat 'at' as relay chain block identifier
     #[serde(default)]
     pub use_rc_block: bool,
-
-    /// When true, calculate and include vested amounts
-    #[serde(default)]
-    pub include_claimable: bool,
 }
 
 /// Response for GET /accounts/{accountId}/vesting-info
@@ -1255,26 +861,6 @@ pub struct VestingInfoResponse {
 
     /// Array of vesting schedules (empty array if no vesting)
     pub vesting: Vec<VestingSchedule>,
-
-    /// Total vested across all schedules (only when includeClaimable=true)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vested_balance: Option<String>,
-
-    /// Total locked across all schedules (only when includeClaimable=true)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vesting_total: Option<String>,
-
-    /// Actual claimable amount now (only when includeClaimable=true)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vested_claimable: Option<String>,
-
-    /// Block number used for calculations (only when includeClaimable=true)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub block_number_for_calculation: Option<String>,
-
-    /// Source of block number for calculations: "relay" or "self" (only when includeClaimable=true)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub block_number_source: Option<String>,
 
     // Only present when useRcBlock=true
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1297,64 +883,8 @@ pub struct VestingSchedule {
 
     /// Block when vesting begins
     pub starting_block: String,
-
-    /// Amount vested (only when includeClaimable=true)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vested: Option<String>,
 }
 
-// ================================================================================================
-// Vesting Info Error Types
-// ================================================================================================
-
-#[derive(Debug, Error)]
-pub enum VestingInfoError {
-    #[error("Invalid block parameter: {0}")]
-    InvalidBlockParam(#[from] utils::BlockIdParseError),
-
-    #[error("Block resolution failed: {0}")]
-    BlockResolveFailed(#[from] utils::BlockResolveError),
-
-    #[error("Invalid account address: {0}")]
-    InvalidAddress(String),
-
-    #[error("useRcBlock is only supported on Asset Hub chains")]
-    UseRcBlockNotSupported,
-
-    #[error("Relay chain not configured for this Asset Hub")]
-    RelayChainNotConfigured,
-
-    #[error("Relay chain block mapping failed: {0}")]
-    RcBlockMappingFailed(#[from] RcBlockError),
-
-    #[error("Vesting query failed: {0}")]
-    VestingQueryFailed(#[from] crate::handlers::common::accounts::VestingQueryError),
-}
-
-impl IntoResponse for VestingInfoError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            VestingInfoError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            VestingInfoError::InvalidAddress(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            VestingInfoError::UseRcBlockNotSupported => (StatusCode::BAD_REQUEST, self.to_string()),
-            VestingInfoError::RelayChainNotConfigured => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            VestingInfoError::BlockResolveFailed(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            VestingInfoError::RcBlockMappingFailed(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            VestingInfoError::VestingQueryFailed(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-        };
-
-        let body = Json(json!({
-            "error": message
-        }));
-        (status, body).into_response()
-    }
-}
 
 // ================================================================================================
 // Account Compare Types
@@ -1399,36 +929,19 @@ pub struct AddressDetails {
     pub public_key: Option<String>,
 }
 
-// ================================================================================================
-// Account Compare Error Types
-// ================================================================================================
-
-#[derive(Debug, Error)]
-pub enum AccountCompareError {
-    #[error("Please limit the amount of address parameters to 30")]
-    TooManyAddresses,
-
-    #[error("At least one address is required")]
-    NoAddresses,
-}
-
-impl IntoResponse for AccountCompareError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            AccountCompareError::TooManyAddresses => (StatusCode::BAD_REQUEST, self.to_string()),
-            AccountCompareError::NoAddresses => (StatusCode::BAD_REQUEST, self.to_string()),
-        };
-
-        let body = Json(json!({
-            "error": message
-        }));
-        (status, body).into_response()
-    }
-}
 
 // ================================================================================================
 // Account Validate Types
 // ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/validate endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountValidateQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    #[serde(default)]
+    pub at: Option<String>,
+}
 
 /// Response for GET /accounts/{accountId}/validate
 #[derive(Debug, Serialize)]
@@ -1450,27 +963,3 @@ pub struct AccountValidateResponse {
     pub account_id: Option<String>,
 }
 
-// ================================================================================================
-// Account Validate Error Types
-// ================================================================================================
-
-#[derive(Debug, Error)]
-pub enum AccountValidateError {
-    #[error("Internal error: {0}")]
-    InternalError(String),
-}
-
-impl IntoResponse for AccountValidateError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            AccountValidateError::InternalError(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-        };
-
-        let body = Json(json!({
-            "error": message
-        }));
-        (status, body).into_response()
-    }
-}

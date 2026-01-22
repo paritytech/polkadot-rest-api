@@ -1,5 +1,5 @@
 use super::types::{
-    BlockInfo, EraPayouts, EraPayoutsData, RcStakingPayoutsError, RcStakingPayoutsQueryParams,
+    BlockInfo, EraPayouts, EraPayoutsData, AccountsError, RcStakingPayoutsQueryParams,
     RcStakingPayoutsResponse, ValidatorPayout,
 };
 use crate::handlers::accounts::utils::validate_and_parse_address;
@@ -37,9 +37,8 @@ pub async fn get_staking_payouts(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
     Query(params): Query<RcStakingPayoutsQueryParams>,
-) -> Result<Response, RcStakingPayoutsError> {
-    let account = validate_and_parse_address(&account_id)
-        .map_err(|_| RcStakingPayoutsError::InvalidAddress(account_id.clone()))?;
+) -> Result<Response, AccountsError> {
+    let account = validate_and_parse_address(&account_id)?;
 
     // Get the relay chain client and info
     let (rc_client, rc_rpc_client, rc_rpc) = get_relay_chain_access(&state)?;
@@ -85,7 +84,7 @@ fn get_relay_chain_access(
         &Arc<RpcClient>,
         &Arc<LegacyRpcMethods<SubstrateConfig>>,
     ),
-    RcStakingPayoutsError,
+    AccountsError,
 > {
     // If we're connected directly to a relay chain, use the primary client
     if state.chain_info.chain_type == ChainType::Relay {
@@ -95,15 +94,15 @@ fn get_relay_chain_access(
     // Otherwise, we need the relay chain client (for Asset Hub or parachain)
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(RcStakingPayoutsError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
-        .ok_or(RcStakingPayoutsError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     let relay_rpc = state
         .get_relay_chain_rpc()
-        .ok_or(RcStakingPayoutsError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     Ok((relay_client, relay_rpc_client, relay_rpc))
 }

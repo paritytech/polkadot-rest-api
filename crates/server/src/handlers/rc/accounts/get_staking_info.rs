@@ -1,6 +1,6 @@
 use super::types::{
-    NominationsInfo, RcStakingInfoError, RcStakingInfoQueryParams, RcStakingInfoResponse,
-    RewardDestination, StakingLedger, UnlockingChunk,
+    NominationsInfo, AccountsError, RcStakingInfoQueryParams, RcStakingInfoResponse,
+    RewardDestination, StakingLedger,
 };
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
@@ -33,9 +33,8 @@ pub async fn get_staking_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
     Query(params): Query<RcStakingInfoQueryParams>,
-) -> Result<Response, RcStakingInfoError> {
-    let account = validate_and_parse_address(&account_id)
-        .map_err(|_| RcStakingInfoError::InvalidAddress(account_id.clone()))?;
+) -> Result<Response, AccountsError> {
+    let account = validate_and_parse_address(&account_id)?;
 
     // Get the relay chain client and info
     let (rc_client, rc_rpc_client, rc_rpc) = get_relay_chain_access(&state)?;
@@ -75,7 +74,7 @@ fn get_relay_chain_access(
         &Arc<RpcClient>,
         &Arc<LegacyRpcMethods<SubstrateConfig>>,
     ),
-    RcStakingInfoError,
+    AccountsError,
 > {
     // If we're connected directly to a relay chain, use the primary client
     if state.chain_info.chain_type == ChainType::Relay {
@@ -85,15 +84,15 @@ fn get_relay_chain_access(
     // Otherwise, we need the relay chain client (for Asset Hub or parachain)
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(RcStakingInfoError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
-        .ok_or(RcStakingInfoError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     let relay_rpc = state
         .get_relay_chain_rpc()
-        .ok_or(RcStakingInfoError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     Ok((relay_client, relay_rpc_client, relay_rpc))
 }
@@ -116,19 +115,20 @@ fn format_response(raw: &RawStakingInfo) -> RcStakingInfoResponse {
         suppressed: n.suppressed,
     });
 
+    // Sum all unlocking chunks to get total unlocking amount
+    let unlocking_total: u128 = raw
+        .staking
+        .unlocking
+        .iter()
+        .filter_map(|c| c.value.parse::<u128>().ok())
+        .sum();
+
     let staking = StakingLedger {
         stash: raw.staking.stash.clone(),
         total: raw.staking.total.clone(),
         active: raw.staking.active.clone(),
-        unlocking: raw
-            .staking
-            .unlocking
-            .iter()
-            .map(|c| UnlockingChunk {
-                value: c.value.clone(),
-                era: c.era.clone(),
-            })
-            .collect(),
+        unlocking: unlocking_total.to_string(),
+        claimed_rewards: None, // TODO: Implement when include_claimed_rewards is true
     };
 
     RcStakingInfoResponse {

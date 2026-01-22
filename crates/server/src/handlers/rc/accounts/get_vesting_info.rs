@@ -1,4 +1,4 @@
-use super::types::{RcVestingInfoError, RcVestingInfoQueryParams, RcVestingInfoResponse, VestingSchedule};
+use super::types::{AccountsError, RcVestingInfoQueryParams, RcVestingInfoResponse, VestingSchedule};
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{query_vesting_info as query_vesting_info_shared, RawVestingInfo};
 use crate::state::AppState;
@@ -29,9 +29,8 @@ pub async fn get_vesting_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
     Query(params): Query<RcVestingInfoQueryParams>,
-) -> Result<Response, RcVestingInfoError> {
-    let account = validate_and_parse_address(&account_id)
-        .map_err(|_| RcVestingInfoError::InvalidAddress(account_id.clone()))?;
+) -> Result<Response, AccountsError> {
+    let account = validate_and_parse_address(&account_id)?;
 
     // Get the relay chain client and info
     let (rc_client, rc_rpc_client, rc_rpc) = get_relay_chain_access(&state)?;
@@ -50,14 +49,7 @@ pub async fn get_vesting_info(
         account, resolved_block.number
     );
 
-    let raw_info = query_vesting_info_shared(
-        rc_client,
-        &account,
-        &resolved_block,
-        params.include_claimable,
-        None, // No RC block mapping needed - we're already on RC
-    )
-    .await?;
+    let raw_info = query_vesting_info_shared(rc_client, &account, &resolved_block).await?;
 
     let response = format_response(&raw_info);
 
@@ -78,7 +70,7 @@ fn get_relay_chain_access(
         &Arc<RpcClient>,
         &Arc<LegacyRpcMethods<SubstrateConfig>>,
     ),
-    RcVestingInfoError,
+    AccountsError,
 > {
     // If we're connected directly to a relay chain, use the primary client
     if state.chain_info.chain_type == ChainType::Relay {
@@ -88,15 +80,15 @@ fn get_relay_chain_access(
     // Otherwise, we need the relay chain client (for Asset Hub or parachain)
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(RcVestingInfoError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
-        .ok_or(RcVestingInfoError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     let relay_rpc = state
         .get_relay_chain_rpc()
-        .ok_or(RcVestingInfoError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     Ok((relay_client, relay_rpc_client, relay_rpc))
 }
@@ -113,7 +105,6 @@ fn format_response(raw: &RawVestingInfo) -> RcVestingInfoResponse {
             locked: s.locked.clone(),
             per_block: s.per_block.clone(),
             starting_block: s.starting_block.clone(),
-            vested: s.vested.clone(),
         })
         .collect();
 
@@ -123,10 +114,5 @@ fn format_response(raw: &RawVestingInfo) -> RcVestingInfoResponse {
             height: raw.block.number.to_string(),
         },
         vesting: schedules,
-        vested_balance: raw.vested_balance.clone(),
-        vesting_total: raw.vesting_total.clone(),
-        vested_claimable: raw.vested_claimable.clone(),
-        block_number_for_calculation: raw.block_number_for_calculation.clone(),
-        block_number_source: raw.block_number_source.clone(),
     }
 }

@@ -1,4 +1,4 @@
-use super::types::{RcBalanceInfoError, RcBalanceInfoQueryParams, RcBalanceInfoResponse};
+use super::types::{AccountsError, RcBalanceInfoQueryParams, RcBalanceInfoResponse};
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
     format_balance, format_frozen_fields, format_locks, format_transferable,
@@ -33,9 +33,8 @@ pub async fn get_balance_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
     Query(params): Query<RcBalanceInfoQueryParams>,
-) -> Result<Response, RcBalanceInfoError> {
-    let account = validate_and_parse_address(&account_id)
-        .map_err(|_| RcBalanceInfoError::InvalidAddress(account_id.clone()))?;
+) -> Result<Response, AccountsError> {
+    let account = validate_and_parse_address(&account_id)?;
 
     // Get the relay chain client and info
     let (rc_client, rc_rpc_client, rc_rpc, rc_spec_name) = get_relay_chain_access(&state)?;
@@ -83,7 +82,7 @@ fn get_relay_chain_access(
         &Arc<LegacyRpcMethods<SubstrateConfig>>,
         String,
     ),
-    RcBalanceInfoError,
+    AccountsError,
 > {
     // If we're connected directly to a relay chain, use the primary client
     if state.chain_info.chain_type == ChainType::Relay {
@@ -98,21 +97,21 @@ fn get_relay_chain_access(
     // Otherwise, we need the relay chain client (for Asset Hub or parachain)
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(RcBalanceInfoError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
-        .ok_or(RcBalanceInfoError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     let relay_rpc = state
         .get_relay_chain_rpc()
-        .ok_or(RcBalanceInfoError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     let relay_spec_name = state
         .relay_chain_info
         .as_ref()
         .map(|info| info.spec_name.clone())
-        .ok_or(RcBalanceInfoError::RelayChainNotAvailable)?;
+        .ok_or(AccountsError::RelayChainNotAvailable)?;
 
     Ok((relay_client, relay_rpc_client, relay_rpc, relay_spec_name))
 }

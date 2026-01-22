@@ -2,7 +2,7 @@
 // Assets Data Fetching
 // ================================================================================================
 
-use crate::{handlers::accounts::{AssetBalance, AssetBalancesError, DecodedAssetBalance, utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field}}, state::AppState};
+use crate::{handlers::accounts::{AssetBalance, AccountsError, DecodedAssetBalance, utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field}}, state::AppState};
 use parity_scale_codec::Decode;
 use futures::StreamExt;
 use scale_value::{Composite, Value, ValueDef};
@@ -46,7 +46,7 @@ pub async fn query_assets(
     block_number: u64,
     account: &AccountId32,
     assets: &[u32],
-) -> Result<Vec<AssetBalance>, AssetBalancesError> {
+) -> Result<Vec<AssetBalance>, AccountsError> {
     let client_at_block = state.client.at(block_number).await?;
     let storage_entry = client_at_block.storage().entry("Assets", "Account")?;
 
@@ -85,10 +85,10 @@ pub async fn query_assets(
 /// Decode asset balance from storage value, handling multiple runtime versions
 pub async fn decode_asset_balance(
     value: &StorageValue<'_>,
-) -> Result<Option<DecodedAssetBalance>, AssetBalancesError> {
+) -> Result<Option<DecodedAssetBalance>, AccountsError> {
     // Decode as scale_value::Value to inspect structure
     let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        AssetBalancesError::DecodeFailed(parity_scale_codec::Error::from("Failed to decode storage value"))
+        AccountsError::DecodeFailed(parity_scale_codec::Error::from("Failed to decode storage value"))
     })?;
 
     // Handle Option wrapper (post-v9160)
@@ -139,7 +139,7 @@ pub async fn decode_asset_balance(
 /// Decode balance from a composite structure
 fn decode_balance_composite(
     composite: &Composite<()>,
-) -> Result<Option<DecodedAssetBalance>, AssetBalancesError> {
+) -> Result<Option<DecodedAssetBalance>, AccountsError> {
     match composite {
         Composite::Named(fields) => {
             // Extract fields by name

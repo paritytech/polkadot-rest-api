@@ -1,5 +1,5 @@
 use super::types::{
-    AccountCompareError, AccountCompareQueryParams, AccountCompareResponse, AddressDetails,
+    AccountsError, AccountCompareQueryParams, AccountCompareResponse, AddressDetails,
 };
 use axum::{
     Json,
@@ -26,7 +26,7 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
 /// - `addresses`: Array of address details with ss58Format, ss58Prefix, network, publicKey
 pub async fn get_compare(
     Query(params): Query<AccountCompareQueryParams>,
-) -> Result<Response, AccountCompareError> {
+) -> Result<Response, AccountsError> {
     // Parse comma-separated addresses
     let addresses: Vec<&str> = params
         .addresses
@@ -37,10 +37,10 @@ pub async fn get_compare(
 
     // Validate address count
     if addresses.is_empty() {
-        return Err(AccountCompareError::NoAddresses);
+        return Err(AccountsError::NoAddresses);
     }
     if addresses.len() > 30 {
-        return Err(AccountCompareError::TooManyAddresses);
+        return Err(AccountsError::TooManyAddresses);
     }
 
     // Validate each address and collect details

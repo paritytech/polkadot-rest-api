@@ -1,7 +1,7 @@
-use super::types::{AccountValidateError, AccountValidateResponse};
+use super::types::{AccountsError, AccountValidateQueryParams, AccountValidateResponse};
 use axum::{
     Json,
-    extract::Path,
+    extract::{Path, Query},
     response::{IntoResponse, Response},
 };
 use sp_core::crypto::{AccountId32, Ss58Codec};
@@ -24,7 +24,9 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
 /// - `accountId`: The account ID in hex format (null if invalid)
 pub async fn get_validate(
     Path(address): Path<String>,
-) -> Result<Response, AccountValidateError> {
+    Query(_params): Query<AccountValidateQueryParams>,
+) -> Result<Response, AccountsError> {
+    // Note: `at` param is accepted for API consistency but not used for validation
     let result = validate_address(&address);
     Ok(Json(result).into_response())
 }
