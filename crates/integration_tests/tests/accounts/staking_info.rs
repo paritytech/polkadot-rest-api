@@ -473,23 +473,16 @@ async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> 
         );
     }
 
-    // Validate 'unlocking' is an array
+    // Validate 'unlocking' is a string (total unlocking amount)
     let unlocking = staking_obj.get("unlocking").unwrap();
-    assert!(unlocking.is_array(), "staking.unlocking should be an array");
+    assert!(unlocking.is_string(), "staking.unlocking should be a string");
 
-    // Validate unlocking chunks structure (if not empty)
-    let unlocking_arr = unlocking.as_array().unwrap();
-    for chunk in unlocking_arr {
-        let chunk_obj = chunk.as_object().expect("Unlocking chunk should be an object");
-        assert!(
-            chunk_obj.contains_key("value"),
-            "Unlocking chunk missing 'value' field"
-        );
-        assert!(
-            chunk_obj.contains_key("era"),
-            "Unlocking chunk missing 'era' field"
-        );
-    }
+    // Validate unlocking is a valid number string
+    let unlocking_str = unlocking.as_str().unwrap();
+    assert!(
+        unlocking_str.parse::<u128>().is_ok(),
+        "staking.unlocking should be a valid number string"
+    );
 
     // Validate 'nominations' structure if present
     if let Some(nominations) = response_obj.get("nominations") {
