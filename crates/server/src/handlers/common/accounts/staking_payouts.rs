@@ -5,7 +5,7 @@ use scale_value::{Composite, Value, ValueDef};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use std::collections::HashMap;
 use std::sync::Arc;
-use subxt_historic::{OnlineClient, SubstrateConfig};
+use subxt::{OnlineClient, SubstrateConfig};
 use thiserror::Error;
 
 // ================================================================================================
@@ -27,13 +27,10 @@ pub enum StakingPayoutsQueryError {
     InvalidDepth,
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] subxt_historic::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
 
     #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] subxt_historic::error::StorageError),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+    StorageQueryFailed(#[from] subxt::error::StorageError),
 
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
@@ -135,21 +132,21 @@ pub async fn query_staking_payouts(
     block: &ResolvedBlock,
     params: &StakingPayoutsParams,
 ) -> Result<RawStakingPayouts, StakingPayoutsQueryError> {
-    let client_at_block = client.at(block.number).await?;
+    let client_at_block = client.at_block(block.number).await?;
 
     // Check if Staking pallet exists
     let staking_exists = client_at_block
         .storage()
-        .entry("Staking", "ActiveEra")
+        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ActiveEra"))
         .is_ok();
 
     if !staking_exists {
         return Err(StakingPayoutsQueryError::StakingPalletNotAvailable);
     }
 
-    // Get active era - it's a value storage, use fetch with unit key
-    let active_era_entry = client_at_block.storage().entry("Staking", "ActiveEra")?;
-    let active_era_value = active_era_entry.fetch(&()).await?;
+    // Get active era - it's a value storage, use fetch with empty key
+    let active_era_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ActiveEra"))?;
+    let active_era_value = active_era_entry.try_fetch(Vec::<scale_value::Value>::new()).await?;
     let active_era = if let Some(value) = active_era_value {
         decode_active_era(&value)?
     } else {
@@ -158,9 +155,9 @@ pub async fn query_staking_payouts(
 
     // Get history depth (default to 84 if not found)
     let history_depth = if let Ok(history_entry) =
-        client_at_block.storage().entry("Staking", "HistoryDepth")
+        client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "HistoryDepth"))
     {
-        if let Ok(Some(value)) = history_entry.fetch(&()).await {
+        if let Ok(Some(value)) = history_entry.try_fetch(Vec::<scale_value::Value>::new()).await {
             decode_u32(&value).unwrap_or(84)
         } else {
             84
@@ -234,17 +231,18 @@ async fn fetch_era_data(
     era: u32,
     unclaimed_only: bool,
 ) -> Result<RawEraPayouts, String> {
-    let client_at_block = client.at(block_number).await.map_err(|e| e.to_string())?;
+    let client_at_block = client.at_block(block_number).await.map_err(|e| e.to_string())?;
 
     let account_bytes: [u8; 32] = *account.as_ref();
 
     // Get total era reward points
     let reward_points_entry = client_at_block
         .storage()
-        .entry("Staking", "ErasRewardPoints")
+        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasRewardPoints"))
         .map_err(|e| e.to_string())?;
+    let key = vec![Value::u128(era as u128)];
     let reward_points_value = reward_points_entry
-        .fetch(&(era,))
+        .try_fetch(key)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -259,10 +257,11 @@ async fn fetch_era_data(
     // Get total era payout
     let validator_reward_entry = client_at_block
         .storage()
-        .entry("Staking", "ErasValidatorReward")
+        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasValidatorReward"))
         .map_err(|e| e.to_string())?;
+    let key = vec![Value::u128(era as u128)];
     let validator_reward_value = validator_reward_entry
-        .fetch(&(era,))
+        .try_fetch(key)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -360,20 +359,22 @@ async fn fetch_exposure_data(
     era: u32,
     account_bytes: &[u8; 32],
 ) -> Result<Vec<(String, u128, u128)>, String> {
-    let client_at_block = client.at(block_number).await.map_err(|e| e.to_string())?;
+    let client_at_block = client.at_block(block_number).await.map_err(|e| e.to_string())?;
 
     let mut results = Vec::new();
 
     // Try ErasStakersClipped first (standard storage)
-    if let Ok(stakers_entry) = client_at_block.storage().entry("Staking", "ErasStakersClipped") {
+    if let Ok(stakers_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasStakersClipped")) {
         // Try to get nominators entry to find which validators this account nominates
-        if let Ok(nominators_entry) = client_at_block.storage().entry("Staking", "Nominators") {
-            if let Ok(Some(nom_value)) = nominators_entry.fetch(&(account_bytes,)).await {
+        if let Ok(nominators_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Nominators")) {
+            let key = vec![Value::from_bytes(account_bytes)];
+            if let Ok(Some(nom_value)) = nominators_entry.try_fetch(key).await {
                 let targets = decode_nomination_targets(&nom_value);
 
                 for validator_bytes in targets {
+                    let key = vec![Value::u128(era as u128), Value::from_bytes(&validator_bytes)];
                     if let Ok(Some(exposure_value)) =
-                        stakers_entry.fetch(&(era, &validator_bytes)).await
+                        stakers_entry.try_fetch(key).await
                     {
                         if let Ok((total, own, others)) = decode_exposure(&exposure_value) {
                             // Check if account is in the others list
@@ -399,12 +400,14 @@ async fn fetch_exposure_data(
     }
 
     // If account is a validator, also check if they have self-stake
-    if let Ok(bonded_entry) = client_at_block.storage().entry("Staking", "Bonded") {
-        if let Ok(Some(_)) = bonded_entry.fetch(&(account_bytes,)).await {
+    if let Ok(bonded_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded")) {
+        let key = vec![Value::from_bytes(account_bytes)];
+        if let Ok(Some(_)) = bonded_entry.try_fetch(key).await {
             // Account is a stash, check if they're also validating
-            if let Ok(stakers_entry) = client_at_block.storage().entry("Staking", "ErasStakersClipped")
+            if let Ok(stakers_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasStakersClipped"))
             {
-                if let Ok(Some(exposure_value)) = stakers_entry.fetch(&(era, account_bytes)).await {
+                let key = vec![Value::u128(era as u128), Value::from_bytes(account_bytes)];
+                if let Ok(Some(exposure_value)) = stakers_entry.try_fetch(key).await {
                     if let Ok((total, own, _)) = decode_exposure(&exposure_value) {
                         let validator_id = account.to_ss58check();
                         // Only add if not already in results
@@ -427,12 +430,13 @@ async fn fetch_validator_commission(
     era: u32,
     validator_bytes: &[u8; 32],
 ) -> Option<u32> {
-    let client_at_block = client.at(block_number).await.ok()?;
+    let client_at_block = client.at_block(block_number).await.ok()?;
     let prefs_entry = client_at_block
         .storage()
-        .entry("Staking", "ErasValidatorPrefs")
+        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasValidatorPrefs"))
         .ok()?;
-    let prefs_value = prefs_entry.fetch(&(era, validator_bytes)).await.ok()??;
+    let key = vec![Value::u128(era as u128), Value::from_bytes(validator_bytes)];
+    let prefs_value = prefs_entry.try_fetch(key).await.ok()??;
     decode_validator_commission(&prefs_value).ok()
 }
 
@@ -443,15 +447,16 @@ async fn check_if_claimed(
     validator_bytes: &[u8; 32],
     era: u32,
 ) -> bool {
-    let client_at_block = match client.at(block_number).await {
+    let client_at_block = match client.at_block(block_number).await {
         Ok(c) => c,
         Err(_) => return false,
     };
 
     // First get the controller for this validator
     let controller_bytes =
-        if let Ok(bonded_entry) = client_at_block.storage().entry("Staking", "Bonded") {
-            if let Ok(Some(value)) = bonded_entry.fetch(&(validator_bytes,)).await {
+        if let Ok(bonded_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded")) {
+            let key = vec![Value::from_bytes(validator_bytes)];
+            if let Ok(Some(value)) = bonded_entry.try_fetch(key).await {
                 decode_account_bytes(&value).unwrap_or(*validator_bytes)
             } else {
                 *validator_bytes
@@ -461,8 +466,9 @@ async fn check_if_claimed(
         };
 
     // Check ledger for claimed rewards
-    if let Ok(ledger_entry) = client_at_block.storage().entry("Staking", "Ledger") {
-        if let Ok(Some(value)) = ledger_entry.fetch(&(&controller_bytes,)).await {
+    if let Ok(ledger_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Ledger")) {
+        let key = vec![Value::from_bytes(&controller_bytes)];
+        if let Ok(Some(value)) = ledger_entry.try_fetch(key).await {
             return check_claimed_in_ledger(&value, era);
         }
     }
@@ -523,7 +529,7 @@ fn calculate_payout(
 // ================================================================================================
 
 fn decode_active_era(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<u32, StakingPayoutsQueryError> {
     let decoded: Value<()> = value.decode_as().map_err(|_e| {
         StakingPayoutsQueryError::DecodeFailed(parity_scale_codec::Error::from(
@@ -550,7 +556,7 @@ fn decode_active_era(
     }
 }
 
-fn decode_u32(value: &subxt_historic::storage::StorageValue<'_>) -> Option<u32> {
+fn decode_u32(value: &subxt::storage::StorageValue<'_, scale_value::Value>) -> Option<u32> {
     let decoded: Value<()> = value.decode_as().ok()?;
     match &decoded.value {
         ValueDef::Primitive(scale_value::Primitive::U128(v)) => Some(*v as u32),
@@ -558,7 +564,7 @@ fn decode_u32(value: &subxt_historic::storage::StorageValue<'_>) -> Option<u32> 
     }
 }
 
-fn decode_u128_storage(value: &subxt_historic::storage::StorageValue<'_>) -> Result<u128, String> {
+fn decode_u128_storage(value: &subxt::storage::StorageValue<'_, scale_value::Value>) -> Result<u128, String> {
     let decoded: Value<()> = value.decode_as().map_err(|e| e.to_string())?;
     match &decoded.value {
         ValueDef::Primitive(scale_value::Primitive::U128(v)) => Ok(*v),
@@ -567,7 +573,7 @@ fn decode_u128_storage(value: &subxt_historic::storage::StorageValue<'_>) -> Res
 }
 
 fn decode_era_reward_points(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<(u32, HashMap<[u8; 32], u32>), String> {
     let decoded: Value<()> = value.decode_as().map_err(|e| e.to_string())?;
 
@@ -609,7 +615,7 @@ fn decode_era_reward_points(
 }
 
 fn decode_exposure(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<(u128, u128, Vec<([u8; 32], u128)>), String> {
     let decoded: Value<()> = value.decode_as().map_err(|e| e.to_string())?;
 
@@ -661,7 +667,7 @@ fn decode_exposure(
     Ok((total, own, others))
 }
 
-fn decode_nomination_targets(value: &subxt_historic::storage::StorageValue<'_>) -> Vec<[u8; 32]> {
+fn decode_nomination_targets(value: &subxt::storage::StorageValue<'_, scale_value::Value>) -> Vec<[u8; 32]> {
     let mut targets = Vec::new();
 
     if let Ok(decoded) = value.decode_as::<Value<()>>() {
@@ -684,7 +690,7 @@ fn decode_nomination_targets(value: &subxt_historic::storage::StorageValue<'_>) 
 }
 
 fn decode_validator_commission(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<u32, String> {
     let decoded: Value<()> = value.decode_as().map_err(|e| e.to_string())?;
 
@@ -703,7 +709,7 @@ fn decode_validator_commission(
     }
 }
 
-fn decode_account_bytes(value: &subxt_historic::storage::StorageValue<'_>) -> Option<[u8; 32]> {
+fn decode_account_bytes(value: &subxt::storage::StorageValue<'_, scale_value::Value>) -> Option<[u8; 32]> {
     let decoded: Value<()> = value.decode_as().ok()?;
     extract_account_bytes_from_value(&decoded)
 }
@@ -731,7 +737,7 @@ fn extract_account_bytes_from_value(value: &Value<()>) -> Option<[u8; 32]> {
     }
 }
 
-fn check_claimed_in_ledger(value: &subxt_historic::storage::StorageValue<'_>, era: u32) -> bool {
+fn check_claimed_in_ledger(value: &subxt::storage::StorageValue<'_, scale_value::Value>, era: u32) -> bool {
     if let Ok(decoded) = value.decode_as::<Value<()>>() {
         if let ValueDef::Composite(Composite::Named(fields)) = &decoded.value {
             // Check claimedRewards field (newer format)

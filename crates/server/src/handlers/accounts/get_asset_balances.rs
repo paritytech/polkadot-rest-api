@@ -61,9 +61,8 @@ async fn query_asset_balances(
     block: &utils::ResolvedBlock,
     asset_ids: &[u32],
 ) -> Result<AssetBalancesResponse, AccountsError> {
-    let client_at_block = state.client.at(block.number).await?;
-
-    let assets_exists = client_at_block.storage().entry("Assets", "Account").is_ok();
+    let client_at_block = state.client.at_block(block.number).await?;
+    let assets_exists = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Account")).is_ok();
 
     if !assets_exists {
         return Err(AccountsError::PalletNotAvailable("Assets".to_string()));

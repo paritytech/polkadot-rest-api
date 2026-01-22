@@ -64,25 +64,29 @@ async fn query_asset_approval(
     asset_id: u32,
     block: &utils::ResolvedBlock,
 ) -> Result<AssetApprovalResponse, AccountsError> {
-    let client_at_block = state.client.at(block.number).await?;
+    let client_at_block = state.client.at_block(block.number).await?;
 
     let approvals_exists = client_at_block
         .storage()
-        .entry("Assets", "Approvals")
+        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Approvals"))
         .is_ok();
 
     if !approvals_exists {
         return Err(AccountsError::PalletNotAvailable("Assets".to_string()));
     }
 
-    let storage_entry = client_at_block.storage().entry("Assets", "Approvals")?;
+    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Approvals"))?;
 
     // Storage key for Approvals: (asset_id, owner, delegate)
     let owner_bytes: &[u8; 32] = owner.as_ref();
     let delegate_bytes: &[u8; 32] = delegate.as_ref();
-    let key = (&asset_id, owner_bytes, delegate_bytes);
+    let key = vec![
+        Value::u128(asset_id as u128),
+        Value::from_bytes(owner_bytes),
+        Value::from_bytes(delegate_bytes),
+    ];
 
-    let storage_value = storage_entry.fetch(&key).await?;
+    let storage_value = storage_entry.try_fetch(key).await?;
 
     let (amount, deposit) = if let Some(value) = storage_value {
         // Decode the approval
@@ -117,7 +121,7 @@ async fn query_asset_approval(
 
 /// Decode asset approval from storage value
 async fn decode_asset_approval(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<Option<DecodedAssetApproval>, AccountsError> {
     // Decode as scale_value::Value to inspect structure
     let decoded: Value<()> = value.decode_as().map_err(|_e| {

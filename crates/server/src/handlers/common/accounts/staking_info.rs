@@ -4,7 +4,7 @@ use crate::utils::ResolvedBlock;
 use scale_value::{Composite, Value, ValueDef};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use std::sync::Arc;
-use subxt_historic::{OnlineClient, SubstrateConfig};
+use subxt::{OnlineClient, SubstrateConfig};
 use thiserror::Error;
 
 // ================================================================================================
@@ -23,13 +23,10 @@ pub enum StakingQueryError {
     LedgerNotFound,
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] subxt_historic::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
 
     #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] subxt_historic::error::StorageError),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+    StorageQueryFailed(#[from] subxt::error::StorageError),
 
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
@@ -121,12 +118,12 @@ pub async fn query_staking_info(
     account: &AccountId32,
     block: &ResolvedBlock,
 ) -> Result<RawStakingInfo, StakingQueryError> {
-    let client_at_block = client.at(block.number).await?;
+    let client_at_block = client.at_block(block.number).await?;
 
     // Check if Staking pallet exists
     let staking_exists = client_at_block
         .storage()
-        .entry("Staking", "Bonded")
+        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded"))
         .is_ok();
 
     if !staking_exists {
@@ -136,8 +133,9 @@ pub async fn query_staking_info(
     let account_bytes: [u8; 32] = *account.as_ref();
 
     // Query Staking.Bonded to get controller from stash
-    let bonded_entry = client_at_block.storage().entry("Staking", "Bonded")?;
-    let bonded_value = bonded_entry.fetch(&(&account_bytes,)).await?;
+    let bonded_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded"))?;
+    let key = vec![Value::from_bytes(&account_bytes)];
+    let bonded_value = bonded_entry.try_fetch(key).await?;
 
     let controller = if let Some(value) = bonded_value {
         decode_account_id(&value).await?
@@ -151,8 +149,9 @@ pub async fn query_staking_info(
     let controller_bytes: [u8; 32] = *controller_account.as_ref();
 
     // Query Staking.Ledger to get staking ledger
-    let ledger_entry = client_at_block.storage().entry("Staking", "Ledger")?;
-    let ledger_value = ledger_entry.fetch(&(&controller_bytes,)).await?;
+    let ledger_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Ledger"))?;
+    let key = vec![Value::from_bytes(&controller_bytes)];
+    let ledger_value = ledger_entry.try_fetch(key).await?;
 
     let staking = if let Some(value) = ledger_value {
         decode_staking_ledger(&value).await?
@@ -161,8 +160,9 @@ pub async fn query_staking_info(
     };
 
     // Query Staking.Payee to get reward destination
-    let payee_entry = client_at_block.storage().entry("Staking", "Payee")?;
-    let payee_value = payee_entry.fetch(&(&account_bytes,)).await?;
+    let payee_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Payee"))?;
+    let key = vec![Value::from_bytes(&account_bytes)];
+    let payee_value = payee_entry.try_fetch(key).await?;
 
     let reward_destination = if let Some(value) = payee_value {
         decode_reward_destination(&value).await?
@@ -171,8 +171,9 @@ pub async fn query_staking_info(
     };
 
     // Query Staking.Nominators to get nominations
-    let nominators_entry = client_at_block.storage().entry("Staking", "Nominators")?;
-    let nominators_value = nominators_entry.fetch(&(&account_bytes,)).await?;
+    let nominators_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Nominators"))?;
+    let key = vec![Value::from_bytes(&account_bytes)];
+    let nominators_value = nominators_entry.try_fetch(key).await?;
 
     let nominations = if let Some(value) = nominators_value {
         decode_nominations(&value).await?
@@ -182,8 +183,9 @@ pub async fn query_staking_info(
 
     // Query Staking.SlashingSpans to get number of slashing spans
     let num_slashing_spans =
-        if let Ok(slashing_entry) = client_at_block.storage().entry("Staking", "SlashingSpans") {
-            if let Ok(Some(value)) = slashing_entry.fetch(&(&account_bytes,)).await {
+        if let Ok(slashing_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "SlashingSpans")) {
+            let key = vec![Value::from_bytes(&account_bytes)];
+            if let Ok(Some(value)) = slashing_entry.try_fetch(key).await {
                 decode_slashing_spans(&value).await.unwrap_or(0)
             } else {
                 0
@@ -211,7 +213,7 @@ pub async fn query_staking_info(
 
 /// Decode an AccountId from a storage value
 async fn decode_account_id(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<String, StakingQueryError> {
     let decoded: Value<()> = value.decode_as().map_err(|_e| {
         StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
@@ -228,7 +230,7 @@ async fn decode_account_id(
 
 /// Decode staking ledger from storage value
 async fn decode_staking_ledger(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<DecodedStakingLedger, StakingQueryError> {
     let decoded: Value<()> = value.decode_as().map_err(|_e| {
         StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
@@ -291,7 +293,7 @@ fn extract_unlocking_chunks(fields: &[(String, Value<()>)]) -> Vec<DecodedUnlock
 
 /// Decode reward destination from storage value
 async fn decode_reward_destination(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<DecodedRewardDestination, StakingQueryError> {
     let decoded: Value<()> = value.decode_as().map_err(|_e| {
         StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
@@ -326,7 +328,7 @@ async fn decode_reward_destination(
 
 /// Decode nominations from storage value
 async fn decode_nominations(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<Option<DecodedNominationsInfo>, StakingQueryError> {
     let decoded: Value<()> = value.decode_as().map_err(|_e| {
         StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
@@ -374,7 +376,7 @@ fn extract_targets_field(fields: &[(String, Value<()>)]) -> Vec<String> {
 
 /// Decode slashing spans count
 async fn decode_slashing_spans(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<u32, StakingQueryError> {
     let decoded: Value<()> = value.decode_as().map_err(|_e| {
         StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(

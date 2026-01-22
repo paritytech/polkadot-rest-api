@@ -57,11 +57,11 @@ async fn query_pool_asset_balances(
     block: &utils::ResolvedBlock,
     asset_ids: &[u32],
 ) -> Result<PoolAssetBalancesResponse, AccountsError> {
-    let client_at_block = state.client.at(block.number).await?;
+    let client_at_block = state.client.at_block(block.number).await?;
 
     let pool_assets_exists = client_at_block
         .storage()
-        .entry("PoolAssets", "Account")
+        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("PoolAssets", "Account"))
         .is_ok();
 
     if !pool_assets_exists {

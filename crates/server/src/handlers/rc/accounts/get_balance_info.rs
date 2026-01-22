@@ -4,7 +4,7 @@ use crate::handlers::common::accounts::{
     format_balance, format_frozen_fields, format_locks, format_transferable,
     query_balance_info as query_balance_info_shared, RawBalanceInfo,
 };
-use crate::state::AppState;
+use crate::state::{AppState, SubstrateLegacyRpc};
 use crate::utils;
 use axum::{
     Json,
@@ -13,8 +13,8 @@ use axum::{
 };
 use config::ChainType;
 use std::sync::Arc;
-use subxt_historic::{OnlineClient, SubstrateConfig};
-use subxt_rpcs::{LegacyRpcMethods, RpcClient};
+use subxt::{OnlineClient, SubstrateConfig};
+use subxt_rpcs::RpcClient;
 
 // ================================================================================================
 // Main Handler
@@ -46,7 +46,7 @@ pub async fn get_balance_info(
         .map(|s| s.parse::<utils::BlockId>())
         .transpose()?;
 
-    let resolved_block = utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc, block_id).await?;
+    let resolved_block = utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
 
     println!(
         "Fetching RC balance info for account {:?} at block {}",
@@ -79,7 +79,7 @@ fn get_relay_chain_access(
     (
         &Arc<OnlineClient<SubstrateConfig>>,
         &Arc<RpcClient>,
-        &Arc<LegacyRpcMethods<SubstrateConfig>>,
+        &Arc<SubstrateLegacyRpc>,
         String,
     ),
     AccountsError,

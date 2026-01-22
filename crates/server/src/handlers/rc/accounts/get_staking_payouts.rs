@@ -7,7 +7,7 @@ use crate::handlers::common::accounts::{
     query_staking_payouts as query_staking_payouts_shared, RawEraPayouts, RawStakingPayouts,
     StakingPayoutsParams,
 };
-use crate::state::AppState;
+use crate::state::{AppState, SubstrateLegacyRpc};
 use crate::utils;
 use axum::{
     Json,
@@ -16,8 +16,8 @@ use axum::{
 };
 use config::ChainType;
 use std::sync::Arc;
-use subxt_historic::{OnlineClient, SubstrateConfig};
-use subxt_rpcs::{LegacyRpcMethods, RpcClient};
+use subxt::{OnlineClient, SubstrateConfig};
+use subxt_rpcs::RpcClient;
 
 // ================================================================================================
 // Main Handler
@@ -50,7 +50,7 @@ pub async fn get_staking_payouts(
         .map(|s| s.parse::<utils::BlockId>())
         .transpose()?;
 
-    let resolved_block = utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc, block_id).await?;
+    let resolved_block = utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
 
     println!(
         "Fetching RC staking payouts for account {:?} at block {}",
@@ -82,7 +82,7 @@ fn get_relay_chain_access(
     (
         &Arc<OnlineClient<SubstrateConfig>>,
         &Arc<RpcClient>,
-        &Arc<LegacyRpcMethods<SubstrateConfig>>,
+        &Arc<SubstrateLegacyRpc>,
     ),
     AccountsError,
 > {

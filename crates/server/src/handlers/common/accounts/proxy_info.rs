@@ -4,7 +4,7 @@ use crate::utils::ResolvedBlock;
 use scale_value::{Composite, Value, ValueDef};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use std::sync::Arc;
-use subxt_historic::{OnlineClient, SubstrateConfig};
+use subxt::{OnlineClient, SubstrateConfig};
 use thiserror::Error;
 
 // ================================================================================================
@@ -17,13 +17,10 @@ pub enum ProxyQueryError {
     ProxyPalletNotAvailable,
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] subxt_historic::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
 
     #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] subxt_historic::error::StorageError),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+    StorageQueryFailed(#[from] subxt::error::StorageError),
 
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
@@ -75,22 +72,23 @@ pub async fn query_proxy_info(
     account: &AccountId32,
     block: &ResolvedBlock,
 ) -> Result<RawProxyInfo, ProxyQueryError> {
-    let client_at_block = client.at(block.number).await?;
+    let client_at_block = client.at_block(block.number).await?;
 
     let proxy_exists = client_at_block
         .storage()
-        .entry("Proxy", "Proxies")
+        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Proxy", "Proxies"))
         .is_ok();
 
     if !proxy_exists {
         return Err(ProxyQueryError::ProxyPalletNotAvailable);
     }
 
-    let storage_entry = client_at_block.storage().entry("Proxy", "Proxies")?;
+    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Proxy", "Proxies"))?;
 
     // Storage key for Proxies: (account)
     let account_bytes: [u8; 32] = *account.as_ref();
-    let storage_value = storage_entry.fetch(&(&account_bytes,)).await?;
+    let key = vec![Value::from_bytes(&account_bytes)];
+    let storage_value = storage_entry.try_fetch(key).await?;
 
     let (delegated_accounts, deposit_held) = if let Some(value) = storage_value {
         decode_proxy_info(&value).await?
@@ -115,7 +113,7 @@ pub async fn query_proxy_info(
 /// Decode proxy info from storage value
 /// The storage value is a tuple: (Vec<ProxyDefinition>, Balance)
 async fn decode_proxy_info(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<(Vec<DecodedProxyDefinition>, String), ProxyQueryError> {
     // Decode as scale_value::Value to inspect structure
     let decoded: Value<()> = value.decode_as().map_err(|_e| {

@@ -6,7 +6,7 @@ use crate::utils::{self, RcBlockError};
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use subxt_historic::error::{OnlineClientAtBlockError, StorageError};
+use subxt::error::{OnlineClientAtBlockError, StorageError};
 use thiserror::Error;
 
 // ================================================================================================
@@ -193,9 +193,6 @@ pub enum AccountsError {
 
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
 
     // ---- Relay chain errors ----
     #[error("useRcBlock is only supported on Asset Hub chains")]

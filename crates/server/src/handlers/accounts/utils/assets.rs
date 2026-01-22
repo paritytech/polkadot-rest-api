@@ -4,21 +4,20 @@
 
 use crate::{handlers::accounts::{AssetBalance, AccountsError, DecodedAssetBalance, utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field}}, state::AppState};
 use parity_scale_codec::Decode;
-use futures::StreamExt;
 use scale_value::{Composite, Value, ValueDef};
 use sp_core::crypto::AccountId32;
-use subxt_historic::storage::StorageValue;
+use subxt::storage::StorageValue;
 
 /// Fetch all asset IDs from storage
 pub async fn query_all_assets_id(
     state: &AppState,
     block_number: u64,
 ) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    let client_at_block = state.client.at(block_number).await?;
-    let storage_entry = client_at_block.storage().entry("Assets", "Asset")?;
+    let client_at_block = state.client.at_block(block_number).await?;
+    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Asset"))?;
     let mut asset_ids = Vec::new();
 
-    let mut values = storage_entry.iter(()).await?;
+    let mut values = storage_entry.iter(Vec::<scale_value::Value>::new()).await?;
     while let Some(result) = values.next().await {
         let entry = result?;
         // Extract asset ID from storage key
@@ -47,8 +46,8 @@ pub async fn query_assets(
     account: &AccountId32,
     assets: &[u32],
 ) -> Result<Vec<AssetBalance>, AccountsError> {
-    let client_at_block = state.client.at(block_number).await?;
-    let storage_entry = client_at_block.storage().entry("Assets", "Account")?;
+    let client_at_block = state.client.at_block(block_number).await?;
+    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Account"))?;
 
     // Encode the storage key: (asset_id, account_id)
     // Convert AccountId32 to [u8; 32] for encoding
@@ -57,8 +56,11 @@ pub async fn query_assets(
     let mut balances = Vec::new();
 
     for asset_id in assets {
-        let key = (asset_id, account_bytes);
-        let storage_value = storage_entry.fetch(&key).await?;
+        let key = vec![
+            Value::u128(*asset_id as u128),
+            Value::from_bytes(account_bytes),
+        ];
+        let storage_value = storage_entry.try_fetch(key).await?;
 
         if let Some(value) = storage_value {
             // Decode the storage value
@@ -84,7 +86,7 @@ pub async fn query_assets(
 
 /// Decode asset balance from storage value, handling multiple runtime versions
 pub async fn decode_asset_balance(
-    value: &StorageValue<'_>,
+    value: &StorageValue<'_, scale_value::Value>,
 ) -> Result<Option<DecodedAssetBalance>, AccountsError> {
     // Decode as scale_value::Value to inspect structure
     let decoded: Value<()> = value.decode_as().map_err(|_e| {

@@ -8,7 +8,7 @@ use scale_value::{Composite, Value, ValueDef};
 use serde::Serialize;
 use sp_core::crypto::AccountId32;
 use std::sync::Arc;
-use subxt_historic::{OnlineClient, SubstrateConfig};
+use subxt::{OnlineClient, SubstrateConfig};
 
 // ================================================================================================
 // Shared Types
@@ -68,13 +68,10 @@ pub enum BalanceQueryError {
     BalancesPalletNotAvailable,
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] subxt_historic::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
 
     #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] subxt_historic::error::StorageError),
-
-    #[error("Failed to fetch storage entry")]
-    StorageEntryFailed(#[from] subxt_historic::error::StorageEntryIsNotAPlainValue),
+    StorageQueryFailed(#[from] subxt::error::StorageError),
 
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
@@ -95,12 +92,12 @@ pub async fn query_balance_info(
     block: &ResolvedBlock,
     token: Option<String>,
 ) -> Result<RawBalanceInfo, BalanceQueryError> {
-    let client_at_block = client.at(block.number).await?;
+    let client_at_block = client.at_block(block.number).await?;
 
     // Check if System and Balances pallets exist
     let system_account_exists = client_at_block
         .storage()
-        .entry("System", "Account")
+        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("System", "Account"))
         .is_ok();
 
     if !system_account_exists {
@@ -191,11 +188,12 @@ async fn query_account_data(
     block_number: u64,
     account: &AccountId32,
 ) -> Result<DecodedAccountData, BalanceQueryError> {
-    let client_at_block = client.at(block_number).await?;
-    let storage_entry = client_at_block.storage().entry("System", "Account")?;
+    let client_at_block = client.at_block(block_number).await?;
+    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("System", "Account"))?;
 
     let account_bytes: [u8; 32] = *account.as_ref();
-    let storage_value = storage_entry.fetch(&(&account_bytes,)).await?;
+    let key = vec![Value::from_bytes(&account_bytes)];
+    let storage_value = storage_entry.try_fetch(key).await?;
 
     if let Some(value) = storage_value {
         decode_account_info(&value)
@@ -213,7 +211,7 @@ async fn query_account_data(
 }
 
 fn decode_account_info(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<DecodedAccountData, BalanceQueryError> {
     let decoded: Value<()> = value.decode_as().map_err(|_e| {
         BalanceQueryError::DecodeFailed(parity_scale_codec::Error::from(
@@ -325,21 +323,22 @@ async fn query_balance_locks(
     block_number: u64,
     account: &AccountId32,
 ) -> Result<Vec<DecodedBalanceLock>, BalanceQueryError> {
-    let client_at_block = client.at(block_number).await?;
+    let client_at_block = client.at_block(block_number).await?;
 
     // Check if Balances::Locks exists
     let locks_exists = client_at_block
         .storage()
-        .entry("Balances", "Locks")
+        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Balances", "Locks"))
         .is_ok();
 
     if !locks_exists {
         return Ok(Vec::new());
     }
 
-    let storage_entry = client_at_block.storage().entry("Balances", "Locks")?;
+    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Balances", "Locks"))?;
     let account_bytes: [u8; 32] = *account.as_ref();
-    let storage_value = storage_entry.fetch(&(&account_bytes,)).await?;
+    let key = vec![Value::from_bytes(&account_bytes)];
+    let storage_value = storage_entry.try_fetch(key).await?;
 
     if let Some(value) = storage_value {
         decode_balance_locks(&value)
@@ -349,7 +348,7 @@ async fn query_balance_locks(
 }
 
 fn decode_balance_locks(
-    value: &subxt_historic::storage::StorageValue<'_>,
+    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
 ) -> Result<Vec<DecodedBalanceLock>, BalanceQueryError> {
     let decoded: Value<()> = value.decode_as().map_err(|_e| {
         BalanceQueryError::DecodeFailed(parity_scale_codec::Error::from(
