@@ -652,10 +652,12 @@ async fn fetch_validator_count(
             pallet: "Staking",
             entry: "ValidatorCount",
         })?;
-    value.decode().map_err(|_| PalletError::StorageDecodeFailed {
-        pallet: "Staking",
-        entry: "ValidatorCount",
-    })
+    value
+        .decode()
+        .map_err(|_| PalletError::StorageDecodeFailed {
+            pallet: "Staking",
+            entry: "ValidatorCount",
+        })
 }
 
 async fn fetch_force_era(
@@ -855,9 +857,7 @@ async fn fetch_election_status(
     ElectionStatus::decode(&mut &bytes[..]).ok()
 }
 
-async fn fetch_timestamp(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Option<String> {
+async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<String> {
     // Use typed dynamic storage to decode timestamp directly as u64
     let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
     let timestamp = client_at_block
@@ -890,11 +890,12 @@ async fn derive_session_era_progress_relay(
     let bonded_eras = fetch_bonded_eras(client_at_block).await?;
 
     // Get chain constants from metadata
-    let sessions_per_era = get_sessions_per_era_from_metadata(&client_at_block.metadata())
-        .ok_or(PalletError::ConstantNotFound {
+    let sessions_per_era = get_sessions_per_era_from_metadata(&client_at_block.metadata()).ok_or(
+        PalletError::ConstantNotFound {
             pallet: "Staking",
             constant: "SessionsPerEra",
-        })?;
+        },
+    )?;
     let epoch_duration = get_babe_epoch_duration(spec_name);
 
     // Find active era start session index
@@ -942,11 +943,12 @@ async fn derive_session_era_progress_asset_hub(
     let bonded_eras = fetch_bonded_eras(client_at_block).await?;
 
     // Get sessions per era from metadata
-    let sessions_per_era = get_sessions_per_era_from_metadata(&client_at_block.metadata())
-        .ok_or(PalletError::ConstantNotFound {
+    let sessions_per_era = get_sessions_per_era_from_metadata(&client_at_block.metadata()).ok_or(
+        PalletError::ConstantNotFound {
             pallet: "Staking",
             constant: "SessionsPerEra",
-        })?;
+        },
+    )?;
 
     // Find active era start session index
     let active_era_start_session = bonded_eras
@@ -1052,10 +1054,12 @@ async fn fetch_babe_current_slot(
             pallet: "Babe",
             entry: "CurrentSlot",
         })?;
-    value.decode().map_err(|_| PalletError::StorageDecodeFailed {
-        pallet: "Babe",
-        entry: "CurrentSlot",
-    })
+    value
+        .decode()
+        .map_err(|_| PalletError::StorageDecodeFailed {
+            pallet: "Babe",
+            entry: "CurrentSlot",
+        })
 }
 
 async fn fetch_babe_epoch_index(
@@ -1070,10 +1074,12 @@ async fn fetch_babe_epoch_index(
             pallet: "Babe",
             entry: "EpochIndex",
         })?;
-    value.decode().map_err(|_| PalletError::StorageDecodeFailed {
-        pallet: "Babe",
-        entry: "EpochIndex",
-    })
+    value
+        .decode()
+        .map_err(|_| PalletError::StorageDecodeFailed {
+            pallet: "Babe",
+            entry: "EpochIndex",
+        })
 }
 
 async fn fetch_babe_genesis_slot(
@@ -1088,10 +1094,12 @@ async fn fetch_babe_genesis_slot(
             pallet: "Babe",
             entry: "GenesisSlot",
         })?;
-    value.decode().map_err(|_| PalletError::StorageDecodeFailed {
-        pallet: "Babe",
-        entry: "GenesisSlot",
-    })
+    value
+        .decode()
+        .map_err(|_| PalletError::StorageDecodeFailed {
+            pallet: "Babe",
+            entry: "GenesisSlot",
+        })
 }
 
 async fn fetch_session_current_index(
@@ -1106,10 +1114,12 @@ async fn fetch_session_current_index(
             pallet: "Session",
             entry: "CurrentIndex",
         })?;
-    value.decode().map_err(|_| PalletError::StorageDecodeFailed {
-        pallet: "Session",
-        entry: "CurrentIndex",
-    })
+    value
+        .decode()
+        .map_err(|_| PalletError::StorageDecodeFailed {
+            pallet: "Session",
+            entry: "CurrentIndex",
+        })
 }
 
 fn get_sessions_per_era_from_metadata(metadata: &subxt::Metadata) -> Option<u32> {
