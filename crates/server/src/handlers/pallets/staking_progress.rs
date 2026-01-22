@@ -648,10 +648,14 @@ async fn fetch_validator_count(
         .storage()
         .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::StakingPalletNotFound)?;
-    value
-        .decode()
-        .map_err(|_| PalletError::StakingPalletNotFound)
+        .map_err(|_| PalletError::StorageFetchFailed {
+            pallet: "Staking",
+            entry: "ValidatorCount",
+        })?;
+    value.decode().map_err(|_| PalletError::StorageDecodeFailed {
+        pallet: "Staking",
+        entry: "ValidatorCount",
+    })
 }
 
 async fn fetch_force_era(
@@ -662,9 +666,15 @@ async fn fetch_force_era(
         .storage()
         .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::StakingPalletNotFound)?;
+        .map_err(|_| PalletError::StorageFetchFailed {
+            pallet: "Staking",
+            entry: "ForceEra",
+        })?;
     let bytes = value.into_bytes();
-    Forcing::decode(&mut &bytes[..]).map_err(|_| PalletError::StakingPalletNotFound)
+    Forcing::decode(&mut &bytes[..]).map_err(|_| PalletError::StorageDecodeFailed {
+        pallet: "Staking",
+        entry: "ForceEra",
+    })
 }
 
 async fn fetch_active_era(
@@ -708,9 +718,15 @@ async fn fetch_bonded_eras(
         .storage()
         .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::EraStartSessionNotFound)?;
+        .map_err(|_| PalletError::StorageFetchFailed {
+            pallet: "Staking",
+            entry: "BondedEras",
+        })?;
     let bytes = value.into_bytes();
-    Vec::<(u32, u32)>::decode(&mut &bytes[..]).map_err(|_| PalletError::EraStartSessionNotFound)
+    Vec::<(u32, u32)>::decode(&mut &bytes[..]).map_err(|_| PalletError::StorageDecodeFailed {
+        pallet: "Staking",
+        entry: "BondedEras",
+    })
 }
 
 async fn fetch_staking_validators(
@@ -741,13 +757,19 @@ async fn fetch_staking_validators(
         .await
         .map_err(|e| {
             tracing::debug!("Failed to fetch Session.Validators: {:?}", e);
-            PalletError::SessionPalletNotFound
+            PalletError::StorageFetchFailed {
+                pallet: "Session",
+                entry: "Validators",
+            }
         })?;
 
     let bytes = value.into_bytes();
     let validators: Vec<[u8; 32]> = Vec::<[u8; 32]>::decode(&mut &bytes[..]).map_err(|e| {
         tracing::debug!("Failed to decode Session.Validators: {:?}", e);
-        PalletError::SessionPalletNotFound
+        PalletError::StorageDecodeFailed {
+            pallet: "Session",
+            entry: "Validators",
+        }
     })?;
 
     Ok(validators
@@ -869,7 +891,10 @@ async fn derive_session_era_progress_relay(
 
     // Get chain constants from metadata
     let sessions_per_era = get_sessions_per_era_from_metadata(&client_at_block.metadata())
-        .ok_or(PalletError::StakingPalletNotFound)?;
+        .ok_or(PalletError::ConstantNotFound {
+            pallet: "Staking",
+            constant: "SessionsPerEra",
+        })?;
     let epoch_duration = get_babe_epoch_duration(spec_name);
 
     // Find active era start session index
@@ -900,16 +925,17 @@ async fn derive_session_era_progress_asset_hub(
     state: &AppState,
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<SessionEraProgress, PalletError> {
-    let babe_params = get_asset_hub_babe_params(&state.chain_info.spec_name)
-        .ok_or(PalletError::StakingPalletNotFound)?;
+    let babe_params = get_asset_hub_babe_params(&state.chain_info.spec_name).ok_or_else(|| {
+        PalletError::UnsupportedChainForStaking(state.chain_info.spec_name.clone())
+    })?;
 
     // Fetch timestamp
     let timestamp_str = fetch_timestamp(client_at_block)
         .await
-        .ok_or(PalletError::StakingPalletNotFound)?;
+        .ok_or(PalletError::TimestampFetchFailed)?;
     let timestamp: u64 = timestamp_str
         .parse()
-        .map_err(|_| PalletError::StakingPalletNotFound)?;
+        .map_err(|_| PalletError::TimestampParseFailed)?;
 
     // Fetch active era and bonded eras
     let active_era_info = fetch_active_era(client_at_block).await?;
@@ -917,7 +943,10 @@ async fn derive_session_era_progress_asset_hub(
 
     // Get sessions per era from metadata
     let sessions_per_era = get_sessions_per_era_from_metadata(&client_at_block.metadata())
-        .ok_or(PalletError::StakingPalletNotFound)?;
+        .ok_or(PalletError::ConstantNotFound {
+            pallet: "Staking",
+            constant: "SessionsPerEra",
+        })?;
 
     // Find active era start session index
     let active_era_start_session = bonded_eras
@@ -1019,10 +1048,14 @@ async fn fetch_babe_current_slot(
         .storage()
         .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))?;
-    value
-        .decode()
-        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))
+        .map_err(|_| PalletError::StorageFetchFailed {
+            pallet: "Babe",
+            entry: "CurrentSlot",
+        })?;
+    value.decode().map_err(|_| PalletError::StorageDecodeFailed {
+        pallet: "Babe",
+        entry: "CurrentSlot",
+    })
 }
 
 async fn fetch_babe_epoch_index(
@@ -1033,10 +1066,14 @@ async fn fetch_babe_epoch_index(
         .storage()
         .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))?;
-    value
-        .decode()
-        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))
+        .map_err(|_| PalletError::StorageFetchFailed {
+            pallet: "Babe",
+            entry: "EpochIndex",
+        })?;
+    value.decode().map_err(|_| PalletError::StorageDecodeFailed {
+        pallet: "Babe",
+        entry: "EpochIndex",
+    })
 }
 
 async fn fetch_babe_genesis_slot(
@@ -1047,10 +1084,14 @@ async fn fetch_babe_genesis_slot(
         .storage()
         .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))?;
-    value
-        .decode()
-        .map_err(|_| PalletError::PalletNotFound("Babe".to_string()))
+        .map_err(|_| PalletError::StorageFetchFailed {
+            pallet: "Babe",
+            entry: "GenesisSlot",
+        })?;
+    value.decode().map_err(|_| PalletError::StorageDecodeFailed {
+        pallet: "Babe",
+        entry: "GenesisSlot",
+    })
 }
 
 async fn fetch_session_current_index(
@@ -1061,8 +1102,14 @@ async fn fetch_session_current_index(
         .storage()
         .fetch(storage_addr, ())
         .await
-        .map_err(|_| PalletError::SessionPalletNotFound)?;
-    value.decode().map_err(|_| PalletError::SessionPalletNotFound)
+        .map_err(|_| PalletError::StorageFetchFailed {
+            pallet: "Session",
+            entry: "CurrentIndex",
+        })?;
+    value.decode().map_err(|_| PalletError::StorageDecodeFailed {
+        pallet: "Session",
+        entry: "CurrentIndex",
+    })
 }
 
 fn get_sessions_per_era_from_metadata(metadata: &subxt::Metadata) -> Option<u32> {
