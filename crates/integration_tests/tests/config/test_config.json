@@ -371,6 +371,14 @@
         "query_params": {},
         "fixture_path": "asset-hub-polkadot/blocks_header_1276963.json",
         "description": "Test block header endpoint at Asset Hub Polkadot block 1,276,963"
+      },
+      {
+        "endpoint": "/v1/rc/blocks/{blockId}/extrinsics-raw",
+        "block_height": 10293194,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/blocks_10293194_rc_extrinsics_raw.json",
+        "description": "Test RC extrinsics-raw endpoint at Polkadot Relay Chain block 10,293,194"
       }
     ],
     "asset-hub-kusama": [

@@ -4,6 +4,7 @@ pub mod capabilities;
 pub mod health;
 pub mod metrics;
 pub mod pallets;
+pub mod rc;
 pub mod runtime;
 pub mod transaction;
 pub mod version;

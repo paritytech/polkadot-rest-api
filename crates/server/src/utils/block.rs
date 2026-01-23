@@ -197,6 +197,51 @@ pub async fn resolve_block_with_rpc(
     }
 }
 
+/// Resolves a block from an optional block identifier using only RPC client.
+///
+/// This variant is used for relay chain queries where we don't have a legacy_rpc wrapper.
+/// If `at` is `None`, it fetches the latest finalized block using the RPC directly.
+///
+/// # Arguments
+/// * `rpc_client` - RPC client for making requests
+/// * `at` - Optional block identifier (hash or number)
+///
+/// # Returns
+/// * `ResolvedBlock` containing both hash and number
+pub async fn resolve_block_with_rpc_client(
+    rpc_client: &RpcClient,
+    at: Option<BlockId>,
+) -> Result<ResolvedBlock, BlockResolveError> {
+    match at {
+        None => {
+            let hash: String = rpc_client
+                .request("chain_getFinalizedHead", rpc_params![])
+                .await
+                .map_err(BlockResolveError::FinalizedHeadFailed)?;
+            let number = get_block_number_from_hash_with_rpc(rpc_client, &hash).await?;
+            Ok(ResolvedBlock { hash, number })
+        }
+        Some(BlockId::Hash(hash)) => {
+            let hash_str = format!("{:#x}", hash);
+            let number = get_block_number_from_hash_with_rpc(rpc_client, &hash_str).await?;
+            Ok(ResolvedBlock {
+                hash: hash_str,
+                number,
+            })
+        }
+        Some(BlockId::Number(number)) => {
+            let hash: Option<String> = rpc_client
+                .request("chain_getBlockHash", rpc_params![number])
+                .await
+                .map_err(BlockResolveError::BlockHashFailed)?;
+            let hash = hash.ok_or_else(|| {
+                BlockResolveError::NotFound(format!("Block at height {} not found", number))
+            })?;
+            Ok(ResolvedBlock { hash, number })
+        }
+    }
+}
+
 /// Resolves a block from an optional block identifier
 ///
 /// # Arguments

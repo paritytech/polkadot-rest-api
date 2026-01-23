@@ -119,6 +119,16 @@ async fn fetch_raw_extrinsics(
         .await
         .map_err(GetBlockError::HeaderFetchFailed)?;
 
+    extract_raw_extrinsics_from_json(&block_json)
+}
+
+// ================================================================================================
+// Reusable Functions (for RC endpoints)
+// ================================================================================================
+
+pub fn extract_raw_extrinsics_from_json(
+    block_json: &serde_json::Value,
+) -> Result<Vec<String>, GetBlockError> {
     let extrinsics = block_json
         .get("block")
         .and_then(|b| b.get("extrinsics"))
@@ -131,4 +141,48 @@ async fn fetch_raw_extrinsics(
         .collect();
 
     Ok(raw_extrinsics)
+}
+
+pub fn extract_header_fields(
+    header_json: &serde_json::Value,
+) -> Result<(String, String, String), GetBlockError> {
+    let parent_hash = header_json
+        .get("parentHash")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("parentHash".to_string()))?
+        .to_string();
+
+    let state_root = header_json
+        .get("stateRoot")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("stateRoot".to_string()))?
+        .to_string();
+
+    let extrinsic_root = header_json
+        .get("extrinsicsRoot")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
+        .to_string();
+
+    Ok((parent_hash, state_root, extrinsic_root))
+}
+
+pub fn build_block_raw_response_from_json(
+    header_json: &serde_json::Value,
+    block_number: u64,
+    block_json: &serde_json::Value,
+) -> Result<BlockRawResponse, GetBlockError> {
+    let (parent_hash, state_root, extrinsic_root) = extract_header_fields(header_json)?;
+    let logs = decode_digest_logs(header_json);
+    let number = format!("0x{:08x}", block_number);
+    let extrinsics = extract_raw_extrinsics_from_json(block_json)?;
+
+    Ok(BlockRawResponse {
+        parent_hash,
+        number,
+        state_root,
+        extrinsic_root,
+        digest: BlockRawDigest { logs },
+        extrinsics,
+    })
 }
