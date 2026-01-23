@@ -25,11 +25,17 @@ pub async fn get_convert(
     Path(account_id): Path<String>,
     Query(params): Query<AccountConvertQueryParams>,
 ) -> Result<Response, AccountsError> {
-    // Validate scheme
-    let scheme = params.scheme.to_lowercase();
+    // Get scheme with default, validate
+    let scheme = params
+        .scheme
+        .unwrap_or_else(|| "sr25519".to_string())
+        .to_lowercase();
     if scheme != "ed25519" && scheme != "sr25519" && scheme != "ecdsa" {
         return Err(AccountsError::InvalidScheme);
     }
+
+    // Get prefix with default
+    let prefix = params.prefix.unwrap_or(42);
 
     // Validate that account_id is valid hex
     let account_id_clean = account_id.trim_start_matches("0x");
@@ -38,7 +44,7 @@ pub async fn get_convert(
     }
 
     // Get the network name for this prefix
-    let network = get_network_name(params.prefix).ok_or(AccountsError::InvalidPrefix)?;
+    let network = get_network_name(prefix).ok_or(AccountsError::InvalidPrefix)?;
 
     // Decode the hex to bytes
     let account_bytes =
@@ -66,11 +72,11 @@ pub async fn get_convert(
     let account_id32 = AccountId32::new(account_id_bytes);
 
     // Encode to SS58
-    let ss58_format = Ss58AddressFormat::custom(params.prefix);
+    let ss58_format = Ss58AddressFormat::custom(prefix);
     let address = account_id32.to_ss58check_with_version(ss58_format);
 
     let response = AccountConvertResponse {
-        ss58_prefix: params.prefix,
+        ss58_prefix: prefix,
         network,
         address,
         account_id: format!("0x{}", account_id_clean),

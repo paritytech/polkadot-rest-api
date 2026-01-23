@@ -52,7 +52,6 @@ macro_rules! impl_error_response {
 #[serde(rename_all = "camelCase")]
 pub struct AssetBalancesQueryParams {
     /// Optional Block identifier (hash or height) - defaults to latest finalized
-    #[serde(default)]
     pub at: Option<String>,
 
     /// Optional When true, treat 'at' as relay chain block identifier
@@ -60,8 +59,7 @@ pub struct AssetBalancesQueryParams {
     pub use_rc_block: bool,
 
     /// Optional list of asset IDs to query (queries all if omitted)
-    #[serde(default)]
-    pub assets: Vec<u32>,
+    pub assets: Option<Vec<u32>>,
 }
 
 // ================================================================================================
@@ -121,7 +119,6 @@ pub struct DecodedAssetBalance {
 #[serde(rename_all = "camelCase")]
 pub struct AssetApprovalQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
-    #[serde(default)]
     pub at: Option<String>,
 
     /// When true, treat 'at' as relay chain block identifier
@@ -352,7 +349,6 @@ impl_error_response!(AccountsError,
 #[serde(rename_all = "camelCase")]
 pub struct BalanceInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
-    #[serde(default)]
     pub at: Option<String>,
 
     /// When true, treat 'at' as relay chain block identifier
@@ -360,12 +356,10 @@ pub struct BalanceInfoQueryParams {
     pub use_rc_block: bool,
 
     /// Token symbol for chains with multiple tokens (ORML). Defaults to native token.
-    #[serde(default)]
     pub token: Option<String>,
 
     /// When true, denominate balances using chain decimals
-    #[serde(default)]
-    pub denominated: bool,
+    pub denominated: Option<bool>,
 }
 
 /// Response for GET /accounts/{accountId}/balance-info
@@ -454,7 +448,6 @@ pub struct DecodedBalanceLock {
 #[serde(rename_all = "camelCase")]
 pub struct PoolAssetBalancesQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
-    #[serde(default)]
     pub at: Option<String>,
 
     /// When true, treat 'at' as relay chain block identifier
@@ -462,8 +455,7 @@ pub struct PoolAssetBalancesQueryParams {
     pub use_rc_block: bool,
 
     /// Optional list of asset IDs to query (queries all if omitted)
-    #[serde(default)]
-    pub assets: Vec<u32>,
+    pub assets: Option<Vec<u32>>,
 }
 
 /// Response for GET /accounts/{accountId}/pool-asset-balances
@@ -502,12 +494,11 @@ pub struct PoolAssetBalance {
 #[serde(rename_all = "camelCase")]
 pub struct PoolAssetApprovalQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
-    #[serde(default)]
     pub at: Option<String>,
 
     /// When true, treat 'at' as relay chain block identifier
     #[serde(default)]
-    pub use_rc_block: bool,
+    pub use_rc_block: Option<bool>,
 
     /// The pool asset ID to query approval for (required)
     pub asset_id: u32,
@@ -552,25 +543,13 @@ pub struct DecodedPoolAssetApproval {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountConvertQueryParams {
-    /// Cryptographic scheme: "ed25519", "sr25519", or "ecdsa" (default: "sr25519")
-    #[serde(default = "default_scheme")]
-    pub scheme: String,
+    pub scheme: Option<String>,
 
-    /// SS58 prefix number (default: 42)
-    #[serde(default = "default_prefix")]
-    pub prefix: u16,
+    pub prefix: Option<u16>,
 
     /// If true, treat the input as a public key (default: false)
     #[serde(default)]
     pub public_key: bool,
-}
-
-fn default_scheme() -> String {
-    "sr25519".to_string()
-}
-
-fn default_prefix() -> u16 {
-    42
 }
 
 /// Response for GET /accounts/{accountId}/convert
@@ -605,7 +584,6 @@ pub struct AccountConvertResponse {
 #[serde(rename_all = "camelCase")]
 pub struct ProxyInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
-    #[serde(default)]
     pub at: Option<String>,
 
     /// When true, treat 'at' as relay chain block identifier
@@ -657,7 +635,6 @@ pub struct ProxyDefinition {
 #[serde(rename_all = "camelCase")]
 pub struct StakingInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
-    #[serde(default)]
     pub at: Option<String>,
 
     /// When true, treat 'at' as relay chain block identifier
@@ -765,7 +742,6 @@ pub struct ClaimedReward {
 #[serde(rename_all = "camelCase")]
 pub struct StakingPayoutsQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
-    #[serde(default)]
     pub at: Option<String>,
 
     /// Number of eras to query. Must be less than HISTORY_DEPTH. Defaults to 1.
@@ -773,7 +749,6 @@ pub struct StakingPayoutsQueryParams {
     pub depth: u32,
 
     /// The era to query at. Defaults to active_era - 1.
-    #[serde(default)]
     pub era: Option<u32>,
 
     /// Only show unclaimed rewards. Defaults to true.
@@ -873,7 +848,6 @@ pub struct ValidatorPayout {
 #[serde(rename_all = "camelCase")]
 pub struct VestingInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
-    #[serde(default)]
     pub at: Option<String>,
 
     /// When true, treat 'at' as relay chain block identifier
@@ -965,7 +939,6 @@ pub struct AddressDetails {
 #[serde(rename_all = "camelCase")]
 pub struct AccountValidateQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
-    #[serde(default)]
     pub at: Option<String>,
 }
 

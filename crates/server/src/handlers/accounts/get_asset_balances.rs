@@ -54,9 +54,9 @@ pub async fn get_asset_balances(
         }
     };
 
+    let assets = params.assets.as_deref().unwrap_or(&[]);
     let response =
-        query_asset_balances(&client_at_block, &account, &resolved_block, &params.assets).await?;
-
+        query_asset_balances(&client_at_block, &account, &resolved_block, assets).await?;
     Ok(Json(response).into_response())
 }
 
@@ -144,6 +144,7 @@ async fn handle_use_rc_block(
     let rc_block_number = rc_resolved.number.to_string();
 
     // Process each AH block
+    let assets = params.assets.as_deref().unwrap_or(&[]);
     let mut results = Vec::new();
     for ah_block in ah_blocks {
         let ah_resolved = utils::ResolvedBlock {
@@ -152,7 +153,7 @@ async fn handle_use_rc_block(
         };
         let client_at_block = state.client.at_block(ah_resolved.number).await?;
         let mut response =
-            query_asset_balances(&client_at_block, &account, &ah_resolved, &params.assets).await?;
+            query_asset_balances(&client_at_block, &account, &ah_resolved, assets).await?;
 
         // Add RC block info
         response.rc_block_hash = Some(rc_block_hash.clone());

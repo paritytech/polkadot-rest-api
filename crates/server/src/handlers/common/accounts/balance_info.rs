@@ -67,13 +67,25 @@ pub enum BalanceQueryError {
     BalancesPalletNotAvailable,
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(Box<subxt::error::OnlineClientAtBlockError>),
 
     #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] subxt::error::StorageError),
+    StorageQueryFailed(Box<subxt::error::StorageError>),
 
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for BalanceQueryError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        BalanceQueryError::ClientAtBlockFailed(Box::new(err))
+    }
+}
+
+impl From<subxt::error::StorageError> for BalanceQueryError {
+    fn from(err: subxt::error::StorageError) -> Self {
+        BalanceQueryError::StorageQueryFailed(Box::new(err))
+    }
 }
 
 // ================================================================================================

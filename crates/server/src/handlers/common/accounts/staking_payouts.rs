@@ -26,18 +26,33 @@ pub enum StakingPayoutsQueryError {
     InvalidDepth,
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(Box<subxt::error::OnlineClientAtBlockError>),
 
     #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] subxt::error::StorageError),
+    StorageQueryFailed(Box<subxt::error::StorageError>),
 
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
 }
 
+impl From<subxt::error::OnlineClientAtBlockError> for StakingPayoutsQueryError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        StakingPayoutsQueryError::ClientAtBlockFailed(Box::new(err))
+    }
+}
+
+impl From<subxt::error::StorageError> for StakingPayoutsQueryError {
+    fn from(err: subxt::error::StorageError) -> Self {
+        StakingPayoutsQueryError::StorageQueryFailed(Box::new(err))
+    }
+}
+
 // ================================================================================================
 // Data Types
 // ================================================================================================
+
+/// Decoded exposure data: (total, own, others as Vec<(account_bytes, value)>)
+pub type ExposureData = (u128, u128, Vec<([u8; 32], u128)>);
 
 /// Query parameters for staking payouts
 #[derive(Debug, Clone)]
@@ -623,7 +638,7 @@ fn decode_era_reward_points(
 
 fn decode_exposure(
     value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Result<(u128, u128, Vec<([u8; 32], u128)>), String> {
+) -> Result<ExposureData, String> {
     let decoded: Value<()> = value.decode_as().map_err(|e| e.to_string())?;
 
     let mut total = 0u128;

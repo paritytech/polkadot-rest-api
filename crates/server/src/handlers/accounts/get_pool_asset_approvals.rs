@@ -40,7 +40,7 @@ pub async fn get_pool_asset_approvals(
     let delegate = validate_and_parse_address(&params.delegate)
         .map_err(|_| AccountsError::InvalidDelegateAddress(params.delegate.clone()))?;
 
-    if params.use_rc_block {
+    if params.use_rc_block.unwrap_or(false) {
         return handle_use_rc_block(state, account, delegate, params).await;
     }
 

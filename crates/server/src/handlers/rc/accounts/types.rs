@@ -1,6 +1,10 @@
 //! Types for RC account-related handlers.
 
+use crate::state::SubstrateLegacyRpc;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use subxt::{OnlineClient, SubstrateConfig};
+use subxt_rpcs::RpcClient;
 
 // Re-export shared types from accounts module
 pub use crate::handlers::accounts::{
@@ -8,6 +12,21 @@ pub use crate::handlers::accounts::{
     NominationsInfo, ProxyDefinition, RewardDestination, StakingLedger, ValidatorPayout,
     VestingSchedule,
 };
+
+/// Type alias for relay chain access tuple (client, rpc_client, legacy_rpc)
+pub type RelayChainAccess<'a> = (
+    &'a Arc<OnlineClient<SubstrateConfig>>,
+    &'a Arc<RpcClient>,
+    &'a Arc<SubstrateLegacyRpc>,
+);
+
+/// Type alias for relay chain access with spec name (client, rpc_client, legacy_rpc, spec_name)
+pub type RelayChainAccessWithSpec<'a> = (
+    &'a Arc<OnlineClient<SubstrateConfig>>,
+    &'a Arc<RpcClient>,
+    &'a Arc<SubstrateLegacyRpc>,
+    String,
+);
 
 // ================================================================================================
 // Balance Info Types (RC-specific)

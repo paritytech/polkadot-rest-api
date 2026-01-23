@@ -1,12 +1,12 @@
 use super::types::{
     AccountsError, NominationsInfo, RcStakingInfoQueryParams, RcStakingInfoResponse,
-    RewardDestination, StakingLedger,
+    RelayChainAccess, RewardDestination, StakingLedger,
 };
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
-    DecodedRewardDestination, RawStakingInfo, query_staking_info,
+    query_staking_info, DecodedRewardDestination, RawStakingInfo,
 };
-use crate::state::{AppState, SubstrateLegacyRpc};
+use crate::state::AppState;
 use crate::utils;
 use axum::{
     Json,
@@ -14,9 +14,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use std::sync::Arc;
-use subxt::{OnlineClient, SubstrateConfig};
-use subxt_rpcs::RpcClient;
 
 // ================================================================================================
 // Main Handler
@@ -72,17 +69,7 @@ pub async fn get_staking_info(
 // ================================================================================================
 
 /// Get access to relay chain client and RPC
-/// Returns (client, rpc_client, legacy_rpc)
-fn get_relay_chain_access(
-    state: &AppState,
-) -> Result<
-    (
-        &Arc<OnlineClient<SubstrateConfig>>,
-        &Arc<RpcClient>,
-        &Arc<SubstrateLegacyRpc>,
-    ),
-    AccountsError,
-> {
+fn get_relay_chain_access(state: &AppState) -> Result<RelayChainAccess<'_>, AccountsError> {
     // If we're connected directly to a relay chain, use the primary client
     if state.chain_info.chain_type == ChainType::Relay {
         return Ok((&state.client, &state.rpc_client, &state.legacy_rpc));

@@ -72,7 +72,8 @@ pub async fn get_balance_info(
     )
     .await?;
 
-    let response = format_response(&raw_info, params.denominated, None, None, None);
+    let denominated = params.denominated.unwrap_or(false);
+    let response = format_response(&raw_info, denominated, None, None, None);
 
     Ok(Json(response).into_response())
 }
@@ -188,9 +189,10 @@ async fn handle_use_rc_block(
         )
         .await?;
 
+        let denominated = params.denominated.unwrap_or(false);
         let response = format_response(
             &raw_info,
-            params.denominated,
+            denominated,
             Some(rc_block_hash.clone()),
             Some(rc_block_number.clone()),
             fetch_timestamp(&client_at_block).await,

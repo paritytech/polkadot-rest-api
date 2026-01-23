@@ -16,13 +16,25 @@ pub enum ProxyQueryError {
     ProxyPalletNotAvailable,
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(Box<subxt::error::OnlineClientAtBlockError>),
 
     #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] subxt::error::StorageError),
+    StorageQueryFailed(Box<subxt::error::StorageError>),
 
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for ProxyQueryError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        ProxyQueryError::ClientAtBlockFailed(Box::new(err))
+    }
+}
+
+impl From<subxt::error::StorageError> for ProxyQueryError {
+    fn from(err: subxt::error::StorageError) -> Self {
+        ProxyQueryError::StorageQueryFailed(Box::new(err))
+    }
 }
 
 // ================================================================================================

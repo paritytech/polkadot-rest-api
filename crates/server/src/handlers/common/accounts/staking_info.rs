@@ -22,16 +22,28 @@ pub enum StakingQueryError {
     LedgerNotFound,
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(Box<subxt::error::OnlineClientAtBlockError>),
 
     #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] subxt::error::StorageError),
+    StorageQueryFailed(Box<subxt::error::StorageError>),
 
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
 
     #[error("Invalid address: {0}")]
     InvalidAddress(String),
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for StakingQueryError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        StakingQueryError::ClientAtBlockFailed(Box::new(err))
+    }
+}
+
+impl From<subxt::error::StorageError> for StakingQueryError {
+    fn from(err: subxt::error::StorageError) -> Self {
+        StakingQueryError::StorageQueryFailed(Box::new(err))
+    }
 }
 
 // ================================================================================================

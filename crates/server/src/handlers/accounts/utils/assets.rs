@@ -162,13 +162,11 @@ fn decode_balance_composite(
                 } else if let Some(sufficient) = extract_bool_field(fields, "sufficient") {
                     // v9160: sufficient boolean
                     sufficient
-                } else if let Some(is_sufficient) = extract_bool_field(fields, "isSufficient")
-                    .or_else(|| extract_bool_field(fields, "is_sufficient"))
-                {
-                    // Pre-v9160: isSufficient boolean
-                    is_sufficient
                 } else {
-                    false
+                    // Pre-v9160: isSufficient boolean
+                    extract_bool_field(fields, "isSufficient")
+                        .or_else(|| extract_bool_field(fields, "is_sufficient"))
+                        .unwrap_or_default()
                 };
 
             Ok(Some(DecodedAssetBalance {
