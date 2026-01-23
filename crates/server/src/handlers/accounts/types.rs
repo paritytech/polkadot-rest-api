@@ -186,10 +186,10 @@ pub enum AccountsError {
     PalletNotAvailable(String),
 
     #[error("Failed to query storage: {0}")]
-    StorageQueryFailed(#[from] StorageError),
+    StorageQueryFailed(Box<StorageError>),
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+    ClientAtBlockFailed(Box<OnlineClientAtBlockError>),
 
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
@@ -215,18 +215,18 @@ pub enum AccountsError {
     InvalidToken(String),
 
     #[error("Balance query failed: {0}")]
-    BalanceQueryFailed(#[from] crate::handlers::common::accounts::BalanceQueryError),
+    BalanceQueryFailed(Box<crate::handlers::common::accounts::BalanceQueryError>),
 
     // ---- Proxy-specific errors ----
     #[error("Proxy query failed: {0}")]
-    ProxyQueryFailed(#[from] crate::handlers::common::accounts::ProxyQueryError),
+    ProxyQueryFailed(Box<crate::handlers::common::accounts::ProxyQueryError>),
 
     // ---- Staking-specific errors ----
     #[error("Staking query failed: {0}")]
-    StakingQueryFailed(#[from] crate::handlers::common::accounts::StakingQueryError),
+    StakingQueryFailed(Box<crate::handlers::common::accounts::StakingQueryError>),
 
     #[error("Staking payouts query failed: {0}")]
-    StakingPayoutsQueryFailed(StakingPayoutsQueryError),
+    StakingPayoutsQueryFailed(Box<StakingPayoutsQueryError>),
 
     #[error("Invalid era: requested era {0} is beyond history depth")]
     InvalidEra(u32),
@@ -242,7 +242,7 @@ pub enum AccountsError {
 
     // ---- Vesting-specific errors ----
     #[error("Vesting query failed: {0}")]
-    VestingQueryFailed(#[from] crate::handlers::common::accounts::VestingQueryError),
+    VestingQueryFailed(Box<crate::handlers::common::accounts::VestingQueryError>),
 
     // ---- Account convert errors ----
     #[error("The `accountId` parameter provided is not a valid hex value")]
@@ -271,6 +271,42 @@ pub enum AccountsError {
     InternalError(String),
 }
 
+impl From<StorageError> for AccountsError {
+    fn from(err: StorageError) -> Self {
+        AccountsError::StorageQueryFailed(Box::new(err))
+    }
+}
+
+impl From<OnlineClientAtBlockError> for AccountsError {
+    fn from(err: OnlineClientAtBlockError) -> Self {
+        AccountsError::ClientAtBlockFailed(Box::new(err))
+    }
+}
+
+impl From<crate::handlers::common::accounts::BalanceQueryError> for AccountsError {
+    fn from(err: crate::handlers::common::accounts::BalanceQueryError) -> Self {
+        AccountsError::BalanceQueryFailed(Box::new(err))
+    }
+}
+
+impl From<crate::handlers::common::accounts::ProxyQueryError> for AccountsError {
+    fn from(err: crate::handlers::common::accounts::ProxyQueryError) -> Self {
+        AccountsError::ProxyQueryFailed(Box::new(err))
+    }
+}
+
+impl From<crate::handlers::common::accounts::StakingQueryError> for AccountsError {
+    fn from(err: crate::handlers::common::accounts::StakingQueryError) -> Self {
+        AccountsError::StakingQueryFailed(Box::new(err))
+    }
+}
+
+impl From<crate::handlers::common::accounts::VestingQueryError> for AccountsError {
+    fn from(err: crate::handlers::common::accounts::VestingQueryError) -> Self {
+        AccountsError::VestingQueryFailed(Box::new(err))
+    }
+}
+
 impl From<StakingPayoutsQueryError> for AccountsError {
     fn from(err: StakingPayoutsQueryError) -> Self {
         match err {
@@ -280,7 +316,7 @@ impl From<StakingPayoutsQueryError> for AccountsError {
             StakingPayoutsQueryError::NoActiveEra => AccountsError::NoActiveEra,
             StakingPayoutsQueryError::InvalidEra(era) => AccountsError::InvalidEra(era),
             StakingPayoutsQueryError::InvalidDepth => AccountsError::InvalidDepth,
-            other => AccountsError::StakingPayoutsQueryFailed(other),
+            other => AccountsError::StakingPayoutsQueryFailed(Box::new(other)),
         }
     }
 }
