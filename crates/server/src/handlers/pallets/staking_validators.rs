@@ -52,8 +52,10 @@ pub struct StakingValidatorsRcResponse {
 pub struct ValidatorInfo {
     pub address: String,
     pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub commission: Option<String>,
-    pub blocked: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked: Option<bool>,
 }
 
 #[derive(Debug, Clone, Decode)]
@@ -298,11 +300,11 @@ async fn derive_staking_validators(
         // for older runtimes that don't have the `blocked` field.
         let (commission, blocked) = if let Ok(prefs) = ValidatorPrefs::decode(&mut &value_bytes[..])
         {
-            (Some(prefs.commission.0.to_string()), prefs.blocked)
+            (Some(prefs.commission.0.to_string()), Some(prefs.blocked))
         } else if let Ok(commission) = Compact::<u32>::decode(&mut &value_bytes[..]) {
-            (Some(commission.0.to_string()), false)
+            (Some(commission.0.to_string()), Some(false))
         } else {
-            (None, false)
+            (None, None)
         };
 
         let status = if active_set.remove(&address) {
@@ -327,7 +329,7 @@ async fn derive_staking_validators(
             address: address.clone(),
             status: "active".to_string(),
             commission: None,
-            blocked: false,
+            blocked: None,
         };
         validators.push(info.clone());
         validators_to_be_chilled.push(info);
