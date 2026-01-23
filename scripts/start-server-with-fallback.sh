@@ -110,9 +110,9 @@ for url in "${RPC_URLS[@]}"; do
     # Make sure any previous server is stopped
     stop_server
 
-    # Start server with this RPC URL (and relay chain URL if configured)
+    # Start server with this RPC URL
     if [ -n "$RELAY_CHAIN_URL" ]; then
-        RUST_LOG=info SAS_SUBSTRATE_URL="$url" SAS_RELAY_CHAIN_URL="$RELAY_CHAIN_URL" "$SERVER_BINARY" > "$LOG_FILE" 2>&1 &
+        RUST_LOG=info SAS_SUBSTRATE_URL="$url" SAS_SUBSTRATE_MULTI_CHAIN_URL="$RELAY_CHAIN_URL" "$SERVER_BINARY" > "$LOG_FILE" 2>&1 &
     else
         RUST_LOG=info SAS_SUBSTRATE_URL="$url" "$SERVER_BINARY" > "$LOG_FILE" 2>&1 &
     fi
