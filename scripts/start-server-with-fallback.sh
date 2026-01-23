@@ -51,6 +51,7 @@ case $CHAIN in
             "wss://statemint.api.onfinality.io/public-ws"
             "wss://asset-hub-polkadot-rpc.dwellir.com"
         )
+        RELAY_CHAIN_URL="wss://rpc.polkadot.io"
         ;;
     asset-hub-kusama)
         RPC_URLS=(
@@ -58,6 +59,7 @@ case $CHAIN in
             "wss://statemine.api.onfinality.io/public-ws"
             "wss://asset-hub-kusama-rpc.dwellir.com"
         )
+        RELAY_CHAIN_URL="wss://kusama-rpc.polkadot.io"
         ;;
     westend)
         RPC_URLS=(
@@ -108,8 +110,12 @@ for url in "${RPC_URLS[@]}"; do
     # Make sure any previous server is stopped
     stop_server
 
-    # Start server with this RPC URL
-    RUST_LOG=info SAS_SUBSTRATE_URL="$url" "$SERVER_BINARY" > "$LOG_FILE" 2>&1 &
+    # Start server with this RPC URL (and relay chain URL if configured)
+    if [ -n "$RELAY_CHAIN_URL" ]; then
+        RUST_LOG=info SAS_SUBSTRATE_URL="$url" SAS_RELAY_CHAIN_URL="$RELAY_CHAIN_URL" "$SERVER_BINARY" > "$LOG_FILE" 2>&1 &
+    else
+        RUST_LOG=info SAS_SUBSTRATE_URL="$url" "$SERVER_BINARY" > "$LOG_FILE" 2>&1 &
+    fi
     echo $! > "$PID_FILE"
 
     echo "  Server started (PID: $(cat $PID_FILE))"
@@ -122,6 +128,9 @@ for url in "${RPC_URLS[@]}"; do
             echo "========================================"
             echo "SUCCESS: $CHAIN server is ready"
             echo "  RPC: $url"
+            if [ -n "$RELAY_CHAIN_URL" ]; then
+                echo "  Relay Chain: $RELAY_CHAIN_URL"
+            fi
             echo "  API: http://localhost:${API_PORT}"
             echo "  PID: $(cat $PID_FILE)"
             echo "  Log: $LOG_FILE"
