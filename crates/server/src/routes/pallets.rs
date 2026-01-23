@@ -7,11 +7,26 @@ use crate::{
 };
 
 pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
-    Router::new().route_registered(
-        registry,
-        API_VERSION,
-        "/pallets/assets/:asset_id/asset-info",
-        "get",
-        get(pallets::pallets_assets_asset_info),
-    )
+    Router::new()
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/assets/:asset_id/asset-info",
+            "get",
+            get(pallets::pallets_assets_asset_info),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/staking/progress",
+            "get",
+            get(pallets::pallets_staking_progress),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/rc/pallets/staking/progress",
+            "get",
+            get(pallets::rc_pallets_staking_progress),
+        )
 }

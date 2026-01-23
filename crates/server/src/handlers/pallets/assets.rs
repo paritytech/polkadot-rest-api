@@ -1,6 +1,6 @@
 //! Handler for /pallets/assets/{assetId}/asset-info endpoint.
 
-use crate::handlers::pallets::common::{AtResponse, PalletError};
+use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -343,10 +343,4 @@ fn build_empty_rc_response(rc_resolved_block: &utils::ResolvedBlock) -> Response
         }),
     )
         .into_response()
-}
-
-/// Formats a 32-byte account ID to SS58 format.
-fn format_account_id(account: &[u8; 32], ss58_prefix: u16) -> String {
-    use sp_core::crypto::Ss58Codec;
-    sp_core::sr25519::Public::from_raw(*account).to_ss58check_with_version(ss58_prefix.into())
 }
