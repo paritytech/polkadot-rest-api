@@ -283,21 +283,22 @@ fn extract_unlocking_chunks(fields: &[(String, Value<()>)]) -> Vec<DecodedUnlock
     let mut chunks = Vec::new();
 
     if let Some((_, unlocking_value)) = fields.iter().find(|(name, _)| name == "unlocking")
-        && let ValueDef::Composite(Composite::Unnamed(items)) = &unlocking_value.value {
-            for item in items {
-                if let ValueDef::Composite(Composite::Named(chunk_fields)) = &item.value {
-                    let value = extract_u128_field(chunk_fields, "value")
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "0".to_string());
+        && let ValueDef::Composite(Composite::Unnamed(items)) = &unlocking_value.value
+    {
+        for item in items {
+            if let ValueDef::Composite(Composite::Named(chunk_fields)) = &item.value {
+                let value = extract_u128_field(chunk_fields, "value")
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "0".to_string());
 
-                    let era = extract_u128_field(chunk_fields, "era")
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "0".to_string());
+                let era = extract_u128_field(chunk_fields, "era")
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "0".to_string());
 
-                    chunks.push(DecodedUnlockingChunk { value, era });
-                }
+                chunks.push(DecodedUnlockingChunk { value, era });
             }
         }
+    }
 
     chunks
 }
@@ -323,9 +324,10 @@ async fn decode_reward_destination(
                     // Extract account from variant values
                     if let Composite::Unnamed(values) = &variant.values
                         && let Some(account_value) = values.first()
-                            && let Some(account) = extract_account_id_from_value(account_value) {
-                                return Ok(DecodedRewardDestination::Account { account });
-                            }
+                        && let Some(account) = extract_account_id_from_value(account_value)
+                    {
+                        return Ok(DecodedRewardDestination::Account { account });
+                    }
                     Ok(DecodedRewardDestination::Simple("Account".to_string()))
                 }
                 _ => Ok(DecodedRewardDestination::Simple(name.clone())),
@@ -371,13 +373,14 @@ fn extract_targets_field(fields: &[(String, Value<()>)]) -> Vec<String> {
     let mut targets = Vec::new();
 
     if let Some((_, targets_value)) = fields.iter().find(|(name, _)| name == "targets")
-        && let ValueDef::Composite(Composite::Unnamed(items)) = &targets_value.value {
-            for item in items {
-                if let Some(account) = extract_account_id_from_value(item) {
-                    targets.push(account);
-                }
+        && let ValueDef::Composite(Composite::Unnamed(items)) = &targets_value.value
+    {
+        for item in items {
+            if let Some(account) = extract_account_id_from_value(item) {
+                targets.push(account);
             }
         }
+    }
 
     targets
 }
@@ -396,9 +399,10 @@ async fn decode_slashing_spans(
         ValueDef::Composite(Composite::Named(fields)) => {
             // Count is prior.length + 1
             if let Some((_, prior_value)) = fields.iter().find(|(name, _)| name == "prior")
-                && let ValueDef::Composite(Composite::Unnamed(items)) = &prior_value.value {
-                    return Ok(items.len() as u32 + 1);
-                }
+                && let ValueDef::Composite(Composite::Unnamed(items)) = &prior_value.value
+            {
+                return Ok(items.len() as u32 + 1);
+            }
             Ok(1)
         }
         _ => Ok(0),

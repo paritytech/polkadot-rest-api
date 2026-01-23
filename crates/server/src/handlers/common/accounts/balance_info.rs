@@ -148,7 +148,7 @@ pub fn get_default_token_decimals(spec_name: &str) -> u8 {
     let spec_lower = spec_name.to_lowercase();
 
     match spec_lower.as_str() {
-         "polkadot" | "statemint" => 10,
+        "polkadot" | "statemint" => 10,
         "kusama" | "statemine" => 12,
         "westend" | "westmint" => 12,
         "rococo" => 12,
@@ -163,9 +163,9 @@ pub fn get_default_existential_deposit(spec_name: &str) -> u128 {
 
     match spec_lower.as_str() {
         "polkadot" | "statemint" => 10_000_000_000, // 1 DOT = 10^10 planck, ED = 1 DOT on Polkadot Asset Hub
-        "kusama" | "statemine" => 33_333_333, // ~0.000033 KSM on Kusama Asset Hub
+        "kusama" | "statemine" => 33_333_333,       // ~0.000033 KSM on Kusama Asset Hub
         "westend" | "westmint" => 1_000_000_000_000, // 1 WND on Westend
-        _ => 1_000_000_000_000, // Default
+        _ => 1_000_000_000_000,                     // Default
     }
 }
 

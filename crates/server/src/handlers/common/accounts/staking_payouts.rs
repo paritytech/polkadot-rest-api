@@ -391,28 +391,25 @@ async fn fetch_exposure_data(
                 let targets = decode_nomination_targets(&nom_value);
 
                 for validator_bytes in targets {
-                    let key = vec![
-                        Value::u128(era as u128),
-                        Value::from_bytes(validator_bytes),
-                    ];
+                    let key = vec![Value::u128(era as u128), Value::from_bytes(validator_bytes)];
                     if let Ok(Some(exposure_value)) = stakers_entry.try_fetch(key).await
-                        && let Ok((total, own, others)) = decode_exposure(&exposure_value) {
-                            // Check if account is in the others list
-                            for (nominator, value) in &others {
-                                if nominator == account_bytes {
-                                    let validator_id =
-                                        AccountId32::from(validator_bytes).to_ss58check();
-                                    results.push((validator_id, *value, total));
-                                    break;
-                                }
-                            }
-                            // Check if account is the validator itself
-                            if account_bytes == &validator_bytes {
+                        && let Ok((total, own, others)) = decode_exposure(&exposure_value)
+                    {
+                        // Check if account is in the others list
+                        for (nominator, value) in &others {
+                            if nominator == account_bytes {
                                 let validator_id =
                                     AccountId32::from(validator_bytes).to_ss58check();
-                                results.push((validator_id, own, total));
+                                results.push((validator_id, *value, total));
+                                break;
                             }
                         }
+                        // Check if account is the validator itself
+                        if account_bytes == &validator_bytes {
+                            let validator_id = AccountId32::from(validator_bytes).to_ss58check();
+                            results.push((validator_id, own, total));
+                        }
+                    }
                 }
             }
         }
@@ -426,13 +423,14 @@ async fn fetch_exposure_data(
             if let Ok(stakers_entry) = client_at_block.storage().entry(stakers_query) {
                 let key = vec![Value::u128(era as u128), Value::from_bytes(account_bytes)];
                 if let Ok(Some(exposure_value)) = stakers_entry.try_fetch(key).await
-                    && let Ok((total, own, _)) = decode_exposure(&exposure_value) {
-                        let validator_id = account.to_ss58check();
-                        // Only add if not already in results
-                        if !results.iter().any(|(v, _, _)| v == &validator_id) {
-                            results.push((validator_id, own, total));
-                        }
+                    && let Ok((total, own, _)) = decode_exposure(&exposure_value)
+                {
+                    let validator_id = account.to_ss58check();
+                    // Only add if not already in results
+                    if !results.iter().any(|(v, _, _)| v == &validator_id) {
+                        results.push((validator_id, own, total));
                     }
+                }
             }
         }
     }
@@ -553,9 +551,10 @@ fn decode_active_era(
         ValueDef::Composite(Composite::Named(fields)) => {
             for (name, val) in fields {
                 if name == "index"
-                    && let ValueDef::Primitive(scale_value::Primitive::U128(v)) = &val.value {
-                        return Ok(*v as u32);
-                    }
+                    && let ValueDef::Primitive(scale_value::Primitive::U128(v)) = &val.value
+                {
+                    return Ok(*v as u32);
+                }
             }
             Err(StakingPayoutsQueryError::DecodeFailed(
                 parity_scale_codec::Error::from("Active era index not found"),
@@ -601,20 +600,19 @@ fn decode_era_reward_points(
                         total = *v as u32;
                     }
                 } else if name == "individual"
-                    && let ValueDef::Composite(Composite::Unnamed(items)) = &val.value {
-                        for item in items {
-                            if let ValueDef::Composite(Composite::Unnamed(pair)) = &item.value
-                                && pair.len() == 2
-                                    && let Some(account) =
-                                        extract_account_bytes_from_value(&pair[0])
-                                        && let ValueDef::Primitive(scale_value::Primitive::U128(
-                                            points,
-                                        )) = &pair[1].value
-                                        {
-                                            individual.insert(account, *points as u32);
-                                        }
+                    && let ValueDef::Composite(Composite::Unnamed(items)) = &val.value
+                {
+                    for item in items {
+                        if let ValueDef::Composite(Composite::Unnamed(pair)) = &item.value
+                            && pair.len() == 2
+                            && let Some(account) = extract_account_bytes_from_value(&pair[0])
+                            && let ValueDef::Primitive(scale_value::Primitive::U128(points)) =
+                                &pair[1].value
+                        {
+                            individual.insert(account, *points as u32);
                         }
                     }
+                }
             }
         }
         _ => return Err("Invalid era reward points format".to_string()),
@@ -644,29 +642,28 @@ fn decode_exposure(
                         own = *v;
                     }
                 } else if name == "others"
-                    && let ValueDef::Composite(Composite::Unnamed(items)) = &val.value {
-                        for item in items {
-                            if let ValueDef::Composite(Composite::Named(other_fields)) = &item.value
-                            {
-                                let mut who: Option<[u8; 32]> = None;
-                                let mut value_amount = 0u128;
-                                for (field_name, field_val) in other_fields {
-                                    if field_name == "who" {
-                                        who = extract_account_bytes_from_value(field_val);
-                                    } else if field_name == "value"
-                                        && let ValueDef::Primitive(scale_value::Primitive::U128(
-                                            v,
-                                        )) = &field_val.value
-                                        {
-                                            value_amount = *v;
-                                        }
+                    && let ValueDef::Composite(Composite::Unnamed(items)) = &val.value
+                {
+                    for item in items {
+                        if let ValueDef::Composite(Composite::Named(other_fields)) = &item.value {
+                            let mut who: Option<[u8; 32]> = None;
+                            let mut value_amount = 0u128;
+                            for (field_name, field_val) in other_fields {
+                                if field_name == "who" {
+                                    who = extract_account_bytes_from_value(field_val);
+                                } else if field_name == "value"
+                                    && let ValueDef::Primitive(scale_value::Primitive::U128(v)) =
+                                        &field_val.value
+                                {
+                                    value_amount = *v;
                                 }
-                                if let Some(account) = who {
-                                    others.push((account, value_amount));
-                                }
+                            }
+                            if let Some(account) = who {
+                                others.push((account, value_amount));
                             }
                         }
                     }
+                }
             }
         }
         _ => return Err("Invalid exposure format".to_string()),
@@ -681,18 +678,20 @@ fn decode_nomination_targets(
     let mut targets = Vec::new();
 
     if let Ok(decoded) = value.decode_as::<Value<()>>()
-        && let ValueDef::Composite(Composite::Named(fields)) = &decoded.value {
-            for (name, val) in fields {
-                if name == "targets"
-                    && let ValueDef::Composite(Composite::Unnamed(items)) = &val.value {
-                        for item in items {
-                            if let Some(account) = extract_account_bytes_from_value(item) {
-                                targets.push(account);
-                            }
-                        }
+        && let ValueDef::Composite(Composite::Named(fields)) = &decoded.value
+    {
+        for (name, val) in fields {
+            if name == "targets"
+                && let ValueDef::Composite(Composite::Unnamed(items)) = &val.value
+            {
+                for item in items {
+                    if let Some(account) = extract_account_bytes_from_value(item) {
+                        targets.push(account);
                     }
+                }
             }
         }
+    }
 
     targets
 }
@@ -706,9 +705,10 @@ fn decode_validator_commission(
         ValueDef::Composite(Composite::Named(fields)) => {
             for (name, val) in fields {
                 if name == "commission"
-                    && let ValueDef::Primitive(scale_value::Primitive::U128(v)) = &val.value {
-                        return Ok(*v as u32);
-                    }
+                    && let ValueDef::Primitive(scale_value::Primitive::U128(v)) = &val.value
+                {
+                    return Ok(*v as u32);
+                }
             }
             Ok(0)
         }
@@ -751,22 +751,24 @@ fn check_claimed_in_ledger(
     era: u32,
 ) -> bool {
     if let Ok(decoded) = value.decode_as::<Value<()>>()
-        && let ValueDef::Composite(Composite::Named(fields)) = &decoded.value {
-            // Check claimedRewards field (newer format)
-            for (name, val) in fields {
-                if (name == "claimedRewards"
-                    || name == "claimed_rewards"
-                    || name == "legacyClaimedRewards")
-                    && let ValueDef::Composite(Composite::Unnamed(eras)) = &val.value {
-                        for era_val in eras {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(e)) =
-                                &era_val.value
-                                && *e as u32 == era {
-                                    return true;
-                                }
-                        }
+        && let ValueDef::Composite(Composite::Named(fields)) = &decoded.value
+    {
+        // Check claimedRewards field (newer format)
+        for (name, val) in fields {
+            if (name == "claimedRewards"
+                || name == "claimed_rewards"
+                || name == "legacyClaimedRewards")
+                && let ValueDef::Composite(Composite::Unnamed(eras)) = &val.value
+            {
+                for era_val in eras {
+                    if let ValueDef::Primitive(scale_value::Primitive::U128(e)) = &era_val.value
+                        && *e as u32 == era
+                    {
+                        return true;
                     }
+                }
             }
         }
+    }
     false
 }
