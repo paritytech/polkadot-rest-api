@@ -3,7 +3,7 @@
 //! This module provides the main handler for fetching block information.
 
 use crate::state::AppState;
-use crate::utils::{self, find_ah_blocks_in_rc_block};
+use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -11,7 +11,6 @@ use axum::{
 };
 use config::ChainType;
 use heck::{ToSnakeCase, ToUpperCamelCase};
-use parity_scale_codec::Decode;
 use serde_json::json;
 
 use super::common::{
@@ -71,7 +70,9 @@ async fn handle_use_rc_block(
     )
     .await?;
 
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
+        .await
+        .map_err(|e| GetBlockError::RcBlockError(Box::new(e)))?;
 
     if ah_blocks.is_empty() {
         return Ok(Json(json!([])).into_response());
@@ -82,24 +83,27 @@ async fn handle_use_rc_block(
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {
-        let mut response =
-            build_block_response_for_hash(&state, &ah_block.hash, ah_block.number, true, &params)
-                .await?;
+        // Create client_at_block for this Asset Hub block
+        let client_at_block = state
+            .client
+            .at_block(ah_block.number)
+            .await
+            .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+
+        let mut response = build_block_response_for_hash(
+            &state,
+            &ah_block.hash,
+            ah_block.number,
+            true,
+            &client_at_block,
+            &params,
+        )
+        .await?;
 
         response.rc_block_hash = Some(rc_block_hash.clone());
         response.rc_block_number = Some(rc_block_number.clone());
 
-        let client_at_block = state.client.at(ah_block.number).await?;
-        if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
-            && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
-        {
-            // Timestamp is a u64 (milliseconds) - decode from storage value
-            let timestamp_bytes = timestamp.into_bytes();
-            let mut cursor = &timestamp_bytes[..];
-            if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                response.ah_timestamp = Some(timestamp_value.to_string());
-            }
-        }
+        response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
         results.push(response);
     }
@@ -107,29 +111,43 @@ async fn handle_use_rc_block(
     Ok(Json(json!(results)).into_response())
 }
 
-async fn build_block_response(
+pub(crate) async fn build_block_response(
     state: &AppState,
     block_id: String,
     params: &BlockQueryParams,
 ) -> Result<BlockResponse, GetBlockError> {
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
     let queried_by_hash = matches!(block_id_parsed, utils::BlockId::Hash(_));
-    let resolved_block = utils::resolve_block(state, Some(block_id_parsed)).await?;
+
+    // Create client_at_block directly from parsed input - saves 1 RPC call
+    // by letting subxt resolve hash<->number internally
+    let client_at_block = match &block_id_parsed {
+        utils::BlockId::Hash(hash) => state.client.at_block(*hash).await,
+        utils::BlockId::Number(number) => state.client.at_block(*number).await,
+    }
+    .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+
+    // Extract hash and number from the resolved client
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_number = client_at_block.block_number();
+
     build_block_response_for_hash(
         state,
-        &resolved_block.hash,
-        resolved_block.number,
+        &block_hash,
+        block_number,
         queried_by_hash,
+        &client_at_block,
         params,
     )
     .await
 }
 
-async fn build_block_response_for_hash(
+pub(crate) async fn build_block_response_for_hash(
     state: &AppState,
     block_hash: &str,
     block_number: u64,
     queried_by_hash: bool,
+    client_at_block: &super::common::BlockClient,
     params: &BlockQueryParams,
 ) -> Result<BlockResponse, GetBlockError> {
     let header_json = state
@@ -157,13 +175,10 @@ async fn build_block_response_for_hash(
 
     let logs = decode_digest_logs(&header_json);
 
-    // Create client_at_block once and reuse for all operations
-    let client_at_block = state.client.at(block_number).await?;
-
     let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
-        extract_author(state, &client_at_block, &logs, block_number),
-        extract_extrinsics(state, &client_at_block, block_number),
-        fetch_block_events(state, &client_at_block, block_number),
+        extract_author(state, client_at_block, &logs, block_number),
+        extract_extrinsics(state, client_at_block, block_number),
+        fetch_block_events(state, client_at_block, block_number),
         // Only fetch canonical hash if queried by hash (needed for fork detection)
         async {
             if params.finalized_key {
@@ -291,11 +306,11 @@ async fn build_block_response_for_hash(
         let metadata = client_at_block.metadata();
 
         if params.event_docs {
-            add_docs_to_events(&mut on_initialize.events, metadata);
-            add_docs_to_events(&mut on_finalize.events, metadata);
+            add_docs_to_events(&mut on_initialize.events, &metadata);
+            add_docs_to_events(&mut on_finalize.events, &metadata);
 
             for extrinsic in extrinsics_with_events.iter_mut() {
-                add_docs_to_events(&mut extrinsic.events, metadata);
+                add_docs_to_events(&mut extrinsic.events, &metadata);
             }
         }
 
@@ -306,8 +321,8 @@ async fn build_block_response_for_hash(
                 // Method names in metadata are snake_case, but our method names are lowerCamelCase
                 let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
                 let method_name = extrinsic.method.method.to_snake_case();
-                extrinsic.docs =
-                    Docs::for_call(metadata, &pallet_name, &method_name).map(|d| d.to_string());
+                extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
+                    .map(|d| d.to_string());
             }
         }
     }
@@ -358,7 +373,7 @@ mod tests {
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
     /// Helper to create a test AppState with mocked RPC responses
-    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+    async fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
         let config = SidecarConfig::default();
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
@@ -369,12 +384,13 @@ mod tests {
             ss58_prefix: 42,
         };
 
+        let client = subxt::OnlineClient::from_rpc_client((*rpc_client).clone())
+            .await
+            .expect("Failed to create test OnlineClient");
+
         AppState {
             config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
+            client: Arc::new(client),
             legacy_rpc,
             rpc_client,
             chain_info,
@@ -436,7 +452,7 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
         let block_id = "100".to_string();
         let params = BlockQueryParams::default();
 

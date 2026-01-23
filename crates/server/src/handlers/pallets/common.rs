@@ -25,11 +25,15 @@ pub enum PalletError {
 
     /// Failed to get the client at the specified block.
     #[error("Failed to get client at block")]
-    ClientAtBlockFailed(#[from] subxt_historic::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
 
     /// The requested pallet was not found in the metadata.
     #[error("Pallet not found: {0}")]
     PalletNotFound(String),
+
+    /// Asset not found.
+    #[error("Asset not found: {0}")]
+    AssetNotFound(String),
 
     /// The metadata version is not supported.
     #[error("Unsupported metadata version")]
@@ -62,7 +66,9 @@ impl IntoResponse for PalletError {
             Self::InvalidBlockParam(_) | Self::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
-            Self::PalletNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            Self::PalletNotFound(_) | Self::AssetNotFound(_) => {
+                (StatusCode::NOT_FOUND, self.to_string())
+            }
             Self::ClientAtBlockFailed(err) => {
                 if crate::utils::is_online_client_at_block_disconnected(err) {
                     (

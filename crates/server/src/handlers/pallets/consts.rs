@@ -8,6 +8,10 @@
 //!
 //! This endpoint aims to match the Sidecar `/pallets/{palletId}/consts` response format.
 
+// Allow large error types - PalletError contains subxt::error::OnlineClientAtBlockError
+// which is large by design. Boxing would add indirection without significant benefit.
+#![allow(clippy::result_large_err)]
+
 use crate::handlers::pallets::common::{
     AtResponse, DeprecationInfo, PalletError, PalletQueryParams, RcBlockFields, find_pallet_v14,
     find_pallet_v15, find_pallet_v16,
@@ -22,9 +26,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use frame_metadata::{RuntimeMetadata, decode_different::DecodeDifferent};
+use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed, decode_different::DecodeDifferent};
 use parity_scale_codec::Decode;
 use serde::Serialize;
+use subxt_rpcs::rpc_params;
 
 // ============================================================================
 // Response Types
@@ -121,22 +126,29 @@ pub async fn get_pallets_consts(
         return handle_use_rc_block(state, pallet_id, params).await;
     }
 
-    let block_id = params
-        .at
-        .map(|s| s.parse::<crate::utils::BlockId>())
-        .transpose()?;
-
-    let resolved_block = utils::resolve_block(&state, block_id).await?;
-    let client_at_block = state.client.at(resolved_block.number).await?;
-    let metadata = client_at_block.metadata();
-
-    let at = AtResponse {
-        hash: resolved_block.hash.clone(),
-        height: resolved_block.number.to_string(),
+    // Create client at the specified block
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
     };
 
+    let at = AtResponse {
+        hash: format!("{:#x}", client_at_block.block_hash()),
+        height: client_at_block.block_number().to_string(),
+    };
+
+    // Fetch raw metadata via RPC to access all metadata versions (V9-V16)
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let metadata = fetch_runtime_metadata(&state, &block_hash).await?;
+
     let response = extract_consts_from_metadata(
-        metadata,
+        &metadata,
         &pallet_id,
         at,
         params.only_ids,
@@ -144,6 +156,28 @@ pub async fn get_pallets_consts(
     )?;
 
     Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+/// Fetch raw RuntimeMetadata via RPC and decode it
+async fn fetch_runtime_metadata(
+    state: &AppState,
+    block_hash: &str,
+) -> Result<RuntimeMetadata, PalletError> {
+    let metadata_hex: String = state
+        .rpc_client
+        .request("state_getMetadata", rpc_params![block_hash])
+        .await
+        .map_err(|e| PalletError::PalletNotFound(format!("Failed to fetch metadata: {}", e)))?;
+
+    let hex_str = metadata_hex.strip_prefix("0x").unwrap_or(&metadata_hex);
+    let metadata_bytes = hex::decode(hex_str).map_err(|e| {
+        PalletError::PalletNotFound(format!("Failed to decode metadata hex: {}", e))
+    })?;
+
+    let metadata_prefixed = RuntimeMetadataPrefixed::decode(&mut &metadata_bytes[..])
+        .map_err(|e| PalletError::PalletNotFound(format!("Failed to decode metadata: {}", e)))?;
+
+    Ok(metadata_prefixed.1)
 }
 
 // ============================================================================
@@ -214,23 +248,34 @@ async fn handle_use_rc_block(
 
     // Use the first Asset Hub block
     let ah_block = &ah_blocks[0];
-    let client_at_block = state.client.at(ah_block.number).await?;
-    let metadata = client_at_block.metadata();
 
     let at = AtResponse {
         hash: ah_block.hash.clone(),
         height: ah_block.number.to_string(),
     };
 
-    // Try to get the Asset Hub timestamp
+    // Fetch raw metadata via RPC for full version support
+    let metadata = fetch_runtime_metadata(&state, &ah_block.hash).await?;
+
+    // Fetch timestamp via RPC
+    let timestamp_key = "0x0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f"; // Timestamp::Now storage key
+    let timestamp_result: Option<String> = state
+        .rpc_client
+        .request(
+            "state_getStorage",
+            rpc_params![timestamp_key, &ah_block.hash],
+        )
+        .await
+        .ok();
+
     let mut ah_timestamp = None;
-    if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
-        && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
-    {
-        let timestamp_bytes = timestamp.into_bytes();
-        let mut cursor = &timestamp_bytes[..];
-        if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-            ah_timestamp = Some(timestamp_value.to_string());
+    if let Some(timestamp_hex) = timestamp_result {
+        let hex_str = timestamp_hex.strip_prefix("0x").unwrap_or(&timestamp_hex);
+        if let Ok(timestamp_bytes) = hex::decode(hex_str) {
+            let mut cursor = &timestamp_bytes[..];
+            if let Ok(timestamp_value) = u64::decode(&mut cursor) {
+                ah_timestamp = Some(timestamp_value.to_string());
+            }
         }
     }
 
@@ -241,7 +286,7 @@ async fn handle_use_rc_block(
     };
 
     let response =
-        extract_consts_from_metadata(metadata, &pallet_id, at, params.only_ids, rc_fields)?;
+        extract_consts_from_metadata(&metadata, &pallet_id, at, params.only_ids, rc_fields)?;
 
     Ok((StatusCode::OK, Json(response)).into_response())
 }

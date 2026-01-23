@@ -17,6 +17,9 @@ pub enum ExpressError {
 
     #[error("Keep-alive timeout cannot be 0")]
     KeepAliveTimeoutZero,
+
+    #[error("Block fetch concurrency cannot be 0")]
+    BlockFetchConcurrencyZero,
 }
 
 // "Express" naming is an artifact of substrate-api-sidecar that is
@@ -46,6 +49,12 @@ pub struct ExpressConfig {
     /// Env: SAS_EXPRESS_KEEP_ALIVE_TIMEOUT
     /// Default: 5000
     pub keep_alive_timeout: u64,
+
+    /// Maximum number of concurrent block fetches when querying block ranges
+    ///
+    /// Env: SAS_EXPRESS_BLOCK_FETCH_CONCURRENCY
+    /// Default: 10
+    pub block_fetch_concurrency: usize,
 }
 
 fn default_bind_host() -> String {
@@ -62,6 +71,10 @@ fn default_request_limit() -> usize {
 
 fn default_keep_alive_timeout() -> u64 {
     5000 // 5 seconds in milliseconds
+}
+
+fn default_block_fetch_concurrency() -> usize {
+    10
 }
 
 impl ExpressConfig {
@@ -89,6 +102,11 @@ impl ExpressConfig {
             return Err(ExpressError::KeepAliveTimeoutZero);
         }
 
+        // Validate block_fetch_concurrency is at least 1
+        if self.block_fetch_concurrency == 0 {
+            return Err(ExpressError::BlockFetchConcurrencyZero);
+        }
+
         Ok(())
     }
 }
@@ -100,6 +118,7 @@ impl Default for ExpressConfig {
             port: default_port(),
             request_limit: default_request_limit(),
             keep_alive_timeout: default_keep_alive_timeout(),
+            block_fetch_concurrency: default_block_fetch_concurrency(),
         }
     }
 }
