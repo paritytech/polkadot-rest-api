@@ -11,7 +11,8 @@ use scale_value::scale::decode_as_type;
 use serde_json::{Value, json};
 use sp_core::hashing::blake2_256;
 use std::cmp;
-use subxt_historic::SubstrateConfig;
+use subxt::SubstrateConfig;
+use subxt::config::RpcConfigFor;
 use subxt_rpcs::{LegacyRpcMethods, RpcClient, client::rpc_params};
 
 use super::{NodeNetworkResponse, NodeVersionResponse};
@@ -52,7 +53,7 @@ pub enum TipExtractionError {
 
 pub async fn fetch_node_version(
     rpc_client: &RpcClient,
-    legacy_rpc: &LegacyRpcMethods<SubstrateConfig>,
+    legacy_rpc: &LegacyRpcMethods<RpcConfigFor<SubstrateConfig>>,
 ) -> Result<NodeVersionResponse, FetchError> {
     let (runtime_version_result, chain_result, version_result) = tokio::join!(
         legacy_rpc.state_get_runtime_version(None),

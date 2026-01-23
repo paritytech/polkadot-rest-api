@@ -6,7 +6,8 @@ use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use config::ChainType;
 use serde_json::json;
 use std::sync::Arc;
-use subxt_historic::SubstrateConfig;
+use subxt::SubstrateConfig;
+use subxt::config::RpcConfigFor;
 use subxt_rpcs::{LegacyRpcMethods, RpcClient};
 use thiserror::Error;
 
@@ -88,7 +89,8 @@ pub async fn get_rc_node_version(
     State(state): State<AppState>,
 ) -> Result<Json<NodeVersionResponse>, GetRcNodeVersionError> {
     let relay_rpc_client = get_relay_rpc_client(&state).await?;
-    let relay_legacy_rpc = LegacyRpcMethods::<SubstrateConfig>::new((*relay_rpc_client).clone());
+    let relay_legacy_rpc =
+        LegacyRpcMethods::<RpcConfigFor<SubstrateConfig>>::new((*relay_rpc_client).clone());
 
     let response = fetch_node_version(&relay_rpc_client, &relay_legacy_rpc).await?;
     Ok(Json(response))
