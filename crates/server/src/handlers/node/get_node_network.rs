@@ -84,13 +84,14 @@ pub async fn get_node_network(
 mod tests {
     use super::*;
     use crate::state::AppState;
+    use crate::test_fixtures::mock_rpc_client_builder;
     use axum::extract::State;
     use config::SidecarConfig;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
-    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+    async fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
         let config = SidecarConfig::default();
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
@@ -101,12 +102,13 @@ mod tests {
             ss58_prefix: 42,
         };
 
+        let client = subxt::OnlineClient::from_rpc_client((*rpc_client).clone())
+            .await
+            .expect("Failed to create test OnlineClient");
+
         AppState {
             config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
+            client: Arc::new(client),
             legacy_rpc,
             rpc_client,
             chain_info,
@@ -123,7 +125,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_node_network_success() {
-        let mock_client = MockRpcClient::builder()
+        let mock_client = mock_rpc_client_builder()
             .method_handler("system_health", async |_params| {
                 MockJson(json!({
                     "peers": 42,
@@ -161,7 +163,7 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
         let result = get_node_network(State(state)).await;
 
         assert!(result.is_ok());
@@ -210,7 +212,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_node_network_peers_unavailable() {
-        let mock_client = MockRpcClient::builder()
+        let mock_client = mock_rpc_client_builder()
             .method_handler("system_health", async |_params| {
                 MockJson(json!({
                     "peers": 10,
@@ -229,7 +231,7 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
         let result = get_node_network(State(state)).await;
 
         assert!(result.is_ok());

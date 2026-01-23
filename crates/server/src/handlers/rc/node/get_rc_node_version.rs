@@ -100,15 +100,16 @@ pub async fn get_rc_node_version(
 mod tests {
     use super::*;
     use crate::state::AppState;
+    use crate::test_fixtures::mock_rpc_client_builder;
     use axum::extract::State;
     use config::SidecarConfig;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
-    fn create_test_state_with_relay_mock(relay_mock_client: MockRpcClient) -> AppState {
+    async fn create_test_state_with_relay_mock(relay_mock_client: MockRpcClient) -> AppState {
         let config = SidecarConfig::default();
-        let primary_mock = MockRpcClient::builder().build();
+        let primary_mock = mock_rpc_client_builder().build();
         let rpc_client = Arc::new(RpcClient::new(primary_mock));
         let relay_rpc_client = Arc::new(RpcClient::new(relay_mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
@@ -119,12 +120,13 @@ mod tests {
             ss58_prefix: 0,
         };
 
+        let client = subxt::OnlineClient::from_rpc_client((*rpc_client).clone())
+            .await
+            .expect("Failed to create test OnlineClient");
+
         AppState {
             config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
+            client: Arc::new(client),
             legacy_rpc,
             rpc_client,
             chain_info,
@@ -143,7 +145,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_rc_node_version_success() {
-        let relay_mock = MockRpcClient::builder()
+        let relay_mock = mock_rpc_client_builder()
             .method_handler("state_getRuntimeVersion", async |_params| {
                 MockJson(serde_json::json!({
                     "specName": "polkadot",
@@ -164,7 +166,7 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_relay_mock(relay_mock);
+        let state = create_test_state_with_relay_mock(relay_mock).await;
         let result = get_rc_node_version(State(state)).await;
 
         assert!(result.is_ok());
@@ -176,7 +178,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_rc_node_version_missing_impl_name() {
-        let relay_mock = MockRpcClient::builder()
+        let relay_mock = mock_rpc_client_builder()
             .method_handler("state_getRuntimeVersion", async |_params| {
                 MockJson(serde_json::json!({
                     "specName": "westend",
@@ -196,7 +198,7 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_relay_mock(relay_mock);
+        let state = create_test_state_with_relay_mock(relay_mock).await;
         let result = get_rc_node_version(State(state)).await;
 
         assert!(result.is_ok());

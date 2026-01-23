@@ -142,15 +142,16 @@ pub async fn get_rc_node_transaction_pool(
 mod tests {
     use super::*;
     use crate::state::AppState;
+    use crate::test_fixtures::mock_rpc_client_builder;
     use axum::extract::{Query, State};
     use config::SidecarConfig;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
-    fn create_test_state_with_relay_mock(relay_mock_client: MockRpcClient) -> AppState {
+    async fn create_test_state_with_relay_mock(relay_mock_client: MockRpcClient) -> AppState {
         let config = SidecarConfig::default();
-        let primary_mock = MockRpcClient::builder().build();
+        let primary_mock = mock_rpc_client_builder().build();
         let rpc_client = Arc::new(RpcClient::new(primary_mock));
         let relay_rpc_client = Arc::new(RpcClient::new(relay_mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
@@ -161,12 +162,13 @@ mod tests {
             ss58_prefix: 0,
         };
 
+        let client = subxt::OnlineClient::from_rpc_client((*rpc_client).clone())
+            .await
+            .expect("Failed to create test OnlineClient");
+
         AppState {
             config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
+            client: Arc::new(client),
             legacy_rpc,
             rpc_client,
             chain_info,
@@ -210,13 +212,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_rc_transaction_pool_empty() {
-        let relay_mock = MockRpcClient::builder()
+        let relay_mock = mock_rpc_client_builder()
             .method_handler("author_pendingExtrinsics", async |_params| {
                 MockJson(serde_json::json!([]))
             })
             .build();
 
-        let state = create_test_state_with_relay_mock(relay_mock);
+        let state = create_test_state_with_relay_mock(relay_mock).await;
         let params = TransactionPoolQueryParams { include_fee: false };
 
         let result = get_rc_node_transaction_pool(State(state), Query(params)).await;
@@ -230,13 +232,13 @@ mod tests {
     async fn test_rc_transaction_pool_without_fee() {
         let extrinsic = real_polkadot_extrinsic_tip_zero();
 
-        let relay_mock = MockRpcClient::builder()
+        let relay_mock = mock_rpc_client_builder()
             .method_handler("author_pendingExtrinsics", async |_params| {
                 MockJson(serde_json::json!([real_polkadot_extrinsic_tip_zero()]))
             })
             .build();
 
-        let state = create_test_state_with_relay_mock(relay_mock);
+        let state = create_test_state_with_relay_mock(relay_mock).await;
         let params = TransactionPoolQueryParams { include_fee: false };
 
         let result = get_rc_node_transaction_pool(State(state), Query(params)).await;
@@ -257,7 +259,7 @@ mod tests {
     async fn test_rc_transaction_pool_with_fee() {
         let extrinsic = real_polkadot_extrinsic_tip_zero();
 
-        let relay_mock = MockRpcClient::builder()
+        let relay_mock = mock_rpc_client_builder()
             .method_handler("author_pendingExtrinsics", async |_params| {
                 MockJson(serde_json::json!([real_polkadot_extrinsic_tip_zero()]))
             })
@@ -274,7 +276,7 @@ mod tests {
             .method_handler("state_getMetadata", async |_params| MockJson("0x6d657461"))
             .build();
 
-        let state = create_test_state_with_relay_mock(relay_mock);
+        let state = create_test_state_with_relay_mock(relay_mock).await;
         let params = TransactionPoolQueryParams { include_fee: true };
 
         let result = get_rc_node_transaction_pool(State(state), Query(params)).await;
