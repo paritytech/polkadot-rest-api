@@ -27,10 +27,10 @@ pub enum GetPalletsStorageError {
     #[error("Invalid block parameter")]
     InvalidBlockParam(#[from] crate::utils::BlockIdParseError),
 
-    #[error("Block resolution failed")]
+    #[error("Block resolution failed: {0}")]
     BlockResolveFailed(#[from] crate::utils::BlockResolveError),
 
-    #[error("Failed to get client at block")]
+    #[error("Failed to get client at block: {0}")]
     ClientAtBlockFailed(#[from] subxt_historic::error::OnlineClientAtBlockError),
 
     #[error("Pallet not found: {0}")]
@@ -461,7 +461,9 @@ fn hasher_to_string_v16(hasher: &frame_metadata::v16::StorageHasher) -> String {
 
 // ============================================================================
 // Type formatting helper (for PortableRegistry in V14+)
-// Sidecar returns type IDs as strings, not resolved type names
+// Sidecar returns type IDs as strings, not resolved type names.
+// TODO: Consider resolving type names from the registry for better readability
+// if Sidecar compatibility is not required.
 // ============================================================================
 
 fn format_type_id(_types: &scale_info::PortableRegistry, type_id: u32) -> String {
@@ -488,6 +490,35 @@ fn extract_deprecation_info_v16(
         },
     }
 }
+
+// ============================================================================
+// Version-specific Response Builders
+// ============================================================================
+//
+// The following builders are organized by metadata version groups:
+//
+// GROUP 1: V9-V11 (Legacy, DecodeDifferent, no pallet index field)
+//   - Use array position as pallet index
+//   - Types encoded as strings via DecodeDifferent
+//   - No NMap support
+//   - Only difference between versions: StorageHasher enum variants
+//
+// GROUP 2: V12-V13 (Legacy, DecodeDifferent, has pallet index field)
+//   - Pallets have explicit .index field
+//   - V13 adds NMap storage type support
+//
+// GROUP 3: V14-V15 (Modern, PortableRegistry)
+//   - Use scale_info::PortableRegistry for type resolution
+//   - Types referenced by ID, not string names
+//   - Identical structure (V15 reuses V14's StorageHasher)
+//
+// GROUP 4: V16 (Modern, PortableRegistry, with deprecation)
+//   - Same as V14/V15 but adds deprecation_info field
+//
+// Note: Full consolidation via traits is not practical because each version
+// has distinct Rust types from frame_metadata crate that are not trait-compatible.
+// A macro could reduce source code duplication but wouldn't change the compiled output.
+// ============================================================================
 
 // ============================================================================
 // V9 Response Builder (no index field - use array position)
@@ -1187,6 +1218,9 @@ fn build_storage_response_v13(
 
 // ============================================================================
 // V14 Response Builder (uses PortableRegistry)
+// Note: V14 and V15 are structurally identical. V15's StorageHasher is the same
+// as V14's. They could share implementation via a trait, but frame_metadata
+// types are not trait-compatible across versions.
 // ============================================================================
 
 fn build_storage_response_v14(
