@@ -183,14 +183,11 @@ async fn handle_use_rc_block(
         let client_at_block = state.client.at_block(ah_resolved.number).await?;
         let raw_payouts = query_staking_payouts(&client_at_block, &account, &ah_resolved, &staking_params).await?;
 
-        // Fetch AH timestamp
-        let ah_timestamp = fetch_timestamp(&client_at_block).await.ok();
-
         let response = format_response(
             &raw_payouts,
             Some(rc_block_hash.clone()),
             Some(rc_block_number.clone()),
-            ah_timestamp,
+            fetch_timestamp(&client_at_block).await,
         );
 
         results.push(response);

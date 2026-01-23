@@ -187,15 +187,12 @@ async fn handle_use_rc_block(
         )
         .await?;
 
-        // Fetch AH timestamp
-        let ah_timestamp = fetch_timestamp(&client_at_block).await.ok();
-
         let response = format_response(
             &raw_info,
             params.denominated,
             Some(rc_block_hash.clone()),
             Some(rc_block_number.clone()),
-            ah_timestamp,
+            fetch_timestamp(&client_at_block).await,
         );
 
         results.push(response);

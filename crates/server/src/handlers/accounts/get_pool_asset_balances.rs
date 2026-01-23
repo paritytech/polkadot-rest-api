@@ -163,7 +163,7 @@ async fn handle_use_rc_block(
         response.rc_block_number = Some(rc_block_number.clone());
 
         // Fetch AH timestamp
-        if let Ok(timestamp) = fetch_timestamp(&client_at_block).await {
+        if let Some(timestamp) = fetch_timestamp(&client_at_block).await {
             response.ah_timestamp = Some(timestamp);
         }
 
