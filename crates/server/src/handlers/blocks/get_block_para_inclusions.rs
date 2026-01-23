@@ -20,6 +20,10 @@ use thiserror::Error;
 
 use super::CommonBlockError;
 
+// ============================================================================
+// Types - exported for reuse by /rc/blocks/{blockId}/para-inclusions
+// ============================================================================
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ParaInclusionsQueryParams {
@@ -130,6 +134,17 @@ pub async fn get_block_para_inclusions(
         .await
         .map_err(|e| CommonBlockError::ClientAtBlockFailed(Box::new(e)))?;
 
+    fetch_para_inclusions_from_client(&client_at_block, &resolved_block, params.para_id).await
+}
+
+/// Shared function to fetch para inclusions from a client at a specific block.
+///
+/// Used by both `/blocks/{blockId}/para-inclusions` and `/rc/blocks/{blockId}/para-inclusions`.
+pub async fn fetch_para_inclusions_from_client(
+    client_at_block: &subxt::client::OnlineClientAtBlock<subxt::SubstrateConfig>,
+    resolved_block: &utils::ResolvedBlock,
+    para_id_filter: Option<u32>,
+) -> Result<Response, ParaInclusionsError> {
     // Use dynamic storage address for System::Events
     let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
     let events_value = client_at_block
@@ -144,7 +159,7 @@ pub async fn get_block_para_inclusions(
 
     let mut inclusions = extract_para_inclusions(&events_decoded)?;
 
-    if let Some(filter_para_id) = params.para_id {
+    if let Some(filter_para_id) = para_id_filter {
         inclusions
             .retain(|inclusion| inclusion.para_id.parse::<u32>().ok() == Some(filter_para_id));
 
@@ -168,7 +183,15 @@ pub async fn get_block_para_inclusions(
     Ok(Json(response).into_response())
 }
 
-fn extract_para_inclusions(
+// ============================================================================
+// Extraction functions - exported for reuse by /rc/blocks/{blockId}/para-inclusions
+// ============================================================================
+
+/// Extract para inclusions from decoded System::Events
+///
+/// Filters for CandidateIncluded events from the ParaInclusion pallet
+/// and extracts the relevant data from each event.
+pub fn extract_para_inclusions(
     events_decoded: &Value<()>,
 ) -> Result<Vec<ParaInclusion>, ParaInclusionsError> {
     let mut inclusions = Vec::new();
