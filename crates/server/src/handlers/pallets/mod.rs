@@ -1,5 +1,6 @@
 //! Handlers for pallet-related endpoints.
 
+pub mod asset_conversion;
 pub mod assets;
 pub mod common;
 pub mod constants;
@@ -7,6 +8,7 @@ pub mod consts;
 pub mod staking_progress;
 pub mod staking_validators;
 
+pub use asset_conversion::{get_liquidity_pools, get_next_available_id};
 pub use assets::pallets_assets_asset_info;
 pub use consts::{pallets_constant_item, pallets_constants};
 pub use staking_progress::pallets_staking_progress;
