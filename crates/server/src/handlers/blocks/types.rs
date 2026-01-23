@@ -152,6 +152,12 @@ pub enum GetBlockError {
     InvalidExtrinsicIndex(String),
 }
 
+impl From<OnlineClientAtBlockError> for GetBlockError {
+    fn from(err: OnlineClientAtBlockError) -> Self {
+        GetBlockError::ClientAtBlockFailed(Box::new(err))
+    }
+}
+
 impl IntoResponse for GetBlockError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {

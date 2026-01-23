@@ -63,7 +63,7 @@ pub async fn get_extrinsic(
         .ok_or_else(|| GetBlockError::HeaderFieldMissing("parentHash".to_string()))?
         .to_string();
 
-    let client_at_block = state.client.at(block_number).await?;
+    let client_at_block = state.client.at_block(block_number).await?;
 
     let (extrinsics_result, events_result) = tokio::join!(
         extract_extrinsics(&state, &client_at_block, block_number),
@@ -127,14 +127,14 @@ pub async fn get_extrinsic(
         let metadata = client_at_block.metadata();
 
         if params.event_docs {
-            add_docs_to_events(&mut extrinsic.events, metadata);
+            add_docs_to_events(&mut extrinsic.events, &metadata);
         }
 
         if params.extrinsic_docs {
             let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
             let method_name = extrinsic.method.method.to_snake_case();
             extrinsic.docs =
-                Docs::for_call(metadata, &pallet_name, &method_name).map(|d| d.to_string());
+                Docs::for_call_subxt(&metadata, &pallet_name, &method_name).map(|d| d.to_string());
         }
     }
 
