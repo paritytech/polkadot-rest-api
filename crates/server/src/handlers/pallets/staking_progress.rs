@@ -81,29 +81,29 @@ struct ActiveEraInfo {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Decode)]
-enum Forcing {
+enum ForceEra {
     NotForcing,
     ForceNew,
     ForceNone,
     ForceAlways,
 }
 
-impl Forcing {
-    fn to_json(&self) -> serde_json::Value {
+impl ForceEra {
+    fn to_json(self) -> serde_json::Value {
         match self {
-            Forcing::NotForcing => json!("NotForcing"),
-            Forcing::ForceNew => json!("ForceNew"),
-            Forcing::ForceNone => json!("ForceNone"),
-            Forcing::ForceAlways => json!("ForceAlways"),
+            ForceEra::NotForcing => json!("NotForcing"),
+            ForceEra::ForceNew => json!("ForceNew"),
+            ForceEra::ForceNone => json!("ForceNone"),
+            ForceEra::ForceAlways => json!("ForceAlways"),
         }
     }
 
     fn is_force_none(&self) -> bool {
-        matches!(self, Forcing::ForceNone)
+        matches!(self, ForceEra::ForceNone)
     }
 
     fn is_force_always(&self) -> bool {
-        matches!(self, Forcing::ForceAlways)
+        matches!(self, ForceEra::ForceAlways)
     }
 }
 
@@ -123,7 +123,7 @@ enum ElectionStatus {
 }
 
 impl ElectionStatus {
-    fn to_json(&self) -> serde_json::Value {
+    fn to_json(self) -> serde_json::Value {
         match self {
             ElectionStatus::Close => json!({"close": null}),
             ElectionStatus::Open(block) => json!({"open": block}),
@@ -662,7 +662,7 @@ async fn fetch_validator_count(
 
 async fn fetch_force_era(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<Forcing, PalletError> {
+) -> Result<ForceEra, PalletError> {
     let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "ForceEra");
     let value = client_at_block
         .storage()
@@ -673,7 +673,7 @@ async fn fetch_force_era(
             entry: "ForceEra",
         })?;
     let bytes = value.into_bytes();
-    Forcing::decode(&mut &bytes[..]).map_err(|_| PalletError::StorageDecodeFailed {
+    ForceEra::decode(&mut &bytes[..]).map_err(|_| PalletError::StorageDecodeFailed {
         pallet: "Staking",
         entry: "ForceEra",
     })
