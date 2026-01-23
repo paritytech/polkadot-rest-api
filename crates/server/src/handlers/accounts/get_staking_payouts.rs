@@ -5,7 +5,7 @@ use super::types::{
 use super::utils::validate_and_parse_address;
 use crate::handlers::accounts::utils::fetch_timestamp;
 use crate::handlers::common::accounts::{
-    query_staking_payouts as query_staking_payouts_shared, RawEraPayouts, RawStakingPayouts,
+    query_staking_payouts, RawEraPayouts, RawStakingPayouts,
     StakingPayoutsParams,
 };
 use crate::state::AppState;
@@ -51,10 +51,16 @@ pub async fn get_staking_payouts(
         .transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
 
-    println!(
-        "Fetching staking payouts for account {:?} at block {}",
-        account, resolved_block.number
-    );
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
+    };
 
     let staking_params = StakingPayoutsParams {
         depth: params.depth,
@@ -62,7 +68,7 @@ pub async fn get_staking_payouts(
         unclaimed_only: params.unclaimed_only,
     };
 
-    let raw_payouts = query_staking_payouts_shared(&state.client, &account, &resolved_block, &staking_params).await?;
+    let raw_payouts = query_staking_payouts(&client_at_block, &account, &resolved_block, &staking_params).await?;
 
     let response = format_response(&raw_payouts, None, None, None);
 
@@ -174,11 +180,11 @@ async fn handle_use_rc_block(
             hash: ah_block.hash.clone(),
             number: ah_block.number,
         };
-
-        let raw_payouts = query_staking_payouts_shared(&state.client, &account, &ah_resolved, &staking_params).await?;
+        let client_at_block = state.client.at_block(ah_resolved.number).await?;
+        let raw_payouts = query_staking_payouts(&client_at_block, &account, &ah_resolved, &staking_params).await?;
 
         // Fetch AH timestamp
-        let ah_timestamp = fetch_timestamp(&state, ah_block.number).await.ok();
+        let ah_timestamp = fetch_timestamp(&client_at_block).await.ok();
 
         let response = format_response(
             &raw_payouts,

@@ -1,6 +1,6 @@
 use super::types::{AccountsError, RcProxyInfoQueryParams, RcProxyInfoResponse};
 use crate::handlers::accounts::utils::validate_and_parse_address;
-use crate::handlers::common::accounts::{query_proxy_info as query_proxy_info_shared, RawProxyInfo};
+use crate::handlers::common::accounts::{query_proxy_info, RawProxyInfo};
 use crate::state::{AppState, SubstrateLegacyRpc};
 use crate::utils;
 use axum::{
@@ -43,12 +43,18 @@ pub async fn get_proxy_info(
 
     let resolved_block = utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
 
-    println!(
-        "Fetching RC proxy info for account {:?} at block {}",
-        account, resolved_block.number
-    );
+    let client_at_block = match params.at {
+        None => rc_client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => rc_client.at_block(hash).await?,
+                utils::BlockId::Number(number) => rc_client.at_block(number).await?,
+            }
+        }
+    };
 
-    let raw_info = query_proxy_info_shared(rc_client, &account, &resolved_block).await?;
+    let raw_info = query_proxy_info(&client_at_block, &account, &resolved_block).await?;
 
     let response = format_response(&raw_info);
 

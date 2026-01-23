@@ -15,6 +15,7 @@ use config::ChainType;
 use scale_value::{Composite, Value, ValueDef};
 use serde_json::json;
 use sp_core::crypto::AccountId32;
+use subxt::{OnlineClientAtBlock, SubstrateConfig};
 
 // ================================================================================================
 // Main Handler
@@ -43,39 +44,45 @@ pub async fn get_asset_approvals(
         return handle_use_rc_block(state, account, delegate, params).await;
     }
 
-    let block_id = params.at.map(|s| s.parse::<utils::BlockId>()).transpose()?;
+    let block_id = params.at.as_ref().map(|s| s.parse::<utils::BlockId>()).transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
 
-    println!(
-        "Fetching asset approval for account {:?} delegate {:?} asset_id {}",
-        account, delegate, params.asset_id
-    );
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
+    };
 
     let response =
-        query_asset_approval(&state, &account, &delegate, params.asset_id, &resolved_block).await?;
+        query_asset_approval(&client_at_block, &account, &delegate, params.asset_id, &resolved_block).await?;
 
     Ok(Json(response).into_response())
 }
 
 async fn query_asset_approval(
-    state: &AppState,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     owner: &AccountId32,
     delegate: &AccountId32,
     asset_id: u32,
     block: &utils::ResolvedBlock,
 ) -> Result<AssetApprovalResponse, AccountsError> {
-    let client_at_block = state.client.at_block(block.number).await?;
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Approvals");
 
     let approvals_exists = client_at_block
         .storage()
-        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Approvals"))
+        .entry(storage_query.clone())
         .is_ok();
 
     if !approvals_exists {
         return Err(AccountsError::PalletNotAvailable("Assets".to_string()));
     }
 
-    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Approvals"))?;
+    let storage_entry = client_at_block.storage().entry(storage_query)?;
 
     // Storage key for Approvals: (asset_id, owner, delegate)
     let owner_bytes: &[u8; 32] = owner.as_ref();
@@ -251,8 +258,10 @@ async fn handle_use_rc_block(
             number: ah_block.number,
         };
 
+        let client_at_block = state.client.at_block(ah_resolved.number).await?;
+
         let mut response =
-            query_asset_approval(&state, &account, &delegate, params.asset_id, &ah_resolved)
+            query_asset_approval(&client_at_block, &account, &delegate, params.asset_id, &ah_resolved)
                 .await?;
 
         // Add RC block info
@@ -260,7 +269,7 @@ async fn handle_use_rc_block(
         response.rc_block_number = Some(rc_block_number.clone());
 
         // Fetch AH timestamp
-        if let Ok(timestamp) = fetch_timestamp(&state, ah_block.number).await {
+        if let Ok(timestamp) = fetch_timestamp(&client_at_block).await {
             response.ah_timestamp = Some(timestamp);
         }
 

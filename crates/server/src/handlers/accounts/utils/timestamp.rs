@@ -2,15 +2,16 @@
 // Timestamp Data Fetching
 // ================================================================================================
 
-use crate::state::AppState;
 use parity_scale_codec::Decode;
+use scale_value::Value;
+use subxt::{OnlineClientAtBlock, SubstrateConfig};
 
 /// Fetch timestamp for a given block
-pub async fn fetch_timestamp(state: &AppState, block_number: u64) -> Result<String, Box<dyn std::error::Error>> {
-    let client_at_block = state.client.at_block(block_number).await?;
+pub async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>,) -> Result<String, Box<dyn std::error::Error>> {
+    let storage_query = subxt::storage::dynamic::<Vec<Value>, Value>("Timestamp", "Now");
 
-    if let Ok(timestamp_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Timestamp", "Now")) {
-        if let Ok(Some(timestamp)) = timestamp_entry.try_fetch(Vec::<scale_value::Value>::new()).await {
+    if let Ok(storage_entry) = client_at_block.storage().entry(storage_query) {
+        if let Ok(Some(timestamp)) = storage_entry.try_fetch(Vec::<Value>::new()).await {
             // Timestamp is a u64 (milliseconds) - decode from storage value
             let timestamp_bytes = timestamp.into_bytes();
             let mut cursor = &timestamp_bytes[..];

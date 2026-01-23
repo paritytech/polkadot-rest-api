@@ -2,7 +2,7 @@ use super::types::{AccountsError, BalanceInfoQueryParams, BalanceInfoResponse, B
 use super::utils::{fetch_timestamp, validate_and_parse_address};
 use crate::handlers::common::accounts::{
     format_balance, format_frozen_fields, format_locks, format_transferable,
-    query_balance_info as query_balance_info_shared, RawBalanceInfo,
+    query_balance_info, RawBalanceInfo,
 };
 use crate::state::AppState;
 use crate::utils::{self, find_ah_blocks_in_rc_block};
@@ -45,13 +45,24 @@ pub async fn get_balance_info(
         .transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
 
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
+    };
+
     println!(
         "Fetching balance info for account {:?} at block {}",
         account, resolved_block.number
     );
 
-    let raw_info = query_balance_info_shared(
-        &state.client,
+    let raw_info = query_balance_info(
+        &client_at_block,
         &state.chain_info.spec_name,
         &account,
         &resolved_block,
@@ -149,6 +160,16 @@ async fn handle_use_rc_block(
     let rc_block_hash = rc_resolved.hash.clone();
     let rc_block_number = rc_resolved.number.to_string();
 
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
+    };
     // Process each AH block
     let mut results = Vec::new();
     for ah_block in ah_blocks {
@@ -157,8 +178,8 @@ async fn handle_use_rc_block(
             number: ah_block.number,
         };
 
-        let raw_info = query_balance_info_shared(
-            &state.client,
+        let raw_info = query_balance_info(
+            &client_at_block,
             &state.chain_info.spec_name,
             &account,
             &ah_resolved,
@@ -167,7 +188,7 @@ async fn handle_use_rc_block(
         .await?;
 
         // Fetch AH timestamp
-        let ah_timestamp = fetch_timestamp(&state, ah_block.number).await.ok();
+        let ah_timestamp = fetch_timestamp(&client_at_block).await.ok();
 
         let response = format_response(
             &raw_info,

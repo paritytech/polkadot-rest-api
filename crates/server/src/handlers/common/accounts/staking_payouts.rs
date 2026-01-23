@@ -4,8 +4,7 @@ use crate::utils::ResolvedBlock;
 use scale_value::{Composite, Value, ValueDef};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use std::collections::HashMap;
-use std::sync::Arc;
-use subxt::{OnlineClient, SubstrateConfig};
+use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
 
 // ================================================================================================
@@ -127,17 +126,17 @@ pub struct RawValidatorPayout {
 /// This is the shared function used by both `/accounts/:accountId/staking-payouts`
 /// and `/rc/accounts/:accountId/staking-payouts` endpoints.
 pub async fn query_staking_payouts(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     block: &ResolvedBlock,
     params: &StakingPayoutsParams,
 ) -> Result<RawStakingPayouts, StakingPayoutsQueryError> {
-    let client_at_block = client.at_block(block.number).await?;
+    let active_era_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ActiveEra");
 
     // Check if Staking pallet exists
     let staking_exists = client_at_block
         .storage()
-        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ActiveEra"))
+        .entry(active_era_query.clone())
         .is_ok();
 
     if !staking_exists {
@@ -145,7 +144,7 @@ pub async fn query_staking_payouts(
     }
 
     // Get active era - it's a value storage, use fetch with empty key
-    let active_era_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ActiveEra"))?;
+    let active_era_entry = client_at_block.storage().entry(active_era_query)?;
     let active_era_value = active_era_entry.try_fetch(Vec::<scale_value::Value>::new()).await?;
     let active_era = if let Some(value) = active_era_value {
         decode_active_era(&value)?
@@ -154,8 +153,9 @@ pub async fn query_staking_payouts(
     };
 
     // Get history depth (default to 84 if not found)
+    let history_depth_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "HistoryDepth");
     let history_depth = if let Ok(history_entry) =
-        client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "HistoryDepth"))
+        client_at_block.storage().entry(history_depth_query)
     {
         if let Ok(Some(value)) = history_entry.try_fetch(Vec::<scale_value::Value>::new()).await {
             decode_u32(&value).unwrap_or(84)
@@ -191,7 +191,7 @@ pub async fn query_staking_payouts(
     let mut eras_payouts = Vec::new();
     for era in start_era..=target_era {
         let era_payout =
-            process_era(client, block.number, account, era, params.unclaimed_only).await;
+            process_era(client_at_block, account, era, params.unclaimed_only).await;
         eras_payouts.push(era_payout);
     }
 
@@ -209,14 +209,13 @@ pub async fn query_staking_payouts(
 // ================================================================================================
 
 async fn process_era(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
-    block_number: u64,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     era: u32,
     unclaimed_only: bool,
 ) -> RawEraPayouts {
     // Try to get era data
-    match fetch_era_data(client, block_number, account, era, unclaimed_only).await {
+    match fetch_era_data(client_at_block, account, era, unclaimed_only).await {
         Ok(data) => data,
         Err(e) => RawEraPayouts::Message {
             message: format!("Era {}: {}", era, e),
@@ -225,20 +224,18 @@ async fn process_era(
 }
 
 async fn fetch_era_data(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
-    block_number: u64,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     era: u32,
     unclaimed_only: bool,
 ) -> Result<RawEraPayouts, String> {
-    let client_at_block = client.at_block(block_number).await.map_err(|e| e.to_string())?;
-
     let account_bytes: [u8; 32] = *account.as_ref();
 
     // Get total era reward points
+    let reward_points_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasRewardPoints");
     let reward_points_entry = client_at_block
         .storage()
-        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasRewardPoints"))
+        .entry(reward_points_query)
         .map_err(|e| e.to_string())?;
     let key = vec![Value::u128(era as u128)];
     let reward_points_value = reward_points_entry
@@ -255,9 +252,10 @@ async fn fetch_era_data(
     };
 
     // Get total era payout
+    let validator_reward_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasValidatorReward");
     let validator_reward_entry = client_at_block
         .storage()
-        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasValidatorReward"))
+        .entry(validator_reward_query)
         .map_err(|e| e.to_string())?;
     let key = vec![Value::u128(era as u128)];
     let validator_reward_value = validator_reward_entry
@@ -275,7 +273,7 @@ async fn fetch_era_data(
 
     // Get exposure data - try ErasStakersClipped first
     let exposure_data =
-        fetch_exposure_data(client, block_number, account, era, &account_bytes).await?;
+        fetch_exposure_data(client_at_block, account, era, &account_bytes).await?;
 
     if exposure_data.is_empty() {
         return Ok(RawEraPayouts::Message {
@@ -302,12 +300,12 @@ async fn fetch_era_data(
 
         // Get validator commission
         let commission =
-            fetch_validator_commission(client, block_number, era, &validator_bytes_arr)
+            fetch_validator_commission(client_at_block, era, &validator_bytes_arr)
                 .await
                 .unwrap_or(0);
 
         // Check if claimed
-        let claimed = check_if_claimed(client, block_number, &validator_bytes_arr, era).await;
+        let claimed = check_if_claimed(client_at_block, &validator_bytes_arr, era).await;
 
         // Skip if unclaimed_only is true and this is already claimed
         if unclaimed_only && claimed {
@@ -353,20 +351,21 @@ async fn fetch_era_data(
 /// Fetch exposure data for an account in an era
 /// Returns Vec<(validator_id, nominator_exposure, total_exposure)>
 async fn fetch_exposure_data(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
-    block_number: u64,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     era: u32,
     account_bytes: &[u8; 32],
 ) -> Result<Vec<(String, u128, u128)>, String> {
-    let client_at_block = client.at_block(block_number).await.map_err(|e| e.to_string())?;
+    let stakers_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasStakersClipped");
+    let nominators_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Nominators");
+    let bonded_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded");
 
     let mut results = Vec::new();
 
     // Try ErasStakersClipped first (standard storage)
-    if let Ok(stakers_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasStakersClipped")) {
+    if let Ok(stakers_entry) = client_at_block.storage().entry(stakers_query.clone()) {
         // Try to get nominators entry to find which validators this account nominates
-        if let Ok(nominators_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Nominators")) {
+        if let Ok(nominators_entry) = client_at_block.storage().entry(nominators_query) {
             let key = vec![Value::from_bytes(account_bytes)];
             if let Ok(Some(nom_value)) = nominators_entry.try_fetch(key).await {
                 let targets = decode_nomination_targets(&nom_value);
@@ -400,11 +399,11 @@ async fn fetch_exposure_data(
     }
 
     // If account is a validator, also check if they have self-stake
-    if let Ok(bonded_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded")) {
+    if let Ok(bonded_entry) = client_at_block.storage().entry(bonded_query) {
         let key = vec![Value::from_bytes(account_bytes)];
         if let Ok(Some(_)) = bonded_entry.try_fetch(key).await {
             // Account is a stash, check if they're also validating
-            if let Ok(stakers_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasStakersClipped"))
+            if let Ok(stakers_entry) = client_at_block.storage().entry(stakers_query)
             {
                 let key = vec![Value::u128(era as u128), Value::from_bytes(account_bytes)];
                 if let Ok(Some(exposure_value)) = stakers_entry.try_fetch(key).await {
@@ -425,15 +424,14 @@ async fn fetch_exposure_data(
 
 /// Fetch validator commission for a specific era
 async fn fetch_validator_commission(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
-    block_number: u64,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     era: u32,
     validator_bytes: &[u8; 32],
 ) -> Option<u32> {
-    let client_at_block = client.at_block(block_number).await.ok()?;
+    let prefs_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasValidatorPrefs");
     let prefs_entry = client_at_block
         .storage()
-        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "ErasValidatorPrefs"))
+        .entry(prefs_query)
         .ok()?;
     let key = vec![Value::u128(era as u128), Value::from_bytes(validator_bytes)];
     let prefs_value = prefs_entry.try_fetch(key).await.ok()??;
@@ -442,19 +440,16 @@ async fn fetch_validator_commission(
 
 /// Check if rewards have been claimed for a validator in an era
 async fn check_if_claimed(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
-    block_number: u64,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     validator_bytes: &[u8; 32],
     era: u32,
 ) -> bool {
-    let client_at_block = match client.at_block(block_number).await {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
+    let bonded_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded");
+    let ledger_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Ledger");
 
     // First get the controller for this validator
     let controller_bytes =
-        if let Ok(bonded_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded")) {
+        if let Ok(bonded_entry) = client_at_block.storage().entry(bonded_query) {
             let key = vec![Value::from_bytes(validator_bytes)];
             if let Ok(Some(value)) = bonded_entry.try_fetch(key).await {
                 decode_account_bytes(&value).unwrap_or(*validator_bytes)
@@ -466,7 +461,7 @@ async fn check_if_claimed(
         };
 
     // Check ledger for claimed rewards
-    if let Ok(ledger_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Ledger")) {
+    if let Ok(ledger_entry) = client_at_block.storage().entry(ledger_query) {
         let key = vec![Value::from_bytes(&controller_bytes)];
         if let Ok(Some(value)) = ledger_entry.try_fetch(key).await {
             return check_claimed_in_ledger(&value, era);

@@ -7,8 +7,7 @@ use crate::utils::ResolvedBlock;
 use scale_value::{Composite, Value, ValueDef};
 use serde::Serialize;
 use sp_core::crypto::AccountId32;
-use std::sync::Arc;
-use subxt::{OnlineClient, SubstrateConfig};
+use subxt::{OnlineClientAtBlock, SubstrateConfig};
 
 // ================================================================================================
 // Shared Types
@@ -86,18 +85,18 @@ pub enum BalanceQueryError {
 /// This is the main shared function that queries account balance data.
 /// It returns raw data that can be formatted into either the regular or RC response format.
 pub async fn query_balance_info(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     spec_name: &str,
     account: &AccountId32,
     block: &ResolvedBlock,
     token: Option<String>,
 ) -> Result<RawBalanceInfo, BalanceQueryError> {
-    let client_at_block = client.at_block(block.number).await?;
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("System", "Account");
 
     // Check if System and Balances pallets exist
     let system_account_exists = client_at_block
         .storage()
-        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("System", "Account"))
+        .entry(storage_query)
         .is_ok();
 
     if !system_account_exists {
@@ -111,10 +110,10 @@ pub async fn query_balance_info(
     let token_decimals = get_default_token_decimals(spec_name);
 
     // Query System::Account for account info
-    let account_data = query_account_data(client, block.number, account).await?;
+    let account_data = query_account_data(client_at_block, account).await?;
 
     // Query Balances::Locks for balance locks
-    let locks = query_balance_locks(client, block.number, account).await?;
+    let locks = query_balance_locks(client_at_block, account).await?;
 
     // Calculate transferable balance
     let transferable = calculate_transferable(spec_name, &account_data);
@@ -184,12 +183,11 @@ pub fn get_default_existential_deposit(spec_name: &str) -> u128 {
 // ================================================================================================
 
 async fn query_account_data(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
-    block_number: u64,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
 ) -> Result<DecodedAccountData, BalanceQueryError> {
-    let client_at_block = client.at_block(block_number).await?;
-    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("System", "Account"))?;
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("System", "Account");
+    let storage_entry = client_at_block.storage().entry(storage_query)?;
 
     let account_bytes: [u8; 32] = *account.as_ref();
     let key = vec![Value::from_bytes(&account_bytes)];
@@ -319,23 +317,22 @@ fn extract_u128_field(fields: &[(String, Value<()>)], name: &str) -> Option<u128
 // ================================================================================================
 
 async fn query_balance_locks(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
-    block_number: u64,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
 ) -> Result<Vec<DecodedBalanceLock>, BalanceQueryError> {
-    let client_at_block = client.at_block(block_number).await?;
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Balances", "Locks");
 
     // Check if Balances::Locks exists
     let locks_exists = client_at_block
         .storage()
-        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Balances", "Locks"))
+        .entry(storage_query.clone())
         .is_ok();
 
     if !locks_exists {
         return Ok(Vec::new());
     }
 
-    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Balances", "Locks"))?;
+    let storage_entry = client_at_block.storage().entry(storage_query)?;
     let account_bytes: [u8; 32] = *account.as_ref();
     let key = vec![Value::from_bytes(&account_bytes)];
     let storage_value = storage_entry.try_fetch(key).await?;

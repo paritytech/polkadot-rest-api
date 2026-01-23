@@ -2,22 +2,21 @@
 // Assets Data Fetching
 // ================================================================================================
 
-use crate::{handlers::accounts::{AssetBalance, AccountsError, DecodedAssetBalance, utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field}}, state::AppState};
+use crate::{handlers::accounts::{AssetBalance, AccountsError, DecodedAssetBalance, utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field}}};
 use parity_scale_codec::Decode;
 use scale_value::{Composite, Value, ValueDef};
-use sp_core::crypto::AccountId32;
-use subxt::storage::StorageValue;
+use sp_core::crypto::{AccountId32};
+use subxt::{OnlineClientAtBlock, SubstrateConfig, storage::StorageValue};
 
 /// Fetch all asset IDs from storage
 pub async fn query_all_assets_id(
-    state: &AppState,
-    block_number: u64,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    let client_at_block = state.client.at_block(block_number).await?;
-    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Asset"))?;
+    let storage_query = subxt::storage::dynamic::<Vec<u32>, scale_value::Value>("Assets", "Asset");
+    let storage_entry = client_at_block.storage().entry(storage_query)?;
     let mut asset_ids = Vec::new();
 
-    let mut values = storage_entry.iter(Vec::<scale_value::Value>::new()).await?;
+    let mut values = storage_entry.iter(Vec::<u32>::new()).await?;
     while let Some(result) = values.next().await {
         let entry = result?;
         // Extract asset ID from storage key
@@ -41,13 +40,12 @@ pub async fn query_all_assets_id(
 
 /// Query asset balances for an account
 pub async fn query_assets(
-    state: &AppState,
-    block_number: u64,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     assets: &[u32],
 ) -> Result<Vec<AssetBalance>, AccountsError> {
-    let client_at_block = state.client.at_block(block_number).await?;
-    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Account"))?;
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Account");
+    let storage_entry = client_at_block.storage().entry(storage_query)?;
 
     // Encode the storage key: (asset_id, account_id)
     // Convert AccountId32 to [u8; 32] for encoding

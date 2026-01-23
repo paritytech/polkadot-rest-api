@@ -13,6 +13,7 @@ use axum::{
 use config::ChainType;
 use serde_json::json;
 use sp_core::crypto::AccountId32;
+use subxt::{OnlineClientAtBlock, SubstrateConfig};
 
 // ================================================================================================
 // Main Handler
@@ -37,31 +38,37 @@ pub async fn get_pool_asset_balances(
         return handle_use_rc_block(state, account, params).await;
     }
 
-    let block_id = params.at.map(|s| s.parse::<utils::BlockId>()).transpose()?;
+    let block_id = params.at.as_ref().map(|s| s.parse::<utils::BlockId>()).transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
 
-    println!(
-        "Fetching pool asset balances for account {:?} at assets {:?}",
-        account, &params.assets
-    );
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
+    };
 
     let response =
-        query_pool_asset_balances(&state, &account, &resolved_block, &params.assets).await?;
+        query_pool_asset_balances(&client_at_block, &account, &resolved_block, &params.assets).await?;
 
     Ok(Json(response).into_response())
 }
 
 async fn query_pool_asset_balances(
-    state: &AppState,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     block: &utils::ResolvedBlock,
     asset_ids: &[u32],
 ) -> Result<PoolAssetBalancesResponse, AccountsError> {
-    let client_at_block = state.client.at_block(block.number).await?;
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("PoolAssets", "Account");
 
     let pool_assets_exists = client_at_block
         .storage()
-        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("PoolAssets", "Account"))
+        .entry(storage_query)
         .is_ok();
 
     if !pool_assets_exists {
@@ -71,7 +78,7 @@ async fn query_pool_asset_balances(
     // Determine which assets to query
     let assets_to_query = if asset_ids.is_empty() {
         // Query all pool asset IDs
-        let assets = query_all_pool_assets_id(state, block.number).await;
+        let assets = query_all_pool_assets_id(client_at_block).await;
         match assets {
             Ok(ids) => ids,
             Err(e) => {
@@ -84,7 +91,7 @@ async fn query_pool_asset_balances(
     };
 
     // Query each pool asset balance in parallel
-    let pool_assets = query_pool_assets(state, block.number, account, &assets_to_query).await?;
+    let pool_assets = query_pool_assets(client_at_block , account, &assets_to_query).await?;
 
     Ok(PoolAssetBalancesResponse {
         at: BlockInfo {
@@ -147,15 +154,16 @@ async fn handle_use_rc_block(
             number: ah_block.number,
         };
 
+        let client_at_block = state.client.at_block(ah_resolved.number).await?;
         let mut response =
-            query_pool_asset_balances(&state, &account, &ah_resolved, &params.assets).await?;
+            query_pool_asset_balances(&client_at_block, &account, &ah_resolved, &params.assets).await?;
 
         // Add RC block info
         response.rc_block_hash = Some(rc_block_hash.clone());
         response.rc_block_number = Some(rc_block_number.clone());
 
         // Fetch AH timestamp
-        if let Ok(timestamp) = fetch_timestamp(&state, ah_block.number).await {
+        if let Ok(timestamp) = fetch_timestamp(&client_at_block).await {
             response.ah_timestamp = Some(timestamp);
         }
 

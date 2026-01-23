@@ -3,8 +3,7 @@
 use crate::utils::ResolvedBlock;
 use scale_value::{Composite, Value, ValueDef};
 use sp_core::crypto::{AccountId32, Ss58Codec};
-use std::sync::Arc;
-use subxt::{OnlineClient, SubstrateConfig};
+use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
 
 // ================================================================================================
@@ -114,16 +113,16 @@ pub struct DecodedUnlockingChunk {
 /// This is the shared function used by both `/accounts/:accountId/staking-info`
 /// and `/rc/accounts/:accountId/staking-info` endpoints.
 pub async fn query_staking_info(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     block: &ResolvedBlock,
 ) -> Result<RawStakingInfo, StakingQueryError> {
-    let client_at_block = client.at_block(block.number).await?;
+    let bonded_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded");
 
     // Check if Staking pallet exists
     let staking_exists = client_at_block
         .storage()
-        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded"))
+        .entry(bonded_query.clone())
         .is_ok();
 
     if !staking_exists {
@@ -133,7 +132,7 @@ pub async fn query_staking_info(
     let account_bytes: [u8; 32] = *account.as_ref();
 
     // Query Staking.Bonded to get controller from stash
-    let bonded_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded"))?;
+    let bonded_entry = client_at_block.storage().entry(bonded_query)?;
     let key = vec![Value::from_bytes(&account_bytes)];
     let bonded_value = bonded_entry.try_fetch(key).await?;
 
@@ -149,7 +148,8 @@ pub async fn query_staking_info(
     let controller_bytes: [u8; 32] = *controller_account.as_ref();
 
     // Query Staking.Ledger to get staking ledger
-    let ledger_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Ledger"))?;
+    let ledger_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Ledger");
+    let ledger_entry = client_at_block.storage().entry(ledger_query)?;
     let key = vec![Value::from_bytes(&controller_bytes)];
     let ledger_value = ledger_entry.try_fetch(key).await?;
 
@@ -160,7 +160,8 @@ pub async fn query_staking_info(
     };
 
     // Query Staking.Payee to get reward destination
-    let payee_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Payee"))?;
+    let payee_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Payee");
+    let payee_entry = client_at_block.storage().entry(payee_query)?;
     let key = vec![Value::from_bytes(&account_bytes)];
     let payee_value = payee_entry.try_fetch(key).await?;
 
@@ -171,7 +172,8 @@ pub async fn query_staking_info(
     };
 
     // Query Staking.Nominators to get nominations
-    let nominators_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Nominators"))?;
+    let nominators_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Nominators");
+    let nominators_entry = client_at_block.storage().entry(nominators_query)?;
     let key = vec![Value::from_bytes(&account_bytes)];
     let nominators_value = nominators_entry.try_fetch(key).await?;
 
@@ -182,8 +184,9 @@ pub async fn query_staking_info(
     };
 
     // Query Staking.SlashingSpans to get number of slashing spans
+    let slashing_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "SlashingSpans");
     let num_slashing_spans =
-        if let Ok(slashing_entry) = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "SlashingSpans")) {
+        if let Ok(slashing_entry) = client_at_block.storage().entry(slashing_query) {
             let key = vec![Value::from_bytes(&account_bytes)];
             if let Ok(Some(value)) = slashing_entry.try_fetch(key).await {
                 decode_slashing_spans(&value).await.unwrap_or(0)

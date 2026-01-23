@@ -5,7 +5,7 @@ use super::types::{
 use super::utils::validate_and_parse_address;
 use crate::handlers::accounts::utils::fetch_timestamp;
 use crate::handlers::common::accounts::{
-    query_staking_info as query_staking_info_shared, DecodedRewardDestination, RawStakingInfo,
+    query_staking_info, DecodedRewardDestination, RawStakingInfo,
 };
 use crate::state::AppState;
 use crate::utils::{self, find_ah_blocks_in_rc_block};
@@ -40,15 +40,21 @@ pub async fn get_staking_info(
         return handle_use_rc_block(state, account, params).await;
     }
 
-    let block_id = params.at.map(|s| s.parse::<utils::BlockId>()).transpose()?;
+    let block_id = params.at.as_ref().map(|s| s.parse::<utils::BlockId>()).transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
 
-    println!(
-        "Fetching staking info for account {:?} at block {}",
-        account, resolved_block.number
-    );
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
+    };
 
-    let raw_info = query_staking_info_shared(&state.client, &account, &resolved_block).await?;
+    let raw_info = query_staking_info(&client_at_block, &account, &resolved_block).await?;
 
     let response = format_response(&raw_info, None, None, None);
 
@@ -158,11 +164,11 @@ async fn handle_use_rc_block(
             hash: ah_block.hash.clone(),
             number: ah_block.number,
         };
-
-        let raw_info = query_staking_info_shared(&state.client, &account, &ah_resolved).await?;
+        let client_at_block = state.client.at_block(ah_resolved.number).await?;
+        let raw_info = query_staking_info(&client_at_block, &account, &ah_resolved).await?;
 
         // Fetch AH timestamp
-        let ah_timestamp = fetch_timestamp(&state, ah_block.number).await.ok();
+        let ah_timestamp = fetch_timestamp(&client_at_block).await.ok();
 
         let response = format_response(
             &raw_info,

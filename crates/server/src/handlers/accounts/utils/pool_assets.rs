@@ -7,20 +7,18 @@ use crate::{
         utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field},
         PoolAssetBalance, AccountsError,
     },
-    state::AppState,
 };
 use parity_scale_codec::Decode;
 use scale_value::{Composite, Value, ValueDef};
 use sp_core::crypto::AccountId32;
-use subxt::storage::StorageValue;
+use subxt::{OnlineClientAtBlock, SubstrateConfig, storage::StorageValue};
 
 /// Fetch all pool asset IDs from storage
 pub async fn query_all_pool_assets_id(
-    state: &AppState,
-    block_number: u64,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    let client_at_block = state.client.at_block(block_number).await?;
-    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("PoolAssets", "Asset"))?;
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("PoolAssets", "Asset");
+    let storage_entry = client_at_block.storage().entry(storage_query)?;
     let mut asset_ids = Vec::new();
 
     let mut values = storage_entry.iter(Vec::<scale_value::Value>::new()).await?;
@@ -48,13 +46,12 @@ pub async fn query_all_pool_assets_id(
 
 /// Query pool asset balances for an account
 pub async fn query_pool_assets(
-    state: &AppState,
-    block_number: u64,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     assets: &[u32],
 ) -> Result<Vec<PoolAssetBalance>, AccountsError> {
-    let client_at_block = state.client.at_block(block_number).await?;
-    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("PoolAssets", "Account"))?;
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("PoolAssets", "Account");
+    let storage_entry = client_at_block.storage().entry(storage_query)?;
 
     // Encode the storage key: (asset_id, account_id)
     // Convert AccountId32 to [u8; 32] for encoding

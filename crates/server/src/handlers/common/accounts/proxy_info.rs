@@ -3,8 +3,7 @@
 use crate::utils::ResolvedBlock;
 use scale_value::{Composite, Value, ValueDef};
 use sp_core::crypto::{AccountId32, Ss58Codec};
-use std::sync::Arc;
-use subxt::{OnlineClient, SubstrateConfig};
+use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
 
 // ================================================================================================
@@ -68,22 +67,22 @@ pub struct DecodedProxyDefinition {
 /// This is the shared function used by both `/accounts/:accountId/proxy-info`
 /// and `/rc/accounts/:accountId/proxy-info` endpoints.
 pub async fn query_proxy_info(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     block: &ResolvedBlock,
 ) -> Result<RawProxyInfo, ProxyQueryError> {
-    let client_at_block = client.at_block(block.number).await?;
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Proxy", "Proxies");
 
     let proxy_exists = client_at_block
         .storage()
-        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Proxy", "Proxies"))
+        .entry(storage_query.clone())
         .is_ok();
 
     if !proxy_exists {
         return Err(ProxyQueryError::ProxyPalletNotAvailable);
     }
 
-    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Proxy", "Proxies"))?;
+    let storage_entry = client_at_block.storage().entry(storage_query)?;
 
     // Storage key for Proxies: (account)
     let account_bytes: [u8; 32] = *account.as_ref();

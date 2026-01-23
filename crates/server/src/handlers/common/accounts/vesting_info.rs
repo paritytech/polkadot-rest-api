@@ -3,8 +3,7 @@
 use crate::utils::ResolvedBlock;
 use scale_value::{Composite, Value, ValueDef};
 use sp_core::crypto::AccountId32;
-use std::sync::Arc;
-use subxt::{OnlineClient, SubstrateConfig};
+use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
 
 // ================================================================================================
@@ -79,16 +78,16 @@ struct RawVestingSchedule {
 /// - `account`: The account to query vesting for
 /// - `block`: The block to query at
 pub async fn query_vesting_info(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     block: &ResolvedBlock,
 ) -> Result<RawVestingInfo, VestingQueryError> {
-    let client_at_block = client.at_block(block.number).await?;
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Vesting", "Vesting");
 
     // Check if Vesting pallet exists
     let vesting_exists = client_at_block
         .storage()
-        .entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Vesting", "Vesting"))
+        .entry(storage_query)
         .is_ok();
 
     if !vesting_exists {
@@ -96,7 +95,7 @@ pub async fn query_vesting_info(
     }
 
     // Query vesting schedules
-    let vesting_schedules = query_vesting_schedules(client, block.number, account).await?;
+    let vesting_schedules = query_vesting_schedules(client_at_block, account).await?;
 
     // Convert to decoded schedules
     let schedules: Vec<DecodedVestingSchedule> = vesting_schedules
@@ -122,12 +121,11 @@ pub async fn query_vesting_info(
 // ================================================================================================
 
 async fn query_vesting_schedules(
-    client: &Arc<OnlineClient<SubstrateConfig>>,
-    block_number: u64,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
 ) -> Result<Vec<RawVestingSchedule>, VestingQueryError> {
-    let client_at_block = client.at_block(block_number).await?;
-    let storage_entry = client_at_block.storage().entry(subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Vesting", "Vesting"))?;
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Vesting", "Vesting");
+    let storage_entry = client_at_block.storage().entry(storage_query)?;
 
     // Vesting::Vesting takes a single AccountId key
     let account_bytes: [u8; 32] = *account.as_ref();
