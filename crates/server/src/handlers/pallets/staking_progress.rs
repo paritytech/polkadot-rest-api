@@ -1028,10 +1028,7 @@ fn calculate_session_from_skipped_epochs(epoch_index: u64, skipped_epochs: &[(u6
     sorted.sort_by_key(|(epoch, _)| *epoch);
 
     // Find closest skipped epoch <= current epoch
-    let closest = sorted
-        .iter()
-        .filter(|(epoch, _)| *epoch <= epoch_index)
-        .next_back();
+    let closest = sorted.iter().rfind(|(epoch, _)| *epoch <= epoch_index);
 
     match closest {
         Some((skipped_epoch, skipped_session)) => {
