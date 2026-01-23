@@ -1,4 +1,6 @@
-use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::common::{
+    AtResponse, PalletError, fetch_timestamp, format_account_id,
+};
 use crate::handlers::pallets::constants::is_bad_staking_block;
 use crate::state::AppState;
 use crate::utils;
@@ -457,16 +459,4 @@ async fn fetch_session_validators_set(
         .iter()
         .map(|v| format_account_id(v, ss58_prefix))
         .collect())
-}
-
-/// Fetches the timestamp from Timestamp::Now storage.
-async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<String> {
-    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
-    let timestamp = client_at_block
-        .storage()
-        .fetch(timestamp_addr, ())
-        .await
-        .ok()?;
-    let timestamp_value: u64 = timestamp.decode().ok()?;
-    Some(timestamp_value.to_string())
 }

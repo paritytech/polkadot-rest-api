@@ -1,6 +1,8 @@
 //! Handler for /pallets/assets/{assetId}/asset-info endpoint.
 
-use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::common::{
+    AtResponse, PalletError, fetch_timestamp, format_account_id,
+};
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -309,19 +311,6 @@ async fn fetch_asset_metadata(
         decimals: metadata.decimals.to_string(),
         is_frozen: metadata.is_frozen,
     })
-}
-
-/// Fetches timestamp from Timestamp::Now storage.
-async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<String> {
-    // Use typed dynamic storage to decode timestamp directly as u64
-    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
-    let timestamp = client_at_block
-        .storage()
-        .fetch(timestamp_addr, ())
-        .await
-        .ok()?;
-    let timestamp_value = timestamp.decode().ok()?;
-    Some(timestamp_value.to_string())
 }
 
 /// Builds an empty response when no AH blocks are found in the RC block.

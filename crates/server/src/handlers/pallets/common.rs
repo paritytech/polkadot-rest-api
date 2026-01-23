@@ -6,6 +6,7 @@
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 use serde_json::json;
+use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 use thiserror::Error;
 
 // ============================================================================
@@ -169,4 +170,17 @@ pub struct AtResponse {
 pub fn format_account_id(account: &[u8; 32], ss58_prefix: u16) -> String {
     use sp_core::crypto::Ss58Codec;
     sp_core::sr25519::Public::from_raw(*account).to_ss58check_with_version(ss58_prefix.into())
+}
+
+pub async fn fetch_timestamp(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<String> {
+    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
+    let timestamp = client_at_block
+        .storage()
+        .fetch(timestamp_addr, ())
+        .await
+        .ok()?;
+    let timestamp_value: u64 = timestamp.decode().ok()?;
+    Some(timestamp_value.to_string())
 }

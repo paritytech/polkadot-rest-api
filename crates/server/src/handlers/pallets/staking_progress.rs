@@ -1,4 +1,6 @@
-use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::common::{
+    AtResponse, PalletError, fetch_timestamp, format_account_id,
+};
 use crate::handlers::pallets::constants::{
     derive_election_lookahead, get_asset_hub_babe_params, get_babe_epoch_duration,
     is_bad_staking_block,
@@ -855,18 +857,6 @@ async fn fetch_election_status(
         .ok()?;
     let bytes = value.into_bytes();
     ElectionStatus::decode(&mut &bytes[..]).ok()
-}
-
-async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<String> {
-    // Use typed dynamic storage to decode timestamp directly as u64
-    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
-    let timestamp = client_at_block
-        .storage()
-        .fetch(timestamp_addr, ())
-        .await
-        .ok()?;
-    let timestamp_value = timestamp.decode().ok()?;
-    Some(timestamp_value.to_string())
 }
 
 // ============================================================================
