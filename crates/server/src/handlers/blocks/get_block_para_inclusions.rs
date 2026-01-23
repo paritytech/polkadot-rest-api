@@ -17,7 +17,7 @@ use scale_value::{Composite, Value, ValueDef};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
-use subxt_historic::error::OnlineClientAtBlockError;
+use subxt::error::OnlineClientAtBlockError;
 use thiserror::Error;
 
 #[derive(Debug, Deserialize)]
@@ -72,13 +72,13 @@ pub enum ParaInclusionsError {
     BlockResolveFailed(#[from] utils::BlockResolveError),
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 
     #[error("Failed to fetch storage: {0}")]
     StorageFetchFailed(String),
 
-    #[error("Failed to decode events")]
-    EventsDecodeFailed(#[source] subxt_historic::error::StorageValueError),
+    #[error("Failed to decode events: {0}")]
+    EventsDecodeFailed(String),
 
     #[error("Failed to decode event data: {0}")]
     EventDataDecodeFailed(String),
@@ -100,7 +100,7 @@ impl IntoResponse for ParaInclusionsError {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             ParaInclusionsError::ClientAtBlockFailed(err) => {
-                if crate::utils::is_online_client_at_block_disconnected(err) {
+                if crate::utils::is_online_client_at_block_disconnected(err.as_ref()) {
                     (
                         StatusCode::SERVICE_UNAVAILABLE,
                         format!("Service temporarily unavailable: {}", err),
@@ -134,24 +134,23 @@ pub async fn get_block_para_inclusions(
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
     let resolved_block = utils::resolve_block(&state, Some(block_id_parsed)).await?;
 
-    let client_at_block = state.client.at(resolved_block.number).await?;
-
-    let storage_entry = client_at_block
-        .storage()
-        .entry("System", "Events")
-        .map_err(|e| ParaInclusionsError::StorageFetchFailed(e.to_string()))?;
-
-    let events_value = storage_entry
-        .fetch(())
+    let client_at_block = state
+        .client
+        .at_block(resolved_block.number)
         .await
-        .map_err(|e| ParaInclusionsError::StorageFetchFailed(e.to_string()))?
-        .ok_or_else(|| {
-            ParaInclusionsError::StorageFetchFailed("Events storage not found".to_string())
-        })?;
+        .map_err(|e| ParaInclusionsError::ClientAtBlockFailed(Box::new(e)))?;
+
+    // Use dynamic storage address for System::Events
+    let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
+    let events_value = client_at_block
+        .storage()
+        .fetch(addr, ())
+        .await
+        .map_err(|e| ParaInclusionsError::StorageFetchFailed(e.to_string()))?;
 
     let events_decoded: Value<()> = events_value
         .decode_as()
-        .map_err(ParaInclusionsError::EventsDecodeFailed)?;
+        .map_err(|e| ParaInclusionsError::EventsDecodeFailed(e.to_string()))?;
 
     let mut inclusions = extract_para_inclusions(&events_decoded)?;
 
