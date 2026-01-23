@@ -13,9 +13,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use heck::ToLowerCamelCase;
-use serde::{Deserialize, Serialize};
-use parity_scale_codec::Decode;
+use serde::Deserialize;
 use serde_json::json;
 use subxt::error::OnlineClientAtBlockError;
 use subxt_rpcs::rpc_params;
