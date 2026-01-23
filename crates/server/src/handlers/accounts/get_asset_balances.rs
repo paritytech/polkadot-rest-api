@@ -77,7 +77,7 @@ async fn query_asset_balances(
     // Determine which assets to query
     let assets_to_query = if asset_ids.is_empty() {
         // Query all asset IDs
-        let assets = query_all_assets_id(&client_at_block).await;
+        let assets = query_all_assets_id(client_at_block).await;
         match assets {
             Ok(ids) => ids,
             Err(e) => {
@@ -90,7 +90,7 @@ async fn query_asset_balances(
     };
 
     // Query each asset balance in parallel
-    let assets = query_assets(&client_at_block, account, &assets_to_query).await?;
+    let assets = query_assets(client_at_block, account, &assets_to_query).await?;
 
     Ok(AssetBalancesResponse {
         at: BlockInfo {

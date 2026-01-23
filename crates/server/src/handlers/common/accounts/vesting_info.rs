@@ -130,7 +130,7 @@ async fn query_vesting_schedules(
 
     // Vesting::Vesting takes a single AccountId key
     let account_bytes: [u8; 32] = *account.as_ref();
-    let key = vec![Value::from_bytes(&account_bytes)];
+    let key = vec![Value::from_bytes(account_bytes)];
     let storage_value = storage_entry.try_fetch(key).await?;
 
     if let Some(value) = storage_value {

@@ -35,13 +35,12 @@ pub fn validate_and_parse_address(addr: &str) -> Result<AccountId32, AddressVali
     // Try hex format (0x-prefixed, 32 bytes)
     if addr.starts_with("0x") && addr.len() == 66 {
         // 0x + 64 hex chars = 32 bytes
-        if let Ok(bytes) = hex::decode(&addr[2..]) {
-            if bytes.len() == 32 {
+        if let Ok(bytes) = hex::decode(&addr[2..])
+            && bytes.len() == 32 {
                 let mut arr = [0u8; 32];
                 arr.copy_from_slice(&bytes);
                 return Ok(AccountId32::from(arr));
             }
-        }
     }
 
     Err(AddressValidationError(addr.to_string()))

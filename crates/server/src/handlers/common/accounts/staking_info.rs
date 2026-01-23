@@ -134,7 +134,7 @@ pub async fn query_staking_info(
 
     // Query Staking.Bonded to get controller from stash
     let bonded_entry = client_at_block.storage().entry(bonded_query)?;
-    let key = vec![Value::from_bytes(&account_bytes)];
+    let key = vec![Value::from_bytes(account_bytes)];
     let bonded_value = bonded_entry.try_fetch(key).await?;
 
     let controller = if let Some(value) = bonded_value {
@@ -152,7 +152,7 @@ pub async fn query_staking_info(
     let ledger_query =
         subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Ledger");
     let ledger_entry = client_at_block.storage().entry(ledger_query)?;
-    let key = vec![Value::from_bytes(&controller_bytes)];
+    let key = vec![Value::from_bytes(controller_bytes)];
     let ledger_value = ledger_entry.try_fetch(key).await?;
 
     let staking = if let Some(value) = ledger_value {
@@ -165,7 +165,7 @@ pub async fn query_staking_info(
     let payee_query =
         subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Payee");
     let payee_entry = client_at_block.storage().entry(payee_query)?;
-    let key = vec![Value::from_bytes(&account_bytes)];
+    let key = vec![Value::from_bytes(account_bytes)];
     let payee_value = payee_entry.try_fetch(key).await?;
 
     let reward_destination = if let Some(value) = payee_value {
@@ -180,7 +180,7 @@ pub async fn query_staking_info(
         "Nominators",
     );
     let nominators_entry = client_at_block.storage().entry(nominators_query)?;
-    let key = vec![Value::from_bytes(&account_bytes)];
+    let key = vec![Value::from_bytes(account_bytes)];
     let nominators_value = nominators_entry.try_fetch(key).await?;
 
     let nominations = if let Some(value) = nominators_value {
@@ -196,7 +196,7 @@ pub async fn query_staking_info(
     );
     let num_slashing_spans =
         if let Ok(slashing_entry) = client_at_block.storage().entry(slashing_query) {
-            let key = vec![Value::from_bytes(&account_bytes)];
+            let key = vec![Value::from_bytes(account_bytes)];
             if let Ok(Some(value)) = slashing_entry.try_fetch(key).await {
                 decode_slashing_spans(&value).await.unwrap_or(0)
             } else {
@@ -282,8 +282,8 @@ async fn decode_staking_ledger(
 fn extract_unlocking_chunks(fields: &[(String, Value<()>)]) -> Vec<DecodedUnlockingChunk> {
     let mut chunks = Vec::new();
 
-    if let Some((_, unlocking_value)) = fields.iter().find(|(name, _)| name == "unlocking") {
-        if let ValueDef::Composite(Composite::Unnamed(items)) = &unlocking_value.value {
+    if let Some((_, unlocking_value)) = fields.iter().find(|(name, _)| name == "unlocking")
+        && let ValueDef::Composite(Composite::Unnamed(items)) = &unlocking_value.value {
             for item in items {
                 if let ValueDef::Composite(Composite::Named(chunk_fields)) = &item.value {
                     let value = extract_u128_field(chunk_fields, "value")
@@ -298,7 +298,6 @@ fn extract_unlocking_chunks(fields: &[(String, Value<()>)]) -> Vec<DecodedUnlock
                 }
             }
         }
-    }
 
     chunks
 }
@@ -322,13 +321,11 @@ async fn decode_reward_destination(
                 }
                 "Account" => {
                     // Extract account from variant values
-                    if let Composite::Unnamed(values) = &variant.values {
-                        if let Some(account_value) = values.first() {
-                            if let Some(account) = extract_account_id_from_value(account_value) {
+                    if let Composite::Unnamed(values) = &variant.values
+                        && let Some(account_value) = values.first()
+                            && let Some(account) = extract_account_id_from_value(account_value) {
                                 return Ok(DecodedRewardDestination::Account { account });
                             }
-                        }
-                    }
                     Ok(DecodedRewardDestination::Simple("Account".to_string()))
                 }
                 _ => Ok(DecodedRewardDestination::Simple(name.clone())),
@@ -373,15 +370,14 @@ async fn decode_nominations(
 fn extract_targets_field(fields: &[(String, Value<()>)]) -> Vec<String> {
     let mut targets = Vec::new();
 
-    if let Some((_, targets_value)) = fields.iter().find(|(name, _)| name == "targets") {
-        if let ValueDef::Composite(Composite::Unnamed(items)) = &targets_value.value {
+    if let Some((_, targets_value)) = fields.iter().find(|(name, _)| name == "targets")
+        && let ValueDef::Composite(Composite::Unnamed(items)) = &targets_value.value {
             for item in items {
                 if let Some(account) = extract_account_id_from_value(item) {
                     targets.push(account);
                 }
             }
         }
-    }
 
     targets
 }
@@ -399,11 +395,10 @@ async fn decode_slashing_spans(
     match &decoded.value {
         ValueDef::Composite(Composite::Named(fields)) => {
             // Count is prior.length + 1
-            if let Some((_, prior_value)) = fields.iter().find(|(name, _)| name == "prior") {
-                if let ValueDef::Composite(Composite::Unnamed(items)) = &prior_value.value {
+            if let Some((_, prior_value)) = fields.iter().find(|(name, _)| name == "prior")
+                && let ValueDef::Composite(Composite::Unnamed(items)) = &prior_value.value {
                     return Ok(items.len() as u32 + 1);
                 }
-            }
             Ok(1)
         }
         _ => Ok(0),

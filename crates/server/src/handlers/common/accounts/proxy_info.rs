@@ -87,7 +87,7 @@ pub async fn query_proxy_info(
 
     // Storage key for Proxies: (account)
     let account_bytes: [u8; 32] = *account.as_ref();
-    let key = vec![Value::from_bytes(&account_bytes)];
+    let key = vec![Value::from_bytes(account_bytes)];
     let storage_value = storage_entry.try_fetch(key).await?;
 
     let (delegated_accounts, deposit_held) = if let Some(value) = storage_value {
@@ -155,15 +155,12 @@ fn decode_proxy_definitions(
     let mut definitions = Vec::new();
 
     // The value should be a sequence/array of proxy definitions
-    match &value.value {
-        ValueDef::Composite(Composite::Unnamed(items)) => {
-            for item in items {
-                if let Some(def) = decode_single_proxy_definition(item)? {
-                    definitions.push(def);
-                }
+    if let ValueDef::Composite(Composite::Unnamed(items)) = &value.value {
+        for item in items {
+            if let Some(def) = decode_single_proxy_definition(item)? {
+                definitions.push(def);
             }
         }
-        _ => {}
     }
 
     Ok(definitions)
@@ -197,12 +194,12 @@ fn decode_single_proxy_definition(
             // Tuple-style: (delegate, proxy_type, delay)
             let delegate = values
                 .first()
-                .and_then(|v| extract_account_id_from_value(v))
+                .and_then(extract_account_id_from_value)
                 .unwrap_or_else(|| "unknown".to_string());
 
             let proxy_type = values
                 .get(1)
-                .and_then(|v| extract_proxy_type_from_value(v))
+                .and_then(extract_proxy_type_from_value)
                 .unwrap_or_else(|| "Unknown".to_string());
 
             let delay = values
