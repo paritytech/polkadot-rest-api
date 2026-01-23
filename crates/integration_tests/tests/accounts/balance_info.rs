@@ -1,6 +1,6 @@
 //! Integration tests for /accounts/{accountId}/balance-info endpoint
 //! Tests both standard (/accounts) and relay chain (/rc/accounts) endpoints
-use super::{get_client, Colorize};
+use super::{Colorize, get_client};
 use anyhow::{Context, Result};
 
 // ================================================================================================
@@ -75,10 +75,7 @@ fn should_skip_rc_test(status: u16, json: &serde_json::Value) -> bool {
 }
 
 fn print_skip_message(test_name: &str) {
-    println!(
-        "  {} Relay chain not configured",
-        "⚠".yellow()
-    );
+    println!("  {} Relay chain not configured", "⚠".yellow());
     println!(
         "{} {} test skipped - no relay chain configured",
         "⚠".yellow().bold(),
@@ -132,9 +129,7 @@ async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
 
     println!("{} Local API response: {}", "✓".green(), "OK".green());
 
-    let response_obj = local_json
-        .as_object()
-        .expect("Response is not an object");
+    let response_obj = local_json.as_object().expect("Response is not an object");
 
     // Required fields
     let required_fields = ["at", "nonce", "tokenSymbol", "free", "reserved", "locks"];
@@ -148,7 +143,10 @@ async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
 
     // Validate at structure
     let at_obj = response_obj.get("at").unwrap().as_object().unwrap();
-    assert!(at_obj.contains_key("hash"), "at object missing 'hash' field");
+    assert!(
+        at_obj.contains_key("hash"),
+        "at object missing 'hash' field"
+    );
     assert!(
         at_obj.contains_key("height"),
         "at object missing 'height' field"
@@ -213,11 +211,7 @@ async fn run_at_specific_block_test(endpoint_type: EndpointType) -> Result<()> {
     // Verify block height matches
     let at_obj = response_obj.get("at").unwrap().as_object().unwrap();
     let height = at_obj.get("height").unwrap().as_str().unwrap();
-    assert_eq!(
-        height,
-        block_number.to_string(),
-        "Block height mismatch"
-    );
+    assert_eq!(height, block_number.to_string(), "Block height mismatch");
 
     println!(
         "{} Response at block {} validated!",
@@ -317,11 +311,7 @@ async fn run_with_denominated_test(endpoint_type: EndpointType) -> Result<()> {
         );
     }
 
-    println!(
-        "  {} Denominated free balance: {}",
-        "ℹ".blue(),
-        free
-    );
+    println!("  {} Denominated free balance: {}", "ℹ".blue(), free);
 
     println!("{} Denominated response validated!", "✓".green().bold());
     println!("{}", "═".repeat(80).bright_white());
@@ -362,20 +352,12 @@ async fn run_locks_structure_test(endpoint_type: EndpointType) -> Result<()> {
     let response_obj = local_json.as_object().unwrap();
     let locks = response_obj.get("locks").unwrap().as_array().unwrap();
 
-    println!(
-        "  {} Account has {} lock(s)",
-        "ℹ".blue(),
-        locks.len()
-    );
+    println!("  {} Account has {} lock(s)", "ℹ".blue(), locks.len());
 
     // Validate lock structure if any locks exist
     for (i, lock) in locks.iter().enumerate() {
         let lock_obj = lock.as_object().unwrap();
-        assert!(
-            lock_obj.contains_key("id"),
-            "Lock {} missing 'id' field",
-            i
-        );
+        assert!(lock_obj.contains_key("id"), "Lock {} missing 'id' field", i);
         assert!(
             lock_obj.contains_key("amount"),
             "Lock {} missing 'amount' field",
@@ -536,10 +518,7 @@ async fn run_hex_address_test(endpoint_type: EndpointType) -> Result<()> {
 
     println!("  {} Hex address accepted", "✓".green());
 
-    println!(
-        "{} Hex address test passed!",
-        "✓".green().bold()
-    );
+    println!("{} Hex address test passed!", "✓".green().bold());
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }
@@ -761,16 +740,8 @@ async fn test_balance_info_use_rc_block() -> Result<()> {
             i
         );
         assert!(item_obj.contains_key("at"), "Item {} missing 'at'", i);
-        assert!(
-            item_obj.contains_key("free"),
-            "Item {} missing 'free'",
-            i
-        );
-        assert!(
-            item_obj.contains_key("locks"),
-            "Item {} missing 'locks'",
-            i
-        );
+        assert!(item_obj.contains_key("free"), "Item {} missing 'free'", i);
+        assert!(item_obj.contains_key("locks"), "Item {} missing 'locks'", i);
 
         let rc_block_num = item_obj.get("rcBlockNumber").unwrap().as_str().unwrap();
         assert_eq!(

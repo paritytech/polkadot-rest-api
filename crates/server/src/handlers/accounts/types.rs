@@ -3,7 +3,7 @@
 use super::utils::AddressValidationError;
 use crate::handlers::common::accounts::StakingPayoutsQueryError;
 use crate::utils::{self, RcBlockError};
-use axum::{http::StatusCode, response::IntoResponse, Json};
+use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use subxt::error::{OnlineClientAtBlockError, StorageError};
@@ -251,7 +251,9 @@ pub enum AccountsError {
     #[error("The given `prefix` query parameter does not correspond to an existing network")]
     InvalidPrefix,
 
-    #[error("The `scheme` query parameter provided can be one of the following three values: [ed25519, sr25519, ecdsa]")]
+    #[error(
+        "The `scheme` query parameter provided can be one of the following three values: [ed25519, sr25519, ecdsa]"
+    )]
     InvalidScheme,
 
     #[error("Failed to encode address: {0}")]
@@ -407,7 +409,6 @@ pub struct DecodedBalanceLock {
     pub reasons: String,
 }
 
-
 // ================================================================================================
 // Pool Asset Balances Types
 // ================================================================================================
@@ -455,7 +456,6 @@ pub struct PoolAssetBalance {
     pub is_frozen: bool,
     pub is_sufficient: bool,
 }
-
 
 // ================================================================================================
 // Pool Asset Approvals Types
@@ -507,7 +507,6 @@ pub struct DecodedPoolAssetApproval {
     pub amount: u128,
     pub deposit: u128,
 }
-
 
 // ================================================================================================
 // Account Convert Types
@@ -561,7 +560,6 @@ pub struct AccountConvertResponse {
     pub public_key: bool,
 }
 
-
 // ================================================================================================
 // Proxy Info Types
 // ================================================================================================
@@ -614,7 +612,6 @@ pub struct ProxyDefinition {
     pub delay: String,
 }
 
-
 // ================================================================================================
 // Staking Info Types
 // ================================================================================================
@@ -642,7 +639,7 @@ pub struct StakingInfoQueryParams {
 pub struct StakingInfoResponse {
     pub at: BlockInfo,
 
-    /// Controller address 
+    /// Controller address
     pub controller: String,
 
     /// Reward destination configuration
@@ -722,7 +719,6 @@ pub struct ClaimedReward {
     /// Claim status ("claimed" or "unclaimed")
     pub status: String,
 }
-
 
 // ================================================================================================
 // Staking Payouts Types
@@ -832,7 +828,6 @@ pub struct ValidatorPayout {
     pub nominator_exposure: String,
 }
 
-
 // ================================================================================================
 // Vesting Info Types
 // ================================================================================================
@@ -882,7 +877,6 @@ pub struct VestingSchedule {
     pub starting_block: String,
 }
 
-
 // ================================================================================================
 // Account Compare Types
 // ================================================================================================
@@ -926,7 +920,6 @@ pub struct AddressDetails {
     pub public_key: Option<String>,
 }
 
-
 // ================================================================================================
 // Account Validate Types
 // ================================================================================================
@@ -959,4 +952,3 @@ pub struct AccountValidateResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account_id: Option<String>,
 }
-

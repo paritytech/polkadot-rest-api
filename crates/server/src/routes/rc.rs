@@ -1,7 +1,7 @@
 use crate::handlers::rc::accounts;
-use crate::routes::{RegisterRoute, RouteRegistry, API_VERSION};
+use crate::routes::{API_VERSION, RegisterRoute, RouteRegistry};
 use crate::state::AppState;
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 
 pub fn rc_routes(registry: &RouteRegistry) -> Router<AppState> {
     Router::new()

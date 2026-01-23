@@ -1,4 +1,4 @@
-use super::types::{AccountsError, AccountValidateQueryParams, AccountValidateResponse};
+use super::types::{AccountValidateQueryParams, AccountValidateResponse, AccountsError};
 use axum::{
     Json,
     extract::{Path, Query},

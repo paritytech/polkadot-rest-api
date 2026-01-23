@@ -4,7 +4,7 @@
 //! - `/accounts/{accountId}/staking-info` (standard endpoint)
 //! - `/rc/accounts/{accountId}/staking-info` (relay chain endpoint)
 
-use super::{get_client, Colorize};
+use super::{Colorize, get_client};
 use anyhow::{Context, Result};
 
 // ================================================================================================
@@ -161,7 +161,10 @@ async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
     let response_obj = json.as_object().expect("Response is not an object");
 
     // Validate required fields
-    assert!(response_obj.contains_key("at"), "Response missing 'at' field");
+    assert!(
+        response_obj.contains_key("at"),
+        "Response missing 'at' field"
+    );
     assert!(
         response_obj.contains_key("controller"),
         "Response missing 'controller' field"
@@ -186,10 +189,22 @@ async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
 
     // Validate 'staking' structure
     let staking_obj = response_obj.get("staking").unwrap().as_object().unwrap();
-    assert!(staking_obj.contains_key("stash"), "staking missing 'stash' field");
-    assert!(staking_obj.contains_key("total"), "staking missing 'total' field");
-    assert!(staking_obj.contains_key("active"), "staking missing 'active' field");
-    assert!(staking_obj.contains_key("unlocking"), "staking missing 'unlocking' field");
+    assert!(
+        staking_obj.contains_key("stash"),
+        "staking missing 'stash' field"
+    );
+    assert!(
+        staking_obj.contains_key("total"),
+        "staking missing 'total' field"
+    );
+    assert!(
+        staking_obj.contains_key("active"),
+        "staking missing 'active' field"
+    );
+    assert!(
+        staking_obj.contains_key("unlocking"),
+        "staking missing 'unlocking' field"
+    );
 
     println!("  {} Block: {}", "+".green(), at_obj.get("height").unwrap());
     println!(
@@ -250,11 +265,7 @@ async fn run_at_specific_block_test(endpoint_type: EndpointType) -> Result<()> {
     let at_obj = response_obj.get("at").unwrap().as_object().unwrap();
     let height = at_obj.get("height").unwrap().as_str().unwrap();
 
-    assert_eq!(
-        height,
-        block_number.to_string(),
-        "Block height mismatch"
-    );
+    assert_eq!(height, block_number.to_string(), "Block height mismatch");
 
     println!("  {} Block height: {}", "+".green(), height);
 
@@ -316,7 +327,9 @@ async fn run_invalid_address_test(endpoint_type: EndpointType) -> Result<()> {
 async fn run_non_stash_account_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
     let account_id = match endpoint_type {
-        EndpointType::Standard => "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d",
+        EndpointType::Standard => {
+            "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"
+        }
         EndpointType::RelayChain => "1xN1Q5eKQmS5AzASdjt6R6sHF76611vKR4PFpFjy1kXau4m",
     };
     let endpoint = endpoint_type.build_endpoint(account_id, None);
@@ -357,7 +370,10 @@ async fn run_non_stash_account_test(endpoint_type: EndpointType) -> Result<()> {
             "Expected 200, 400, or 500, got {}",
             status
         );
-        println!("  {} Account is a stash, returned staking info", "+".green());
+        println!(
+            "  {} Account is a stash, returned staking info",
+            "+".green()
+        );
     }
 
     println!(
@@ -448,7 +464,13 @@ async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> 
     let response_obj = json.as_object().expect("Response is not an object");
 
     // Validate all required fields exist
-    let required_fields = ["at", "controller", "rewardDestination", "numSlashingSpans", "staking"];
+    let required_fields = [
+        "at",
+        "controller",
+        "rewardDestination",
+        "numSlashingSpans",
+        "staking",
+    ];
     for field in required_fields {
         assert!(
             response_obj.contains_key(field),
@@ -475,7 +497,10 @@ async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> 
 
     // Validate 'unlocking' is a string (total unlocking amount)
     let unlocking = staking_obj.get("unlocking").unwrap();
-    assert!(unlocking.is_string(), "staking.unlocking should be a string");
+    assert!(
+        unlocking.is_string(),
+        "staking.unlocking should be a string"
+    );
 
     // Validate unlocking is a valid number string
     let unlocking_str = unlocking.as_str().unwrap();
@@ -486,7 +511,9 @@ async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> 
 
     // Validate 'nominations' structure if present
     if let Some(nominations) = response_obj.get("nominations") {
-        let nominations_obj = nominations.as_object().expect("nominations should be an object");
+        let nominations_obj = nominations
+            .as_object()
+            .expect("nominations should be an object");
         assert!(
             nominations_obj.contains_key("targets"),
             "nominations.targets is required"
@@ -564,12 +591,20 @@ async fn run_reward_destination_variants_test(endpoint_type: EndpointType) -> Re
     // rewardDestination can be either a string (Simple variant) or an object with account (Account variant)
     if reward_dest.is_string() {
         let dest_str = reward_dest.as_str().unwrap();
-        println!("  {} Reward destination (simple): {}", "+".green(), dest_str);
+        println!(
+            "  {} Reward destination (simple): {}",
+            "+".green(),
+            dest_str
+        );
     } else if reward_dest.is_object() {
         let dest_obj = reward_dest.as_object().unwrap();
         if dest_obj.contains_key("account") {
             let account = dest_obj.get("account").unwrap().as_str().unwrap();
-            println!("  {} Reward destination (account): {}", "+".green(), account);
+            println!(
+                "  {} Reward destination (account): {}",
+                "+".green(),
+                account
+            );
         }
     }
 
@@ -704,11 +739,7 @@ async fn test_standard_staking_info_use_rc_block() -> Result<()> {
         }
     }
 
-    assert!(
-        status.is_success(),
-        "API returned status {}",
-        status
-    );
+    assert!(status.is_success(), "API returned status {}", status);
 
     // Response should be an array when useRcBlock=true
     let response_array = json

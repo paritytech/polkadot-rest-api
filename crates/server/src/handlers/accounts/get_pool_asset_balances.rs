@@ -1,14 +1,15 @@
 use super::types::{
-    BlockInfo, AccountsError, PoolAssetBalancesQueryParams,
-    PoolAssetBalancesResponse,
+    AccountsError, BlockInfo, PoolAssetBalancesQueryParams, PoolAssetBalancesResponse,
 };
-use super::utils::{fetch_timestamp, query_all_pool_assets_id, query_pool_assets, validate_and_parse_address};
+use super::utils::{
+    fetch_timestamp, query_all_pool_assets_id, query_pool_assets, validate_and_parse_address,
+};
 use crate::state::AppState;
 use crate::utils::{self, find_ah_blocks_in_rc_block};
 use axum::{
+    Json,
     extract::{Path, Query, State},
     response::{IntoResponse, Response},
-    Json,
 };
 use config::ChainType;
 use serde_json::json;
@@ -38,7 +39,11 @@ pub async fn get_pool_asset_balances(
         return handle_use_rc_block(state, account, params).await;
     }
 
-    let block_id = params.at.as_ref().map(|s| s.parse::<utils::BlockId>()).transpose()?;
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
 
     let client_at_block = match params.at {
@@ -53,7 +58,8 @@ pub async fn get_pool_asset_balances(
     };
 
     let response =
-        query_pool_asset_balances(&client_at_block, &account, &resolved_block, &params.assets).await?;
+        query_pool_asset_balances(&client_at_block, &account, &resolved_block, &params.assets)
+            .await?;
 
     Ok(Json(response).into_response())
 }
@@ -64,12 +70,12 @@ async fn query_pool_asset_balances(
     block: &utils::ResolvedBlock,
     asset_ids: &[u32],
 ) -> Result<PoolAssetBalancesResponse, AccountsError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("PoolAssets", "Account");
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
+        "PoolAssets",
+        "Account",
+    );
 
-    let pool_assets_exists = client_at_block
-        .storage()
-        .entry(storage_query)
-        .is_ok();
+    let pool_assets_exists = client_at_block.storage().entry(storage_query).is_ok();
 
     if !pool_assets_exists {
         return Err(AccountsError::PalletNotAvailable("PoolAssets".to_string()));
@@ -91,7 +97,7 @@ async fn query_pool_asset_balances(
     };
 
     // Query each pool asset balance in parallel
-    let pool_assets = query_pool_assets(client_at_block , account, &assets_to_query).await?;
+    let pool_assets = query_pool_assets(client_at_block, account, &assets_to_query).await?;
 
     Ok(PoolAssetBalancesResponse {
         at: BlockInfo {
@@ -119,9 +125,11 @@ async fn handle_use_rc_block(
         return Err(AccountsError::UseRcBlockNotSupported);
     }
 
-    let rc_rpc_client = state.get_relay_chain_rpc_client()
+    let rc_rpc_client = state
+        .get_relay_chain_rpc_client()
         .ok_or(AccountsError::RelayChainNotConfigured)?;
-    let rc_rpc = state.get_relay_chain_rpc()
+    let rc_rpc = state
+        .get_relay_chain_rpc()
         .ok_or(AccountsError::RelayChainNotConfigured)?;
 
     // Resolve RC block
@@ -129,12 +137,8 @@ async fn handle_use_rc_block(
         .at
         .unwrap_or_else(|| "head".to_string())
         .parse::<utils::BlockId>()?;
-    let rc_resolved = utils::resolve_block_with_rpc(
-        rc_rpc_client,
-        rc_rpc,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved =
+        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc, Some(rc_block_id)).await?;
 
     // Find AH blocks
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved).await?;
@@ -156,7 +160,8 @@ async fn handle_use_rc_block(
 
         let client_at_block = state.client.at_block(ah_resolved.number).await?;
         let mut response =
-            query_pool_asset_balances(&client_at_block, &account, &ah_resolved, &params.assets).await?;
+            query_pool_asset_balances(&client_at_block, &account, &ah_resolved, &params.assets)
+                .await?;
 
         // Add RC block info
         response.rc_block_hash = Some(rc_block_hash.clone());

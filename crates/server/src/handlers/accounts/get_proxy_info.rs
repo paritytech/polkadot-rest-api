@@ -1,13 +1,17 @@
-use super::types::{BlockInfo, ProxyDefinition, AccountsError, ProxyInfoQueryParams, ProxyInfoResponse};
+use super::types::{
+    AccountsError, BlockInfo, ProxyDefinition, ProxyInfoQueryParams, ProxyInfoResponse,
+};
 use super::utils::validate_and_parse_address;
 use crate::handlers::accounts::utils::fetch_timestamp;
-use crate::handlers::common::accounts::{query_proxy_info as query_proxy_info_shared, RawProxyInfo};
+use crate::handlers::common::accounts::{
+    RawProxyInfo, query_proxy_info as query_proxy_info_shared,
+};
 use crate::state::AppState;
 use crate::utils::{self, find_ah_blocks_in_rc_block};
 use axum::{
+    Json,
     extract::{Path, Query, State},
     response::{IntoResponse, Response},
-    Json,
 };
 use config::ChainType;
 use serde_json::json;
@@ -35,7 +39,11 @@ pub async fn get_proxy_info(
         return handle_use_rc_block(state, account, params).await;
     }
 
-    let block_id = params.at.as_ref().map(|s| s.parse::<utils::BlockId>()).transpose()?;
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
 
     let client_at_block = match params.at {
@@ -103,9 +111,11 @@ async fn handle_use_rc_block(
         return Err(AccountsError::UseRcBlockNotSupported);
     }
 
-    let rc_rpc_client = state.get_relay_chain_rpc_client()
+    let rc_rpc_client = state
+        .get_relay_chain_rpc_client()
         .ok_or(AccountsError::RelayChainNotConfigured)?;
-    let rc_rpc = state.get_relay_chain_rpc()
+    let rc_rpc = state
+        .get_relay_chain_rpc()
         .ok_or(AccountsError::RelayChainNotConfigured)?;
 
     // Resolve RC block
@@ -113,12 +123,8 @@ async fn handle_use_rc_block(
         .at
         .unwrap_or_else(|| "head".to_string())
         .parse::<utils::BlockId>()?;
-    let rc_resolved = utils::resolve_block_with_rpc(
-        rc_rpc_client,
-        rc_rpc,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved =
+        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc, Some(rc_block_id)).await?;
 
     // Find AH blocks
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved).await?;

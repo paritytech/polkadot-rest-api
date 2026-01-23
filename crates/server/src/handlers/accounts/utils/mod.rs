@@ -47,7 +47,6 @@ pub fn validate_and_parse_address(addr: &str) -> Result<AccountId32, AddressVali
     Err(AddressValidationError(addr.to_string()))
 }
 
-
 /// Extract u128 field from named fields
 pub fn extract_u128_field(fields: &[(String, Value<()>)], field_name: &str) -> Option<u128> {
     fields

@@ -1,8 +1,5 @@
-
-use super::types::{
-    AccountsError, AssetBalancesQueryParams, AssetBalancesResponse, BlockInfo,
-};
-use super::utils::{validate_and_parse_address};
+use super::types::{AccountsError, AssetBalancesQueryParams, AssetBalancesResponse, BlockInfo};
+use super::utils::validate_and_parse_address;
 use crate::handlers::accounts::utils::{fetch_timestamp, query_all_assets_id, query_assets};
 use crate::state::AppState;
 use crate::utils::{self, find_ah_blocks_in_rc_block};
@@ -33,16 +30,17 @@ pub async fn get_asset_balances(
     Path(account_id): Path<String>,
     Query(params): Query<AssetBalancesQueryParams>,
 ) -> Result<Response, AccountsError> {
-
     let account = validate_and_parse_address(&account_id)?;
-
 
     if params.use_rc_block {
         return handle_use_rc_block(state, account, params).await;
     }
 
-
-    let block_id = params.at.as_ref().map(|s| s.parse::<utils::BlockId>()).transpose()?;
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
 
     let client_at_block = match params.at {
@@ -56,11 +54,11 @@ pub async fn get_asset_balances(
         }
     };
 
-    let response = query_asset_balances(&client_at_block, &account, &resolved_block, &params.assets).await?;
+    let response =
+        query_asset_balances(&client_at_block, &account, &resolved_block, &params.assets).await?;
 
     Ok(Json(response).into_response())
 }
-
 
 async fn query_asset_balances(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
@@ -68,7 +66,8 @@ async fn query_asset_balances(
     block: &utils::ResolvedBlock,
     asset_ids: &[u32],
 ) -> Result<AssetBalancesResponse, AccountsError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Account");
+    let storage_query =
+        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Account");
     let assets_exists = client_at_block.storage().entry(storage_query).is_ok();
 
     if !assets_exists {
@@ -105,7 +104,6 @@ async fn query_asset_balances(
     })
 }
 
-
 // ================================================================================================
 // Relay Chain Block Handling
 // ================================================================================================
@@ -120,9 +118,11 @@ async fn handle_use_rc_block(
         return Err(AccountsError::UseRcBlockNotSupported);
     }
 
-    let rc_rpc_client = state.get_relay_chain_rpc_client()
+    let rc_rpc_client = state
+        .get_relay_chain_rpc_client()
         .ok_or(AccountsError::RelayChainNotConfigured)?;
-    let rc_rpc = state.get_relay_chain_rpc()
+    let rc_rpc = state
+        .get_relay_chain_rpc()
         .ok_or(AccountsError::RelayChainNotConfigured)?;
 
     // Resolve RC block
@@ -130,12 +130,8 @@ async fn handle_use_rc_block(
         .at
         .unwrap_or_else(|| "head".to_string())
         .parse::<utils::BlockId>()?;
-    let rc_resolved = utils::resolve_block_with_rpc(
-        rc_rpc_client,
-        rc_rpc,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved =
+        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc, Some(rc_block_id)).await?;
 
     // Find AH blocks
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved).await?;

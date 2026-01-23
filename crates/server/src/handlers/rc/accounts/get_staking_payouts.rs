@@ -1,11 +1,10 @@
 use super::types::{
-    BlockInfo, EraPayouts, EraPayoutsData, AccountsError, RcStakingPayoutsQueryParams,
+    AccountsError, BlockInfo, EraPayouts, EraPayoutsData, RcStakingPayoutsQueryParams,
     RcStakingPayoutsResponse, ValidatorPayout,
 };
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
-    query_staking_payouts, RawEraPayouts, RawStakingPayouts,
-    StakingPayoutsParams,
+    RawEraPayouts, RawStakingPayouts, StakingPayoutsParams, query_staking_payouts,
 };
 use crate::state::{AppState, SubstrateLegacyRpc};
 use crate::utils;
@@ -50,7 +49,8 @@ pub async fn get_staking_payouts(
         .map(|s| s.parse::<utils::BlockId>())
         .transpose()?;
 
-    let resolved_block = utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
+    let resolved_block =
+        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
 
     let client_at_block = match params.at {
         None => rc_client.at_current_block().await?,
@@ -69,7 +69,8 @@ pub async fn get_staking_payouts(
         unclaimed_only: params.unclaimed_only,
     };
 
-    let raw_payouts = query_staking_payouts(&client_at_block, &account, &resolved_block, &staking_params).await?;
+    let raw_payouts =
+        query_staking_payouts(&client_at_block, &account, &resolved_block, &staking_params).await?;
 
     let response = format_response(&raw_payouts);
 

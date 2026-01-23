@@ -1,6 +1,6 @@
 //! Integration tests for /accounts/{accountId}/pool-asset-approvals endpoint
 
-use super::{get_client, Colorize};
+use super::{Colorize, get_client};
 use anyhow::{Context, Result};
 
 #[tokio::test]
@@ -27,23 +27,45 @@ async fn test_pool_asset_approvals_basic() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert!(local_status.is_success(), "Local API returned status {}", local_status);
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
     let response_obj = local_json.as_object().expect("Response is not an object");
 
-    assert!(response_obj.contains_key("at"), "Response missing 'at' field");
-    assert!(response_obj.contains_key("amount"), "Response missing 'amount' field");
-    assert!(response_obj.contains_key("deposit"), "Response missing 'deposit' field");
+    assert!(
+        response_obj.contains_key("at"),
+        "Response missing 'at' field"
+    );
+    assert!(
+        response_obj.contains_key("amount"),
+        "Response missing 'amount' field"
+    );
+    assert!(
+        response_obj.contains_key("deposit"),
+        "Response missing 'deposit' field"
+    );
 
     let at_obj = response_obj.get("at").unwrap().as_object().unwrap();
-    assert!(at_obj.contains_key("hash"), "at object missing 'hash' field");
-    assert!(at_obj.contains_key("height"), "at object missing 'height' field");
+    assert!(
+        at_obj.contains_key("hash"),
+        "at object missing 'hash' field"
+    );
+    assert!(
+        at_obj.contains_key("height"),
+        "at object missing 'height' field"
+    );
 
     let amount = response_obj.get("amount").unwrap();
     let deposit = response_obj.get("deposit").unwrap();
 
     if amount.is_null() {
-        println!("  {} No approval found (amount: null, deposit: null)", "ℹ".blue());
+        println!(
+            "  {} No approval found (amount: null, deposit: null)",
+            "ℹ".blue()
+        );
     } else {
         println!(
             "  {} Approval found - amount: {}, deposit: {}",
@@ -88,20 +110,31 @@ async fn test_pool_asset_approvals_at_specific_block() -> Result<()> {
         let error_obj = local_json.as_object().unwrap();
         let error_msg = error_obj.get("error").unwrap().as_str().unwrap();
         if error_msg.contains("pool assets pallet") {
-            println!("{} PoolAssets pallet not available at this block", "ℹ".blue());
+            println!(
+                "{} PoolAssets pallet not available at this block",
+                "ℹ".blue()
+            );
             println!("{}", "═".repeat(80).bright_white());
             return Ok(());
         }
     }
 
-    assert!(local_status.is_success(), "Local API returned status {}", local_status);
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
     let response_obj = local_json.as_object().unwrap();
     let at_obj = response_obj.get("at").unwrap().as_object().unwrap();
     let height = at_obj.get("height").unwrap().as_str().unwrap();
     assert_eq!(height, block_number.to_string(), "Block height mismatch");
 
-    println!("{} Response at block {} validated!", "✓".green().bold(), block_number);
+    println!(
+        "{} Response at block {} validated!",
+        "✓".green().bold(),
+        block_number
+    );
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }
@@ -129,7 +162,12 @@ async fn test_pool_asset_approvals_invalid_address() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert_eq!(local_status.as_u16(), 400, "Expected 400 Bad Request, got {}", local_status);
+    assert_eq!(
+        local_status.as_u16(),
+        400,
+        "Expected 400 Bad Request, got {}",
+        local_status
+    );
 
     let error_obj = local_json.as_object().unwrap();
     let error_msg = error_obj.get("error").unwrap().as_str().unwrap();
@@ -167,7 +205,12 @@ async fn test_pool_asset_approvals_invalid_delegate() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert_eq!(local_status.as_u16(), 400, "Expected 400 Bad Request, got {}", local_status);
+    assert_eq!(
+        local_status.as_u16(),
+        400,
+        "Expected 400 Bad Request, got {}",
+        local_status
+    );
 
     let error_obj = local_json.as_object().unwrap();
     let error_msg = error_obj.get("error").unwrap().as_str().unwrap();
@@ -204,8 +247,15 @@ async fn test_pool_asset_approvals_missing_required_params() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert_eq!(response_no_asset.status.as_u16(), 400, "Expected 400 for missing assetId");
-    assert!(response_no_asset.body.contains("assetId"), "Should mention missing assetId");
+    assert_eq!(
+        response_no_asset.status.as_u16(),
+        400,
+        "Expected 400 for missing assetId"
+    );
+    assert!(
+        response_no_asset.body.contains("assetId"),
+        "Should mention missing assetId"
+    );
     println!("{} Missing assetId returns 400", "✓".green());
 
     // Test missing delegate
@@ -215,11 +265,21 @@ async fn test_pool_asset_approvals_missing_required_params() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert_eq!(response_no_delegate.status.as_u16(), 400, "Expected 400 for missing delegate");
-    assert!(response_no_delegate.body.contains("delegate"), "Should mention missing delegate");
+    assert_eq!(
+        response_no_delegate.status.as_u16(),
+        400,
+        "Expected 400 for missing delegate"
+    );
+    assert!(
+        response_no_delegate.body.contains("delegate"),
+        "Should mention missing delegate"
+    );
     println!("{} Missing delegate returns 400", "✓".green());
 
-    println!("{} Required parameter validation passed!", "✓".green().bold());
+    println!(
+        "{} Required parameter validation passed!",
+        "✓".green().bold()
+    );
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }
@@ -254,32 +314,73 @@ async fn test_pool_asset_approvals_use_rc_block() -> Result<()> {
         let error_obj = local_json.as_object().unwrap();
         let error_msg = error_obj.get("error").unwrap().as_str().unwrap();
         if error_msg.contains("pool assets pallet") {
-            println!("{} PoolAssets pallet not available at this block", "ℹ".blue());
+            println!(
+                "{} PoolAssets pallet not available at this block",
+                "ℹ".blue()
+            );
             println!("{}", "═".repeat(80).bright_white());
             return Ok(());
         }
     }
 
-    assert!(local_status.is_success(), "Local API returned status {}", local_status);
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
-    let local_array = local_json.as_array().expect("Response with useRcBlock=true should be an array");
+    let local_array = local_json
+        .as_array()
+        .expect("Response with useRcBlock=true should be an array");
 
-    println!("  {} Response contains {} block(s)", "✓".green(), local_array.len());
+    println!(
+        "  {} Response contains {} block(s)",
+        "✓".green(),
+        local_array.len()
+    );
 
     for (i, item) in local_array.iter().enumerate() {
         let item_obj = item.as_object().unwrap();
-        assert!(item_obj.contains_key("rcBlockHash"), "Item {} missing 'rcBlockHash'", i);
-        assert!(item_obj.contains_key("rcBlockNumber"), "Item {} missing 'rcBlockNumber'", i);
-        assert!(item_obj.contains_key("ahTimestamp"), "Item {} missing 'ahTimestamp'", i);
+        assert!(
+            item_obj.contains_key("rcBlockHash"),
+            "Item {} missing 'rcBlockHash'",
+            i
+        );
+        assert!(
+            item_obj.contains_key("rcBlockNumber"),
+            "Item {} missing 'rcBlockNumber'",
+            i
+        );
+        assert!(
+            item_obj.contains_key("ahTimestamp"),
+            "Item {} missing 'ahTimestamp'",
+            i
+        );
         assert!(item_obj.contains_key("at"), "Item {} missing 'at'", i);
-        assert!(item_obj.contains_key("amount"), "Item {} missing 'amount'", i);
-        assert!(item_obj.contains_key("deposit"), "Item {} missing 'deposit'", i);
+        assert!(
+            item_obj.contains_key("amount"),
+            "Item {} missing 'amount'",
+            i
+        );
+        assert!(
+            item_obj.contains_key("deposit"),
+            "Item {} missing 'deposit'",
+            i
+        );
 
         let rc_block_num = item_obj.get("rcBlockNumber").unwrap().as_str().unwrap();
-        assert_eq!(rc_block_num, rc_block_number.to_string(), "RC block number mismatch");
+        assert_eq!(
+            rc_block_num,
+            rc_block_number.to_string(),
+            "RC block number mismatch"
+        );
     }
 
-    println!("{} All {} block response(s) validated!", "✓".green().bold(), local_array.len());
+    println!(
+        "{} All {} block response(s) validated!",
+        "✓".green().bold(),
+        local_array.len()
+    );
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }
@@ -307,16 +408,29 @@ async fn test_pool_asset_approvals_non_existent_approval() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert!(local_status.is_success(), "Local API returned status {}", local_status);
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
     let response_obj = local_json.as_object().unwrap();
     let amount = response_obj.get("amount").unwrap();
     let deposit = response_obj.get("deposit").unwrap();
 
-    assert!(amount.is_null(), "Expected null amount for non-existent approval");
-    assert!(deposit.is_null(), "Expected null deposit for non-existent approval");
+    assert!(
+        amount.is_null(),
+        "Expected null amount for non-existent approval"
+    );
+    assert!(
+        deposit.is_null(),
+        "Expected null deposit for non-existent approval"
+    );
 
-    println!("{} Non-existent approval returns null values as expected!", "✓".green().bold());
+    println!(
+        "{} Non-existent approval returns null values as expected!",
+        "✓".green().bold()
+    );
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }

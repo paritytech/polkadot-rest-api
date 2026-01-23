@@ -1,6 +1,5 @@
 use super::types::{
-    AccountsError, AssetApprovalQueryParams, AssetApprovalResponse, BlockInfo,
-    DecodedAssetApproval,
+    AccountsError, AssetApprovalQueryParams, AssetApprovalResponse, BlockInfo, DecodedAssetApproval,
 };
 use super::utils::validate_and_parse_address;
 use crate::handlers::accounts::utils::{extract_u128_field, fetch_timestamp};
@@ -44,7 +43,11 @@ pub async fn get_asset_approvals(
         return handle_use_rc_block(state, account, delegate, params).await;
     }
 
-    let block_id = params.at.as_ref().map(|s| s.parse::<utils::BlockId>()).transpose()?;
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
 
     let client_at_block = match params.at {
@@ -58,8 +61,14 @@ pub async fn get_asset_approvals(
         }
     };
 
-    let response =
-        query_asset_approval(&client_at_block, &account, &delegate, params.asset_id, &resolved_block).await?;
+    let response = query_asset_approval(
+        &client_at_block,
+        &account,
+        &delegate,
+        params.asset_id,
+        &resolved_block,
+    )
+    .await?;
 
     Ok(Json(response).into_response())
 }
@@ -71,7 +80,10 @@ async fn query_asset_approval(
     asset_id: u32,
     block: &utils::ResolvedBlock,
 ) -> Result<AssetApprovalResponse, AccountsError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Approvals");
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
+        "Assets",
+        "Approvals",
+    );
 
     let approvals_exists = client_at_block
         .storage()
@@ -223,9 +235,11 @@ async fn handle_use_rc_block(
         return Err(AccountsError::UseRcBlockNotSupported);
     }
 
-    let rc_rpc_client = state.get_relay_chain_rpc_client()
+    let rc_rpc_client = state
+        .get_relay_chain_rpc_client()
         .ok_or(AccountsError::RelayChainNotConfigured)?;
-    let rc_rpc = state.get_relay_chain_rpc()
+    let rc_rpc = state
+        .get_relay_chain_rpc()
         .ok_or(AccountsError::RelayChainNotConfigured)?;
 
     // Resolve RC block
@@ -233,12 +247,8 @@ async fn handle_use_rc_block(
         .at
         .unwrap_or_else(|| "head".to_string())
         .parse::<utils::BlockId>()?;
-    let rc_resolved = utils::resolve_block_with_rpc(
-        rc_rpc_client,
-        rc_rpc,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved =
+        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc, Some(rc_block_id)).await?;
 
     // Find AH blocks
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved).await?;
@@ -260,9 +270,14 @@ async fn handle_use_rc_block(
 
         let client_at_block = state.client.at_block(ah_resolved.number).await?;
 
-        let mut response =
-            query_asset_approval(&client_at_block, &account, &delegate, params.asset_id, &ah_resolved)
-                .await?;
+        let mut response = query_asset_approval(
+            &client_at_block,
+            &account,
+            &delegate,
+            params.asset_id,
+            &ah_resolved,
+        )
+        .await?;
 
         // Add RC block info
         response.rc_block_hash = Some(rc_block_hash.clone());

@@ -1,6 +1,6 @@
 //! Integration tests for /accounts/compare endpoint
 
-use super::{get_client, Colorize};
+use super::{Colorize, get_client};
 use anyhow::{Context, Result};
 
 #[tokio::test]
@@ -27,15 +27,28 @@ async fn test_compare_same_account_different_formats() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert!(local_status.is_success(), "Local API returned status {}", local_status);
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
     let response_obj = local_json.as_object().expect("Response is not an object");
 
-    assert!(response_obj.contains_key("areEqual"), "Response missing 'areEqual' field");
-    assert!(response_obj.contains_key("addresses"), "Response missing 'addresses' field");
+    assert!(
+        response_obj.contains_key("areEqual"),
+        "Response missing 'areEqual' field"
+    );
+    assert!(
+        response_obj.contains_key("addresses"),
+        "Response missing 'addresses' field"
+    );
 
     let are_equal = response_obj.get("areEqual").unwrap().as_bool().unwrap();
-    assert!(are_equal, "Expected addresses to be equal (same public key)");
+    assert!(
+        are_equal,
+        "Expected addresses to be equal (same public key)"
+    );
 
     let addresses = response_obj.get("addresses").unwrap().as_array().unwrap();
     assert_eq!(addresses.len(), 3, "Expected 3 addresses in response");
@@ -51,19 +64,35 @@ async fn test_compare_same_account_different_formats() -> Result<()> {
     for addr in addresses.iter() {
         let addr_obj = addr.as_object().unwrap();
         let public_key = addr_obj.get("publicKey").unwrap().as_str().unwrap();
-        assert_eq!(public_key, first_public_key, "All addresses should have the same public key");
+        assert_eq!(
+            public_key, first_public_key,
+            "All addresses should have the same public key"
+        );
     }
 
     let prefixes: Vec<u64> = addresses
         .iter()
-        .map(|a| a.as_object().unwrap().get("ss58Prefix").unwrap().as_u64().unwrap())
+        .map(|a| {
+            a.as_object()
+                .unwrap()
+                .get("ss58Prefix")
+                .unwrap()
+                .as_u64()
+                .unwrap()
+        })
         .collect();
 
     assert!(prefixes.contains(&0), "Should contain Polkadot prefix (0)");
     assert!(prefixes.contains(&2), "Should contain Kusama prefix (2)");
-    assert!(prefixes.contains(&42), "Should contain Substrate prefix (42)");
+    assert!(
+        prefixes.contains(&42),
+        "Should contain Substrate prefix (42)"
+    );
 
-    println!("{} Same account in different formats validated!", "✓".green().bold());
+    println!(
+        "{} Same account in different formats validated!",
+        "✓".green().bold()
+    );
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }
@@ -88,21 +117,43 @@ async fn test_compare_different_accounts() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert!(local_status.is_success(), "Local API returned status {}", local_status);
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
     let response_obj = local_json.as_object().expect("Response is not an object");
 
     let are_equal = response_obj.get("areEqual").unwrap().as_bool().unwrap();
-    assert!(!are_equal, "Expected addresses to NOT be equal (different public keys)");
+    assert!(
+        !are_equal,
+        "Expected addresses to NOT be equal (different public keys)"
+    );
 
     let addresses = response_obj.get("addresses").unwrap().as_array().unwrap();
     assert_eq!(addresses.len(), 2, "Expected 2 addresses in response");
 
-    let pk1 = addresses[0].as_object().unwrap().get("publicKey").unwrap().as_str().unwrap();
-    let pk2 = addresses[1].as_object().unwrap().get("publicKey").unwrap().as_str().unwrap();
+    let pk1 = addresses[0]
+        .as_object()
+        .unwrap()
+        .get("publicKey")
+        .unwrap()
+        .as_str()
+        .unwrap();
+    let pk2 = addresses[1]
+        .as_object()
+        .unwrap()
+        .get("publicKey")
+        .unwrap()
+        .as_str()
+        .unwrap();
     assert_ne!(pk1, pk2, "Public keys should be different");
 
-    println!("{} Different accounts correctly identified!", "✓".green().bold());
+    println!(
+        "{} Different accounts correctly identified!",
+        "✓".green().bold()
+    );
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }
@@ -125,7 +176,11 @@ async fn test_compare_single_address() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert!(local_status.is_success(), "Local API returned status {}", local_status);
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
     let response_obj = local_json.as_object().expect("Response is not an object");
 
@@ -135,7 +190,10 @@ async fn test_compare_single_address() -> Result<()> {
     let addresses = response_obj.get("addresses").unwrap().as_array().unwrap();
     assert_eq!(addresses.len(), 1, "Expected 1 address in response");
 
-    println!("{} Single address comparison validated!", "✓".green().bold());
+    println!(
+        "{} Single address comparison validated!",
+        "✓".green().bold()
+    );
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }
@@ -147,7 +205,10 @@ async fn test_compare_with_invalid_address() -> Result<()> {
     let valid_addr = "1xN1Q5eKQmS5AzASdjt6R6sHF76611vKR4PFpFjy1kXau4m";
     let invalid_addr = "invalid-address-123";
 
-    let endpoint = format!("/accounts/compare?addresses={},{}", valid_addr, invalid_addr);
+    let endpoint = format!(
+        "/accounts/compare?addresses={},{}",
+        valid_addr, invalid_addr
+    );
 
     println!(
         "\n{} Testing compare endpoint with invalid address",
@@ -160,12 +221,19 @@ async fn test_compare_with_invalid_address() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert!(local_status.is_success(), "Local API returned status {}", local_status);
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
     let response_obj = local_json.as_object().expect("Response is not an object");
 
     let are_equal = response_obj.get("areEqual").unwrap().as_bool().unwrap();
-    assert!(!are_equal, "Should not be equal when one address is invalid");
+    assert!(
+        !are_equal,
+        "Should not be equal when one address is invalid"
+    );
 
     let addresses = response_obj.get("addresses").unwrap().as_array().unwrap();
     assert_eq!(addresses.len(), 2, "Expected 2 addresses in response");
@@ -183,7 +251,10 @@ async fn test_compare_with_invalid_address() -> Result<()> {
         "Invalid address should have null publicKey"
     );
 
-    println!("{} Invalid address in compare handled correctly!", "✓".green().bold());
+    println!(
+        "{} Invalid address in compare handled correctly!",
+        "✓".green().bold()
+    );
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }
@@ -209,12 +280,22 @@ async fn test_compare_too_many_addresses() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert_eq!(local_status.as_u16(), 400, "Expected 400 Bad Request for too many addresses");
+    assert_eq!(
+        local_status.as_u16(),
+        400,
+        "Expected 400 Bad Request for too many addresses"
+    );
 
     let response_obj = local_json.as_object().expect("Response is not an object");
-    assert!(response_obj.contains_key("error"), "Error response should contain 'error' field");
+    assert!(
+        response_obj.contains_key("error"),
+        "Error response should contain 'error' field"
+    );
 
-    println!("{} Too many addresses error handled correctly!", "✓".green().bold());
+    println!(
+        "{} Too many addresses error handled correctly!",
+        "✓".green().bold()
+    );
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }
@@ -236,12 +317,22 @@ async fn test_compare_no_addresses() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert_eq!(local_status.as_u16(), 400, "Expected 400 Bad Request for empty addresses");
+    assert_eq!(
+        local_status.as_u16(),
+        400,
+        "Expected 400 Bad Request for empty addresses"
+    );
 
     let response_obj = local_json.as_object().expect("Response is not an object");
-    assert!(response_obj.contains_key("error"), "Error response should contain 'error' field");
+    assert!(
+        response_obj.contains_key("error"),
+        "Error response should contain 'error' field"
+    );
 
-    println!("{} Empty addresses error handled correctly!", "✓".green().bold());
+    println!(
+        "{} Empty addresses error handled correctly!",
+        "✓".green().bold()
+    );
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }
@@ -266,21 +357,44 @@ async fn test_compare_response_structure() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert!(local_status.is_success(), "Local API returned status {}", local_status);
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
     let response_obj = local_json.as_object().expect("Response is not an object");
 
-    assert!(response_obj.contains_key("areEqual"), "Response missing 'areEqual' field");
-    assert!(response_obj.get("areEqual").unwrap().is_boolean(), "'areEqual' should be boolean");
-    assert!(response_obj.contains_key("addresses"), "Response missing 'addresses' field");
-    assert!(response_obj.get("addresses").unwrap().is_array(), "'addresses' should be array");
+    assert!(
+        response_obj.contains_key("areEqual"),
+        "Response missing 'areEqual' field"
+    );
+    assert!(
+        response_obj.get("areEqual").unwrap().is_boolean(),
+        "'areEqual' should be boolean"
+    );
+    assert!(
+        response_obj.contains_key("addresses"),
+        "Response missing 'addresses' field"
+    );
+    assert!(
+        response_obj.get("addresses").unwrap().is_array(),
+        "'addresses' should be array"
+    );
 
     let addresses = response_obj.get("addresses").unwrap().as_array().unwrap();
 
     for (i, addr) in addresses.iter().enumerate() {
         let addr_obj = addr.as_object().expect("Address should be an object");
-        assert!(addr_obj.contains_key("ss58Format"), "Address {} missing 'ss58Format' field", i);
-        assert!(addr_obj.get("ss58Format").unwrap().is_string(), "'ss58Format' should be string");
+        assert!(
+            addr_obj.contains_key("ss58Format"),
+            "Address {} missing 'ss58Format' field",
+            i
+        );
+        assert!(
+            addr_obj.get("ss58Format").unwrap().is_string(),
+            "'ss58Format' should be string"
+        );
     }
 
     println!("{} Response structure validated!", "✓".green().bold());
@@ -308,7 +422,11 @@ async fn test_compare_addresses_with_spaces() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert!(local_status.is_success(), "Local API returned status {}", local_status);
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
     let response_obj = local_json.as_object().expect("Response is not an object");
     let addresses = response_obj.get("addresses").unwrap().as_array().unwrap();
@@ -324,7 +442,10 @@ async fn test_compare_addresses_with_spaces() -> Result<()> {
         );
     }
 
-    println!("{} Addresses with spaces handled correctly!", "✓".green().bold());
+    println!(
+        "{} Addresses with spaces handled correctly!",
+        "✓".green().bold()
+    );
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }
@@ -350,7 +471,11 @@ async fn test_compare_max_addresses() -> Result<()> {
         .await
         .context("Failed to fetch from local API")?;
 
-    assert!(local_status.is_success(), "Local API returned status {}", local_status);
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
 
     let response_obj = local_json.as_object().expect("Response is not an object");
 
@@ -360,7 +485,10 @@ async fn test_compare_max_addresses() -> Result<()> {
     let addresses = response_obj.get("addresses").unwrap().as_array().unwrap();
     assert_eq!(addresses.len(), 30, "Expected 30 addresses in response");
 
-    println!("{} Maximum addresses (30) handled correctly!", "✓".green().bold());
+    println!(
+        "{} Maximum addresses (30) handled correctly!",
+        "✓".green().bold()
+    );
     println!("{}", "═".repeat(80).bright_white());
     Ok(())
 }

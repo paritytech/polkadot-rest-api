@@ -2,10 +2,13 @@
 // Assets Data Fetching
 // ================================================================================================
 
-use crate::{handlers::accounts::{AssetBalance, AccountsError, DecodedAssetBalance, utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field}}};
+use crate::handlers::accounts::{
+    AccountsError, AssetBalance, DecodedAssetBalance,
+    utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field},
+};
 use parity_scale_codec::Decode;
 use scale_value::{Composite, Value, ValueDef};
-use sp_core::crypto::{AccountId32};
+use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig, storage::StorageValue};
 
 /// Fetch all asset IDs from storage
@@ -29,7 +32,8 @@ pub async fn query_all_assets_id(
 
         // Skip pallet hash (16) + storage hash (16) + Blake2_128 hash (16) = 48 bytes
         // Then decode the raw u32 asset ID
-        if key.len() >= 52 {  // 48 bytes prefix + 4 bytes u32
+        if key.len() >= 52 {
+            // 48 bytes prefix + 4 bytes u32
             if let Ok(asset_id) = u32::decode(&mut &key[48..]) {
                 asset_ids.push(asset_id);
             }
@@ -44,7 +48,8 @@ pub async fn query_assets(
     account: &AccountId32,
     assets: &[u32],
 ) -> Result<Vec<AssetBalance>, AccountsError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Account");
+    let storage_query =
+        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Account");
     let storage_entry = client_at_block.storage().entry(storage_query)?;
 
     // Encode the storage key: (asset_id, account_id)
@@ -77,7 +82,6 @@ pub async fn query_assets(
     Ok(balances)
 }
 
-
 // ================================================================================================
 // Asset Balance Decoding
 // ================================================================================================
@@ -88,7 +92,9 @@ pub async fn decode_asset_balance(
 ) -> Result<Option<DecodedAssetBalance>, AccountsError> {
     // Decode as scale_value::Value to inspect structure
     let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        AccountsError::DecodeFailed(parity_scale_codec::Error::from("Failed to decode storage value"))
+        AccountsError::DecodeFailed(parity_scale_codec::Error::from(
+            "Failed to decode storage value",
+        ))
     })?;
 
     // Handle Option wrapper (post-v9160)
@@ -149,20 +155,21 @@ fn decode_balance_composite(
                 .unwrap_or(false);
 
             // Handle different runtime versions for isSufficient
-            let is_sufficient = if let Some(reason_value) = fields.iter().find(|(name, _)| name == "reason") {
-                // Post-v9160: reason enum
-                extract_is_sufficient_from_reason(&reason_value.1)
-            } else if let Some(sufficient) = extract_bool_field(fields, "sufficient") {
-                // v9160: sufficient boolean
-                sufficient
-            } else if let Some(is_sufficient) = extract_bool_field(fields, "isSufficient")
-                .or_else(|| extract_bool_field(fields, "is_sufficient"))
-            {
-                // Pre-v9160: isSufficient boolean
-                is_sufficient
-            } else {
-                false
-            };
+            let is_sufficient =
+                if let Some(reason_value) = fields.iter().find(|(name, _)| name == "reason") {
+                    // Post-v9160: reason enum
+                    extract_is_sufficient_from_reason(&reason_value.1)
+                } else if let Some(sufficient) = extract_bool_field(fields, "sufficient") {
+                    // v9160: sufficient boolean
+                    sufficient
+                } else if let Some(is_sufficient) = extract_bool_field(fields, "isSufficient")
+                    .or_else(|| extract_bool_field(fields, "is_sufficient"))
+                {
+                    // Pre-v9160: isSufficient boolean
+                    is_sufficient
+                } else {
+                    false
+                };
 
             Ok(Some(DecodedAssetBalance {
                 balance: balance.to_string(),

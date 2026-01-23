@@ -1,10 +1,10 @@
 use super::types::{
-    NominationsInfo, AccountsError, RcStakingInfoQueryParams, RcStakingInfoResponse,
+    AccountsError, NominationsInfo, RcStakingInfoQueryParams, RcStakingInfoResponse,
     RewardDestination, StakingLedger,
 };
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
-    query_staking_info, DecodedRewardDestination, RawStakingInfo,
+    DecodedRewardDestination, RawStakingInfo, query_staking_info,
 };
 use crate::state::{AppState, SubstrateLegacyRpc};
 use crate::utils;
@@ -46,7 +46,8 @@ pub async fn get_staking_info(
         .map(|s| s.parse::<utils::BlockId>())
         .transpose()?;
 
-    let resolved_block = utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
+    let resolved_block =
+        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
 
     let client_at_block = match params.at {
         None => rc_client.at_current_block().await?,
@@ -110,9 +111,9 @@ fn get_relay_chain_access(
 fn format_response(raw: &RawStakingInfo) -> RcStakingInfoResponse {
     let reward_destination = match &raw.reward_destination {
         DecodedRewardDestination::Simple(name) => RewardDestination::Simple(name.clone()),
-        DecodedRewardDestination::Account { account } => {
-            RewardDestination::Account { account: account.clone() }
-        }
+        DecodedRewardDestination::Account { account } => RewardDestination::Account {
+            account: account.clone(),
+        },
     };
 
     let nominations = raw.nominations.as_ref().map(|n| NominationsInfo {

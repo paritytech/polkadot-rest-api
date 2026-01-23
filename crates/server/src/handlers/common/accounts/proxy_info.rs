@@ -71,7 +71,8 @@ pub async fn query_proxy_info(
     account: &AccountId32,
     block: &ResolvedBlock,
 ) -> Result<RawProxyInfo, ProxyQueryError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Proxy", "Proxies");
+    let storage_query =
+        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Proxy", "Proxies");
 
     let proxy_exists = client_at_block
         .storage()
@@ -148,7 +149,9 @@ async fn decode_proxy_info(
 }
 
 /// Decode proxy definitions from a Value
-fn decode_proxy_definitions(value: &Value<()>) -> Result<Vec<DecodedProxyDefinition>, ProxyQueryError> {
+fn decode_proxy_definitions(
+    value: &Value<()>,
+) -> Result<Vec<DecodedProxyDefinition>, ProxyQueryError> {
     let mut definitions = Vec::new();
 
     // The value should be a sequence/array of proxy definitions

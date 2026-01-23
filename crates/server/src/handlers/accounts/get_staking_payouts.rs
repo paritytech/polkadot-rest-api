@@ -1,19 +1,18 @@
 use super::types::{
-    BlockInfo, EraPayouts, EraPayoutsData, AccountsError, StakingPayoutsQueryParams,
+    AccountsError, BlockInfo, EraPayouts, EraPayoutsData, StakingPayoutsQueryParams,
     StakingPayoutsResponse, ValidatorPayout,
 };
 use super::utils::validate_and_parse_address;
 use crate::handlers::accounts::utils::fetch_timestamp;
 use crate::handlers::common::accounts::{
-    query_staking_payouts, RawEraPayouts, RawStakingPayouts,
-    StakingPayoutsParams,
+    RawEraPayouts, RawStakingPayouts, StakingPayoutsParams, query_staking_payouts,
 };
 use crate::state::AppState;
 use crate::utils::{self, find_ah_blocks_in_rc_block};
 use axum::{
+    Json,
     extract::{Path, Query, State},
     response::{IntoResponse, Response},
-    Json,
 };
 use config::ChainType;
 use serde_json::json;
@@ -68,7 +67,8 @@ pub async fn get_staking_payouts(
         unclaimed_only: params.unclaimed_only,
     };
 
-    let raw_payouts = query_staking_payouts(&client_at_block, &account, &resolved_block, &staking_params).await?;
+    let raw_payouts =
+        query_staking_payouts(&client_at_block, &account, &resolved_block, &staking_params).await?;
 
     let response = format_response(&raw_payouts, None, None, None);
 
@@ -139,9 +139,11 @@ async fn handle_use_rc_block(
         return Err(AccountsError::UseRcBlockNotSupported);
     }
 
-    let rc_rpc_client = state.get_relay_chain_rpc_client()
+    let rc_rpc_client = state
+        .get_relay_chain_rpc_client()
         .ok_or(AccountsError::RelayChainNotConfigured)?;
-    let rc_rpc = state.get_relay_chain_rpc()
+    let rc_rpc = state
+        .get_relay_chain_rpc()
         .ok_or(AccountsError::RelayChainNotConfigured)?;
 
     // Resolve RC block
@@ -150,12 +152,8 @@ async fn handle_use_rc_block(
         .clone()
         .unwrap_or_else(|| "head".to_string())
         .parse::<utils::BlockId>()?;
-    let rc_resolved = utils::resolve_block_with_rpc(
-        rc_rpc_client,
-        rc_rpc,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved =
+        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc, Some(rc_block_id)).await?;
 
     // Find AH blocks
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved).await?;
@@ -181,7 +179,9 @@ async fn handle_use_rc_block(
             number: ah_block.number,
         };
         let client_at_block = state.client.at_block(ah_resolved.number).await?;
-        let raw_payouts = query_staking_payouts(&client_at_block, &account, &ah_resolved, &staking_params).await?;
+        let raw_payouts =
+            query_staking_payouts(&client_at_block, &account, &ah_resolved, &staking_params)
+                .await?;
 
         let response = format_response(
             &raw_payouts,

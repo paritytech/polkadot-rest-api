@@ -4,7 +4,7 @@
 //! - `/accounts/{accountId}/staking-payouts` (standard endpoint)
 //! - `/rc/accounts/{accountId}/staking-payouts` (relay chain endpoint)
 
-use super::{get_client, Colorize};
+use super::{Colorize, get_client};
 use anyhow::{Context, Result};
 
 // ================================================================================================
@@ -171,7 +171,10 @@ async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
     let response_obj = json.as_object().expect("Response is not an object");
 
     // Validate required fields
-    assert!(response_obj.contains_key("at"), "Response missing 'at' field");
+    assert!(
+        response_obj.contains_key("at"),
+        "Response missing 'at' field"
+    );
     assert!(
         response_obj.contains_key("erasPayouts"),
         "Response missing 'erasPayouts' field"
@@ -185,7 +188,11 @@ async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
     let eras_payouts = response_obj.get("erasPayouts").unwrap().as_array().unwrap();
 
     println!("  {} Block: {}", "+".green(), at_obj.get("height").unwrap());
-    println!("  {} Eras payouts count: {}", "+".green(), eras_payouts.len());
+    println!(
+        "  {} Eras payouts count: {}",
+        "+".green(),
+        eras_payouts.len()
+    );
 
     println!(
         "{} {} staking-payouts basic test passed!",
@@ -386,11 +393,7 @@ async fn run_invalid_depth_test(endpoint_type: EndpointType) -> Result<()> {
         }
     }
 
-    assert_eq!(
-        status.as_u16(),
-        400,
-        "Expected 400 Bad Request for depth=0"
-    );
+    assert_eq!(status.as_u16(), 400, "Expected 400 Bad Request for depth=0");
 
     println!("{}", "=".repeat(80).bright_white());
     Ok(())
@@ -475,7 +478,10 @@ async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> 
     let response_obj = json.as_object().expect("Response is not an object");
 
     // Validate required fields
-    assert!(response_obj.contains_key("at"), "Response missing 'at' field");
+    assert!(
+        response_obj.contains_key("at"),
+        "Response missing 'at' field"
+    );
     assert!(
         response_obj.contains_key("erasPayouts"),
         "Response missing 'erasPayouts' field"
@@ -502,7 +508,10 @@ async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> 
             }
 
             // Validate Payouts variant structure
-            assert!(era_obj.contains_key("era"), "Era payout missing 'era' field");
+            assert!(
+                era_obj.contains_key("era"),
+                "Era payout missing 'era' field"
+            );
             assert!(
                 era_obj.contains_key("totalEraRewardPoints"),
                 "Era payout missing 'totalEraRewardPoints' field"
@@ -520,7 +529,10 @@ async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> 
             let payouts = era_obj.get("payouts").unwrap().as_array().unwrap();
             for payout in payouts {
                 let payout_obj = payout.as_object().expect("Payout should be an object");
-                assert!(payout_obj.contains_key("validatorId"), "Missing 'validatorId'");
+                assert!(
+                    payout_obj.contains_key("validatorId"),
+                    "Missing 'validatorId'"
+                );
                 assert!(
                     payout_obj.contains_key("nominatorStakingPayout"),
                     "Missing 'nominatorStakingPayout'"
@@ -691,11 +703,7 @@ async fn test_standard_staking_payouts_use_rc_block() -> Result<()> {
         }
     }
 
-    assert!(
-        status.is_success(),
-        "API returned status {}",
-        status
-    );
+    assert!(status.is_success(), "API returned status {}", status);
 
     // Response should be an array when useRcBlock=true
     let response_array = json

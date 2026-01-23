@@ -1,8 +1,8 @@
 use super::types::{AccountsError, RcBalanceInfoQueryParams, RcBalanceInfoResponse};
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
-    format_balance, format_frozen_fields, format_locks, format_transferable,
-    query_balance_info, RawBalanceInfo,
+    RawBalanceInfo, format_balance, format_frozen_fields, format_locks, format_transferable,
+    query_balance_info,
 };
 use crate::state::{AppState, SubstrateLegacyRpc};
 use crate::utils;
@@ -46,7 +46,8 @@ pub async fn get_balance_info(
         .map(|s| s.parse::<utils::BlockId>())
         .transpose()?;
 
-    let resolved_block = utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
+    let resolved_block =
+        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
 
     let client_at_block = match params.at {
         None => rc_client.at_current_block().await?,

@@ -1,5 +1,5 @@
 use super::types::{
-    AccountsError, AccountCompareQueryParams, AccountCompareResponse, AddressDetails,
+    AccountCompareQueryParams, AccountCompareResponse, AccountsError, AddressDetails,
 };
 use axum::{
     Json,

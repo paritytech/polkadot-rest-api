@@ -1,6 +1,6 @@
 //! Integration tests for /accounts/{accountId}/convert endpoint
 
-use super::{get_client, Colorize};
+use super::{Colorize, get_client};
 use anyhow::{Context, Result};
 
 #[tokio::test]
@@ -38,9 +38,7 @@ async fn test_convert_basic() -> Result<()> {
     println!("{} Local API response: {}", "✓".green(), "OK".green());
 
     // Validate response structure
-    let response_obj = local_json
-        .as_object()
-        .expect("Response is not an object");
+    let response_obj = local_json.as_object().expect("Response is not an object");
 
     // Required fields
     assert!(

@@ -1,6 +1,6 @@
 //! Integration tests for /accounts/{accountId}/validate endpoint
 
-use super::{get_client, Colorize};
+use super::{Colorize, get_client};
 use anyhow::{Context, Result};
 
 #[tokio::test]
@@ -309,7 +309,10 @@ async fn test_validate_invalid_hex_address() -> Result<()> {
     let response_obj = local_json.as_object().unwrap();
 
     let is_valid = response_obj.get("isValid").unwrap().as_bool().unwrap();
-    assert!(!is_valid, "Expected invalid address (missing prefix and checksum)");
+    assert!(
+        !is_valid,
+        "Expected invalid address (missing prefix and checksum)"
+    );
 
     println!("  {} isValid: {}", "✓".green(), is_valid);
 
@@ -426,16 +429,10 @@ async fn test_validate_response_structure() -> Result<()> {
 
         // Validate field types
         let ss58_prefix = response_obj.get("ss58Prefix").unwrap();
-        assert!(
-            ss58_prefix.is_string(),
-            "ss58Prefix should be a string"
-        );
+        assert!(ss58_prefix.is_string(), "ss58Prefix should be a string");
 
         let account_id = response_obj.get("accountId").unwrap();
-        assert!(
-            account_id.is_string(),
-            "accountId should be a string"
-        );
+        assert!(account_id.is_string(), "accountId should be a string");
         assert!(
             account_id.as_str().unwrap().starts_with("0x"),
             "accountId should be hex-encoded with 0x prefix"

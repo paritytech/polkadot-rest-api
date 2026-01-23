@@ -2,11 +2,9 @@
 // Pool Assets Data Fetching
 // ================================================================================================
 
-use crate::{
-    handlers::accounts::{
-        utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field},
-        PoolAssetBalance, AccountsError,
-    },
+use crate::handlers::accounts::{
+    AccountsError, PoolAssetBalance,
+    utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field},
 };
 use parity_scale_codec::Decode;
 use scale_value::{Composite, Value, ValueDef};
@@ -17,7 +15,10 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig, storage::StorageValue};
 pub async fn query_all_pool_assets_id(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("PoolAssets", "Asset");
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
+        "PoolAssets",
+        "Asset",
+    );
     let storage_entry = client_at_block.storage().entry(storage_query)?;
     let mut asset_ids = Vec::new();
 
@@ -50,7 +51,10 @@ pub async fn query_pool_assets(
     account: &AccountId32,
     assets: &[u32],
 ) -> Result<Vec<PoolAssetBalance>, AccountsError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("PoolAssets", "Account");
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
+        "PoolAssets",
+        "Account",
+    );
     let storage_entry = client_at_block.storage().entry(storage_query)?;
 
     // Encode the storage key: (asset_id, account_id)

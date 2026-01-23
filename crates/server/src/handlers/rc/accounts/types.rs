@@ -4,18 +4,9 @@ use serde::{Deserialize, Serialize};
 
 // Re-export shared types from accounts module
 pub use crate::handlers::accounts::{
-    AccountsError,
-    BlockInfo,
-    BalanceLock,
-    ProxyDefinition,
+    AccountsError, BalanceLock, BlockInfo, ClaimedReward, EraPayouts, EraPayoutsData,
+    NominationsInfo, ProxyDefinition, RewardDestination, StakingLedger, ValidatorPayout,
     VestingSchedule,
-    RewardDestination,
-    NominationsInfo,
-    StakingLedger,
-    ClaimedReward,
-    EraPayouts,
-    EraPayoutsData,
-    ValidatorPayout,
 };
 
 // ================================================================================================

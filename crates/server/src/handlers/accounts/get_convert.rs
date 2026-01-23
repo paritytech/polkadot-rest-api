@@ -1,4 +1,4 @@
-use super::types::{AccountsError, AccountConvertQueryParams, AccountConvertResponse};
+use super::types::{AccountConvertQueryParams, AccountConvertResponse, AccountsError};
 use axum::{
     Json,
     extract::{Path, Query},
@@ -38,12 +38,11 @@ pub async fn get_convert(
     }
 
     // Get the network name for this prefix
-    let network = get_network_name(params.prefix)
-        .ok_or(AccountsError::InvalidPrefix)?;
+    let network = get_network_name(params.prefix).ok_or(AccountsError::InvalidPrefix)?;
 
     // Decode the hex to bytes
-    let account_bytes = hex::decode(account_id_clean)
-        .map_err(|_| AccountsError::InvalidHexAccountId)?;
+    let account_bytes =
+        hex::decode(account_id_clean).map_err(|_| AccountsError::InvalidHexAccountId)?;
 
     // For ecdsa with public key > 32 bytes, we need to hash it first
     let final_bytes = if params.public_key && scheme == "ecdsa" && account_bytes.len() > 32 {

@@ -91,13 +91,11 @@ pub async fn query_balance_info(
     block: &ResolvedBlock,
     token: Option<String>,
 ) -> Result<RawBalanceInfo, BalanceQueryError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("System", "Account");
+    let storage_query =
+        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("System", "Account");
 
     // Check if System and Balances pallets exist
-    let system_account_exists = client_at_block
-        .storage()
-        .entry(storage_query)
-        .is_ok();
+    let system_account_exists = client_at_block.storage().entry(storage_query).is_ok();
 
     if !system_account_exists {
         return Err(BalanceQueryError::BalancesPalletNotAvailable);
@@ -186,7 +184,8 @@ async fn query_account_data(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
 ) -> Result<DecodedAccountData, BalanceQueryError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("System", "Account");
+    let storage_query =
+        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("System", "Account");
     let storage_entry = client_at_block.storage().entry(storage_query)?;
 
     let account_bytes: [u8; 32] = *account.as_ref();
@@ -320,7 +319,8 @@ async fn query_balance_locks(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
 ) -> Result<Vec<DecodedBalanceLock>, BalanceQueryError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Balances", "Locks");
+    let storage_query =
+        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Balances", "Locks");
 
     // Check if Balances::Locks exists
     let locks_exists = client_at_block

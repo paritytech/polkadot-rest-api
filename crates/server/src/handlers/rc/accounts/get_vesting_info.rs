@@ -1,6 +1,8 @@
-use super::types::{AccountsError, RcVestingInfoQueryParams, RcVestingInfoResponse, VestingSchedule};
+use super::types::{
+    AccountsError, RcVestingInfoQueryParams, RcVestingInfoResponse, VestingSchedule,
+};
 use crate::handlers::accounts::utils::validate_and_parse_address;
-use crate::handlers::common::accounts::{query_vesting_info, RawVestingInfo};
+use crate::handlers::common::accounts::{RawVestingInfo, query_vesting_info};
 use crate::state::{AppState, SubstrateLegacyRpc};
 use crate::utils;
 use axum::{
@@ -42,7 +44,8 @@ pub async fn get_vesting_info(
         .map(|s| s.parse::<utils::BlockId>())
         .transpose()?;
 
-    let resolved_block = utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
+    let resolved_block =
+        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
 
     let client_at_block = match params.at {
         None => rc_client.at_current_block().await?,

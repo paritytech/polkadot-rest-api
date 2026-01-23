@@ -82,13 +82,12 @@ pub async fn query_vesting_info(
     account: &AccountId32,
     block: &ResolvedBlock,
 ) -> Result<RawVestingInfo, VestingQueryError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Vesting", "Vesting");
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
+        "Vesting", "Vesting",
+    );
 
     // Check if Vesting pallet exists
-    let vesting_exists = client_at_block
-        .storage()
-        .entry(storage_query)
-        .is_ok();
+    let vesting_exists = client_at_block.storage().entry(storage_query).is_ok();
 
     if !vesting_exists {
         return Err(VestingQueryError::VestingPalletNotAvailable);
@@ -124,7 +123,9 @@ async fn query_vesting_schedules(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
 ) -> Result<Vec<RawVestingSchedule>, VestingQueryError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Vesting", "Vesting");
+    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
+        "Vesting", "Vesting",
+    );
     let storage_entry = client_at_block.storage().entry(storage_query)?;
 
     // Vesting::Vesting takes a single AccountId key
@@ -184,8 +185,7 @@ fn decode_schedule_from_fields(fields: &[(String, Value<()>)]) -> Option<RawVest
     let per_block = extract_u128_field(fields, "perBlock")
         .or_else(|| extract_u128_field(fields, "per_block"))?;
     let starting_block = extract_u128_field(fields, "startingBlock")
-        .or_else(|| extract_u128_field(fields, "starting_block"))?
-        as u64;
+        .or_else(|| extract_u128_field(fields, "starting_block"))? as u64;
 
     Some(RawVestingSchedule {
         locked,
