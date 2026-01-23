@@ -132,23 +132,22 @@ pub async fn extract_fee_info_for_extrinsic(
                     state.fee_details_cache.set_available(spec_version, true);
                 }
 
-                if let Some(fee_details) = utils::parse_fee_details(&fee_details_response) {
-                    if let Some((query_info, estimated_weight)) =
+                if let Some(fee_details) = utils::parse_fee_details(&fee_details_response)
+                    && let Some((query_info, estimated_weight)) =
                         get_query_info(state, rpc_client_override, extrinsic_hex, parent_hash).await
-                        && let Ok(partial_fee) = utils::calculate_accurate_fee(
-                            &fee_details,
-                            &estimated_weight,
-                            actual_weight_str,
-                        )
-                    {
-                        let mut info = transform_fee_info(query_info);
-                        info.insert("partialFee".to_string(), Value::String(partial_fee));
-                        info.insert(
-                            "kind".to_string(),
-                            Value::String("postDispatch".to_string()),
-                        );
-                        return info;
-                    }
+                    && let Ok(partial_fee) = utils::calculate_accurate_fee(
+                        &fee_details,
+                        &estimated_weight,
+                        actual_weight_str,
+                    )
+                {
+                    let mut info = transform_fee_info(query_info);
+                    info.insert("partialFee".to_string(), Value::String(partial_fee));
+                    info.insert(
+                        "kind".to_string(),
+                        Value::String("postDispatch".to_string()),
+                    );
+                    return info;
                 }
             } else if rpc_client_override.is_none() {
                 // Only update cache when using state's client

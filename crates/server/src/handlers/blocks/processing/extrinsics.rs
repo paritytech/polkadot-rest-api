@@ -128,7 +128,6 @@ async fn extract_extrinsics_impl(
 
             if is_account_type {
                 let mut decoded_account = false;
-                let ss58_prefix = ss58_prefix;
                 let bytes_to_ss58 = |bytes: &[u8; 32]| {
                     let account_id = AccountId32::from(*bytes);
                     account_id.to_ss58check_with_version(ss58_prefix.into())

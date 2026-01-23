@@ -142,6 +142,7 @@ pub async fn get_rc_blocks(
 }
 
 /// Build a BlockResponse for a Relay Chain block
+#[allow(clippy::too_many_arguments)]
 async fn build_rc_block_response(
     state: &AppState,
     relay_rpc_client: &Arc<RpcClient>,

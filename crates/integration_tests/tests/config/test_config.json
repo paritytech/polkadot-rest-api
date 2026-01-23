@@ -166,7 +166,7 @@
           "decodedXcmMsgs": "true"
         },
         "fixture_path": "polkadot/blocks_28490503_decode_xcm.json",
-        "description": "Test block endpoint at Polkadot block 10,000,006"
+        "description": "Test block endpoint at Polkadot block 28,490,503 with XCM decoding"
       },
       {
         "endpoint": "/v1/blocks/{blockId}/para-inclusions",
@@ -185,6 +185,16 @@
         },
         "fixture_path": "polkadot/blocks_10293194_para_inclusions_para_id_1000.json",
         "description": "Test para-inclusions endpoint with paraId filter at Polkadot block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/blocks",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "range": "1000000-1000002"
+        },
+        "fixture_path": "polkadot/blocks_range_1000000-1000002.json",
+        "description": "Test /blocks endpoint with range 1000000-1000002"
       }
     ],
     "kusama": [
@@ -449,6 +459,17 @@
         },
         "fixture_path": "asset-hub-polkadot/rc_blocks_24500000-24500010_with_docs.json",
         "description": "Test rc/blocks endpoint with fees (fromEvent) for recent Polkadot relay chain blocks 24,500,000-24,500,010"
+      },
+      {
+        "endpoint": "/v1/blocks",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "range": "10293194-10293197",
+          "useRcBlock": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/blocks_range_use_rc_block_10293194-10293197.json",
+        "description": "Test /blocks endpoint with range 10293194-10293197 and useRcBlock=true"
       }
     ],
     "asset-hub-kusama": [
