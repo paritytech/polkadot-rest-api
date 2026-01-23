@@ -1,6 +1,6 @@
 use super::types::{AccountsError, RcProxyInfoQueryParams, RcProxyInfoResponse, RelayChainAccess};
 use crate::handlers::accounts::utils::validate_and_parse_address;
-use crate::handlers::common::accounts::{query_proxy_info, RawProxyInfo};
+use crate::handlers::common::accounts::{RawProxyInfo, query_proxy_info};
 use crate::state::AppState;
 use crate::utils;
 use axum::{

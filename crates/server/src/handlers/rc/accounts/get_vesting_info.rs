@@ -3,7 +3,7 @@ use super::types::{
     VestingSchedule,
 };
 use crate::handlers::accounts::utils::validate_and_parse_address;
-use crate::handlers::common::accounts::{query_vesting_info, RawVestingInfo};
+use crate::handlers::common::accounts::{RawVestingInfo, query_vesting_info};
 use crate::state::AppState;
 use crate::utils;
 use axum::{

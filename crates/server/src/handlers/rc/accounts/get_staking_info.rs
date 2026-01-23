@@ -4,7 +4,7 @@ use super::types::{
 };
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
-    query_staking_info, DecodedRewardDestination, RawStakingInfo,
+    DecodedRewardDestination, RawStakingInfo, query_staking_info,
 };
 use crate::state::AppState;
 use crate::utils;

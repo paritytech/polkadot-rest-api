@@ -3,8 +3,8 @@ use super::types::{
 };
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
-    format_balance, format_frozen_fields, format_locks, format_transferable, query_balance_info,
-    RawBalanceInfo,
+    RawBalanceInfo, format_balance, format_frozen_fields, format_locks, format_transferable,
+    query_balance_info,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -77,9 +77,7 @@ pub async fn get_balance_info(
 // ================================================================================================
 
 /// Get access to relay chain client and RPC
-fn get_relay_chain_access(
-    state: &AppState,
-) -> Result<RelayChainAccessWithSpec<'_>, AccountsError> {
+fn get_relay_chain_access(state: &AppState) -> Result<RelayChainAccessWithSpec<'_>, AccountsError> {
     // If we're connected directly to a relay chain, use the primary client
     if state.chain_info.chain_type == ChainType::Relay {
         return Ok((

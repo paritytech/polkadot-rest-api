@@ -4,7 +4,7 @@ use super::types::{
 };
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
-    query_staking_payouts, RawEraPayouts, RawStakingPayouts, StakingPayoutsParams,
+    RawEraPayouts, RawStakingPayouts, StakingPayoutsParams, query_staking_payouts,
 };
 use crate::state::AppState;
 use crate::utils;
