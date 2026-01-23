@@ -29,4 +29,18 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             "get",
             get(pallets::rc_pallets_staking_progress),
         )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/staking/validators",
+            "get",
+            get(pallets::pallets_staking_validators),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/rc/pallets/staking/validators",
+            "get",
+            get(pallets::rc_pallets_staking_validators),
+        )
 }
