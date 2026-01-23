@@ -25,7 +25,7 @@ pub enum PalletError {
 
     /// Failed to get the client at the specified block.
     #[error("Failed to get client at block")]
-    ClientAtBlockFailed(#[from] subxt_historic::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
 
     /// The requested pallet was not found in the metadata.
     #[error("Pallet not found: {0}")]
