@@ -1,5 +1,5 @@
-use crate::handlers::blocks::common::decode_digest_logs;
-use crate::handlers::blocks::types::{BlockHeaderResponse, convert_digest_logs_to_sidecar_format};
+use crate::handlers::blocks::types::BlockHeaderResponse;
+use crate::handlers::blocks::common::{HeaderParseError, parse_header_fields};
 use crate::state::AppState;
 use crate::types::BlockHash;
 use crate::utils::{
@@ -65,6 +65,16 @@ pub enum GetBlockHeadHeaderError {
 
     #[error("Failed to get client at block: {0}")]
     ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
+}
+
+impl From<HeaderParseError> for GetBlockHeadHeaderError {
+    fn from(err: HeaderParseError) -> Self {
+        match err {
+            HeaderParseError::FieldMissing(field) => {
+                GetBlockHeadHeaderError::HeaderFieldMissing(field)
+            }
+        }
+    }
 }
 
 impl IntoResponse for GetBlockHeadHeaderError {
@@ -145,47 +155,16 @@ pub async fn get_blocks_head_header(
         (block_hash, header_json)
     };
 
-    // Extract header fields from the JSON we already have
-    // OPTIMIZATION: We don't fetch the header again - we already have it!
-    let number_hex = header_json
-        .get("number")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("number".to_string()))?;
-
-    let block_number = u64::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16)
-        .map_err(|_| {
-            GetBlockHeadHeaderError::HeaderFieldMissing("number (invalid format)".to_string())
-        })?;
-
-    let parent_hash = header_json
-        .get("parentHash")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("parentHash".to_string()))?
-        .to_string();
-
-    let state_root = header_json
-        .get("stateRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("stateRoot".to_string()))?
-        .to_string();
-
-    let extrinsics_root = header_json
-        .get("extrinsicsRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
-        .to_string();
-
-    let digest_logs = decode_digest_logs(&header_json);
-    let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
+    let parsed = parse_header_fields(&header_json)?;
 
     // Build lightweight header response
     let response = BlockHeaderResponse {
-        parent_hash,
-        number: block_number.to_string(),
-        state_root,
-        extrinsics_root,
+        parent_hash: parsed.parent_hash,
+        number: parsed.number.to_string(),
+        state_root: parsed.state_root,
+        extrinsics_root: parsed.extrinsics_root,
         digest: json!({
-            "logs": digest_logs_formatted
+            "logs": parsed.digest_logs
         }),
         hash: Some(block_hash),
         rc_block_hash: None,
@@ -268,28 +247,7 @@ async fn handle_use_rc_block(
             .await
             .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
 
-        let parent_hash = header_json
-            .get("parentHash")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("parentHash".to_string()))?
-            .to_string();
-
-        let state_root = header_json
-            .get("stateRoot")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("stateRoot".to_string()))?
-            .to_string();
-
-        let extrinsics_root = header_json
-            .get("extrinsicsRoot")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                GetBlockHeadHeaderError::HeaderFieldMissing("extrinsicsRoot".to_string())
-            })?
-            .to_string();
-
-        let digest_logs = decode_digest_logs(&header_json);
-        let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
+        let parsed = parse_header_fields(&header_json)?;
 
         let client_at_block = state
             .client
@@ -299,12 +257,12 @@ async fn handle_use_rc_block(
         let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
         results.push(BlockHeaderResponse {
-            parent_hash,
+            parent_hash: parsed.parent_hash,
             number: ah_block.number.to_string(),
-            state_root,
-            extrinsics_root,
+            state_root: parsed.state_root,
+            extrinsics_root: parsed.extrinsics_root,
             digest: json!({
-                "logs": digest_logs_formatted
+                "logs": parsed.digest_logs
             }),
             hash: Some(ah_block.hash),
             rc_block_hash: Some(rc_block_hash.clone()),

@@ -59,6 +59,16 @@
       ],
       "requires_block_height": false,
       "requires_account": false
+    },
+    {
+      "path": "/v1/rc/blocks/head/header",
+      "query_params": [
+        {},
+        {"finalized": "true"},
+        {"finalized": "false"}
+      ],
+      "requires_block_height": false,
+      "requires_account": false
     }
   ],
   "historical_tests": {
