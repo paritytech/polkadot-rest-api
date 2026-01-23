@@ -133,46 +133,39 @@ pub async fn query_balance_info(
 /// Get the default token symbol for a given spec name
 pub fn get_default_token_symbol(spec_name: &str) -> String {
     let spec_lower = spec_name.to_lowercase();
-    if spec_lower.contains("polkadot") || spec_lower.contains("statemint") {
-        "DOT".to_string()
-    } else if spec_lower.contains("kusama") || spec_lower.contains("statemine") {
-        "KSM".to_string()
-    } else if spec_lower.contains("westend") || spec_lower.contains("westmint") {
-        "WND".to_string()
-    } else if spec_lower.contains("rococo") {
-        "ROC".to_string()
-    } else if spec_lower.contains("paseo") {
-        "PAS".to_string()
-    } else {
-        "UNIT".to_string()
+    match spec_lower.as_str() {
+        "polkadot" | "statemint" => "DOT".to_string(),
+        "kusama" | "statemine" => "KSM".to_string(),
+        "westend" | "westmint" => "WND".to_string(),
+        "rococo" => "ROC".to_string(),
+        "paseo" => "PAS".to_string(),
+        _ => "UNIT".to_string(),
     }
 }
 
 /// Get the default token decimals for a given spec name
 pub fn get_default_token_decimals(spec_name: &str) -> u8 {
     let spec_lower = spec_name.to_lowercase();
-    if spec_lower.contains("polkadot") || spec_lower.contains("statemint") {
-        10 // DOT has 10 decimals
-    } else if spec_lower.contains("kusama") || spec_lower.contains("statemine") {
-        12 // KSM has 12 decimals
-    } else if spec_lower.contains("westend") || spec_lower.contains("westmint") {
-        12 // WND has 12 decimals
-    } else {
-        12 // Default to 12 decimals
+
+    match spec_lower.as_str() {
+         "polkadot" | "statemint" => 10,
+        "kusama" | "statemine" => 12,
+        "westend" | "westmint" => 12,
+        "rococo" => 12,
+        "paseo" => 12,
+        _ => 12,
     }
 }
 
 /// Get the default existential deposit for a given spec name
 pub fn get_default_existential_deposit(spec_name: &str) -> u128 {
     let spec_lower = spec_name.to_lowercase();
-    if spec_lower.contains("polkadot") || spec_lower.contains("statemint") {
-        10_000_000_000 // 1 DOT = 10^10 planck, ED = 1 DOT on Polkadot Asset Hub
-    } else if spec_lower.contains("kusama") || spec_lower.contains("statemine") {
-        33_333_333 // ~0.000033 KSM on Kusama Asset Hub
-    } else if spec_lower.contains("westend") || spec_lower.contains("westmint") {
-        1_000_000_000_000 // 1 WND on Westend
-    } else {
-        1_000_000_000_000 // Default
+
+    match spec_lower.as_str() {
+        "polkadot" | "statemint" => 10_000_000_000, // 1 DOT = 10^10 planck, ED = 1 DOT on Polkadot Asset Hub
+        "kusama" | "statemine" => 33_333_333, // ~0.000033 KSM on Kusama Asset Hub
+        "westend" | "westmint" => 1_000_000_000_000, // 1 WND on Westend
+        _ => 1_000_000_000_000, // Default
     }
 }
 
