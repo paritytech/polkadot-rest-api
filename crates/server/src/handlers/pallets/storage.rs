@@ -3,105 +3,24 @@
 //! Returns storage item metadata for a pallet, matching Sidecar's response format.
 //! Supports all metadata versions V9-V16.
 
+// Allow large error types - PalletError contains subxt::error::OnlineClientAtBlockError
+// which is large by design. Boxing would add indirection without significant benefit.
+#![allow(clippy::result_large_err)]
+
+use crate::handlers::pallets::common::PalletError;
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
-    Json, extract::Path, extract::Query, extract::State, http::StatusCode, response::IntoResponse,
-    response::Response,
+    Json, extract::Path, extract::Query, extract::State, response::IntoResponse, response::Response,
 };
 use config::ChainType;
-use frame_metadata::RuntimeMetadata;
 use frame_metadata::decode_different::DecodeDifferent;
+use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
 use parity_scale_codec::Decode;
 use serde::Serialize;
 use serde_json::json;
-use thiserror::Error;
-
-// ============================================================================
-// Error Types
-// ============================================================================
-
-#[derive(Debug, Error)]
-pub enum GetPalletsStorageError {
-    #[error("Invalid block parameter")]
-    InvalidBlockParam(#[from] crate::utils::BlockIdParseError),
-
-    #[error("Block resolution failed")]
-    BlockResolveFailed(#[from] crate::utils::BlockResolveError),
-
-    #[error("Failed to get client at block")]
-    ClientAtBlockFailed(#[from] subxt_historic::error::OnlineClientAtBlockError),
-
-    #[error("Pallet not found: {0}")]
-    PalletNotFound(String),
-
-    #[error("Unsupported metadata version")]
-    UnsupportedMetadataVersion,
-
-    #[error("Service temporarily unavailable: {0}")]
-    ServiceUnavailable(String),
-
-    #[error("useRcBlock is only supported for Asset Hub chains")]
-    UseRcBlockNotSupported,
-
-    #[error("Relay chain connection not configured")]
-    RelayChainNotConfigured,
-
-    #[error("RC block error: {0}")]
-    RcBlockError(#[from] crate::utils::rc_block::RcBlockError),
-
-    #[error("at parameter is required when useRcBlock=true")]
-    AtParameterRequired,
-}
-
-impl IntoResponse for GetPalletsStorageError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            GetPalletsStorageError::InvalidBlockParam(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            GetPalletsStorageError::BlockResolveFailed(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            GetPalletsStorageError::PalletNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            GetPalletsStorageError::ClientAtBlockFailed(err) => {
-                if crate::utils::is_online_client_at_block_disconnected(err) {
-                    (
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        format!("Service temporarily unavailable: {}", err),
-                    )
-                } else {
-                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-                }
-            }
-            GetPalletsStorageError::UnsupportedMetadataVersion => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            GetPalletsStorageError::ServiceUnavailable(_) => {
-                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-            }
-            GetPalletsStorageError::UseRcBlockNotSupported => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            GetPalletsStorageError::RelayChainNotConfigured => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            GetPalletsStorageError::RcBlockError(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            GetPalletsStorageError::AtParameterRequired => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-        };
-
-        let body = Json(json!({
-            "error": message,
-        }));
-
-        (status, body).into_response()
-    }
-}
+use subxt_rpcs::rpc_params;
 
 // ============================================================================
 // Query Parameters
@@ -234,22 +153,56 @@ pub async fn get_pallets_storage(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
     Query(params): Query<StorageQueryParams>,
-) -> Result<Response, GetPalletsStorageError> {
+) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_use_rc_block(state, pallet_id, params).await;
     }
 
-    let block_id = params
-        .at
-        .map(|s| s.parse::<crate::utils::BlockId>())
-        .transpose()?;
+    // Create client at the specified block
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
+    };
 
-    let resolved_block = utils::resolve_block(&state, block_id).await?;
-    let client_at_block = state.client.at(resolved_block.number).await?;
-    let metadata = client_at_block.metadata();
+    let resolved_block = utils::ResolvedBlock {
+        hash: format!("{:#x}", client_at_block.block_hash()),
+        number: client_at_block.block_number(),
+    };
 
-    let response = build_storage_response(metadata, &pallet_id, &resolved_block, params.only_ids)?;
+    // Fetch raw metadata via RPC to access all metadata versions (V9-V16)
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let metadata = fetch_runtime_metadata(&state, &block_hash).await?;
+
+    let response = build_storage_response(&metadata, &pallet_id, &resolved_block, params.only_ids)?;
     Ok(Json(response).into_response())
+}
+
+/// Fetch raw RuntimeMetadata via RPC and decode it
+async fn fetch_runtime_metadata(
+    state: &AppState,
+    block_hash: &str,
+) -> Result<RuntimeMetadata, PalletError> {
+    let metadata_hex: String = state
+        .rpc_client
+        .request("state_getMetadata", rpc_params![block_hash])
+        .await
+        .map_err(|e| PalletError::PalletNotFound(format!("Failed to fetch metadata: {}", e)))?;
+
+    let hex_str = metadata_hex.strip_prefix("0x").unwrap_or(&metadata_hex);
+    let metadata_bytes = hex::decode(hex_str).map_err(|e| {
+        PalletError::PalletNotFound(format!("Failed to decode metadata hex: {}", e))
+    })?;
+
+    let metadata_prefixed = RuntimeMetadataPrefixed::decode(&mut &metadata_bytes[..])
+        .map_err(|e| PalletError::PalletNotFound(format!("Failed to decode metadata: {}", e)))?;
+
+    Ok(metadata_prefixed.1)
 }
 
 /// Handle useRcBlock parameter - find Asset Hub blocks within a Relay Chain block
@@ -257,19 +210,19 @@ async fn handle_use_rc_block(
     state: AppState,
     pallet_id: String,
     params: StorageQueryParams,
-) -> Result<Response, GetPalletsStorageError> {
+) -> Result<Response, PalletError> {
     if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(GetPalletsStorageError::UseRcBlockNotSupported);
+        return Err(PalletError::UseRcBlockNotSupported);
     }
 
     if state.get_relay_chain_client().is_none() {
-        return Err(GetPalletsStorageError::RelayChainNotConfigured);
+        return Err(PalletError::RelayChainNotConfigured);
     }
 
     let rc_block_id = params
         .at
         .as_ref()
-        .ok_or(GetPalletsStorageError::AtParameterRequired)?
+        .ok_or(PalletError::AtParameterRequired)?
         .parse::<utils::BlockId>()?;
 
     let rc_resolved_block = utils::resolve_block_with_rpc(
@@ -294,28 +247,38 @@ async fn handle_use_rc_block(
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {
-        let client_at_block = state.client.at(ah_block.number).await?;
-        let metadata = client_at_block.metadata();
-
         let ah_resolved_block = utils::ResolvedBlock {
             hash: ah_block.hash.clone(),
             number: ah_block.number,
         };
 
+        // Fetch raw metadata via RPC for full version support
+        let metadata = fetch_runtime_metadata(&state, &ah_block.hash).await?;
+
         let mut response =
-            build_storage_response(metadata, &pallet_id, &ah_resolved_block, params.only_ids)?;
+            build_storage_response(&metadata, &pallet_id, &ah_resolved_block, params.only_ids)?;
 
         response.rc_block_hash = Some(rc_block_hash.clone());
         response.rc_block_number = Some(rc_block_number.clone());
 
-        // Fetch timestamp from Timestamp pallet
-        if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
-            && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
-        {
-            let timestamp_bytes = timestamp.into_bytes();
-            let mut cursor = &timestamp_bytes[..];
-            if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                response.ah_timestamp = Some(timestamp_value.to_string());
+        // Fetch timestamp via RPC
+        let timestamp_key = "0x0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f"; // Timestamp::Now storage key
+        let timestamp_result: Option<String> = state
+            .rpc_client
+            .request(
+                "state_getStorage",
+                rpc_params![timestamp_key, &ah_block.hash],
+            )
+            .await
+            .ok();
+
+        if let Some(timestamp_hex) = timestamp_result {
+            let hex_str = timestamp_hex.strip_prefix("0x").unwrap_or(&timestamp_hex);
+            if let Ok(timestamp_bytes) = hex::decode(hex_str) {
+                let mut cursor = &timestamp_bytes[..];
+                if let Ok(timestamp_value) = u64::decode(&mut cursor) {
+                    response.ah_timestamp = Some(timestamp_value.to_string());
+                }
             }
         }
 
@@ -331,7 +294,7 @@ fn build_storage_response(
     pallet_id: &str,
     resolved_block: &utils::ResolvedBlock,
     only_ids: bool,
-) -> Result<PalletsStorageResponse, GetPalletsStorageError> {
+) -> Result<PalletsStorageResponse, PalletError> {
     use RuntimeMetadata::*;
 
     // Get full response from version-specific builder
@@ -344,7 +307,11 @@ fn build_storage_response(
         V14(meta) => build_storage_response_v14(meta, pallet_id, resolved_block),
         V15(meta) => build_storage_response_v15(meta, pallet_id, resolved_block),
         V16(meta) => build_storage_response_v16(meta, pallet_id, resolved_block),
-        _ => return Err(GetPalletsStorageError::UnsupportedMetadataVersion),
+        _ => {
+            return Err(PalletError::PalletNotFound(
+                "Unsupported metadata version".to_string(),
+            ));
+        }
     }?;
 
     // If only_ids requested, convert full items to just names
@@ -461,7 +428,9 @@ fn hasher_to_string_v16(hasher: &frame_metadata::v16::StorageHasher) -> String {
 
 // ============================================================================
 // Type formatting helper (for PortableRegistry in V14+)
-// Sidecar returns type IDs as strings, not resolved type names
+// Sidecar returns type IDs as strings, not resolved type names.
+// TODO: Consider resolving type names from the registry for better readability
+// if Sidecar compatibility is not required.
 // ============================================================================
 
 fn format_type_id(_types: &scale_info::PortableRegistry, type_id: u32) -> String {
@@ -490,6 +459,35 @@ fn extract_deprecation_info_v16(
 }
 
 // ============================================================================
+// Version-specific Response Builders
+// ============================================================================
+//
+// The following builders are organized by metadata version groups:
+//
+// GROUP 1: V9-V11 (Legacy, DecodeDifferent, no pallet index field)
+//   - Use array position as pallet index
+//   - Types encoded as strings via DecodeDifferent
+//   - No NMap support
+//   - Only difference between versions: StorageHasher enum variants
+//
+// GROUP 2: V12-V13 (Legacy, DecodeDifferent, has pallet index field)
+//   - Pallets have explicit .index field
+//   - V13 adds NMap storage type support
+//
+// GROUP 3: V14-V15 (Modern, PortableRegistry)
+//   - Use scale_info::PortableRegistry for type resolution
+//   - Types referenced by ID, not string names
+//   - Identical structure (V15 reuses V14's StorageHasher)
+//
+// GROUP 4: V16 (Modern, PortableRegistry, with deprecation)
+//   - Same as V14/V15 but adds deprecation_info field
+//
+// Note: Full consolidation via traits is not practical because each version
+// has distinct Rust types from frame_metadata crate that are not trait-compatible.
+// A macro could reduce source code duplication but wouldn't change the compiled output.
+// ============================================================================
+
+// ============================================================================
 // V9 Response Builder (no index field - use array position)
 // ============================================================================
 
@@ -497,13 +495,11 @@ fn build_storage_response_v9(
     meta: &frame_metadata::v9::RuntimeMetadataV9,
     pallet_id: &str,
     resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, GetPalletsStorageError> {
+) -> Result<PalletsStorageResponse, PalletError> {
     use frame_metadata::v9::{StorageEntryModifier, StorageEntryType};
 
     let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(GetPalletsStorageError::PalletNotFound(
-            pallet_id.to_string(),
-        ));
+        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
     };
 
     // Find module by name (case-insensitive) or numeric index (array position)
@@ -511,14 +507,14 @@ fn build_storage_response_v9(
         modules
             .get(idx)
             .map(|m| (m, idx as u8))
-            .ok_or_else(|| GetPalletsStorageError::PalletNotFound(pallet_id.to_string()))?
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
     } else {
         modules
             .iter()
             .enumerate()
             .find(|(_, m)| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
             .map(|(i, m)| (m, i as u8))
-            .ok_or_else(|| GetPalletsStorageError::PalletNotFound(pallet_id.to_string()))?
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
     };
 
     let pallet_name = extract_str(&module.name).to_string();
@@ -629,27 +625,25 @@ fn build_storage_response_v10(
     meta: &frame_metadata::v10::RuntimeMetadataV10,
     pallet_id: &str,
     resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, GetPalletsStorageError> {
+) -> Result<PalletsStorageResponse, PalletError> {
     use frame_metadata::v10::{StorageEntryModifier, StorageEntryType};
 
     let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(GetPalletsStorageError::PalletNotFound(
-            pallet_id.to_string(),
-        ));
+        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
     };
 
     let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
         modules
             .get(idx)
             .map(|m| (m, idx as u8))
-            .ok_or_else(|| GetPalletsStorageError::PalletNotFound(pallet_id.to_string()))?
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
     } else {
         modules
             .iter()
             .enumerate()
             .find(|(_, m)| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
             .map(|(i, m)| (m, i as u8))
-            .ok_or_else(|| GetPalletsStorageError::PalletNotFound(pallet_id.to_string()))?
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
     };
 
     let pallet_name = extract_str(&module.name).to_string();
@@ -760,27 +754,25 @@ fn build_storage_response_v11(
     meta: &frame_metadata::v11::RuntimeMetadataV11,
     pallet_id: &str,
     resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, GetPalletsStorageError> {
+) -> Result<PalletsStorageResponse, PalletError> {
     use frame_metadata::v11::{StorageEntryModifier, StorageEntryType};
 
     let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(GetPalletsStorageError::PalletNotFound(
-            pallet_id.to_string(),
-        ));
+        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
     };
 
     let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
         modules
             .get(idx)
             .map(|m| (m, idx as u8))
-            .ok_or_else(|| GetPalletsStorageError::PalletNotFound(pallet_id.to_string()))?
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
     } else {
         modules
             .iter()
             .enumerate()
             .find(|(_, m)| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
             .map(|(i, m)| (m, i as u8))
-            .ok_or_else(|| GetPalletsStorageError::PalletNotFound(pallet_id.to_string()))?
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
     };
 
     let pallet_name = extract_str(&module.name).to_string();
@@ -895,13 +887,11 @@ fn build_storage_response_v12(
     meta: &frame_metadata::v12::RuntimeMetadataV12,
     pallet_id: &str,
     resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, GetPalletsStorageError> {
+) -> Result<PalletsStorageResponse, PalletError> {
     use frame_metadata::v12::{StorageEntryModifier, StorageEntryType};
 
     let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(GetPalletsStorageError::PalletNotFound(
-            pallet_id.to_string(),
-        ));
+        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
     };
 
     // V12+ has .index field
@@ -912,7 +902,7 @@ fn build_storage_response_v12(
             .iter()
             .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
     }
-    .ok_or_else(|| GetPalletsStorageError::PalletNotFound(pallet_id.to_string()))?;
+    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
 
     let pallet_name = extract_str(&module.name).to_string();
     let module_index = module.index;
@@ -1027,13 +1017,11 @@ fn build_storage_response_v13(
     meta: &frame_metadata::v13::RuntimeMetadataV13,
     pallet_id: &str,
     resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, GetPalletsStorageError> {
+) -> Result<PalletsStorageResponse, PalletError> {
     use frame_metadata::v13::{StorageEntryModifier, StorageEntryType};
 
     let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(GetPalletsStorageError::PalletNotFound(
-            pallet_id.to_string(),
-        ));
+        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
     };
 
     let module = if let Ok(idx) = pallet_id.parse::<u8>() {
@@ -1043,7 +1031,7 @@ fn build_storage_response_v13(
             .iter()
             .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
     }
-    .ok_or_else(|| GetPalletsStorageError::PalletNotFound(pallet_id.to_string()))?;
+    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
 
     let pallet_name = extract_str(&module.name).to_string();
     let module_index = module.index;
@@ -1187,13 +1175,16 @@ fn build_storage_response_v13(
 
 // ============================================================================
 // V14 Response Builder (uses PortableRegistry)
+// Note: V14 and V15 are structurally identical. V15's StorageHasher is the same
+// as V14's. They could share implementation via a trait, but frame_metadata
+// types are not trait-compatible across versions.
 // ============================================================================
 
 fn build_storage_response_v14(
     meta: &frame_metadata::v14::RuntimeMetadataV14,
     pallet_id: &str,
     resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, GetPalletsStorageError> {
+) -> Result<PalletsStorageResponse, PalletError> {
     use frame_metadata::v14::{StorageEntryModifier, StorageEntryType};
 
     let pallet = if let Ok(idx) = pallet_id.parse::<u8>() {
@@ -1203,7 +1194,7 @@ fn build_storage_response_v14(
             .iter()
             .find(|p| p.name.eq_ignore_ascii_case(pallet_id))
     }
-    .ok_or_else(|| GetPalletsStorageError::PalletNotFound(pallet_id.to_string()))?;
+    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
 
     let items = if let Some(storage) = &pallet.storage {
         storage
@@ -1268,7 +1259,7 @@ fn build_storage_response_v15(
     meta: &frame_metadata::v15::RuntimeMetadataV15,
     pallet_id: &str,
     resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, GetPalletsStorageError> {
+) -> Result<PalletsStorageResponse, PalletError> {
     use frame_metadata::v15::{StorageEntryModifier, StorageEntryType};
 
     let pallet = if let Ok(idx) = pallet_id.parse::<u8>() {
@@ -1278,7 +1269,7 @@ fn build_storage_response_v15(
             .iter()
             .find(|p| p.name.eq_ignore_ascii_case(pallet_id))
     }
-    .ok_or_else(|| GetPalletsStorageError::PalletNotFound(pallet_id.to_string()))?;
+    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
 
     let items = if let Some(storage) = &pallet.storage {
         storage
@@ -1343,7 +1334,7 @@ fn build_storage_response_v16(
     meta: &frame_metadata::v16::RuntimeMetadataV16,
     pallet_id: &str,
     resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, GetPalletsStorageError> {
+) -> Result<PalletsStorageResponse, PalletError> {
     use frame_metadata::v16::{StorageEntryModifier, StorageEntryType};
 
     let pallet = if let Ok(idx) = pallet_id.parse::<u8>() {
@@ -1353,7 +1344,7 @@ fn build_storage_response_v16(
             .iter()
             .find(|p| p.name.eq_ignore_ascii_case(pallet_id))
     }
-    .ok_or_else(|| GetPalletsStorageError::PalletNotFound(pallet_id.to_string()))?;
+    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
 
     let items = if let Some(storage) = &pallet.storage {
         storage
