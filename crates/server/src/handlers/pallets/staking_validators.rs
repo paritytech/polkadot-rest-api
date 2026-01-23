@@ -294,10 +294,13 @@ async fn derive_staking_validators(
         account_id.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
         let address = format_account_id(&account_id, ss58_prefix);
 
-        // Decode ValidatorPrefs
+        // Decode ValidatorPrefs: try full struct first, then just commission
+        // for older runtimes that don't have the `blocked` field.
         let (commission, blocked) = if let Ok(prefs) = ValidatorPrefs::decode(&mut &value_bytes[..])
         {
             (Some(prefs.commission.0.to_string()), prefs.blocked)
+        } else if let Ok(commission) = Compact::<u32>::decode(&mut &value_bytes[..]) {
+            (Some(commission.0.to_string()), false)
         } else {
             (None, false)
         };
