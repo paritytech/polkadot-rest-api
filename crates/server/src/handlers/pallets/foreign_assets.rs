@@ -33,42 +33,13 @@ pub struct ForeignAssetsQueryParams {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ForeignAssetInfo {
-    pub owner: String,
-    pub issuer: String,
-    pub admin: String,
-    pub freezer: String,
-    pub supply: String,
-    pub deposit: String,
-    pub min_balance: String,
-    pub is_sufficient: bool,
-    pub accounts: String,
-    pub sufficients: String,
-    pub approvals: String,
-    pub status: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ForeignAssetMetadata {
-    pub deposit: String,
-    pub name: String,
-    pub symbol: String,
-    pub decimals: String,
-    pub is_frozen: bool,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ForeignAssetItem {
-    /// The XCM MultiLocation identifier for this foreign asset (as JSON)
+    /// The XCM MultiLocation identifier for this foreign asset (as JSON or hex string)
     pub multi_location: serde_json::Value,
-    /// Asset details (owner, supply, etc.)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub foreign_asset_info: Option<ForeignAssetInfo>,
-    /// Asset metadata (name, symbol, decimals)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub foreign_asset_metadata: Option<ForeignAssetMetadata>,
+    /// Asset details (owner, supply, etc.) - always present, empty object if not found
+    pub foreign_asset_info: serde_json::Value,
+    /// Asset metadata (name, symbol, decimals) - always present, empty object if not found
+    pub foreign_asset_metadata: serde_json::Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -503,40 +474,45 @@ fn decode_network_id(cursor: &mut &[u8]) -> Option<serde_json::Value> {
     }
 }
 
-/// Decode asset details from raw bytes.
-fn decode_asset_details(bytes: &[u8], ss58_prefix: u16) -> Option<ForeignAssetInfo> {
-    let details = AssetDetails::decode(&mut &bytes[..]).ok()?;
+/// Decode asset details from raw bytes into JSON.
+/// Returns an empty object `{}` if decoding fails.
+fn decode_asset_details(bytes: &[u8], ss58_prefix: u16) -> serde_json::Value {
+    let details = match AssetDetails::decode(&mut &bytes[..]) {
+        Ok(d) => d,
+        Err(_) => return serde_json::json!({}),
+    };
 
-    Some(ForeignAssetInfo {
-        owner: format_account_id(&details.owner, ss58_prefix),
-        issuer: format_account_id(&details.issuer, ss58_prefix),
-        admin: format_account_id(&details.admin, ss58_prefix),
-        freezer: format_account_id(&details.freezer, ss58_prefix),
-        supply: details.supply.to_string(),
-        deposit: details.deposit.to_string(),
-        min_balance: details.min_balance.to_string(),
-        is_sufficient: details.is_sufficient,
-        accounts: details.accounts.to_string(),
-        sufficients: details.sufficients.to_string(),
-        approvals: details.approvals.to_string(),
-        status: details.status.as_str().to_string(),
+    serde_json::json!({
+        "owner": format_account_id(&details.owner, ss58_prefix),
+        "issuer": format_account_id(&details.issuer, ss58_prefix),
+        "admin": format_account_id(&details.admin, ss58_prefix),
+        "freezer": format_account_id(&details.freezer, ss58_prefix),
+        "supply": details.supply.to_string(),
+        "deposit": details.deposit.to_string(),
+        "minBalance": details.min_balance.to_string(),
+        "isSufficient": details.is_sufficient,
+        "accounts": details.accounts.to_string(),
+        "sufficients": details.sufficients.to_string(),
+        "approvals": details.approvals.to_string(),
+        "status": details.status.as_str().to_string(),
     })
 }
 
 /// Fetch metadata for a foreign asset using its storage key.
+/// Returns an empty object `{}` if metadata is not found.
 /// 
 /// Note: This function constructs the metadata storage key from the asset storage key.
 /// Both use blake2_128_concat hashing for the MultiLocation key.
 async fn fetch_foreign_asset_metadata(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     asset_key_bytes: &[u8],
-) -> Option<ForeignAssetMetadata> {
+) -> serde_json::Value {
     // The asset key format is: twox128(ForeignAssets) ++ twox128(Asset) ++ blake2_128_concat(multilocation)
     // For metadata, we need: twox128(ForeignAssets) ++ twox128(Metadata) ++ blake2_128_concat(multilocation)
     // 
     // The blake2_128_concat portion (16 bytes hash + SCALE-encoded multilocation) starts at byte 32
     if asset_key_bytes.len() <= 32 {
-        return None;
+        return serde_json::json!({});
     }
 
     // Extract the blake2_128_concat(multilocation) portion (everything after the two twox128 prefixes)
@@ -567,21 +543,24 @@ async fn fetch_foreign_asset_metadata(
         .await
     {
         Ok(value) if !value.is_empty() => value,
-        Ok(_) => return None,
+        Ok(_) => return serde_json::json!({}),
         Err(e) => {
             tracing::debug!("Failed to fetch foreign asset metadata: {:?}", e);
-            return None;
+            return serde_json::json!({});
         }
     };
 
-    let metadata = AssetMetadataStorage::decode(&mut &metadata_value[..]).ok()?;
+    let metadata = match AssetMetadataStorage::decode(&mut &metadata_value[..]) {
+        Ok(m) => m,
+        Err(_) => return serde_json::json!({}),
+    };
 
-    Some(ForeignAssetMetadata {
-        deposit: metadata.deposit.to_string(),
-        name: format!("0x{}", hex::encode(&metadata.name)),
-        symbol: format!("0x{}", hex::encode(&metadata.symbol)),
-        decimals: metadata.decimals.to_string(),
-        is_frozen: metadata.is_frozen,
+    serde_json::json!({
+        "deposit": metadata.deposit.to_string(),
+        "name": format!("0x{}", hex::encode(&metadata.name)),
+        "symbol": format!("0x{}", hex::encode(&metadata.symbol)),
+        "decimals": metadata.decimals.to_string(),
+        "isFrozen": metadata.is_frozen,
     })
 }
 
@@ -615,4 +594,214 @@ fn build_empty_rc_response(rc_resolved_block: &utils::ResolvedBlock) -> Response
         }),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_foreign_asset_item_serialization() {
+        let item = ForeignAssetItem {
+            multi_location: serde_json::json!({
+                "parents": "2",
+                "interior": {
+                    "X1": {
+                        "GlobalConsensus": "Polkadot"
+                    }
+                }
+            }),
+            foreign_asset_info: serde_json::json!({
+                "owner": "FxqimVubBRPqJ8kTwb3wL7G4q645hEkBEnXPyttLsTrFc5Q",
+                "issuer": "FxqimVubBRPqJ8kTwb3wL7G4q645hEkBEnXPyttLsTrFc5Q",
+                "admin": "FxqimVubBRPqJ8kTwb3wL7G4q645hEkBEnXPyttLsTrFc5Q",
+                "freezer": "FxqimVubBRPqJ8kTwb3wL7G4q645hEkBEnXPyttLsTrFc5Q",
+                "supply": "0",
+                "deposit": "0",
+                "minBalance": "100000000",
+                "isSufficient": true,
+                "accounts": "0",
+                "sufficients": "0",
+                "approvals": "0",
+                "status": "Live"
+            }),
+            foreign_asset_metadata: serde_json::json!({
+                "deposit": "0",
+                "name": "0x506f6c6b61646f74",
+                "symbol": "0x444f54",
+                "decimals": "10",
+                "isFrozen": false
+            }),
+        };
+
+        let json = serde_json::to_string(&item).unwrap();
+        
+        // Verify camelCase serialization
+        assert!(json.contains("\"multiLocation\""));
+        assert!(json.contains("\"foreignAssetInfo\""));
+        assert!(json.contains("\"foreignAssetMetadata\""));
+        assert!(json.contains("\"minBalance\""));
+        assert!(json.contains("\"isSufficient\""));
+        assert!(json.contains("\"isFrozen\""));
+        
+        // Verify no snake_case
+        assert!(!json.contains("\"multi_location\""));
+        assert!(!json.contains("\"foreign_asset_info\""));
+        assert!(!json.contains("\"foreign_asset_metadata\""));
+    }
+
+    #[test]
+    fn test_foreign_assets_response_serialization() {
+        let response = PalletsForeignAssetsResponse {
+            at: AtResponse {
+                hash: "0x1234567890abcdef".to_string(),
+                height: "12345".to_string(),
+            },
+            items: vec![],
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        
+        // Verify structure
+        assert!(json.contains("\"at\""));
+        assert!(json.contains("\"items\""));
+        assert!(json.contains("\"hash\""));
+        assert!(json.contains("\"height\""));
+        
+        // Verify optional fields are not included when None
+        assert!(!json.contains("\"rcBlockHash\""));
+        assert!(!json.contains("\"rcBlockNumber\""));
+        assert!(!json.contains("\"ahTimestamp\""));
+    }
+
+    #[test]
+    fn test_foreign_assets_response_with_rc_block() {
+        let response = PalletsForeignAssetsResponse {
+            at: AtResponse {
+                hash: "0x1234567890abcdef".to_string(),
+                height: "12345".to_string(),
+            },
+            items: vec![],
+            rc_block_hash: Some("0xabcdef".to_string()),
+            rc_block_number: Some("67890".to_string()),
+            ah_timestamp: Some("1234567890000".to_string()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        
+        // Verify RC block fields are included in camelCase
+        assert!(json.contains("\"rcBlockHash\""));
+        assert!(json.contains("\"rcBlockNumber\""));
+        assert!(json.contains("\"ahTimestamp\""));
+    }
+
+    #[test]
+    fn test_empty_foreign_asset_info() {
+        let item = ForeignAssetItem {
+            multi_location: serde_json::json!({
+                "parents": "0",
+                "interior": "Here"
+            }),
+            foreign_asset_info: serde_json::json!({}),
+            foreign_asset_metadata: serde_json::json!({}),
+        };
+
+        let json = serde_json::to_string(&item).unwrap();
+        
+        // Verify empty objects are serialized correctly
+        assert!(json.contains("\"foreignAssetInfo\":{}"));
+        assert!(json.contains("\"foreignAssetMetadata\":{}"));
+    }
+
+    #[test]
+    fn test_decode_asset_details() {
+        // Test that decode_asset_details returns empty JSON on invalid data
+        let invalid_bytes = vec![0u8; 10];
+        let result = decode_asset_details(&invalid_bytes, 0);
+        assert_eq!(result, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_decode_multi_location_empty() {
+        let result = decode_multi_location(&[]);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_decode_multi_location_simple() {
+        // parents=0, interior=Here (variant 0)
+        let bytes = vec![0u8, 0u8];
+        let result = decode_multi_location(&bytes);
+        assert!(result.is_some());
+        let json = result.unwrap();
+        assert_eq!(json["parents"], 0);
+        assert_eq!(json["interior"], "Here");
+    }
+
+    #[test]
+    fn test_decode_junctions_here() {
+        let bytes = vec![0u8];
+        let result = decode_junctions(&bytes);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), serde_json::json!("Here"));
+    }
+
+    #[test]
+    fn test_decode_junction_parachain() {
+        // Junction::Parachain(1000) = variant 0, then u32 little-endian
+        let mut cursor: &[u8] = &[0u8, 0xe8, 0x03, 0x00, 0x00]; // 0 = Parachain, 1000 = 0x3e8
+        let result = decode_junction(&mut cursor);
+        assert!(result.is_some());
+        let json = result.unwrap();
+        assert_eq!(json["Parachain"], 1000);
+    }
+
+    #[test]
+    fn test_decode_network_id_polkadot() {
+        // NetworkId::Polkadot = variant 2
+        let mut cursor: &[u8] = &[2u8];
+        let result = decode_network_id(&mut cursor);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), serde_json::json!("Polkadot"));
+    }
+
+    #[test]
+    fn test_decode_network_id_kusama() {
+        // NetworkId::Kusama = variant 3
+        let mut cursor: &[u8] = &[3u8];
+        let result = decode_network_id(&mut cursor);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), serde_json::json!("Kusama"));
+    }
+
+    #[test]
+    fn test_asset_status_as_str() {
+        assert_eq!(AssetStatus::Live.as_str(), "Live");
+        assert_eq!(AssetStatus::Frozen.as_str(), "Frozen");
+        assert_eq!(AssetStatus::Destroying.as_str(), "Destroying");
+    }
+
+    #[test]
+    fn test_extract_multi_location_from_key_short() {
+        // Key shorter than expected prefix length
+        let short_key = vec![0u8; 32];
+        let result = extract_multi_location_from_key(&short_key);
+        // Should return raw hex representation
+        assert!(result["raw"].is_string());
+    }
+
+    #[test]
+    fn test_query_params_deserialization() {
+        // Test default use_rc_block is false
+        let params: ForeignAssetsQueryParams = serde_json::from_str(r#"{"at":"12345"}"#).unwrap();
+        assert_eq!(params.at, Some("12345".to_string()));
+        assert!(!params.use_rc_block);
+
+        // Test explicit use_rc_block
+        let params: ForeignAssetsQueryParams = serde_json::from_str(r#"{"at":"12345","useRcBlock":true}"#).unwrap();
+        assert!(params.use_rc_block);
+    }
 }
