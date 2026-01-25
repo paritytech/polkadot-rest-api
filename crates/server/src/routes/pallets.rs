@@ -18,6 +18,13 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
         .route_registered(
             registry,
             API_VERSION,
+            "/pallets/foreign-assets",
+            "get",
+            get(pallets::pallets_foreign_assets),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
             "/pallets/staking/progress",
             "get",
             get(pallets::pallets_staking_progress),
