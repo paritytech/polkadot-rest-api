@@ -33,9 +33,19 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
         .route_registered(
             registry,
             API_VERSION,
+        .route_registered(
+            registry,
+            API_VERSION,
             "/pallets/pool-assets/:asset_id/asset-info",
             "get",
             get(pallets::pallets_pool_assets_asset_info),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/foreign-assets",
+            "get",
+            get(pallets::pallets_foreign_assets),
         )
         .route_registered(
             registry,
