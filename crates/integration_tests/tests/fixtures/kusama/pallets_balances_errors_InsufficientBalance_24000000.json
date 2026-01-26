@@ -1,0 +1,9 @@
+{
+  "at": {
+    "hash": "0x7f494fe774c3b7791f2c71ce9f3d05ac581376fef0cb382f6bacd6708eff5612",
+    "height": "24000000"
+  },
+  "pallet": "balances",
+  "palletIndex": "4",
+  "errorItem": "insufficientBalance"
+}

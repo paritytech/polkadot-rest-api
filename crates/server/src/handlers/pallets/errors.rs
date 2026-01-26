@@ -455,9 +455,7 @@ async fn handle_error_item_use_rc_block(
 
     // If no Asset Hub blocks found, return empty array (matching Sidecar behavior)
     if ah_blocks.is_empty() {
-        return Ok(
-            (StatusCode::OK, Json(Vec::<PalletErrorItemResponse>::new())).into_response(),
-        );
+        return Ok((StatusCode::OK, Json(Vec::<PalletErrorItemResponse>::new())).into_response());
     }
 
     // Process each Asset Hub block and collect results
@@ -1911,4 +1909,539 @@ fn extract_error_item_v16(
         rc_block_number: rc_fields.rc_block_number,
         ah_timestamp: rc_fields.ah_timestamp,
     })
+}
+
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================
+    // ErrorsItems Tests
+    // ========================================================================
+
+    #[test]
+    fn test_errors_items_only_ids_serialization() {
+        let items = ErrorsItems::OnlyIds(vec![
+            "InsufficientBalance".to_string(),
+            "InvalidOrigin".to_string(),
+        ]);
+        let json = serde_json::to_string(&items).expect("Failed to serialize ErrorsItems::OnlyIds");
+        assert!(json.contains("InsufficientBalance"));
+        assert!(json.contains("InvalidOrigin"));
+        // OnlyIds should serialize as a flat array
+        assert!(json.starts_with('['));
+        assert!(json.ends_with(']'));
+    }
+
+    #[test]
+    fn test_errors_items_full_serialization() {
+        let items = ErrorsItems::Full(vec![ErrorItemMetadata {
+            name: "InsufficientBalance".to_string(),
+            fields: vec![],
+            index: "0".to_string(),
+            docs: vec!["Not enough balance".to_string()],
+            args: vec![],
+        }]);
+        let json = serde_json::to_string(&items).expect("Failed to serialize ErrorsItems::Full");
+        assert!(json.contains("\"name\":\"InsufficientBalance\""));
+        assert!(json.contains("\"index\":\"0\""));
+        assert!(json.contains("\"docs\":[\"Not enough balance\"]"));
+    }
+
+    #[test]
+    fn test_errors_items_empty_only_ids() {
+        let items = ErrorsItems::OnlyIds(vec![]);
+        let json = serde_json::to_string(&items).expect("Failed to serialize empty OnlyIds");
+        assert_eq!(json, "[]");
+    }
+
+    #[test]
+    fn test_errors_items_empty_full() {
+        let items = ErrorsItems::Full(vec![]);
+        let json = serde_json::to_string(&items).expect("Failed to serialize empty Full");
+        assert_eq!(json, "[]");
+    }
+
+    // ========================================================================
+    // ErrorField Tests
+    // ========================================================================
+
+    #[test]
+    fn test_error_field_serialization() {
+        let field = ErrorField {
+            name: "amount".to_string(),
+            ty: "6".to_string(),
+            type_name: Some("Balance".to_string()),
+            docs: vec!["The amount that was attempted".to_string()],
+        };
+        let json = serde_json::to_string(&field).expect("Failed to serialize ErrorField");
+        assert!(json.contains("\"name\":\"amount\""));
+        assert!(json.contains("\"type\":\"6\""));
+        assert!(json.contains("\"typeName\":\"Balance\""));
+        assert!(json.contains("\"docs\":[\"The amount that was attempted\"]"));
+    }
+
+    #[test]
+    fn test_error_field_without_type_name() {
+        let field = ErrorField {
+            name: "value".to_string(),
+            ty: "10".to_string(),
+            type_name: None,
+            docs: vec![],
+        };
+        let json = serde_json::to_string(&field).expect("Failed to serialize ErrorField");
+        assert!(json.contains("\"name\":\"value\""));
+        assert!(json.contains("\"type\":\"10\""));
+        // typeName should be omitted when None
+        assert!(!json.contains("typeName"));
+    }
+
+    #[test]
+    fn test_error_field_empty_name() {
+        let field = ErrorField {
+            name: "".to_string(),
+            ty: "1".to_string(),
+            type_name: None,
+            docs: vec![],
+        };
+        let json = serde_json::to_string(&field).expect("Failed to serialize ErrorField");
+        assert!(json.contains("\"name\":\"\""));
+    }
+
+    // ========================================================================
+    // ErrorArg Tests
+    // ========================================================================
+
+    #[test]
+    fn test_error_arg_serialization() {
+        let arg = ErrorArg {
+            name: "needed".to_string(),
+            ty: "T::Balance".to_string(),
+            type_name: "Balance".to_string(),
+        };
+        let json = serde_json::to_string(&arg).expect("Failed to serialize ErrorArg");
+        assert!(json.contains("\"name\":\"needed\""));
+        assert!(json.contains("\"type\":\"T::Balance\""));
+        assert!(json.contains("\"typeName\":\"Balance\""));
+    }
+
+    #[test]
+    fn test_error_arg_camel_case_name() {
+        let arg = ErrorArg {
+            name: "existentialDeposit".to_string(),
+            ty: "u128".to_string(),
+            type_name: "u128".to_string(),
+        };
+        let json = serde_json::to_string(&arg).expect("Failed to serialize ErrorArg");
+        assert!(json.contains("\"name\":\"existentialDeposit\""));
+    }
+
+    // ========================================================================
+    // ErrorItemMetadata Tests
+    // ========================================================================
+
+    #[test]
+    fn test_error_item_metadata_serialization() {
+        let metadata = ErrorItemMetadata {
+            name: "InsufficientBalance".to_string(),
+            fields: vec![],
+            index: "0".to_string(),
+            docs: vec![
+                "Account balance is too low.".to_string(),
+                "This error occurs when the account does not have enough funds.".to_string(),
+            ],
+            args: vec![],
+        };
+        let json = serde_json::to_string(&metadata).expect("Failed to serialize ErrorItemMetadata");
+        assert!(json.contains("\"name\":\"InsufficientBalance\""));
+        assert!(json.contains("\"index\":\"0\""));
+        assert!(json.contains("\"docs\":["));
+        assert!(json.contains("Account balance is too low."));
+    }
+
+    #[test]
+    fn test_error_item_metadata_with_fields() {
+        let metadata = ErrorItemMetadata {
+            name: "InsufficientFunds".to_string(),
+            fields: vec![
+                ErrorField {
+                    name: "needed".to_string(),
+                    ty: "6".to_string(),
+                    type_name: Some("Balance".to_string()),
+                    docs: vec![],
+                },
+                ErrorField {
+                    name: "have".to_string(),
+                    ty: "6".to_string(),
+                    type_name: Some("Balance".to_string()),
+                    docs: vec![],
+                },
+            ],
+            index: "1".to_string(),
+            docs: vec!["Not enough funds".to_string()],
+            args: vec![],
+        };
+        let json = serde_json::to_string(&metadata).expect("Failed to serialize ErrorItemMetadata");
+        assert!(json.contains("\"name\":\"InsufficientFunds\""));
+        assert!(json.contains("\"needed\""));
+        assert!(json.contains("\"have\""));
+        assert!(json.contains("\"fields\":["));
+    }
+
+    #[test]
+    fn test_error_item_metadata_with_args() {
+        let metadata = ErrorItemMetadata {
+            name: "TooExpensive".to_string(),
+            fields: vec![],
+            index: "5".to_string(),
+            docs: vec![],
+            args: vec![
+                ErrorArg {
+                    name: "fee".to_string(),
+                    ty: "u128".to_string(),
+                    type_name: "Balance".to_string(),
+                },
+                ErrorArg {
+                    name: "balance".to_string(),
+                    ty: "u128".to_string(),
+                    type_name: "Balance".to_string(),
+                },
+            ],
+        };
+        let json = serde_json::to_string(&metadata).expect("Failed to serialize ErrorItemMetadata");
+        assert!(json.contains("\"args\":["));
+        assert!(json.contains("\"fee\""));
+        assert!(json.contains("\"balance\""));
+    }
+
+    #[test]
+    fn test_error_item_metadata_empty_docs() {
+        let metadata = ErrorItemMetadata {
+            name: "Unknown".to_string(),
+            fields: vec![],
+            index: "99".to_string(),
+            docs: vec![],
+            args: vec![],
+        };
+        let json = serde_json::to_string(&metadata).expect("Failed to serialize ErrorItemMetadata");
+        assert!(json.contains("\"docs\":[]"));
+    }
+
+    // ========================================================================
+    // AtResponse Tests
+    // ========================================================================
+
+    #[test]
+    fn test_at_response_serialization() {
+        let at = AtResponse {
+            hash: "0x1234567890abcdef".to_string(),
+            height: "12345".to_string(),
+        };
+        let json = serde_json::to_string(&at).expect("Failed to serialize AtResponse");
+        assert!(json.contains("\"hash\":\"0x1234567890abcdef\""));
+        assert!(json.contains("\"height\":\"12345\""));
+    }
+
+    // ========================================================================
+    // PalletsErrorsResponse Tests
+    // ========================================================================
+
+    #[test]
+    fn test_pallets_errors_response_serialization() {
+        let response = PalletsErrorsResponse {
+            at: AtResponse {
+                hash: "0xabc123".to_string(),
+                height: "1000".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "10".to_string(),
+            items: ErrorsItems::OnlyIds(vec!["InsufficientBalance".to_string()]),
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+        let json =
+            serde_json::to_string(&response).expect("Failed to serialize PalletsErrorsResponse");
+        assert!(json.contains("\"pallet\":\"balances\""));
+        assert!(json.contains("\"palletIndex\":\"10\""));
+        assert!(json.contains("\"items\":["));
+    }
+
+    #[test]
+    fn test_pallets_errors_response_with_rc_block_fields() {
+        let response = PalletsErrorsResponse {
+            at: AtResponse {
+                hash: "0xabc123".to_string(),
+                height: "5000".to_string(),
+            },
+            pallet: "system".to_string(),
+            pallet_index: "0".to_string(),
+            items: ErrorsItems::Full(vec![]),
+            rc_block_hash: Some("0xrelaychain".to_string()),
+            rc_block_number: Some("10000".to_string()),
+            ah_timestamp: Some("1700000000000".to_string()),
+        };
+        let json =
+            serde_json::to_string(&response).expect("Failed to serialize PalletsErrorsResponse");
+        assert!(json.contains("\"rcBlockHash\":\"0xrelaychain\""));
+        assert!(json.contains("\"rcBlockNumber\":\"10000\""));
+        assert!(json.contains("\"ahTimestamp\":\"1700000000000\""));
+    }
+
+    #[test]
+    fn test_pallets_errors_response_rc_fields_omitted_when_none() {
+        let response = PalletsErrorsResponse {
+            at: AtResponse {
+                hash: "0xdef456".to_string(),
+                height: "2000".to_string(),
+            },
+            pallet: "staking".to_string(),
+            pallet_index: "6".to_string(),
+            items: ErrorsItems::OnlyIds(vec![]),
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+        let json =
+            serde_json::to_string(&response).expect("Failed to serialize PalletsErrorsResponse");
+        assert!(!json.contains("rcBlockHash"));
+        assert!(!json.contains("rcBlockNumber"));
+        assert!(!json.contains("ahTimestamp"));
+    }
+
+    // ========================================================================
+    // PalletErrorItemResponse Tests
+    // ========================================================================
+
+    #[test]
+    fn test_pallet_error_item_response_serialization() {
+        let response = PalletErrorItemResponse {
+            at: AtResponse {
+                hash: "0x999".to_string(),
+                height: "3000".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "10".to_string(),
+            error_item: "insufficientBalance".to_string(),
+            metadata: None,
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+        let json =
+            serde_json::to_string(&response).expect("Failed to serialize PalletErrorItemResponse");
+        assert!(json.contains("\"pallet\":\"balances\""));
+        assert!(json.contains("\"errorItem\":\"insufficientBalance\""));
+        assert!(!json.contains("\"metadata\""));
+    }
+
+    #[test]
+    fn test_pallet_error_item_response_with_metadata() {
+        let response = PalletErrorItemResponse {
+            at: AtResponse {
+                hash: "0xaaa".to_string(),
+                height: "4000".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "10".to_string(),
+            error_item: "insufficientBalance".to_string(),
+            metadata: Some(ErrorItemMetadata {
+                name: "InsufficientBalance".to_string(),
+                fields: vec![],
+                index: "0".to_string(),
+                docs: vec!["Balance too low".to_string()],
+                args: vec![],
+            }),
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+        let json =
+            serde_json::to_string(&response).expect("Failed to serialize PalletErrorItemResponse");
+        assert!(json.contains("\"metadata\":{"));
+        assert!(json.contains("\"name\":\"InsufficientBalance\""));
+    }
+
+    #[test]
+    fn test_pallet_error_item_response_with_rc_block_fields() {
+        let response = PalletErrorItemResponse {
+            at: AtResponse {
+                hash: "0xbbb".to_string(),
+                height: "5000".to_string(),
+            },
+            pallet: "assets".to_string(),
+            pallet_index: "50".to_string(),
+            error_item: "unknown".to_string(),
+            metadata: None,
+            rc_block_hash: Some("0xrelayblock".to_string()),
+            rc_block_number: Some("12345".to_string()),
+            ah_timestamp: Some("1705000000000".to_string()),
+        };
+        let json =
+            serde_json::to_string(&response).expect("Failed to serialize PalletErrorItemResponse");
+        assert!(json.contains("\"rcBlockHash\":\"0xrelayblock\""));
+        assert!(json.contains("\"rcBlockNumber\":\"12345\""));
+        assert!(json.contains("\"ahTimestamp\":\"1705000000000\""));
+    }
+
+    // ========================================================================
+    // camelCase Conversion Tests
+    // ========================================================================
+
+    #[test]
+    fn test_error_name_to_lower_camel_case() {
+        // Test the heck crate's ToLowerCamelCase behavior
+        assert_eq!(
+            "InsufficientBalance".to_lower_camel_case(),
+            "insufficientBalance"
+        );
+        assert_eq!("VestingBalance".to_lower_camel_case(), "vestingBalance");
+        assert_eq!("Liquidity".to_lower_camel_case(), "liquidity");
+        assert_eq!(
+            "ExistentialDeposit".to_lower_camel_case(),
+            "existentialDeposit"
+        );
+        assert_eq!("TooManyReserves".to_lower_camel_case(), "tooManyReserves");
+        assert_eq!("TooManyHolds".to_lower_camel_case(), "tooManyHolds");
+        assert_eq!("TooManyFreezes".to_lower_camel_case(), "tooManyFreezes");
+        assert_eq!("IssuanceEmpty".to_lower_camel_case(), "issuanceEmpty");
+        assert_eq!("DeltaZero".to_lower_camel_case(), "deltaZero");
+    }
+
+    #[test]
+    fn test_single_word_error_name() {
+        // Single word should start lowercase
+        assert_eq!("Unknown".to_lower_camel_case(), "unknown");
+        assert_eq!("Overflow".to_lower_camel_case(), "overflow");
+    }
+
+    #[test]
+    fn test_acronym_error_name() {
+        // Test acronym handling - heck treats consecutive caps as separate words
+        assert_eq!("BadXCM".to_lower_camel_case(), "badXcm");
+        assert_eq!("XCMError".to_lower_camel_case(), "xcmError");
+    }
+
+    // ========================================================================
+    // RcBlockFields Tests
+    // ========================================================================
+
+    #[test]
+    fn test_rc_block_fields_default() {
+        let fields = RcBlockFields::default();
+        assert!(fields.rc_block_hash.is_none());
+        assert!(fields.rc_block_number.is_none());
+        assert!(fields.ah_timestamp.is_none());
+    }
+
+    #[test]
+    fn test_rc_block_fields_with_values() {
+        let fields = RcBlockFields {
+            rc_block_hash: Some("0xhash".to_string()),
+            rc_block_number: Some("123".to_string()),
+            ah_timestamp: Some("456".to_string()),
+        };
+        assert_eq!(fields.rc_block_hash, Some("0xhash".to_string()));
+        assert_eq!(fields.rc_block_number, Some("123".to_string()));
+        assert_eq!(fields.ah_timestamp, Some("456".to_string()));
+    }
+
+    // ========================================================================
+    // Full JSON Structure Tests
+    // ========================================================================
+
+    #[test]
+    fn test_full_errors_response_json_structure() {
+        // Test that the JSON structure matches Sidecar format
+        let response = PalletsErrorsResponse {
+            at: AtResponse {
+                hash: "0x7b60ca0d8cd3a8a5f6a79ae42c46c5fa3e9c82f6fd9b731bf81fb8296a0cee89"
+                    .to_string(),
+                height: "28490503".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "10".to_string(),
+            items: ErrorsItems::Full(vec![
+                ErrorItemMetadata {
+                    name: "VestingBalance".to_string(),
+                    fields: vec![],
+                    index: "0".to_string(),
+                    docs: vec!["Vesting balance too high to send value.".to_string()],
+                    args: vec![],
+                },
+                ErrorItemMetadata {
+                    name: "LiquidityRestrictions".to_string(),
+                    fields: vec![],
+                    index: "1".to_string(),
+                    docs: vec!["Account liquidity restrictions prevent withdrawal.".to_string()],
+                    args: vec![],
+                },
+            ]),
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+
+        let json_value: serde_json::Value = serde_json::to_value(&response).unwrap();
+
+        // Verify top-level structure
+        assert!(json_value.get("at").is_some());
+        assert!(json_value.get("pallet").is_some());
+        assert!(json_value.get("palletIndex").is_some());
+        assert!(json_value.get("items").is_some());
+
+        // Verify at block
+        assert_eq!(json_value["at"]["height"].as_str().unwrap(), "28490503");
+
+        // Verify pallet info
+        assert_eq!(json_value["pallet"].as_str().unwrap(), "balances");
+        assert_eq!(json_value["palletIndex"].as_str().unwrap(), "10");
+
+        // Verify items array
+        let items = json_value["items"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["name"].as_str().unwrap(), "VestingBalance");
+        assert_eq!(items[1]["name"].as_str().unwrap(), "LiquidityRestrictions");
+    }
+
+    #[test]
+    fn test_error_item_response_json_structure() {
+        let response = PalletErrorItemResponse {
+            at: AtResponse {
+                hash: "0xabc".to_string(),
+                height: "1000".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "10".to_string(),
+            error_item: "insufficientBalance".to_string(),
+            metadata: Some(ErrorItemMetadata {
+                name: "InsufficientBalance".to_string(),
+                fields: vec![],
+                index: "2".to_string(),
+                docs: vec!["Balance is too low.".to_string()],
+                args: vec![],
+            }),
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+
+        let json_value: serde_json::Value = serde_json::to_value(&response).unwrap();
+
+        // Verify structure
+        assert_eq!(
+            json_value["errorItem"].as_str().unwrap(),
+            "insufficientBalance"
+        );
+        assert!(json_value.get("metadata").is_some());
+        assert_eq!(
+            json_value["metadata"]["name"].as_str().unwrap(),
+            "InsufficientBalance"
+        );
+        assert_eq!(json_value["metadata"]["index"].as_str().unwrap(), "2");
+    }
 }
