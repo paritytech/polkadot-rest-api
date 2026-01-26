@@ -141,6 +141,13 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
             "/pallets/asset-conversion/next-available-id",
             "get",
             get(pallets::get_next_available_id),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/on-going-referenda",
+            "get",
+            get(pallets::pallets_on_going_referenda),
         );
 
     // Only register /rc/ routes for parachains, not relay chains
