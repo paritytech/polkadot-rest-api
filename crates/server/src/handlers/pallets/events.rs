@@ -788,8 +788,23 @@ fn extract_event_item_v14(
 // ============================================================================
 
 /// Resolve a type ID to a human-readable type name for V14 metadata.
+/// Matches Sidecar's format for enum types (serializes as JSON `{"_enum":[...]}`)
 fn resolve_type_name_v14(types: &scale_info::PortableRegistry, type_id: u32) -> String {
     if let Some(ty) = types.resolve(type_id) {
+        // Check if it's an enum (Variant) type - serialize like Sidecar does
+        if let scale_info::TypeDef::Variant(v) = &ty.type_def {
+            // Only simple enums (no fields) get the _enum format
+            let is_simple_enum = v.variants.iter().all(|var| var.fields.is_empty());
+            if is_simple_enum {
+                let variant_names: Vec<String> = v
+                    .variants
+                    .iter()
+                    .map(|var| format!("\"{}\"", var.name))
+                    .collect();
+                return format!("{{\"_enum\":[{}]}}", variant_names.join(","));
+            }
+        }
+
         // Use the type's path if available (e.g., "AccountId32", "u128")
         if !ty.path.segments.is_empty() {
             return ty.path.segments.last().unwrap().clone();
@@ -801,7 +816,13 @@ fn resolve_type_name_v14(types: &scale_info::PortableRegistry, type_id: u32) -> 
                 format!("Compact<{}>", resolve_type_name_v14(types, c.type_param.id))
             }
             scale_info::TypeDef::Sequence(s) => {
-                format!("Vec<{}>", resolve_type_name_v14(types, s.type_param.id))
+                // Vec<u8> is shown as "Bytes" to match Sidecar
+                let inner = resolve_type_name_v14(types, s.type_param.id);
+                if inner == "u8" {
+                    "Bytes".to_string()
+                } else {
+                    format!("Vec<{}>", inner)
+                }
             }
             scale_info::TypeDef::Array(a) => {
                 format!("[{}; {}]", resolve_type_name_v14(types, a.type_param.id), a.len)
