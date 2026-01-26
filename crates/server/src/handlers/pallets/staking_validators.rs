@@ -339,16 +339,20 @@ async fn fetch_active_validators_set(
     ss58_prefix: u16,
 ) -> Result<HashSet<String>, PalletError> {
     // Try ErasStakersOverview first
-    if let Ok(active_era) = fetch_active_era_index(client_at_block).await
-        && let Ok(set) =
-            fetch_era_stakers_overview_keys(client_at_block, active_era, ss58_prefix).await
-        && !set.is_empty()
-    {
-        return Ok(set);
-    }
+    match fetch_active_era_index(client_at_block).await {
+        Err(_) => Err(PalletError::CurrentOrActiveEraNotFound),
+        Ok(active_era) => {
+            if let Ok(set) =
+                fetch_era_stakers_overview_keys(client_at_block, active_era, ss58_prefix).await
+                && !set.is_empty()
+            {
+                return Ok(set);
+            }
 
-    // Fallback to Session.Validators
-    fetch_session_validators_set(client_at_block, ss58_prefix).await
+            // Fallback to Session.Validators
+            return fetch_session_validators_set(client_at_block, ss58_prefix).await;
+        }
+    }
 }
 
 /// Fetches the active era index from Staking.ActiveEra or Staking.CurrentEra.

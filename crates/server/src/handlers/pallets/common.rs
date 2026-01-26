@@ -90,6 +90,9 @@ pub enum PalletError {
     #[error("Active era not found at this block")]
     ActiveEraNotFound,
 
+    #[error("No active or current era was found")]
+    CurrentOrActiveEraNotFound,
+
     #[error("Era start session index not found in BondedEras for active era")]
     EraStartSessionNotFound,
 
@@ -146,6 +149,7 @@ impl IntoResponse for PalletError {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             PalletError::ActiveEraNotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::CurrentOrActiveEraNotFound => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::EraStartSessionNotFound => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
