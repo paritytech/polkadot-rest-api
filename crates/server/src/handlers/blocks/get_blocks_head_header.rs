@@ -1,5 +1,5 @@
-use crate::handlers::blocks::types::BlockHeaderResponse;
 use crate::handlers::blocks::common::{HeaderParseError, parse_header_fields};
+use crate::handlers::blocks::types::BlockHeaderResponse;
 use crate::state::AppState;
 use crate::types::BlockHash;
 use crate::utils::{
