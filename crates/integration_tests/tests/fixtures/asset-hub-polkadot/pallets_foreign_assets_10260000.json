@@ -1,1 +1,1751 @@
-{"at":{"hash":"0xec77b29816dec211e0565fdbdee1e29a7fc482f6f19e6e44ecdebc37545a155e","height":"10260000"},"items":[{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x9d39a5de30e57443bff2a8307a4256c8797a3497"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"1138433380675839047514512","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"1","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x5374616b65642055534465","symbol":"0x7355534465","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X1":[{"Parachain":"2,011"}]}},"foreignAssetInfo":{"owner":"13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB","issuer":"13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB","admin":"13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB","freezer":"13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB","supply":"0","deposit":"100000000000","minBalance":"100000000000","isSufficient":false,"accounts":"0","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"2008100000","name":"0x457175696c69627269756d","symbol":"0x4551","decimals":"9","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"471560552534105009924","deposit":"2019000000","minBalance":"15000000000000","isSufficient":true,"accounts":"90","sufficients":"74","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x57726170706564204574686572","symbol":"0x57455448","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x6982508145454ce325ddbe47a25d4ec3d2311933"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"6948040261201000251920384","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"9","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x50657065","symbol":"0x50455045","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x5a98fcbea516cf06857215779fd812ca3bef1b32"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"585131096781991217323720","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"4","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x4c69646f2044414f20546f6b656e","symbol":"0x4c444f","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x45804880de22913dafe09f4980848ece6ecbaf78"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"273536612340057200083","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"1","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x","symbol":"0x","decimals":"0","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0xcccccccccc33d538dbc2ee4feab0a7a1ff4e8a94"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"1168835335236000000000000","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"1","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x","symbol":"0x","decimals":"0","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X1":[{"GlobalConsensus":"Kusama"}]}},"foreignAssetInfo":{"owner":"14zcUAhP5XypiFQWA3b1AnGKrhZqR4XWUo4deWkwuN5y983G","issuer":"14zcUAhP5XypiFQWA3b1AnGKrhZqR4XWUo4deWkwuN5y983G","admin":"14zcUAhP5XypiFQWA3b1AnGKrhZqR4XWUo4deWkwuN5y983G","freezer":"14zcUAhP5XypiFQWA3b1AnGKrhZqR4XWUo4deWkwuN5y983G","supply":"80258185629001246","deposit":"0","minBalance":"1000000000","isSufficient":true,"accounts":"276","sufficients":"276","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x4b7573616d61","symbol":"0x4b534d","decimals":"12","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0xa3931d71877c0e7a3148cb7eb4463524fec27fbd"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"0","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"1","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x536176696e67732055534453","symbol":"0x7355534453","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x163f8c2467924be0ae7b5347228cabf260318753"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"0","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"0","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x","symbol":"0x","decimals":"0","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x57e114b691db790c35207b2e685d4a43181e6061"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"866465379068910118694910","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"1","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x","symbol":"0x","decimals":"0","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x8236a87084f8b84306f72007f36f2618a5634494"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"23","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"1","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x4c6f6d62617264205374616b656420426974636f696e","symbol":"0x4c425443","decimals":"8","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X1":[{"Parachain":"2,039"}]}},"foreignAssetInfo":{"owner":"13cKp89Vh9FRH3u4ESYeNA7jxX3K78KMLJqPUgyonot6TFbF","issuer":"13cKp89Vh9FRH3u4ESYeNA7jxX3K78KMLJqPUgyonot6TFbF","admin":"13cKp89Vh9FRH3u4ESYeNA7jxX3K78KMLJqPUgyonot6TFbF","freezer":"13cKp89Vh9FRH3u4ESYeNA7jxX3K78KMLJqPUgyonot6TFbF","supply":"323136894163994628","deposit":"2019000000","minBalance":"1000000000","isSufficient":false,"accounts":"19","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"2008700000","name":"0x496e74656772697465652054454552","symbol":"0x54454552","decimals":"12","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X1":[{"Parachain":"3,344"}]}},"foreignAssetInfo":{"owner":"13cKp88hQpNpLAYJsQ7LxJBAfnkqLmFY36ZkX5BzcRidJ1p5","issuer":"13cKp88hQpNpLAYJsQ7LxJBAfnkqLmFY36ZkX5BzcRidJ1p5","admin":"13cKp88hQpNpLAYJsQ7LxJBAfnkqLmFY36ZkX5BzcRidJ1p5","freezer":"13cKp88hQpNpLAYJsQ7LxJBAfnkqLmFY36ZkX5BzcRidJ1p5","supply":"0","deposit":"2019000000","minBalance":"1000000000","isSufficient":false,"accounts":"0","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"2007900000","name":"0x506f6c696d6563","symbol":"0x504c4d43","decimals":"10","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"36500000","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"6","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x4575726f20436f696e","symbol":"0x45555243","decimals":"6","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X1":[{"Parachain":"3,370"}]}},"foreignAssetInfo":{"owner":"13cKp88ncyoXqGfJDkYFy4o1CDyf69WibaK6vqUbz4bqBUwY","issuer":"13cKp88ncyoXqGfJDkYFy4o1CDyf69WibaK6vqUbz4bqBUwY","admin":"13cKp88ncyoXqGfJDkYFy4o1CDyf69WibaK6vqUbz4bqBUwY","freezer":"13cKp88ncyoXqGfJDkYFy4o1CDyf69WibaK6vqUbz4bqBUwY","supply":"127945208154124500001986","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"11","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"2007600000","name":"0x4c414f53","symbol":"0x4c414f53","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X2":[{"Parachain":"2,030"},{"GeneralKey":{"length":"2","data":"0x0001000000000000000000000000000000000000000000000000000000000000"}}]}},"foreignAssetInfo":{"owner":"13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A","issuer":"13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A","admin":"13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A","freezer":"13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A","supply":"2667000000000000","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"6","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"2009100000","name":"0x426966726f7374204e617469766520546f6b656e","symbol":"0x424e43","decimals":"12","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x56072c95faa701256059aa122697b133aded9279"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"5089462450394675421760722","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"2","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x534b5920476f7665726e616e636520546f6b656e","symbol":"0x534b59","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"608697405931","deposit":"2019000000","minBalance":"10000","isSufficient":true,"accounts":"61","sufficients":"26","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x555344432028536e6f7762726964676529","symbol":"0x55534443","decimals":"6","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0xba41ddf06b7ffd89d1267b5a93bfef2424eb2003"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"464305950550656876315484086","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"6","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x4d7974686f73","symbol":"0x4d595448","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x0e186357c323c806c1efdad36d217f7a54b63d18"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"125000000000000000000","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"3","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x437572696f2047617320546f6b656e","symbol":"0x434754322e30","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0xaa7a9ca87d3694b5755f213b5d04094b8d0f0a6f"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"127675349443373621281944296","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"7","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x4f726967696e547261696c2054524143","symbol":"0x54524143","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x18084fba666a33d37592fa2633fd49a74dd93a88"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"90984040735698305284","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"8","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x74425443207632","symbol":"0x74425443","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"803765125054355170036","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"9","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x57726170706564206c6971756964207374616b656420457468657220322e30","symbol":"0x777374455448","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0xe9f6d9898f9269b519e1435e6ebaff766c7f46bf"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"3000000000000000","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"2","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x","symbol":"0x","decimals":"0","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x582d872a1b094fc48f5de31d3b73f2d9be47def1"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"3773231767","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"3","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x5772617070656420544f4e20436f696e","symbol":"0x544f4e434f494e","decimals":"9","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x6b175474e89094c44da98b954eedeac495271d0f"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"12000000000000000000","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"4","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x44616920537461626c65636f696e","symbol":"0x444149","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"179748332293000000000000","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"4","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x534849424120494e55","symbol":"0x53484942","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X2":[{"Parachain":"2,011"},{"GeneralKey":{"length":"3","data":"0x6571640000000000000000000000000000000000000000000000000000000000"}}]}},"foreignAssetInfo":{"owner":"13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB","issuer":"13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB","admin":"13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB","freezer":"13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB","supply":"0","deposit":"100000000000","minBalance":"1000000000","isSufficient":false,"accounts":"0","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"2008900000","name":"0x457175696c69627269756d20446f6c6c6172","symbol":"0x455144","decimals":"9","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x7de91b204c1c737bcee6f000aaa6569cf7061cb7"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"42000000000","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"1","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x526f626f6e6f6d696373","symbol":"0x585254","decimals":"9","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"26850173","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"22","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x5772617070656420425443","symbol":"0x57425443","decimals":"8","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X2":[{"Parachain":"2,004"},{"PalletInstance":"10"}]}},"foreignAssetInfo":{"owner":"13cKp89NgPL56sRoVRpBcjkGZPrk4Vf4tS6ePUD96XhAXozG","issuer":"13cKp89NgPL56sRoVRpBcjkGZPrk4Vf4tS6ePUD96XhAXozG","admin":"13cKp89NgPL56sRoVRpBcjkGZPrk4Vf4tS6ePUD96XhAXozG","freezer":"13cKp89NgPL56sRoVRpBcjkGZPrk4Vf4tS6ePUD96XhAXozG","supply":"0","deposit":"100000000000","minBalance":"1","isSufficient":false,"accounts":"1","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"2007900000","name":"0x476c696d6d6572","symbol":"0x474c4d52","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X1":[{"Parachain":"3,369"}]}},"foreignAssetInfo":{"owner":"13cKp88nRMkMK9jVQ84Xmt9w6bKEwnabVs6HJEK3PmZrxTCY","issuer":"13cKp88nRMkMK9jVQ84Xmt9w6bKEwnabVs6HJEK3PmZrxTCY","admin":"13cKp88nRMkMK9jVQ84Xmt9w6bKEwnabVs6HJEK3PmZrxTCY","freezer":"13cKp88nRMkMK9jVQ84Xmt9w6bKEwnabVs6HJEK3PmZrxTCY","supply":"11750941815015438943358642","deposit":"2019000000","minBalance":"10000000000000000","isSufficient":false,"accounts":"471800","sufficients":"0","approvals":"3","status":"Live"},"foreignAssetMetadata":{"deposit":"2007800000","name":"0x4d7974686f73","symbol":"0x4d595448","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X2":[{"Parachain":"2,030"},{"GeneralKey":{"length":"2","data":"0x0900000000000000000000000000000000000000000000000000000000000000"}}]}},"foreignAssetInfo":{"owner":"13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A","issuer":"13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A","admin":"13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A","freezer":"13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A","supply":"154360515858","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"6","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"2008300000","name":"0x566f756368657220444f54","symbol":"0x76444f54","decimals":"10","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x8daebade922df735c38c80c7ebd708af50815faa"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"0","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"0","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x74425443","symbol":"0x54425443","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X2":[{"Parachain":"2,034"},{"GeneralIndex":"0"}]}},"foreignAssetInfo":{"owner":"13cKp89Uh2yWgTG28JA1QEvPUMjEPKejqkjHKf9zqLiFKjH6","issuer":"13cKp89Uh2yWgTG28JA1QEvPUMjEPKejqkjHKf9zqLiFKjH6","admin":"13cKp89Uh2yWgTG28JA1QEvPUMjEPKejqkjHKf9zqLiFKjH6","freezer":"13cKp89Uh2yWgTG28JA1QEvPUMjEPKejqkjHKf9zqLiFKjH6","supply":"0","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"0","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"2008000000","name":"0x487964726174696f6e","symbol":"0x484458","decimals":"12","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X1":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"1390440433421425705143","deposit":"0","minBalance":"15000000000000","isSufficient":true,"accounts":"69","sufficients":"68","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x4574686572","symbol":"0x455448","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x5d3d01fd6d2ad1169b17918eb4f153c6616288eb"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"58152417939953000000000","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"98","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x4b494c54","symbol":"0x4b494c54","decimals":"15","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0xdac17f958d2ee523a2206206994597c13d831ec7"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"705482962045","deposit":"2019000000","minBalance":"10000","isSufficient":true,"accounts":"41","sufficients":"22","approvals":"1","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x546574686572205553442028536e6f7762726964676529","symbol":"0x55534454","decimals":"6","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X2":[{"Parachain":"2,043"},{"PalletInstance":"10"}]}},"foreignAssetInfo":{"owner":"13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4","issuer":"13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4","admin":"13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4","freezer":"13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4","supply":"281510106359256859","deposit":"2019000000","minBalance":"1000000000","isSufficient":false,"accounts":"6","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"2007800000","name":"0x4e4555524f","symbol":"0x4e4555524f","decimals":"12","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x514910771af9ca656af840dff83e8264ecf986ca"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"114647004648022064917112","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"3","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x436861696e4c696e6b20546f6b656e","symbol":"0x4c494e4b","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X1":[{"Parachain":"2,043"}]}},"foreignAssetInfo":{"owner":"13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4","issuer":"13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4","admin":"13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4","freezer":"13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4","supply":"0","deposit":"2019000000","minBalance":"1000000000000000","isSufficient":false,"accounts":"0","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"2007800000","name":"0x4e4555524f","symbol":"0x4e4555524f","decimals":"12","isFrozen":false}},{"multiLocation":{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"network":null,"key":"0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9"}}]}},"foreignAssetInfo":{"owner":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","issuer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","admin":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","freezer":"1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU","supply":"6019940600992327791244","deposit":"2019000000","minBalance":"1","isSufficient":false,"accounts":"3","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"0","name":"0x4161766520546f6b656e","symbol":"0x41415645","decimals":"18","isFrozen":false}},{"multiLocation":{"parents":"1","interior":{"X1":[{"Parachain":"2,051"}]}},"foreignAssetInfo":{"owner":"13cKp88eoWVt52MsarZmWKSxnfYgrZiEPDs27pyCRPi8jLAg","issuer":"13cKp88eoWVt52MsarZmWKSxnfYgrZiEPDs27pyCRPi8jLAg","admin":"13cKp88eoWVt52MsarZmWKSxnfYgrZiEPDs27pyCRPi8jLAg","freezer":"13cKp88eoWVt52MsarZmWKSxnfYgrZiEPDs27pyCRPi8jLAg","supply":"500000000000","deposit":"2019000000","minBalance":"1000000000","isSufficient":false,"accounts":"2","sufficients":"0","approvals":"0","status":"Live"},"foreignAssetMetadata":{"deposit":"2009100000","name":"0x416a756e6120506f6c6b61646f7420414a554e","symbol":"0x414a554e","decimals":"12","isFrozen":false}}]}
+{
+  "at": {
+    "hash": "0xec77b29816dec211e0565fdbdee1e29a7fc482f6f19e6e44ecdebc37545a155e",
+    "height": "10260000"
+  },
+  "items": [
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x9d39a5de30e57443bff2a8307a4256c8797a3497",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "1",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "1110708296991980568228860"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x5374616b65642055534465",
+        "symbol": "0x7355534465"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "2,011"
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "0",
+        "admin": "13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB",
+        "approvals": "0",
+        "deposit": "100000000000",
+        "freezer": "13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB",
+        "isSufficient": false,
+        "issuer": "13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB",
+        "minBalance": "100000000000",
+        "owner": "13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "0"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "9",
+        "deposit": "2008100000",
+        "isFrozen": false,
+        "name": "0x457175696c69627269756d",
+        "symbol": "0x4551"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "86",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": true,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "15000000000000",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "70",
+        "supply": "471554652534105009924"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x57726170706564204574686572",
+        "symbol": "0x57455448"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "8",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "6888040261201000251920384"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x50657065",
+        "symbol": "0x50455045"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x5a98fcbea516cf06857215779fd812ca3bef1b32",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "4",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "1441090135684810387653135"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x4c69646f2044414f20546f6b656e",
+        "symbol": "0x4c444f"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x45804880de22913dafe09f4980848ece6ecbaf78",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "1",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "634281211369703424966"
+      },
+      "foreignAssetMetadata": {}
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0xcccccccccc33d538dbc2ee4feab0a7a1ff4e8a94",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "1",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "5000000000000000000"
+      },
+      "foreignAssetMetadata": {}
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X1": [
+            {
+              "GlobalConsensus": "Kusama"
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "232",
+        "admin": "14zcUAhP5XypiFQWA3b1AnGKrhZqR4XWUo4deWkwuN5y983G",
+        "approvals": "0",
+        "deposit": "0",
+        "freezer": "14zcUAhP5XypiFQWA3b1AnGKrhZqR4XWUo4deWkwuN5y983G",
+        "isSufficient": true,
+        "issuer": "14zcUAhP5XypiFQWA3b1AnGKrhZqR4XWUo4deWkwuN5y983G",
+        "minBalance": "1000000000",
+        "owner": "14zcUAhP5XypiFQWA3b1AnGKrhZqR4XWUo4deWkwuN5y983G",
+        "status": "Live",
+        "sufficients": "232",
+        "supply": "144094435536879598"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "12",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x4b7573616d61",
+        "symbol": "0x4b534d"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0xa3931d71877c0e7a3148cb7eb4463524fec27fbd",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "1",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "0"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x536176696e67732055534453",
+        "symbol": "0x7355534453"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x163f8c2467924be0ae7b5347228cabf260318753",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "0",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "0"
+      },
+      "foreignAssetMetadata": {}
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x57e114b691db790c35207b2e685d4a43181e6061",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "1",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "845195172115664903100818"
+      },
+      "foreignAssetMetadata": {}
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x8236a87084f8b84306f72007f36f2618a5634494",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "1",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "10546"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "8",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x4c6f6d62617264205374616b656420426974636f696e",
+        "symbol": "0x4c425443"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "2,039"
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "17",
+        "admin": "13cKp89Vh9FRH3u4ESYeNA7jxX3K78KMLJqPUgyonot6TFbF",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "13cKp89Vh9FRH3u4ESYeNA7jxX3K78KMLJqPUgyonot6TFbF",
+        "isSufficient": false,
+        "issuer": "13cKp89Vh9FRH3u4ESYeNA7jxX3K78KMLJqPUgyonot6TFbF",
+        "minBalance": "1000000000",
+        "owner": "13cKp89Vh9FRH3u4ESYeNA7jxX3K78KMLJqPUgyonot6TFbF",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "323239794163994628"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "12",
+        "deposit": "2008700000",
+        "isFrozen": false,
+        "name": "0x496e74656772697465652054454552",
+        "symbol": "0x54454552"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "3,344"
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "0",
+        "admin": "13cKp88hQpNpLAYJsQ7LxJBAfnkqLmFY36ZkX5BzcRidJ1p5",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "13cKp88hQpNpLAYJsQ7LxJBAfnkqLmFY36ZkX5BzcRidJ1p5",
+        "isSufficient": false,
+        "issuer": "13cKp88hQpNpLAYJsQ7LxJBAfnkqLmFY36ZkX5BzcRidJ1p5",
+        "minBalance": "1000000000",
+        "owner": "13cKp88hQpNpLAYJsQ7LxJBAfnkqLmFY36ZkX5BzcRidJ1p5",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "0"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "10",
+        "deposit": "2007900000",
+        "isFrozen": false,
+        "name": "0x506f6c696d6563",
+        "symbol": "0x504c4d43"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "5",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "180000000"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "6",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x4575726f20436f696e",
+        "symbol": "0x45555243"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "3,370"
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "11",
+        "admin": "13cKp88ncyoXqGfJDkYFy4o1CDyf69WibaK6vqUbz4bqBUwY",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "13cKp88ncyoXqGfJDkYFy4o1CDyf69WibaK6vqUbz4bqBUwY",
+        "isSufficient": false,
+        "issuer": "13cKp88ncyoXqGfJDkYFy4o1CDyf69WibaK6vqUbz4bqBUwY",
+        "minBalance": "1",
+        "owner": "13cKp88ncyoXqGfJDkYFy4o1CDyf69WibaK6vqUbz4bqBUwY",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "127945208154124500001986"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "2007600000",
+        "isFrozen": false,
+        "name": "0x4c414f53",
+        "symbol": "0x4c414f53"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "Parachain": "2,030"
+            },
+            {
+              "GeneralKey": {
+                "data": "0x0001000000000000000000000000000000000000000000000000000000000000",
+                "length": "2"
+              }
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "0",
+        "admin": "13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A",
+        "isSufficient": false,
+        "issuer": "13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A",
+        "minBalance": "1",
+        "owner": "13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "0"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "12",
+        "deposit": "2009100000",
+        "isFrozen": false,
+        "name": "0x426966726f7374204e617469766520546f6b656e",
+        "symbol": "0x424e43"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x56072c95faa701256059aa122697b133aded9279",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "2",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "12171005924097226649955620"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x534b5920476f7665726e616e636520546f6b656e",
+        "symbol": "0x534b59"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "57",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": true,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "10000",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "20",
+        "supply": "667313221902"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "6",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x555344432028536e6f7762726964676529",
+        "symbol": "0x55534443"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0xba41ddf06b7ffd89d1267b5a93bfef2424eb2003",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "6",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "457610715534734180895080599"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x4d7974686f73",
+        "symbol": "0x4d595448"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x0e186357c323c806c1efdad36d217f7a54b63d18",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "3",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "125000000000000000000"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x437572696f2047617320546f6b656e",
+        "symbol": "0x434754322e30"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0xaa7a9ca87d3694b5755f213b5d04094b8d0f0a6f",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "6",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "126347613348582264853246339"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x4f726967696e547261696c2054524143",
+        "symbol": "0x54524143"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x18084fba666a33d37592fa2633fd49a74dd93a88",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "7",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "203454800443293360661"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x74425443207632",
+        "symbol": "0x74425443"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "8",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "1290830064522805097473"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x57726170706564206c6971756964207374616b656420457468657220322e30",
+        "symbol": "0x777374455448"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0xe9f6d9898f9269b519e1435e6ebaff766c7f46bf",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "2",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "3000000000000000"
+      },
+      "foreignAssetMetadata": {}
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x582d872a1b094fc48f5de31d3b73f2d9be47def1",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "2",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "3723231767"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "9",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x5772617070656420544f4e20436f696e",
+        "symbol": "0x544f4e434f494e"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x6b175474e89094c44da98b954eedeac495271d0f",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "2",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "11000000000000000000"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x44616920537461626c65636f696e",
+        "symbol": "0x444149"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "3",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "129748332293000000000000"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x534849424120494e55",
+        "symbol": "0x53484942"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "Parachain": "2,011"
+            },
+            {
+              "GeneralKey": {
+                "data": "0x6571640000000000000000000000000000000000000000000000000000000000",
+                "length": "3"
+              }
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "0",
+        "admin": "13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB",
+        "approvals": "0",
+        "deposit": "100000000000",
+        "freezer": "13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB",
+        "isSufficient": false,
+        "issuer": "13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB",
+        "minBalance": "1000000000",
+        "owner": "13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "0"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "9",
+        "deposit": "2008900000",
+        "isFrozen": false,
+        "name": "0x457175696c69627269756d20446f6c6c6172",
+        "symbol": "0x455144"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x7de91b204c1c737bcee6f000aaa6569cf7061cb7",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "1",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "42000000000"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "9",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x526f626f6e6f6d696373",
+        "symbol": "0x585254"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "18",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "16833089"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "8",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x5772617070656420425443",
+        "symbol": "0x57425443"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "Parachain": "2,004"
+            },
+            {
+              "PalletInstance": "10"
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "1",
+        "admin": "13cKp89NgPL56sRoVRpBcjkGZPrk4Vf4tS6ePUD96XhAXozG",
+        "approvals": "0",
+        "deposit": "100000000000",
+        "freezer": "13cKp89NgPL56sRoVRpBcjkGZPrk4Vf4tS6ePUD96XhAXozG",
+        "isSufficient": false,
+        "issuer": "13cKp89NgPL56sRoVRpBcjkGZPrk4Vf4tS6ePUD96XhAXozG",
+        "minBalance": "1",
+        "owner": "13cKp89NgPL56sRoVRpBcjkGZPrk4Vf4tS6ePUD96XhAXozG",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "0"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "2007900000",
+        "isFrozen": false,
+        "name": "0x476c696d6d6572",
+        "symbol": "0x474c4d52"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "3,369"
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "471963",
+        "admin": "13cKp88nRMkMK9jVQ84Xmt9w6bKEwnabVs6HJEK3PmZrxTCY",
+        "approvals": "3",
+        "deposit": "2019000000",
+        "freezer": "13cKp88nRMkMK9jVQ84Xmt9w6bKEwnabVs6HJEK3PmZrxTCY",
+        "isSufficient": false,
+        "issuer": "13cKp88nRMkMK9jVQ84Xmt9w6bKEwnabVs6HJEK3PmZrxTCY",
+        "minBalance": "10000000000000000",
+        "owner": "13cKp88nRMkMK9jVQ84Xmt9w6bKEwnabVs6HJEK3PmZrxTCY",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "11575971009604022652709205"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "2007800000",
+        "isFrozen": false,
+        "name": "0x4d7974686f73",
+        "symbol": "0x4d595448"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "Parachain": "2,030"
+            },
+            {
+              "GeneralKey": {
+                "data": "0x0900000000000000000000000000000000000000000000000000000000000000",
+                "length": "2"
+              }
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "4",
+        "admin": "13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A",
+        "isSufficient": false,
+        "issuer": "13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A",
+        "minBalance": "1",
+        "owner": "13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "94300000000"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "10",
+        "deposit": "2008300000",
+        "isFrozen": false,
+        "name": "0x566f756368657220444f54",
+        "symbol": "0x76444f54"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x8daebade922df735c38c80c7ebd708af50815faa",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "0",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "0"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x74425443",
+        "symbol": "0x54425443"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "Parachain": "2,034"
+            },
+            {
+              "GeneralIndex": "0"
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "0",
+        "admin": "13cKp89Uh2yWgTG28JA1QEvPUMjEPKejqkjHKf9zqLiFKjH6",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "13cKp89Uh2yWgTG28JA1QEvPUMjEPKejqkjHKf9zqLiFKjH6",
+        "isSufficient": false,
+        "issuer": "13cKp89Uh2yWgTG28JA1QEvPUMjEPKejqkjHKf9zqLiFKjH6",
+        "minBalance": "1",
+        "owner": "13cKp89Uh2yWgTG28JA1QEvPUMjEPKejqkjHKf9zqLiFKjH6",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "0"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "12",
+        "deposit": "2008000000",
+        "isFrozen": false,
+        "name": "0x487964726174696f6e",
+        "symbol": "0x484458"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X1": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "55",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "0",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": true,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "15000000000000",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "54",
+        "supply": "1528947280618599903659"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x4574686572",
+        "symbol": "0x455448"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x5d3d01fd6d2ad1169b17918eb4f153c6616288eb",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "98",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "58152417939953000000000"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "15",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x4b494c54",
+        "symbol": "0x4b494c54"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "38",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "1",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": true,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "10000",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "18",
+        "supply": "695282899422"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "6",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x546574686572205553442028536e6f7762726964676529",
+        "symbol": "0x55534454"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "Parachain": "2,043"
+            },
+            {
+              "PalletInstance": "10"
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "3",
+        "admin": "13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4",
+        "isSufficient": false,
+        "issuer": "13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4",
+        "minBalance": "1000000000",
+        "owner": "13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "268671804153661060"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "12",
+        "deposit": "2007800000",
+        "isFrozen": false,
+        "name": "0x4e4555524f",
+        "symbol": "0x4e4555524f"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x514910771af9ca656af840dff83e8264ecf986ca",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "3",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "158789479730175155816747"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x436861696e4c696e6b20546f6b656e",
+        "symbol": "0x4c494e4b"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "2,043"
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "0",
+        "admin": "13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4",
+        "isSufficient": false,
+        "issuer": "13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4",
+        "minBalance": "1000000000000000",
+        "owner": "13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "0"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "12",
+        "deposit": "2007800000",
+        "isFrozen": false,
+        "name": "0x4e4555524f",
+        "symbol": "0x4e4555524f"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "key": "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9",
+                "network": null
+              }
+            }
+          ]
+        },
+        "parents": "2"
+      },
+      "foreignAssetInfo": {
+        "accounts": "3",
+        "admin": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "isSufficient": false,
+        "issuer": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "minBalance": "1",
+        "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "11802111038517470491282"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "18",
+        "deposit": "0",
+        "isFrozen": false,
+        "name": "0x4161766520546f6b656e",
+        "symbol": "0x41415645"
+      }
+    },
+    {
+      "multiLocation": {
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "2,051"
+            }
+          ]
+        },
+        "parents": "1"
+      },
+      "foreignAssetInfo": {
+        "accounts": "2",
+        "admin": "13cKp88eoWVt52MsarZmWKSxnfYgrZiEPDs27pyCRPi8jLAg",
+        "approvals": "0",
+        "deposit": "2019000000",
+        "freezer": "13cKp88eoWVt52MsarZmWKSxnfYgrZiEPDs27pyCRPi8jLAg",
+        "isSufficient": false,
+        "issuer": "13cKp88eoWVt52MsarZmWKSxnfYgrZiEPDs27pyCRPi8jLAg",
+        "minBalance": "1000000000",
+        "owner": "13cKp88eoWVt52MsarZmWKSxnfYgrZiEPDs27pyCRPi8jLAg",
+        "status": "Live",
+        "sufficients": "0",
+        "supply": "500000000000"
+      },
+      "foreignAssetMetadata": {
+        "decimals": "12",
+        "deposit": "2009100000",
+        "isFrozen": false,
+        "name": "0x416a756e6120506f6c6b61646f7420414a554e",
+        "symbol": "0x414a554e"
+      }
+    }
+  ]
+}
