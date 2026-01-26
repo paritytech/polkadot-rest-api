@@ -65,6 +65,21 @@ pub enum PalletError {
     #[error("Asset not found: {0}")]
     AssetNotFound(String),
 
+    #[error("Could not find event item (\"{0}\") in metadata. Event item names are expected to be in PascalCase, e.g. 'Transfer'")]
+    EventNotFound(String),
+
+    #[error("No queryable events items found for palletId \"{0}\"")]
+    NoEventsInPallet(String),
+
+    // ========================================================================
+    // Metadata Errors
+    // ========================================================================
+    #[error("Failed to fetch metadata from chain")]
+    MetadataFetchFailed,
+
+    #[error("Failed to decode metadata: {0}")]
+    MetadataDecodeFailed(String),
+
     // ========================================================================
     // Metadata/Constant Errors
     // ========================================================================
@@ -127,8 +142,16 @@ impl IntoResponse for PalletError {
             }
             PalletError::PalletNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::AssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::EventNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::NoEventsInPallet(_) => (StatusCode::BAD_REQUEST, self.to_string()),
 
             // Metadata errors
+            PalletError::MetadataFetchFailed => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            PalletError::MetadataDecodeFailed(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
             PalletError::ConstantNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
 
             // Staking-specific errors
