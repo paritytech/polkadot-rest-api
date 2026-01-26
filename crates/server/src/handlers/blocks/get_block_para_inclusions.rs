@@ -85,6 +85,9 @@ pub enum ParaInclusionsError {
 
     #[error("No para inclusions found at this block")]
     NoParaInclusionsFound,
+
+    #[error("No para inclusion found for paraId {0} at this block")]
+    ParaIdNotFound(u32),
 }
 
 impl IntoResponse for ParaInclusionsError {
@@ -96,7 +99,7 @@ impl IntoResponse for ParaInclusionsError {
             ParaInclusionsError::BlockResolveFailed(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
-            ParaInclusionsError::NoParaInclusionsFound => {
+            ParaInclusionsError::NoParaInclusionsFound | ParaInclusionsError::ParaIdNotFound(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             ParaInclusionsError::ClientAtBlockFailed(err) => {
@@ -157,13 +160,15 @@ pub async fn get_block_para_inclusions(
     if let Some(filter_para_id) = params.para_id {
         inclusions
             .retain(|inclusion| inclusion.para_id.parse::<u32>().ok() == Some(filter_para_id));
+
+        if inclusions.is_empty() {
+            return Err(ParaInclusionsError::ParaIdNotFound(filter_para_id));
+        }
+    } else if inclusions.is_empty() {
+        return Err(ParaInclusionsError::NoParaInclusionsFound);
     }
 
     inclusions.sort_by_key(|inc| inc.para_id.parse::<u32>().unwrap_or(0));
-
-    if inclusions.is_empty() {
-        return Err(ParaInclusionsError::NoParaInclusionsFound);
-    }
 
     let response = ParaInclusionsResponse {
         at: AtBlock {
