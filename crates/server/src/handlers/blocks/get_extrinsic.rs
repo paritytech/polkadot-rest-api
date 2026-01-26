@@ -112,6 +112,7 @@ pub async fn get_extrinsic(
 
         let fee_info = extract_fee_info_for_extrinsic(
             &state,
+            None,
             &extrinsic.raw_hex,
             &extrinsic.events,
             extrinsic_outcomes.get(extrinsic_index),
