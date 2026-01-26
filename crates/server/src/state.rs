@@ -290,6 +290,14 @@ impl AppState {
             .await
     }
 
+    /// Make a raw JSON-RPC call to get a full block (header + extrinsics) and return the result as a Value
+    /// This is used by the /blocks/{blockId}/extrinsics-raw endpoint to get raw extrinsic data
+    pub async fn get_block_json(&self, hash: &str) -> Result<Value, subxt_rpcs::Error> {
+        self.rpc_client
+            .request("chain_getBlock", rpc_params![hash])
+            .await
+    }
+
     /// Make a raw JSON-RPC call to get a block hash at a specific block number
     pub async fn get_block_hash_at_number(
         &self,
