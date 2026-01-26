@@ -40,6 +40,9 @@ pub struct EndpointConfig {
     /// If None or empty, the endpoint is tested on all chains.
     #[serde(default)]
     pub only_chains: Option<Vec<String>>,
+    /// Whether this endpoint is only available on relay chains (not asset hubs)
+    #[serde(default)]
+    pub relay_chain_only: bool,
 }
 
 /// Historical test case configuration
