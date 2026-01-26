@@ -529,3 +529,388 @@ fn extract_deciding_direct(val: &serde_json::Value) -> Option<DecidingStatus> {
 
     Some(DecidingStatus { since, confirming })
 }
+
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // ========================================================================
+    // format_id_with_comma tests
+    // ========================================================================
+
+    #[test]
+    fn test_format_id_with_comma_single_digit() {
+        assert_eq!(format_id_with_comma(1), "1");
+        assert_eq!(format_id_with_comma(9), "9");
+    }
+
+    #[test]
+    fn test_format_id_with_comma_double_digit() {
+        assert_eq!(format_id_with_comma(10), "10");
+        assert_eq!(format_id_with_comma(99), "99");
+    }
+
+    #[test]
+    fn test_format_id_with_comma_triple_digit() {
+        assert_eq!(format_id_with_comma(100), "100");
+        assert_eq!(format_id_with_comma(999), "999");
+    }
+
+    #[test]
+    fn test_format_id_with_comma_four_digits() {
+        assert_eq!(format_id_with_comma(1000), "1,000");
+        assert_eq!(format_id_with_comma(1308), "1,308");
+        assert_eq!(format_id_with_comma(1339), "1,339");
+        assert_eq!(format_id_with_comma(1349), "1,349");
+        assert_eq!(format_id_with_comma(9999), "9,999");
+    }
+
+    #[test]
+    fn test_format_id_with_comma_large_numbers() {
+        assert_eq!(format_id_with_comma(10000), "10,000");
+        assert_eq!(format_id_with_comma(100000), "100,000");
+        assert_eq!(format_id_with_comma(1000000), "1,000,000");
+        assert_eq!(format_id_with_comma(1234567), "1,234,567");
+    }
+
+    #[test]
+    fn test_format_id_with_comma_zero() {
+        assert_eq!(format_id_with_comma(0), "0");
+    }
+
+    // ========================================================================
+    // is_none_variant tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_none_variant_true() {
+        let none_val = json!({"name": "None", "values": []});
+        assert!(is_none_variant(&none_val));
+    }
+
+    #[test]
+    fn test_is_none_variant_false_some() {
+        let some_val = json!({"name": "Some", "values": [123]});
+        assert!(!is_none_variant(&some_val));
+    }
+
+    #[test]
+    fn test_is_none_variant_false_other() {
+        let other_val = json!({"name": "Ongoing", "values": []});
+        assert!(!is_none_variant(&other_val));
+    }
+
+    #[test]
+    fn test_is_none_variant_false_null() {
+        let null_val = json!(null);
+        assert!(!is_none_variant(&null_val));
+    }
+
+    #[test]
+    fn test_is_none_variant_false_no_name() {
+        let no_name = json!({"values": []});
+        assert!(!is_none_variant(&no_name));
+    }
+
+    // ========================================================================
+    // extract_value_as_string tests
+    // ========================================================================
+
+    #[test]
+    fn test_extract_value_as_string_number() {
+        let num = json!(12345);
+        assert_eq!(extract_value_as_string(&num), "12345");
+    }
+
+    #[test]
+    fn test_extract_value_as_string_string() {
+        let s = json!("hello");
+        assert_eq!(extract_value_as_string(&s), "hello");
+    }
+
+    #[test]
+    fn test_extract_value_as_string_bool() {
+        let b = json!(true);
+        assert_eq!(extract_value_as_string(&b), "true");
+    }
+
+    #[test]
+    fn test_extract_value_as_string_large_number() {
+        let num = json!(1000000000000000_u64);
+        assert_eq!(extract_value_as_string(&num), "1000000000000000");
+    }
+
+    // ========================================================================
+    // extract_enactment_sidecar_format tests
+    // ========================================================================
+
+    #[test]
+    fn test_extract_enactment_after() {
+        let val = json!({"name": "After", "values": [14400]});
+        let result = extract_enactment_sidecar_format(&val);
+        assert_eq!(result.after, Some("14400".to_string()));
+        assert_eq!(result.at, None);
+    }
+
+    #[test]
+    fn test_extract_enactment_at() {
+        let val = json!({"name": "At", "values": [12345]});
+        let result = extract_enactment_sidecar_format(&val);
+        assert_eq!(result.after, None);
+        assert_eq!(result.at, Some("12345".to_string()));
+    }
+
+    #[test]
+    fn test_extract_enactment_unknown_variant() {
+        let val = json!({"name": "Unknown", "values": [100]});
+        let result = extract_enactment_sidecar_format(&val);
+        assert_eq!(result.after, None);
+        assert_eq!(result.at, None);
+    }
+
+    #[test]
+    fn test_extract_enactment_empty_values() {
+        let val = json!({"name": "After", "values": []});
+        let result = extract_enactment_sidecar_format(&val);
+        assert_eq!(result.after, None);
+        assert_eq!(result.at, None);
+    }
+
+    #[test]
+    fn test_extract_enactment_null() {
+        let val = json!(null);
+        let result = extract_enactment_sidecar_format(&val);
+        assert_eq!(result.after, None);
+        assert_eq!(result.at, None);
+    }
+
+    // ========================================================================
+    // extract_deciding_from_value tests
+    // ========================================================================
+
+    #[test]
+    fn test_extract_deciding_none_variant() {
+        let val = json!({"name": "None", "values": []});
+        assert!(extract_deciding_from_value(&val).is_none());
+    }
+
+    #[test]
+    fn test_extract_deciding_null() {
+        let val = json!(null);
+        assert!(extract_deciding_from_value(&val).is_none());
+    }
+
+    #[test]
+    fn test_extract_deciding_some_variant() {
+        let val = json!({
+            "name": "Some",
+            "values": [{
+                "since": 23687165,
+                "confirming": {"name": "None", "values": []}
+            }]
+        });
+        let result = extract_deciding_from_value(&val);
+        assert!(result.is_some());
+        let deciding = result.unwrap();
+        assert_eq!(deciding.since, "23687165");
+        assert!(deciding.confirming.is_none());
+    }
+
+    #[test]
+    fn test_extract_deciding_direct() {
+        let val = json!({
+            "since": 23687165,
+            "confirming": {"name": "None", "values": []}
+        });
+        let result = extract_deciding_from_value(&val);
+        assert!(result.is_some());
+        let deciding = result.unwrap();
+        assert_eq!(deciding.since, "23687165");
+        assert!(deciding.confirming.is_none());
+    }
+
+    #[test]
+    fn test_extract_deciding_with_confirming() {
+        let val = json!({
+            "since": 23687165,
+            "confirming": {"name": "Some", "values": [24000000]}
+        });
+        let result = extract_deciding_from_value(&val);
+        assert!(result.is_some());
+        let deciding = result.unwrap();
+        assert_eq!(deciding.since, "23687165");
+        assert_eq!(deciding.confirming, Some("24000000".to_string()));
+    }
+
+    // ========================================================================
+    // extract_deposit_from_value tests
+    // ========================================================================
+
+    #[test]
+    fn test_extract_deposit_none_variant() {
+        let val = json!({"name": "None", "values": []});
+        assert!(extract_deposit_from_value(&val, 0).is_none());
+    }
+
+    #[test]
+    fn test_extract_deposit_null() {
+        let val = json!(null);
+        assert!(extract_deposit_from_value(&val, 0).is_none());
+    }
+
+    #[test]
+    fn test_extract_deposit_some_variant() {
+        // Use a known account ID (32 bytes)
+        let account_bytes: Vec<u8> = vec![
+            0x8e, 0xaf, 0x04, 0x15, 0x16, 0x87, 0x73, 0x63, 0x26, 0xc9, 0xfe, 0xa1, 0x7e, 0x25,
+            0xfc, 0x52, 0x87, 0x61, 0x36, 0x93, 0xc9, 0x12, 0x90, 0x9c, 0xb2, 0x26, 0xaa, 0x47,
+            0x94, 0xf2, 0x6a, 0x48,
+        ];
+        let val = json!({
+            "name": "Some",
+            "values": [{
+                "who": [account_bytes],
+                "amount": "1000000000000000"
+            }]
+        });
+        let result = extract_deposit_from_value(&val, 0);
+        assert!(result.is_some());
+        let deposit = result.unwrap();
+        assert_eq!(deposit.amount, "1000000000000000");
+        // Account should be SS58 encoded
+        assert!(!deposit.who.is_empty());
+    }
+
+    // ========================================================================
+    // extract_account_from_value tests
+    // ========================================================================
+
+    #[test]
+    fn test_extract_account_flat_array() {
+        // 32 bytes as flat array
+        let account_bytes: Vec<serde_json::Value> = (0..32).map(|i| json!(i as u8)).collect();
+        let val = json!(account_bytes);
+        let result = extract_account_from_value(&val, 0);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_extract_account_nested_array() {
+        // 32 bytes as nested array [[...]]
+        let account_bytes: Vec<serde_json::Value> = (0..32).map(|i| json!(i as u8)).collect();
+        let val = json!([account_bytes]);
+        let result = extract_account_from_value(&val, 0);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_extract_account_wrong_length() {
+        // Only 16 bytes - should fail
+        let account_bytes: Vec<serde_json::Value> = (0..16).map(|i| json!(i as u8)).collect();
+        let val = json!(account_bytes);
+        let result = extract_account_from_value(&val, 0);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_account_not_array() {
+        let val = json!("not an array");
+        let result = extract_account_from_value(&val, 0);
+        assert!(result.is_none());
+    }
+
+    // ========================================================================
+    // Response serialization tests
+    // ========================================================================
+
+    #[test]
+    fn test_referendum_info_serialization() {
+        let referendum = ReferendumInfo {
+            id: "1,308".to_string(),
+            decision_deposit: Some(Deposit {
+                who: "13sDzot2hwoEAzXJiNe3cBiMEq19XRqrS3DMAxt9jiSNKMkA".to_string(),
+                amount: "1000000000000000".to_string(),
+            }),
+            enactment: EnactmentInfo {
+                after: Some("14400".to_string()),
+                at: None,
+            },
+            submitted: "23496576".to_string(),
+            deciding: Some(DecidingStatus {
+                since: "23687165".to_string(),
+                confirming: None,
+            }),
+        };
+
+        let json = serde_json::to_value(&referendum).unwrap();
+        assert_eq!(json["id"], "1,308");
+        assert_eq!(json["decisionDeposit"]["amount"], "1000000000000000");
+        assert_eq!(json["enactment"]["after"], "14400");
+        assert!(json["enactment"].get("at").is_none());
+        assert_eq!(json["submitted"], "23496576");
+        assert_eq!(json["deciding"]["since"], "23687165");
+    }
+
+    #[test]
+    fn test_referendum_info_null_fields() {
+        let referendum = ReferendumInfo {
+            id: "1,349".to_string(),
+            decision_deposit: None,
+            enactment: EnactmentInfo {
+                after: Some("100".to_string()),
+                at: None,
+            },
+            submitted: "23810220".to_string(),
+            deciding: None,
+        };
+
+        let json = serde_json::to_value(&referendum).unwrap();
+        assert_eq!(json["id"], "1,349");
+        assert!(json["decisionDeposit"].is_null());
+        assert!(json["deciding"].is_null());
+    }
+
+    #[test]
+    fn test_enactment_at_variant() {
+        let enactment = EnactmentInfo {
+            after: None,
+            at: Some("25000000".to_string()),
+        };
+
+        let json = serde_json::to_value(&enactment).unwrap();
+        assert!(json.get("after").is_none());
+        assert_eq!(json["at"], "25000000");
+    }
+
+    // ========================================================================
+    // Query params tests
+    // ========================================================================
+
+    #[test]
+    fn test_query_params_default() {
+        let params: OnGoingReferendaQueryParams = serde_json::from_str("{}").unwrap();
+        assert!(params.at.is_none());
+        assert!(!params.use_rc_block);
+    }
+
+    #[test]
+    fn test_query_params_with_at() {
+        let params: OnGoingReferendaQueryParams =
+            serde_json::from_str(r#"{"at": "24000000"}"#).unwrap();
+        assert_eq!(params.at, Some("24000000".to_string()));
+        assert!(!params.use_rc_block);
+    }
+
+    #[test]
+    fn test_query_params_with_use_rc_block() {
+        let params: OnGoingReferendaQueryParams =
+            serde_json::from_str(r#"{"useRcBlock": true}"#).unwrap();
+        assert!(params.at.is_none());
+        assert!(params.use_rc_block);
+    }
+}
