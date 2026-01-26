@@ -360,6 +360,7 @@ async fn fetch_active_era_index(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u32, PalletError> {
     // Try ActiveEra first
+    tracing::debug!("Looking for Era info using staking.activeEra");
     let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "ActiveEra");
     if let Ok(value) = client_at_block.storage().fetch(storage_addr, ()).await {
         let bytes = value.into_bytes();
@@ -373,6 +374,7 @@ async fn fetch_active_era_index(
     }
 
     // Fallback to CurrentEra
+    tracing::debug!("Value for staking.activeEra not found, falling back to staking.currentEra");
     let storage_addr = subxt::dynamic::storage::<(), u32>("Staking", "CurrentEra");
     let value = client_at_block
         .storage()
