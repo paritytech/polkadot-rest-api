@@ -82,6 +82,12 @@ pub enum PalletError {
     #[error("Pool asset not found: {0}")]
     PoolAssetNotFound(String),
 
+    #[error("Could not find event item (\"{0}\") in metadata. Event item names are expected to be in PascalCase, e.g. 'Transfer'")]
+    EventNotFound(String),
+
+    #[error("No queryable events items found for palletId \"{0}\"")]
+    NoEventsInPallet(String),
+
     // ========================================================================
     // Metadata/Constant Errors
     // ========================================================================
@@ -97,8 +103,8 @@ pub enum PalletError {
     #[error("Failed to fetch metadata")]
     MetadataFetchFailed,
 
-    #[error("Failed to decode metadata")]
-    MetadataDecodeFailed,
+    #[error("Failed to decode metadata: {0}")]
+    MetadataDecodeFailed(String),
 
     #[error(
         "Could not find dispatchable item (\"{0}\") in metadata. dispatchable item names are expected to be in camel case, e.g. 'transfer'"
@@ -170,16 +176,18 @@ impl IntoResponse for PalletError {
             PalletError::AssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::PoolNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::PoolAssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::EventNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::NoEventsInPallet(_) => (StatusCode::BAD_REQUEST, self.to_string()),
 
             // Metadata errors
-            PalletError::ConstantNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
-            PalletError::ConstantItemNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::MetadataFetchFailed => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
-            PalletError::MetadataDecodeFailed => {
+            PalletError::MetadataDecodeFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
+            PalletError::ConstantNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::ConstantItemNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::DispatchableNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::UnsupportedMetadataVersion => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
@@ -237,27 +245,27 @@ pub struct PalletQueryParams {
     /// Block hash or number to query at. If not provided, uses the latest block.
     pub at: Option<String>,
 
-    /// If `true`, only return the names of items without full metadata.
+    /// If true, only return the names of items without full metadata.
     #[serde(default)]
     pub only_ids: bool,
 
-    /// If `true`, resolve the block from the relay chain (Asset Hub only).
+    /// If true, resolve the block from the relay chain (Asset Hub only).
     #[serde(default)]
     pub use_rc_block: bool,
 }
 
-/// Query parameters for single item endpoints (e.g., `/pallets/{palletId}/consts/{constantId}`).
+/// Query parameters for single item endpoints (e.g., /pallets/{palletId}/consts/{constantId}).
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PalletItemQueryParams {
     /// Block hash or number to query at. If not provided, uses the latest block.
     pub at: Option<String>,
 
-    /// If `true`, include full metadata for the item.
+    /// If true, include full metadata for the item.
     #[serde(default)]
     pub metadata: bool,
 
-    /// If `true`, resolve the block from the relay chain (Asset Hub only).
+    /// If true, resolve the block from the relay chain (Asset Hub only).
     #[serde(default)]
     pub use_rc_block: bool,
 }
@@ -266,19 +274,19 @@ pub struct PalletItemQueryParams {
 // RC Block Fields
 // ============================================================================
 
-/// Fields to include in responses when `useRcBlock=true`.
+/// Fields to include in responses when useRcBlock=true.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RcBlockFields {
-    /// Relay chain block hash (when `useRcBlock=true`).
+    /// Relay chain block hash (when useRcBlock=true).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rc_block_hash: Option<String>,
 
-    /// Relay chain block number (when `useRcBlock=true`).
+    /// Relay chain block number (when useRcBlock=true).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rc_block_number: Option<String>,
 
-    /// Asset Hub timestamp (when `useRcBlock=true`).
+    /// Asset Hub timestamp (when useRcBlock=true).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ah_timestamp: Option<String>,
 }
