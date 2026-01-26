@@ -3,21 +3,21 @@
 //! Returns information about all foreign assets on Asset Hub chains.
 //! Foreign assets are cross-chain assets identified by XCM MultiLocation.
 
-use crate::handlers::pallets::common::{format_account_id, AtResponse, PalletError};
+use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
+    Json,
     extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use config::ChainType;
 use futures::StreamExt;
 use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
-use subxt::{client::OnlineClientAtBlock, SubstrateConfig};
+use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 // ============================================================================
 // Request/Response Types
@@ -140,7 +140,7 @@ pub async fn pallets_foreign_assets(
     };
 
     let ss58_prefix = state.chain_info.ss58_prefix;
-    let items = fetch_all_foreign_assets(&client_at_block, ss58_prefix).await;
+    let items = fetch_all_foreign_assets(&client_at_block, ss58_prefix).await?;
 
     Ok((
         StatusCode::OK,
@@ -190,58 +190,113 @@ async fn handle_use_rc_block(
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
+    // Return empty array when no AH blocks found (matching Sidecar behavior)
     if ah_blocks.is_empty() {
-        return Ok(build_empty_rc_response(&rc_resolved_block));
+        return Ok((StatusCode::OK, Json(serde_json::json!([]))).into_response());
     }
 
-    let ah_block = &ah_blocks[0];
-    let client_at_block = state.client.at_block(ah_block.number).await?;
-
-    let at = AtResponse {
-        hash: ah_block.hash.clone(),
-        height: ah_block.number.to_string(),
-    };
-
-    let ah_timestamp = fetch_timestamp(&client_at_block).await;
+    let rc_block_number = rc_resolved_block.number.to_string();
+    let rc_block_hash = rc_resolved_block.hash.clone();
     let ss58_prefix = state.chain_info.ss58_prefix;
-    let items = fetch_all_foreign_assets(&client_at_block, ss58_prefix).await;
 
-    Ok((
-        StatusCode::OK,
-        Json(PalletsForeignAssetsResponse {
+    // Process ALL AH blocks, not just the first one
+    let mut results = Vec::new();
+    for ah_block in ah_blocks {
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
+
+        let ah_timestamp = fetch_timestamp(&client_at_block).await;
+        let items = fetch_all_foreign_assets(&client_at_block, ss58_prefix).await?;
+
+        results.push(PalletsForeignAssetsResponse {
             at,
             items,
-            rc_block_hash: Some(rc_resolved_block.hash),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
+            rc_block_hash: Some(rc_block_hash.clone()),
+            rc_block_number: Some(rc_block_number.clone()),
             ah_timestamp,
-        }),
-    )
-        .into_response())
+        });
+    }
+
+    Ok((StatusCode::OK, Json(results)).into_response())
 }
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
+/// Format a number with thousand separators (commas) to match Sidecar format.
+fn format_with_commas(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
+}
+
 /// Fetches all foreign assets by iterating over ForeignAssets::Asset storage.
+/// Returns an error if the pallet doesn't exist or storage iteration fails.
 async fn fetch_all_foreign_assets(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
-) -> Vec<ForeignAssetItem> {
+) -> Result<Vec<ForeignAssetItem>, PalletError> {
     let mut items = Vec::new();
+
+    // First, fetch all metadata entries and store them by their blake2_128_concat key portion
+    let mut metadata_map: std::collections::HashMap<Vec<u8>, serde_json::Value> =
+        std::collections::HashMap::new();
+
+    let metadata_addr = subxt::dynamic::storage::<(scale_value::Value,), scale_value::Value>(
+        "ForeignAssets",
+        "Metadata",
+    );
+
+    // Try to iterate metadata - if this fails, the pallet might not exist
+    match client_at_block.storage().iter(metadata_addr, ()).await {
+        Ok(mut metadata_stream) => {
+            while let Some(entry_result) = metadata_stream.next().await {
+                if let Ok(entry) = entry_result {
+                    let key_bytes = entry.key_bytes();
+                    // Extract the blake2_128_concat portion (bytes 32 onwards)
+                    if key_bytes.len() > 32 {
+                        let blake2_concat_portion = key_bytes[32..].to_vec();
+                        let value_bytes = entry.value().bytes();
+                        let metadata = decode_asset_metadata(value_bytes);
+                        metadata_map.insert(blake2_concat_portion, metadata);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to iterate ForeignAssets::Metadata storage: {:?}", e);
+            // Continue - metadata might be empty but Asset storage could still work
+        }
+    }
+
+    tracing::debug!("Fetched {} metadata entries", metadata_map.len());
 
     // Use dynamic storage iteration to get all foreign assets
     // ForeignAssets::Asset is a map with MultiLocation as key
-    let storage_addr =
-        subxt::dynamic::storage::<(scale_value::Value,), scale_value::Value>("ForeignAssets", "Asset");
+    let storage_addr = subxt::dynamic::storage::<(scale_value::Value,), scale_value::Value>(
+        "ForeignAssets",
+        "Asset",
+    );
 
-    let mut stream = match client_at_block.storage().iter(storage_addr, ()).await {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!("Failed to iterate ForeignAssets::Asset storage: {:?}", e);
-            return items;
-        }
-    };
+    let mut stream = client_at_block
+        .storage()
+        .iter(storage_addr, ())
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to iterate ForeignAssets::Asset storage: {:?}", e);
+            PalletError::PalletNotAvailable("ForeignAssets")
+        })?;
 
     while let Some(entry_result) = stream.next().await {
         let entry = match entry_result {
@@ -254,16 +309,32 @@ async fn fetch_all_foreign_assets(
 
         // Extract the MultiLocation key from the storage key
         let key_bytes = entry.key_bytes();
-        let key_bytes_owned = key_bytes.to_vec();
+
+        // Debug: log the full Asset storage key for first entry
+        if items.is_empty() {
+            tracing::debug!(
+                "First Asset storage key (len={}): 0x{}",
+                key_bytes.len(),
+                hex::encode(key_bytes)
+            );
+        }
+
         let multi_location = extract_multi_location_from_key(key_bytes);
 
         // Decode the asset details - use bytes() which returns a reference
         let value_bytes = entry.value().bytes();
         let foreign_asset_info = decode_asset_details(value_bytes, ss58_prefix);
 
-        // Fetch metadata for this asset using the same key
-        let foreign_asset_metadata =
-            fetch_foreign_asset_metadata(client_at_block, &key_bytes_owned).await;
+        // Look up metadata using the blake2_128_concat portion of the key
+        let foreign_asset_metadata = if key_bytes.len() > 32 {
+            let blake2_concat_portion = &key_bytes[32..];
+            metadata_map
+                .get(blake2_concat_portion)
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
 
         items.push(ForeignAssetItem {
             multi_location,
@@ -272,7 +343,7 @@ async fn fetch_all_foreign_assets(
         });
     }
 
-    items
+    Ok(items)
 }
 
 /// Extract MultiLocation from storage key bytes.
@@ -287,7 +358,7 @@ fn extract_multi_location_from_key(key_bytes: &[u8]) -> serde_json::Value {
     }
 
     let multi_location_bytes = &key_bytes[48..];
-    
+
     // Try to decode as a versioned location (XCM v3/v4)
     // The MultiLocation structure varies by XCM version, so we'll return a hex representation
     // along with attempting to decode common patterns
@@ -307,16 +378,16 @@ fn decode_multi_location(bytes: &[u8]) -> Option<serde_json::Value> {
     // Try to decode using scale_value for a generic approach
     // This provides a best-effort decode without requiring exact type definitions
     let cursor = &mut &bytes[..];
-    
+
     // First byte is `parents` (u8)
     let parents = u8::decode(cursor).ok()?;
-    
+
     // Remaining bytes are the interior junctions
     // For now, return a structured representation
     let interior_bytes = *cursor;
-    
+
     Some(serde_json::json!({
-        "parents": parents,
+        "parents": parents.to_string(),
         "interior": decode_junctions(interior_bytes).unwrap_or_else(|| {
             serde_json::json!({"raw": format!("0x{}", hex::encode(interior_bytes))})
         })
@@ -370,9 +441,10 @@ fn decode_junction(cursor: &mut &[u8]) -> Option<serde_json::Value> {
 
     match variant_index {
         0 => {
-            // Parachain(u32)
-            let para_id = u32::decode(cursor).ok()?;
-            Some(serde_json::json!({"Parachain": para_id}))
+            // Parachain(Compact<u32>)
+            let para_id = parity_scale_codec::Compact::<u32>::decode(cursor).ok()?.0;
+            // Format with thousand separators to match Sidecar
+            Some(serde_json::json!({"Parachain": format_with_commas(para_id as u64)}))
         }
         1 => {
             // AccountId32 { network: Option<NetworkId>, id: [u8; 32] }
@@ -392,22 +464,24 @@ fn decode_junction(cursor: &mut &[u8]) -> Option<serde_json::Value> {
         }
         3 => {
             // AccountKey20 { network: Option<NetworkId>, key: [u8; 20] }
-            let _network = decode_option_network_id(cursor);
+            let network = decode_option_network_id(cursor);
             let mut key = [0u8; 20];
             if cursor.len() >= 20 {
                 key.copy_from_slice(&cursor[..20]);
                 *cursor = &cursor[20..];
             }
-            Some(serde_json::json!({"AccountKey20": {"key": format!("0x{}", hex::encode(key))}}))
+            Some(
+                serde_json::json!({"AccountKey20": {"network": network, "key": format!("0x{}", hex::encode(key))}}),
+            )
         }
         4 => {
             // PalletInstance(u8)
             let instance = u8::decode(cursor).ok()?;
-            Some(serde_json::json!({"PalletInstance": instance}))
+            Some(serde_json::json!({"PalletInstance": instance.to_string()}))
         }
         5 => {
-            // GeneralIndex(u128)
-            let index = u128::decode(cursor).ok()?;
+            // GeneralIndex(Compact<u128>)
+            let index = parity_scale_codec::Compact::<u128>::decode(cursor).ok()?.0;
             Some(serde_json::json!({"GeneralIndex": index.to_string()}))
         }
         6 => {
@@ -419,8 +493,8 @@ fn decode_junction(cursor: &mut &[u8]) -> Option<serde_json::Value> {
                 *cursor = &cursor[32..];
             }
             Some(serde_json::json!({"GeneralKey": {
-                "length": length,
-                "data": format!("0x{}", hex::encode(&data[..length as usize]))
+                "length": length.to_string(),
+                "data": format!("0x{}", hex::encode(data))
             }}))
         }
         7 => {
@@ -459,14 +533,26 @@ fn decode_network_id(cursor: &mut &[u8]) -> Option<serde_json::Value> {
     }
     let variant = u8::decode(cursor).ok()?;
     match variant {
-        0 => Some(serde_json::json!("ByGenesis")), // Would need 32-byte hash
-        1 => Some(serde_json::json!("ByFork")),    // Would need version info
+        0 => {
+            // ByGenesis - has 32-byte hash
+            let mut hash = [0u8; 32];
+            if cursor.len() >= 32 {
+                hash.copy_from_slice(&cursor[..32]);
+                *cursor = &cursor[32..];
+            }
+            Some(serde_json::json!({"ByGenesis": format!("0x{}", hex::encode(hash))}))
+        }
+        1 => Some(serde_json::json!("ByFork")), // Would need version info
         2 => Some(serde_json::json!("Polkadot")),
         3 => Some(serde_json::json!("Kusama")),
         4 => Some(serde_json::json!("Westend")),
         5 => Some(serde_json::json!("Rococo")),
         6 => Some(serde_json::json!("Wococo")),
-        7 => Some(serde_json::json!("Ethereum")),  // Would need chain_id
+        7 => {
+            // Ethereum - has Compact<u64> chain_id
+            let chain_id = parity_scale_codec::Compact::<u64>::decode(cursor).ok()?.0;
+            Some(serde_json::json!({"Ethereum": {"chainId": chain_id.to_string()}}))
+        }
         8 => Some(serde_json::json!("BitcoinCore")),
         9 => Some(serde_json::json!("BitcoinCash")),
         10 => Some(serde_json::json!("PolkadotBulletin")),
@@ -498,59 +584,10 @@ fn decode_asset_details(bytes: &[u8], ss58_prefix: u16) -> serde_json::Value {
     })
 }
 
-/// Fetch metadata for a foreign asset using its storage key.
-/// Returns an empty object `{}` if metadata is not found.
-/// 
-/// Note: This function constructs the metadata storage key from the asset storage key.
-/// Both use blake2_128_concat hashing for the MultiLocation key.
-async fn fetch_foreign_asset_metadata(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-    asset_key_bytes: &[u8],
-) -> serde_json::Value {
-    // The asset key format is: twox128(ForeignAssets) ++ twox128(Asset) ++ blake2_128_concat(multilocation)
-    // For metadata, we need: twox128(ForeignAssets) ++ twox128(Metadata) ++ blake2_128_concat(multilocation)
-    // 
-    // The blake2_128_concat portion (16 bytes hash + SCALE-encoded multilocation) starts at byte 32
-    if asset_key_bytes.len() <= 32 {
-        return serde_json::json!({});
-    }
-
-    // Extract the blake2_128_concat(multilocation) portion (everything after the two twox128 prefixes)
-    let multi_location_with_hash = &asset_key_bytes[32..];
-
-    // Build the metadata storage key using pre-computed twox128 hashes
-    // twox128("ForeignAssets") = 0x5e4b6f02564ae6307da1a98362192d3c
-    // twox128("Metadata") = 0x312fca352e82f3b5d23f36b1ea2635ce
-    let mut metadata_key = Vec::with_capacity(32 + multi_location_with_hash.len());
-    
-    // twox128("ForeignAssets") - pre-computed
-    metadata_key.extend_from_slice(&[
-        0x5e, 0x4b, 0x6f, 0x02, 0x56, 0x4a, 0xe6, 0x30,
-        0x7d, 0xa1, 0xa9, 0x83, 0x62, 0x19, 0x2d, 0x3c,
-    ]);
-    // twox128("Metadata") - pre-computed
-    metadata_key.extend_from_slice(&[
-        0x31, 0x2f, 0xca, 0x35, 0x2e, 0x82, 0xf3, 0xb5,
-        0xd2, 0x3f, 0x36, 0xb1, 0xea, 0x26, 0x35, 0xce,
-    ]);
-    // The blake2_128_concat(multilocation) portion from the asset key
-    metadata_key.extend_from_slice(multi_location_with_hash);
-
-    // Fetch using raw storage key
-    let metadata_value = match client_at_block
-        .storage()
-        .fetch_raw(metadata_key)
-        .await
-    {
-        Ok(value) if !value.is_empty() => value,
-        Ok(_) => return serde_json::json!({}),
-        Err(e) => {
-            tracing::debug!("Failed to fetch foreign asset metadata: {:?}", e);
-            return serde_json::json!({});
-        }
-    };
-
-    let metadata = match AssetMetadataStorage::decode(&mut &metadata_value[..]) {
+/// Decode asset metadata from raw bytes into JSON.
+/// Returns an empty object `{}` if decoding fails.
+fn decode_asset_metadata(bytes: &[u8]) -> serde_json::Value {
+    let metadata = match AssetMetadataStorage::decode(&mut &bytes[..]) {
         Ok(m) => m,
         Err(_) => return serde_json::json!({}),
     };
@@ -574,26 +611,6 @@ async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>)
         .ok()?;
     let timestamp_value = timestamp.decode().ok()?;
     Some(timestamp_value.to_string())
-}
-
-/// Builds an empty response when no AH blocks are found in the RC block.
-fn build_empty_rc_response(rc_resolved_block: &utils::ResolvedBlock) -> Response {
-    let at = AtResponse {
-        hash: rc_resolved_block.hash.clone(),
-        height: rc_resolved_block.number.to_string(),
-    };
-
-    (
-        StatusCode::OK,
-        Json(PalletsForeignAssetsResponse {
-            at,
-            items: vec![],
-            rc_block_hash: Some(rc_resolved_block.hash.clone()),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
-            ah_timestamp: None,
-        }),
-    )
-        .into_response()
 }
 
 #[cfg(test)]
@@ -635,7 +652,7 @@ mod tests {
         };
 
         let json = serde_json::to_string(&item).unwrap();
-        
+
         // Verify camelCase serialization
         assert!(json.contains("\"multiLocation\""));
         assert!(json.contains("\"foreignAssetInfo\""));
@@ -643,7 +660,7 @@ mod tests {
         assert!(json.contains("\"minBalance\""));
         assert!(json.contains("\"isSufficient\""));
         assert!(json.contains("\"isFrozen\""));
-        
+
         // Verify no snake_case
         assert!(!json.contains("\"multi_location\""));
         assert!(!json.contains("\"foreign_asset_info\""));
@@ -664,13 +681,13 @@ mod tests {
         };
 
         let json = serde_json::to_string(&response).unwrap();
-        
+
         // Verify structure
         assert!(json.contains("\"at\""));
         assert!(json.contains("\"items\""));
         assert!(json.contains("\"hash\""));
         assert!(json.contains("\"height\""));
-        
+
         // Verify optional fields are not included when None
         assert!(!json.contains("\"rcBlockHash\""));
         assert!(!json.contains("\"rcBlockNumber\""));
@@ -691,7 +708,7 @@ mod tests {
         };
 
         let json = serde_json::to_string(&response).unwrap();
-        
+
         // Verify RC block fields are included in camelCase
         assert!(json.contains("\"rcBlockHash\""));
         assert!(json.contains("\"rcBlockNumber\""));
@@ -710,7 +727,7 @@ mod tests {
         };
 
         let json = serde_json::to_string(&item).unwrap();
-        
+
         // Verify empty objects are serialized correctly
         assert!(json.contains("\"foreignAssetInfo\":{}"));
         assert!(json.contains("\"foreignAssetMetadata\":{}"));
@@ -737,7 +754,7 @@ mod tests {
         let result = decode_multi_location(&bytes);
         assert!(result.is_some());
         let json = result.unwrap();
-        assert_eq!(json["parents"], 0);
+        assert_eq!(json["parents"], "0");
         assert_eq!(json["interior"], "Here");
     }
 
@@ -751,12 +768,14 @@ mod tests {
 
     #[test]
     fn test_decode_junction_parachain() {
-        // Junction::Parachain(1000) = variant 0, then u32 little-endian
-        let mut cursor: &[u8] = &[0u8, 0xe8, 0x03, 0x00, 0x00]; // 0 = Parachain, 1000 = 0x3e8
+        // Junction::Parachain(1000) = variant 0, then Compact<u32>
+        // Compact encoding: 1000 = 0x3e8, which in compact is 0xa10f (two-byte mode)
+        // Two-byte mode: value << 2 | 0b01 = 1000 << 2 | 1 = 4001 = 0x0fa1 -> little endian 0xa1, 0x0f
+        let mut cursor: &[u8] = &[0u8, 0xa1, 0x0f]; // 0 = Parachain, Compact(1000)
         let result = decode_junction(&mut cursor);
         assert!(result.is_some());
         let json = result.unwrap();
-        assert_eq!(json["Parachain"], 1000);
+        assert_eq!(json["Parachain"], "1,000");
     }
 
     #[test]
@@ -801,7 +820,8 @@ mod tests {
         assert!(!params.use_rc_block);
 
         // Test explicit use_rc_block
-        let params: ForeignAssetsQueryParams = serde_json::from_str(r#"{"at":"12345","useRcBlock":true}"#).unwrap();
+        let params: ForeignAssetsQueryParams =
+            serde_json::from_str(r#"{"at":"12345","useRcBlock":true}"#).unwrap();
         assert!(params.use_rc_block);
     }
 }
