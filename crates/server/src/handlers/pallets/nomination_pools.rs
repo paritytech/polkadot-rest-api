@@ -499,3 +499,237 @@ async fn fetch_reward_pool(
 
     None
 }
+
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pool_state_as_str() {
+        assert_eq!(PoolState::Open.as_str(), "Open");
+        assert_eq!(PoolState::Blocked.as_str(), "Blocked");
+        assert_eq!(PoolState::Destroying.as_str(), "Destroying");
+    }
+
+    #[test]
+    fn test_nomination_pools_info_response_serialization() {
+        let response = NominationPoolsInfoResponse {
+            at: AtResponse {
+                hash: "0x123abc".to_string(),
+                height: "1000000".to_string(),
+            },
+            counter_for_bonded_pools: "100".to_string(),
+            counter_for_metadata: "50".to_string(),
+            counter_for_pool_members: "5000".to_string(),
+            counter_for_reverse_pool_id_lookup: "100".to_string(),
+            counter_for_reward_pools: "100".to_string(),
+            counter_for_sub_pools_storage: "100".to_string(),
+            last_pool_id: "100".to_string(),
+            max_pool_members: Some(50000),
+            max_pool_members_per_pool: Some(1000),
+            max_pools: Some(500),
+            min_create_bond: "1000000000000".to_string(),
+            min_join_bond: "100000000000".to_string(),
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["at"]["hash"], "0x123abc");
+        assert_eq!(json["at"]["height"], "1000000");
+        assert_eq!(json["counterForBondedPools"], "100");
+        assert_eq!(json["counterForMetadata"], "50");
+        assert_eq!(json["counterForPoolMembers"], "5000");
+        assert_eq!(json["lastPoolId"], "100");
+        assert_eq!(json["maxPoolMembers"], 50000);
+        assert_eq!(json["maxPoolMembersPerPool"], 1000);
+        assert_eq!(json["maxPools"], 500);
+        assert_eq!(json["minCreateBond"], "1000000000000");
+        assert_eq!(json["minJoinBond"], "100000000000");
+        // Optional fields should not be present when None
+        assert!(json.get("rcBlockHash").is_none());
+        assert!(json.get("rcBlockNumber").is_none());
+        assert!(json.get("ahTimestamp").is_none());
+    }
+
+    #[test]
+    fn test_nomination_pools_info_response_with_rc_block() {
+        let response = NominationPoolsInfoResponse {
+            at: AtResponse {
+                hash: "0xabc".to_string(),
+                height: "500".to_string(),
+            },
+            counter_for_bonded_pools: "10".to_string(),
+            counter_for_metadata: "10".to_string(),
+            counter_for_pool_members: "100".to_string(),
+            counter_for_reverse_pool_id_lookup: "10".to_string(),
+            counter_for_reward_pools: "10".to_string(),
+            counter_for_sub_pools_storage: "10".to_string(),
+            last_pool_id: "10".to_string(),
+            max_pool_members: None,
+            max_pool_members_per_pool: None,
+            max_pools: None,
+            min_create_bond: "1000".to_string(),
+            min_join_bond: "100".to_string(),
+            rc_block_hash: Some("0xrc123".to_string()),
+            rc_block_number: Some("999".to_string()),
+            ah_timestamp: Some("1234567890".to_string()),
+        };
+
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["rcBlockHash"], "0xrc123");
+        assert_eq!(json["rcBlockNumber"], "999");
+        assert_eq!(json["ahTimestamp"], "1234567890");
+        // Optional config fields should be null when None
+        assert!(json["maxPoolMembers"].is_null());
+        assert!(json["maxPoolMembersPerPool"].is_null());
+        assert!(json["maxPools"].is_null());
+    }
+
+    #[test]
+    fn test_nomination_pool_response_serialization() {
+        let response = NominationPoolResponse {
+            at: AtResponse {
+                hash: "0xdef456".to_string(),
+                height: "2000000".to_string(),
+            },
+            bonded_pool: Some(json!({
+                "commission": {
+                    "current": null,
+                    "max": null,
+                    "changeRate": null,
+                    "throttleFrom": null,
+                    "claimPermission": null
+                },
+                "memberCounter": "25",
+                "points": "1000000000000",
+                "roles": {
+                    "depositor": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+                    "root": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+                    "nominator": null,
+                    "bouncer": null
+                },
+                "state": "Open"
+            })),
+            reward_pool: Some(json!({
+                "lastRecordedRewardCounter": "12345678901234567890",
+                "lastRecordedTotalPayouts": "1000000000000",
+                "totalRewardsClaimed": "500000000000",
+                "totalCommissionPending": "0",
+                "totalCommissionClaimed": "0"
+            })),
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["at"]["hash"], "0xdef456");
+        assert_eq!(json["at"]["height"], "2000000");
+        assert!(json["bondedPool"].is_object());
+        assert_eq!(json["bondedPool"]["memberCounter"], "25");
+        assert_eq!(json["bondedPool"]["state"], "Open");
+        assert!(json["rewardPool"].is_object());
+        assert_eq!(json["rewardPool"]["totalRewardsClaimed"], "500000000000");
+    }
+
+    #[test]
+    fn test_nomination_pool_response_with_null_pools() {
+        let response = NominationPoolResponse {
+            at: AtResponse {
+                hash: "0x000".to_string(),
+                height: "1".to_string(),
+            },
+            bonded_pool: None,
+            reward_pool: None,
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+
+        let json = serde_json::to_value(&response).unwrap();
+        assert!(json["bondedPool"].is_null());
+        assert!(json["rewardPool"].is_null());
+    }
+
+    #[test]
+    fn test_query_params_deserialization() {
+        // Test with all fields
+        let json = r#"{"at": "12345", "useRcBlock": true}"#;
+        let params: NominationPoolsQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.at, Some("12345".to_string()));
+        assert!(params.use_rc_block);
+
+        // Test with defaults
+        let json = r#"{}"#;
+        let params: NominationPoolsQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.at, None);
+        assert!(!params.use_rc_block);
+
+        // Test with only at
+        let json = r#"{"at": "0xabc123"}"#;
+        let params: NominationPoolsQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.at, Some("0xabc123".to_string()));
+        assert!(!params.use_rc_block);
+    }
+
+    #[test]
+    fn test_query_params_camel_case() {
+        // Verify camelCase is used for useRcBlock
+        let json = r#"{"useRcBlock": true}"#;
+        let params: NominationPoolsQueryParams = serde_json::from_str(json).unwrap();
+        assert!(params.use_rc_block);
+
+        // snake_case should NOT work due to rename_all = "camelCase"
+        let json = r#"{"use_rc_block": true}"#;
+        let params: NominationPoolsQueryParams = serde_json::from_str(json).unwrap();
+        assert!(!params.use_rc_block); // Should be false (default) since field name doesn't match
+    }
+
+    #[test]
+    fn test_response_camel_case_field_names() {
+        let response = NominationPoolsInfoResponse {
+            at: AtResponse {
+                hash: "0x1".to_string(),
+                height: "1".to_string(),
+            },
+            counter_for_bonded_pools: "1".to_string(),
+            counter_for_metadata: "1".to_string(),
+            counter_for_pool_members: "1".to_string(),
+            counter_for_reverse_pool_id_lookup: "1".to_string(),
+            counter_for_reward_pools: "1".to_string(),
+            counter_for_sub_pools_storage: "1".to_string(),
+            last_pool_id: "1".to_string(),
+            max_pool_members: None,
+            max_pool_members_per_pool: None,
+            max_pools: None,
+            min_create_bond: "1".to_string(),
+            min_join_bond: "1".to_string(),
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+
+        let json_str = serde_json::to_string(&response).unwrap();
+
+        // Verify camelCase field names in serialized JSON
+        assert!(json_str.contains("counterForBondedPools"));
+        assert!(json_str.contains("counterForMetadata"));
+        assert!(json_str.contains("counterForPoolMembers"));
+        assert!(json_str.contains("counterForReversePoolIdLookup"));
+        assert!(json_str.contains("counterForRewardPools"));
+        assert!(json_str.contains("counterForSubPoolsStorage"));
+        assert!(json_str.contains("lastPoolId"));
+        assert!(json_str.contains("minCreateBond"));
+        assert!(json_str.contains("minJoinBond"));
+
+        // Verify snake_case is NOT used
+        assert!(!json_str.contains("counter_for_bonded_pools"));
+        assert!(!json_str.contains("last_pool_id"));
+    }
+}
