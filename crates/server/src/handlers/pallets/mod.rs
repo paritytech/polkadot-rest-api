@@ -1,30 +1,28 @@
-//! Handlers for pallets-related endpoints.
+//! Handlers for pallet-related endpoints.
 //!
-//! These endpoints provide access to pallet metadata including
-//! storage items, constants, dispatchables, errors, and events.
+//! This module contains all handlers for the `/pallets` API endpoints.
 
-pub mod asset_conversion;
-pub mod assets;
-pub mod common;
-pub mod constants;
-pub mod consts;
-pub mod dispatchables;
-pub mod events;
-pub mod foreign_assets;
-pub mod nomination_pools;
-pub mod pool_assets;
-pub mod staking_progress;
-pub mod staking_validators;
+mod assets;
+mod common;
+mod consts;
+mod dispatchables;
+mod events;
+mod foreign_assets;
+mod nomination_pools;
+mod pool_assets;
+mod staking;
 
-pub use asset_conversion::{get_liquidity_pools, get_next_available_id};
 pub use assets::pallets_assets_asset_info;
 pub use consts::{pallets_constant_item, pallets_constants};
 pub use dispatchables::{get_pallet_dispatchable_item, get_pallets_dispatchables};
 pub use events::{get_pallet_event_item, get_pallet_events};
 pub use foreign_assets::pallets_foreign_assets;
-pub use nomination_pools::{pallets_nomination_pools_info, pallets_nomination_pools_pool};
+pub use nomination_pools::{
+    get_liquidity_pools, get_next_available_id, pallets_nomination_pools_info,
+    pallets_nomination_pools_pool,
+};
 pub use pool_assets::pallets_pool_assets_asset_info;
-pub use staking_progress::pallets_staking_progress;
-pub use staking_progress::rc_pallets_staking_progress;
-pub use staking_validators::pallets_staking_validators;
-pub use staking_validators::rc_pallets_staking_validators;
+pub use staking::{
+    pallets_staking_progress, pallets_staking_validators, rc_pallets_staking_progress,
+    rc_pallets_staking_validators,
+};

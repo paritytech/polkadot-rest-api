@@ -2,6 +2,10 @@
 //!
 //! This module provides endpoints for querying event metadata from pallets.
 
+// Allow large error types - PalletError contains OnlineClientAtBlockError which is large.
+// This is a project-wide pattern that should be addressed holistically.
+#![allow(clippy::result_large_err)]
+
 use crate::handlers::pallets::common::{AtResponse, PalletError};
 use crate::state::AppState;
 use crate::utils;
@@ -131,8 +135,9 @@ pub async fn get_pallet_events(
     let metadata_bytes = hex::decode(hex_str)
         .map_err(|e| PalletError::MetadataDecodeFailed(format!("hex decode: {}", e)))?;
 
-    let metadata: RuntimeMetadataPrefixed = parity_scale_codec::Decode::decode(&mut &metadata_bytes[..])
-        .map_err(|e| PalletError::MetadataDecodeFailed(format!("SCALE decode: {}", e)))?;
+    let metadata: RuntimeMetadataPrefixed =
+        parity_scale_codec::Decode::decode(&mut &metadata_bytes[..])
+            .map_err(|e| PalletError::MetadataDecodeFailed(format!("SCALE decode: {}", e)))?;
 
     // Extract events based on metadata version
     extract_pallet_events(&metadata, &pallet_id, at, params.only_ids)
@@ -177,8 +182,9 @@ pub async fn get_pallet_event_item(
     let metadata_bytes = hex::decode(hex_str)
         .map_err(|e| PalletError::MetadataDecodeFailed(format!("hex decode: {}", e)))?;
 
-    let metadata: RuntimeMetadataPrefixed = parity_scale_codec::Decode::decode(&mut &metadata_bytes[..])
-        .map_err(|e| PalletError::MetadataDecodeFailed(format!("SCALE decode: {}", e)))?;
+    let metadata: RuntimeMetadataPrefixed =
+        parity_scale_codec::Decode::decode(&mut &metadata_bytes[..])
+            .map_err(|e| PalletError::MetadataDecodeFailed(format!("SCALE decode: {}", e)))?;
 
     // Extract specific event based on metadata version
     extract_pallet_event_item(&metadata, &pallet_id, &event_item_id, at, params.metadata)
@@ -214,13 +220,27 @@ fn extract_pallet_event_item(
     include_metadata: bool,
 ) -> Result<Response, PalletError> {
     match &metadata.1 {
-        RuntimeMetadata::V9(m) => extract_event_item_v9_v13(&m.modules, pallet_id, event_item_id, at, include_metadata),
-        RuntimeMetadata::V10(m) => extract_event_item_v9_v13(&m.modules, pallet_id, event_item_id, at, include_metadata),
-        RuntimeMetadata::V11(m) => extract_event_item_v9_v13(&m.modules, pallet_id, event_item_id, at, include_metadata),
-        RuntimeMetadata::V12(m) => extract_event_item_v9_v13(&m.modules, pallet_id, event_item_id, at, include_metadata),
-        RuntimeMetadata::V13(m) => extract_event_item_v9_v13(&m.modules, pallet_id, event_item_id, at, include_metadata),
-        RuntimeMetadata::V14(m) => extract_event_item_v14(m, pallet_id, event_item_id, at, include_metadata),
-        RuntimeMetadata::V15(m) => extract_event_item_v15(m, pallet_id, event_item_id, at, include_metadata),
+        RuntimeMetadata::V9(m) => {
+            extract_event_item_v9_v13(&m.modules, pallet_id, event_item_id, at, include_metadata)
+        }
+        RuntimeMetadata::V10(m) => {
+            extract_event_item_v9_v13(&m.modules, pallet_id, event_item_id, at, include_metadata)
+        }
+        RuntimeMetadata::V11(m) => {
+            extract_event_item_v9_v13(&m.modules, pallet_id, event_item_id, at, include_metadata)
+        }
+        RuntimeMetadata::V12(m) => {
+            extract_event_item_v9_v13(&m.modules, pallet_id, event_item_id, at, include_metadata)
+        }
+        RuntimeMetadata::V13(m) => {
+            extract_event_item_v9_v13(&m.modules, pallet_id, event_item_id, at, include_metadata)
+        }
+        RuntimeMetadata::V14(m) => {
+            extract_event_item_v14(m, pallet_id, event_item_id, at, include_metadata)
+        }
+        RuntimeMetadata::V15(m) => {
+            extract_event_item_v15(m, pallet_id, event_item_id, at, include_metadata)
+        }
         _ => Err(PalletError::PalletNotFound(pallet_id.to_string())),
     }
 }
@@ -468,8 +488,8 @@ fn extract_events_v9_v13<M>(
 where
     M: ModuleMetadataTrait,
 {
-    let (pallet_name, pallet_index, module_idx) =
-        find_pallet_v9_v13(modules, pallet_id).ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+    let (pallet_name, pallet_index, module_idx) = find_pallet_v9_v13(modules, pallet_id)
+        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
 
     let DecodeDifferent::Decoded(modules_vec) = modules else {
         return Err(PalletError::PalletNotFound(pallet_id.to_string()));
@@ -533,8 +553,8 @@ fn extract_event_item_v9_v13<M>(
 where
     M: ModuleMetadataTrait,
 {
-    let (pallet_name, pallet_index, module_idx) =
-        find_pallet_v9_v13(modules, pallet_id).ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+    let (pallet_name, pallet_index, module_idx) = find_pallet_v9_v13(modules, pallet_id)
+        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
 
     let DecodeDifferent::Decoded(modules_vec) = modules else {
         return Err(PalletError::PalletNotFound(pallet_id.to_string()));
@@ -623,8 +643,8 @@ fn extract_events_v14(
     at: AtResponse,
     only_ids: bool,
 ) -> Result<Response, PalletError> {
-    let (pallet_name, pallet_index) =
-        find_pallet_v14(&meta.pallets, pallet_id).ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+    let (pallet_name, pallet_index) = find_pallet_v14(&meta.pallets, pallet_id)
+        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
 
     let pallet = meta
         .pallets
@@ -708,8 +728,8 @@ fn extract_event_item_v14(
     at: AtResponse,
     include_metadata: bool,
 ) -> Result<Response, PalletError> {
-    let (pallet_name, pallet_index) =
-        find_pallet_v14(&meta.pallets, pallet_id).ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+    let (pallet_name, pallet_index) = find_pallet_v14(&meta.pallets, pallet_id)
+        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
 
     let pallet = meta
         .pallets
@@ -825,10 +845,18 @@ fn resolve_type_name_v14(types: &scale_info::PortableRegistry, type_id: u32) -> 
                 }
             }
             scale_info::TypeDef::Array(a) => {
-                format!("[{}; {}]", resolve_type_name_v14(types, a.type_param.id), a.len)
+                format!(
+                    "[{}; {}]",
+                    resolve_type_name_v14(types, a.type_param.id),
+                    a.len
+                )
             }
             scale_info::TypeDef::Tuple(t) => {
-                let inner: Vec<String> = t.fields.iter().map(|f| resolve_type_name_v14(types, f.id)).collect();
+                let inner: Vec<String> = t
+                    .fields
+                    .iter()
+                    .map(|f| resolve_type_name_v14(types, f.id))
+                    .collect();
                 format!("({})", inner.join(", "))
             }
             _ => type_id.to_string(),
@@ -879,8 +907,8 @@ fn extract_events_v15(
     at: AtResponse,
     only_ids: bool,
 ) -> Result<Response, PalletError> {
-    let (pallet_name, pallet_index) =
-        find_pallet_v15(&meta.pallets, pallet_id).ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+    let (pallet_name, pallet_index) = find_pallet_v15(&meta.pallets, pallet_id)
+        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
 
     let pallet = meta
         .pallets
@@ -964,8 +992,8 @@ fn extract_event_item_v15(
     at: AtResponse,
     include_metadata: bool,
 ) -> Result<Response, PalletError> {
-    let (pallet_name, pallet_index) =
-        find_pallet_v15(&meta.pallets, pallet_id).ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+    let (pallet_name, pallet_index) = find_pallet_v15(&meta.pallets, pallet_id)
+        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
 
     let pallet = meta
         .pallets
@@ -1207,10 +1235,7 @@ mod tests {
             },
             pallet: "balances".to_string(),
             pallet_index: "5".to_string(),
-            items: EventsItems::OnlyIds(vec![
-                "Transfer".to_string(),
-                "Deposit".to_string(),
-            ]),
+            items: EventsItems::OnlyIds(vec!["Transfer".to_string(), "Deposit".to_string()]),
         };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["pallet"], "balances");
@@ -1269,15 +1294,13 @@ mod tests {
 
     #[test]
     fn test_events_items_full_serialization() {
-        let items = EventsItems::Full(vec![
-            EventItemMetadata {
-                name: "Transfer".to_string(),
-                fields: vec![],
-                index: "0".to_string(),
-                docs: vec![],
-                args: vec!["AccountId".to_string()],
-            },
-        ]);
+        let items = EventsItems::Full(vec![EventItemMetadata {
+            name: "Transfer".to_string(),
+            fields: vec![],
+            index: "0".to_string(),
+            docs: vec![],
+            args: vec!["AccountId".to_string()],
+        }]);
         let json = serde_json::to_value(&items).unwrap();
         // Untagged enum should serialize as array directly
         assert!(json.is_array());
@@ -1286,10 +1309,7 @@ mod tests {
 
     #[test]
     fn test_events_items_only_ids_serialization() {
-        let items = EventsItems::OnlyIds(vec![
-            "Transfer".to_string(),
-            "Deposit".to_string(),
-        ]);
+        let items = EventsItems::OnlyIds(vec!["Transfer".to_string(), "Deposit".to_string()]);
         let json = serde_json::to_value(&items).unwrap();
         // Untagged enum should serialize as array of strings directly
         assert!(json.is_array());
@@ -1303,8 +1323,7 @@ mod tests {
 
     #[test]
     fn test_pallet_events_query_params_defaults() {
-        let params: PalletEventsQueryParams =
-            serde_json::from_str(r#"{}"#).unwrap();
+        let params: PalletEventsQueryParams = serde_json::from_str(r#"{}"#).unwrap();
         assert!(params.at.is_none());
         assert!(!params.only_ids);
     }
@@ -1319,8 +1338,7 @@ mod tests {
 
     #[test]
     fn test_pallet_event_item_query_params_defaults() {
-        let params: PalletEventItemQueryParams =
-            serde_json::from_str(r#"{}"#).unwrap();
+        let params: PalletEventItemQueryParams = serde_json::from_str(r#"{}"#).unwrap();
         assert!(params.at.is_none());
         assert!(!params.metadata);
     }
