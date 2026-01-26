@@ -16,6 +16,7 @@ use axum::{
 };
 use config::ChainType;
 use futures::StreamExt;
+use heck::ToLowerCamelCase;
 use serde::{Deserialize, Serialize};
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
@@ -104,7 +105,7 @@ pub async fn get_next_available_id(
         height: client_at_block.block_number().to_string(),
     };
 
-    let pool_id = fetch_next_pool_asset_id(&client_at_block).await;
+    let pool_id = fetch_next_pool_asset_id(&client_at_block).await?;
 
     Ok((
         StatusCode::OK,
@@ -146,32 +147,37 @@ async fn handle_next_id_with_rc_block(
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
+    // Return empty array when no AH blocks found (matching Sidecar behavior)
     if ah_blocks.is_empty() {
-        return Ok(build_empty_next_id_rc_response(&rc_resolved_block));
+        return Ok((StatusCode::OK, Json(serde_json::json!([]))).into_response());
     }
 
-    let ah_block = &ah_blocks[0];
-    let client_at_block = state.client.at_block(ah_block.number).await?;
+    let rc_block_number = rc_resolved_block.number.to_string();
+    let rc_block_hash = rc_resolved_block.hash.clone();
 
-    let at = AtResponse {
-        hash: ah_block.hash.clone(),
-        height: ah_block.number.to_string(),
-    };
+    // Process ALL AH blocks, not just the first one
+    let mut results = Vec::new();
+    for ah_block in ah_blocks {
+        let client_at_block = state.client.at_block(ah_block.number).await?;
 
-    let ah_timestamp = fetch_timestamp(&client_at_block).await;
-    let pool_id = fetch_next_pool_asset_id(&client_at_block).await;
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
 
-    Ok((
-        StatusCode::OK,
-        Json(NextAvailableIdResponse {
+        let ah_timestamp = fetch_timestamp(&client_at_block).await;
+        let pool_id = fetch_next_pool_asset_id(&client_at_block).await?;
+
+        results.push(NextAvailableIdResponse {
             at,
             pool_id,
-            rc_block_hash: Some(rc_resolved_block.hash),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
+            rc_block_hash: Some(rc_block_hash.clone()),
+            rc_block_number: Some(rc_block_number.clone()),
             ah_timestamp,
-        }),
-    )
-        .into_response())
+        });
+    }
+
+    Ok((StatusCode::OK, Json(results)).into_response())
 }
 
 // ============================================================================
@@ -206,7 +212,7 @@ pub async fn get_liquidity_pools(
         height: client_at_block.block_number().to_string(),
     };
 
-    let pools = fetch_liquidity_pools(&client_at_block).await;
+    let pools = fetch_liquidity_pools(&client_at_block).await?;
 
     Ok((
         StatusCode::OK,
@@ -248,32 +254,37 @@ async fn handle_pools_with_rc_block(
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
+    // Return empty array when no AH blocks found (matching Sidecar behavior)
     if ah_blocks.is_empty() {
-        return Ok(build_empty_pools_rc_response(&rc_resolved_block));
+        return Ok((StatusCode::OK, Json(serde_json::json!([]))).into_response());
     }
 
-    let ah_block = &ah_blocks[0];
-    let client_at_block = state.client.at_block(ah_block.number).await?;
+    let rc_block_number = rc_resolved_block.number.to_string();
+    let rc_block_hash = rc_resolved_block.hash.clone();
 
-    let at = AtResponse {
-        hash: ah_block.hash.clone(),
-        height: ah_block.number.to_string(),
-    };
+    // Process ALL AH blocks, not just the first one
+    let mut results = Vec::new();
+    for ah_block in ah_blocks {
+        let client_at_block = state.client.at_block(ah_block.number).await?;
 
-    let ah_timestamp = fetch_timestamp(&client_at_block).await;
-    let pools = fetch_liquidity_pools(&client_at_block).await;
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
 
-    Ok((
-        StatusCode::OK,
-        Json(LiquidityPoolsResponse {
+        let ah_timestamp = fetch_timestamp(&client_at_block).await;
+        let pools = fetch_liquidity_pools(&client_at_block).await?;
+
+        results.push(LiquidityPoolsResponse {
             at,
             pools,
-            rc_block_hash: Some(rc_resolved_block.hash),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
+            rc_block_hash: Some(rc_block_hash.clone()),
+            rc_block_number: Some(rc_block_number.clone()),
             ah_timestamp,
-        }),
-    )
-        .into_response())
+        });
+    }
+
+    Ok((StatusCode::OK, Json(results)).into_response())
 }
 
 // ============================================================================
@@ -281,9 +292,10 @@ async fn handle_pools_with_rc_block(
 // ============================================================================
 
 /// Fetches the next available pool asset ID from AssetConversion::NextPoolAssetId storage.
+/// Returns an error if the pallet doesn't exist.
 async fn fetch_next_pool_asset_id(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Option<String> {
+) -> Result<Option<String>, PalletError> {
     // Use dynamic storage to fetch NextPoolAssetId
     // This is a simple value storage item (no keys)
     let addr = subxt::dynamic::storage::<(), u32>("AssetConversion", "NextPoolAssetId");
@@ -292,18 +304,28 @@ async fn fetch_next_pool_asset_id(
         Ok(value) => {
             // decode() returns Result<Value, Error> where Value is u32
             match value.decode() {
-                Ok(id) => Some(id.to_string()),
-                Err(_) => None,
+                Ok(id) => Ok(Some(id.to_string())),
+                Err(_) => Ok(None),
             }
         }
-        Err(_) => None,
+        Err(e) => {
+            // Check if this is a "pallet not found" type error
+            let error_str = format!("{:?}", e);
+            if error_str.contains("Pallet") || error_str.contains("not found") {
+                Err(PalletError::PalletNotFound("AssetConversion".to_string()))
+            } else {
+                tracing::debug!("Failed to fetch NextPoolAssetId: {:?}", e);
+                Ok(None)
+            }
+        }
     }
 }
 
 /// Fetches all liquidity pools from AssetConversion::Pools storage.
+/// Returns an error if the pallet doesn't exist.
 async fn fetch_liquidity_pools(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Vec<LiquidityPoolInfo> {
+) -> Result<Vec<LiquidityPoolInfo>, PalletError> {
     let mut pools = Vec::new();
 
     // Use the tuple form which implements Address with Vec<scale_value::Value> as key parts
@@ -313,13 +335,14 @@ async fn fetch_liquidity_pools(
     // Create an empty vec for key_parts to iterate all entries
     let key_parts: Vec<scale_value::Value> = vec![];
 
-    let mut iter = match client_at_block.storage().iter(addr, key_parts).await {
-        Ok(iter) => iter,
-        Err(e) => {
-            tracing::warn!("Failed to create pools iterator: {}", e);
-            return pools;
-        }
-    };
+    let mut iter = client_at_block
+        .storage()
+        .iter(addr, key_parts)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to iterate AssetConversion::Pools storage: {:?}", e);
+            PalletError::PalletNotFound("AssetConversion".to_string())
+        })?;
 
     while let Some(result) = iter.next().await {
         match result {
@@ -375,39 +398,7 @@ async fn fetch_liquidity_pools(
         }
     }
 
-    pools
-}
-
-/// Converts a string to camelCase (e.g., "PascalCase" -> "pascalCase", "snake_case" -> "snakeCase")
-fn to_camel_case(s: &str) -> String {
-    if s.is_empty() {
-        return String::new();
-    }
-
-    // Handle snake_case
-    if s.contains('_') {
-        let parts: Vec<&str> = s.split('_').collect();
-        let mut result = String::new();
-        for (i, part) in parts.iter().enumerate() {
-            if i == 0 {
-                result.push_str(&part.to_lowercase());
-            } else {
-                let mut chars = part.chars();
-                if let Some(first) = chars.next() {
-                    result.push(first.to_ascii_uppercase());
-                    result.push_str(&chars.as_str().to_lowercase());
-                }
-            }
-        }
-        return result;
-    }
-
-    // Handle PascalCase - just lowercase the first character
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
-    }
+    Ok(pools)
 }
 
 /// Converts a scale_value::Value to serde_json::Value.
@@ -417,7 +408,7 @@ fn scale_value_to_json(value: &scale_value::Value) -> serde_json::Value {
             scale_value::Composite::Named(fields) => {
                 let map: serde_json::Map<String, serde_json::Value> = fields
                     .into_iter()
-                    .map(|(name, val)| (to_camel_case(&name), scale_value_to_json(&val)))
+                    .map(|(name, val)| (name.to_lower_camel_case(), scale_value_to_json(&val)))
                     .collect();
                 serde_json::Value::Object(map)
             }
@@ -440,7 +431,7 @@ fn scale_value_to_json(value: &scale_value::Value) -> serde_json::Value {
                 context: (),
             });
 
-            let variant_name = to_camel_case(&variant.name);
+            let variant_name = variant.name.to_lower_camel_case();
             if variant_value.is_null()
                 || (variant_value.is_array()
                     && variant_value.as_array().is_some_and(|a| a.is_empty()))
@@ -477,46 +468,6 @@ async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>)
     Some(timestamp_value.to_string())
 }
 
-/// Builds an empty response for next-available-id when no AH blocks are found in the RC block.
-fn build_empty_next_id_rc_response(rc_resolved_block: &utils::ResolvedBlock) -> Response {
-    let at = AtResponse {
-        hash: rc_resolved_block.hash.clone(),
-        height: rc_resolved_block.number.to_string(),
-    };
-
-    (
-        StatusCode::OK,
-        Json(NextAvailableIdResponse {
-            at,
-            pool_id: None,
-            rc_block_hash: Some(rc_resolved_block.hash.clone()),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
-            ah_timestamp: None,
-        }),
-    )
-        .into_response()
-}
-
-/// Builds an empty response for liquidity-pools when no AH blocks are found in the RC block.
-fn build_empty_pools_rc_response(rc_resolved_block: &utils::ResolvedBlock) -> Response {
-    let at = AtResponse {
-        hash: rc_resolved_block.hash.clone(),
-        height: rc_resolved_block.number.to_string(),
-    };
-
-    (
-        StatusCode::OK,
-        Json(LiquidityPoolsResponse {
-            at,
-            pools: Vec::new(),
-            rc_block_hash: Some(rc_resolved_block.hash.clone()),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
-            ah_timestamp: None,
-        }),
-    )
-        .into_response()
-}
-
 // ============================================================================
 // Unit Tests
 // ============================================================================
@@ -524,39 +475,43 @@ fn build_empty_pools_rc_response(rc_resolved_block: &utils::ResolvedBlock) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use heck::ToLowerCamelCase;
 
     #[test]
-    fn test_to_camel_case_pascal_case() {
-        assert_eq!(to_camel_case("PascalCase"), "pascalCase");
-        assert_eq!(to_camel_case("Here"), "here");
-        assert_eq!(to_camel_case("X2"), "x2");
-        assert_eq!(to_camel_case("PalletInstance"), "palletInstance");
-        assert_eq!(to_camel_case("GeneralIndex"), "generalIndex");
+    fn test_heck_camel_case_pascal_case() {
+        assert_eq!("PascalCase".to_lower_camel_case(), "pascalCase");
+        assert_eq!("Here".to_lower_camel_case(), "here");
+        assert_eq!("X2".to_lower_camel_case(), "x2");
+        assert_eq!("PalletInstance".to_lower_camel_case(), "palletInstance");
+        assert_eq!("GeneralIndex".to_lower_camel_case(), "generalIndex");
     }
 
     #[test]
-    fn test_to_camel_case_snake_case() {
-        assert_eq!(to_camel_case("snake_case"), "snakeCase");
-        assert_eq!(to_camel_case("lp_token"), "lpToken");
-        assert_eq!(to_camel_case("my_long_variable_name"), "myLongVariableName");
+    fn test_heck_camel_case_snake_case() {
+        assert_eq!("snake_case".to_lower_camel_case(), "snakeCase");
+        assert_eq!("lp_token".to_lower_camel_case(), "lpToken");
+        assert_eq!(
+            "my_long_variable_name".to_lower_camel_case(),
+            "myLongVariableName"
+        );
     }
 
     #[test]
-    fn test_to_camel_case_already_camel_case() {
-        assert_eq!(to_camel_case("camelCase"), "camelCase");
-        assert_eq!(to_camel_case("alreadyCamel"), "alreadyCamel");
+    fn test_heck_camel_case_already_camel_case() {
+        assert_eq!("camelCase".to_lower_camel_case(), "camelCase");
+        assert_eq!("alreadyCamel".to_lower_camel_case(), "alreadyCamel");
     }
 
     #[test]
-    fn test_to_camel_case_single_word() {
-        assert_eq!(to_camel_case("word"), "word");
-        assert_eq!(to_camel_case("Word"), "word");
-        assert_eq!(to_camel_case("WORD"), "wORD"); // Note: Only first char lowercased
+    fn test_heck_camel_case_all_caps() {
+        // heck properly handles all caps words
+        assert_eq!("WORD".to_lower_camel_case(), "word");
+        assert_eq!("ALL_CAPS".to_lower_camel_case(), "allCaps");
     }
 
     #[test]
-    fn test_to_camel_case_empty_string() {
-        assert_eq!(to_camel_case(""), "");
+    fn test_heck_camel_case_empty_string() {
+        assert_eq!("".to_lower_camel_case(), "");
     }
 
     #[test]
