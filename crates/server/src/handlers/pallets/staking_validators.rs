@@ -108,7 +108,6 @@ pub async fn pallets_staking_validators(
     let (validators, validators_to_be_chilled) = derive_staking_validators(
         &client_at_block,
         state.chain_info.ss58_prefix,
-        &state.chain_info.spec_name,
     )
     .await?;
 
@@ -160,7 +159,6 @@ pub async fn rc_pallets_staking_validators(
     let (validators, validators_to_be_chilled) = derive_staking_validators(
         &client_at_block,
         relay_chain_info.ss58_prefix,
-        &relay_chain_info.spec_name,
     )
     .await?;
 
@@ -229,7 +227,6 @@ async fn handle_use_rc_block(
         let (validators, validators_to_be_chilled) = derive_staking_validators(
             &client_at_block,
             state.chain_info.ss58_prefix,
-            &state.chain_info.spec_name,
         )
         .await?;
 
@@ -257,11 +254,10 @@ async fn handle_use_rc_block(
 async fn derive_staking_validators(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
-    spec_name: &str,
 ) -> Result<(Vec<ValidatorInfo>, Vec<ValidatorInfo>), PalletError> {
     // Get the active validator set
     let mut active_set =
-        fetch_active_validators_set(client_at_block, ss58_prefix, spec_name).await?;
+        fetch_active_validators_set(client_at_block, ss58_prefix).await?;
 
     // Iterate over all Staking.Validators entries to get each validator's preferences
     let mut validators = Vec::new();
@@ -345,7 +341,6 @@ async fn derive_staking_validators(
 async fn fetch_active_validators_set(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
-    _spec_name: &str,
 ) -> Result<HashSet<String>, PalletError> {
     // Try ErasStakersOverview first
     if let Ok(active_era) = fetch_active_era_index(client_at_block).await
