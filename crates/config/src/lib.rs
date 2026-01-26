@@ -336,6 +336,18 @@ impl SidecarConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+
+    /// Helper to clean up all SAS_ environment variables
+    fn cleanup_sas_env_vars() {
+        let vars_to_remove: Vec<String> = std::env::vars()
+            .filter(|(k, _)| k.starts_with("SAS_"))
+            .map(|(k, _)| k)
+            .collect();
+        for var in vars_to_remove {
+            unsafe { std::env::remove_var(&var) };
+        }
+    }
 
     #[test]
     fn test_default_config() {
@@ -349,7 +361,10 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_from_env_with_multi_chain() {
+        cleanup_sas_env_vars();
+
         unsafe {
             std::env::set_var("SAS_EXPRESS_PORT", "8080");
             std::env::set_var("SAS_LOG_LEVEL", "info");
@@ -360,7 +375,7 @@ mod tests {
             );
         }
 
-        let config = SidecarConfig::from_env().unwrap();
+        let config = SidecarConfig::from_env_with_file(".env.nonexistent").unwrap();
         assert_eq!(config.substrate.multi_chain_urls.len(), 2);
         assert_eq!(
             config.substrate.multi_chain_urls[0].url,
@@ -379,31 +394,24 @@ mod tests {
             ChainType::AssetHub
         );
 
-        // Clean up
-        unsafe {
-            std::env::remove_var("SAS_EXPRESS_PORT");
-            std::env::remove_var("SAS_LOG_LEVEL");
-            std::env::remove_var("SAS_SUBSTRATE_URL");
-            std::env::remove_var("SAS_SUBSTRATE_MULTI_CHAIN_URL");
-        }
+        cleanup_sas_env_vars();
     }
 
     #[test]
+    #[serial]
     fn test_from_env_invalid_multi_chain_json() {
+        cleanup_sas_env_vars();
+
         unsafe {
             std::env::set_var("SAS_SUBSTRATE_URL", "ws://localhost:9944");
             std::env::set_var("SAS_SUBSTRATE_MULTI_CHAIN_URL", "not-valid-json");
         }
 
-        let result = SidecarConfig::from_env();
+        let result = SidecarConfig::from_env_with_file(".env.nonexistent");
 
         assert!(result.is_err());
 
-        // Clean up
-        unsafe {
-            std::env::remove_var("SAS_SUBSTRATE_URL");
-            std::env::remove_var("SAS_SUBSTRATE_MULTI_CHAIN_URL");
-        }
+        cleanup_sas_env_vars();
     }
 
     #[test]
@@ -434,12 +442,13 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_env_file_non_existent() {
+        cleanup_sas_env_vars();
+
         // Create a temp directory with no .env files
         let temp_dir = tempfile::tempdir().unwrap();
-        std::env::set_current_dir(&temp_dir).unwrap();
-
-        let non_existent_file = ".env.non_existent";
+        let non_existent_file = temp_dir.path().join(".env.non_existent");
 
         unsafe {
             std::env::set_var("SAS_SUBSTRATE_URL", "ws://localhost:9944");
@@ -447,25 +456,22 @@ mod tests {
             std::env::set_var("SAS_LOG_LEVEL", "debug");
         }
 
-        let config = SidecarConfig::from_env_with_file(non_existent_file).unwrap();
+        let config =
+            SidecarConfig::from_env_with_file(non_existent_file.to_str().unwrap()).unwrap();
 
         assert_eq!(config.substrate.url, "ws://localhost:9944");
         assert_eq!(config.express.port, 8011);
         assert_eq!(config.log.level, "debug");
 
-        // Clean up
-        unsafe {
-            std::env::remove_var("SAS_SUBSTRATE_URL");
-            std::env::remove_var("SAS_EXPRESS_PORT");
-            std::env::remove_var("SAS_LOG_LEVEL");
-        }
+        cleanup_sas_env_vars();
     }
 
     #[test]
+    #[serial]
     fn test_env_file_unknown_var() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        std::env::set_current_dir(&temp_dir).unwrap();
+        cleanup_sas_env_vars();
 
+        let temp_dir = tempfile::tempdir().unwrap();
         let env_path = temp_dir.path().join(".env");
 
         // Instead of SAS_EXPRESS_PORT setting SAS_EXPSS_PRT (typo) as environment variable
@@ -479,13 +485,16 @@ mod tests {
 
         // Unknown var `SAS_EXPSS_PRT` is ignored, default port 8080 is used
         assert_eq!(result.unwrap().express.port, 8080);
+
+        cleanup_sas_env_vars();
     }
 
     #[test]
+    #[serial]
     fn test_env_file_working() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        std::env::set_current_dir(&temp_dir).unwrap();
+        cleanup_sas_env_vars();
 
+        let temp_dir = tempfile::tempdir().unwrap();
         let env_path = temp_dir.path().join(".env");
 
         std::fs::write(
@@ -497,5 +506,7 @@ mod tests {
         let result = SidecarConfig::from_env_with_file(env_path.to_str().unwrap());
 
         assert_eq!(result.unwrap().express.port, 8023);
+
+        cleanup_sas_env_vars();
     }
 }
