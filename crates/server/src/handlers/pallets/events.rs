@@ -1047,3 +1047,366 @@ fn extract_event_item_v15(
 fn to_camel_case(s: &str) -> String {
     s.to_lower_camel_case()
 }
+
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -------------------------------------------------------------------------
+    // to_camel_case tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_to_camel_case_simple() {
+        assert_eq!(to_camel_case("Transfer"), "transfer");
+        assert_eq!(to_camel_case("Deposit"), "deposit");
+        assert_eq!(to_camel_case("Withdraw"), "withdraw");
+    }
+
+    #[test]
+    fn test_to_camel_case_multi_word() {
+        assert_eq!(to_camel_case("ReserveRepatriated"), "reserveRepatriated");
+        assert_eq!(to_camel_case("BalanceSet"), "balanceSet");
+        assert_eq!(to_camel_case("NewAccount"), "newAccount");
+        assert_eq!(to_camel_case("DustLost"), "dustLost");
+    }
+
+    #[test]
+    fn test_to_camel_case_acronyms() {
+        // heck handles acronyms by lowercasing them
+        assert_eq!(to_camel_case("XCMTransfer"), "xcmTransfer");
+        assert_eq!(to_camel_case("NFTCreated"), "nftCreated");
+    }
+
+    #[test]
+    fn test_to_camel_case_already_lowercase() {
+        assert_eq!(to_camel_case("transfer"), "transfer");
+        assert_eq!(to_camel_case("deposit"), "deposit");
+    }
+
+    #[test]
+    fn test_to_camel_case_single_char() {
+        assert_eq!(to_camel_case("A"), "a");
+        assert_eq!(to_camel_case("X"), "x");
+    }
+
+    #[test]
+    fn test_to_camel_case_empty() {
+        assert_eq!(to_camel_case(""), "");
+    }
+
+    // -------------------------------------------------------------------------
+    // Response type serialization tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_at_response_serialization() {
+        let at = AtResponse {
+            hash: "0x1234".to_string(),
+            height: "100".to_string(),
+        };
+        let json = serde_json::to_value(&at).unwrap();
+        assert_eq!(json["hash"], "0x1234");
+        assert_eq!(json["height"], "100");
+    }
+
+    #[test]
+    fn test_event_field_with_name_serialization() {
+        let field = EventField {
+            name: Some("from".to_string()),
+            ty: "0".to_string(),
+            type_name: Some("T::AccountId".to_string()),
+            docs: vec!["The sender".to_string()],
+        };
+        let json = serde_json::to_value(&field).unwrap();
+        assert_eq!(json["name"], "from");
+        assert_eq!(json["type"], "0");
+        assert_eq!(json["typeName"], "T::AccountId");
+        assert_eq!(json["docs"][0], "The sender");
+    }
+
+    #[test]
+    fn test_event_field_without_name_serialization() {
+        let field = EventField {
+            name: None,
+            ty: "6".to_string(),
+            type_name: Some("Balance".to_string()),
+            docs: vec![],
+        };
+        let json = serde_json::to_value(&field).unwrap();
+        assert_eq!(json["name"], serde_json::Value::Null);
+        assert_eq!(json["type"], "6");
+        assert_eq!(json["typeName"], "Balance");
+    }
+
+    #[test]
+    fn test_event_field_without_type_name_serialization() {
+        let field = EventField {
+            name: Some("amount".to_string()),
+            ty: "6".to_string(),
+            type_name: None,
+            docs: vec![],
+        };
+        let json = serde_json::to_value(&field).unwrap();
+        assert_eq!(json["name"], "amount");
+        assert_eq!(json["type"], "6");
+        // type_name should be omitted when None
+        assert!(json.get("typeName").is_none());
+    }
+
+    #[test]
+    fn test_event_item_metadata_serialization() {
+        let metadata = EventItemMetadata {
+            name: "Transfer".to_string(),
+            fields: vec![
+                EventField {
+                    name: Some("from".to_string()),
+                    ty: "0".to_string(),
+                    type_name: Some("T::AccountId".to_string()),
+                    docs: vec![],
+                },
+                EventField {
+                    name: Some("to".to_string()),
+                    ty: "0".to_string(),
+                    type_name: Some("T::AccountId".to_string()),
+                    docs: vec![],
+                },
+                EventField {
+                    name: Some("amount".to_string()),
+                    ty: "6".to_string(),
+                    type_name: Some("T::Balance".to_string()),
+                    docs: vec![],
+                },
+            ],
+            index: "2".to_string(),
+            docs: vec!["Transfer succeeded.".to_string()],
+            args: vec![
+                "AccountId32".to_string(),
+                "AccountId32".to_string(),
+                "u128".to_string(),
+            ],
+        };
+        let json = serde_json::to_value(&metadata).unwrap();
+        assert_eq!(json["name"], "Transfer");
+        assert_eq!(json["index"], "2");
+        assert_eq!(json["fields"].as_array().unwrap().len(), 3);
+        assert_eq!(json["args"].as_array().unwrap().len(), 3);
+        assert_eq!(json["docs"][0], "Transfer succeeded.");
+    }
+
+    #[test]
+    fn test_pallet_events_response_serialization() {
+        let response = PalletEventsResponse {
+            at: AtResponse {
+                hash: "0xabc".to_string(),
+                height: "1000".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "5".to_string(),
+            items: EventsItems::OnlyIds(vec![
+                "Transfer".to_string(),
+                "Deposit".to_string(),
+            ]),
+        };
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["pallet"], "balances");
+        assert_eq!(json["palletIndex"], "5");
+        assert_eq!(json["at"]["hash"], "0xabc");
+        assert_eq!(json["items"][0], "Transfer");
+        assert_eq!(json["items"][1], "Deposit");
+    }
+
+    #[test]
+    fn test_pallet_event_item_response_without_metadata() {
+        let response = PalletEventItemResponse {
+            at: AtResponse {
+                hash: "0xdef".to_string(),
+                height: "2000".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "5".to_string(),
+            event_item: "transfer".to_string(),
+            metadata: None,
+        };
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["pallet"], "balances");
+        assert_eq!(json["eventItem"], "transfer");
+        // metadata should be omitted when None
+        assert!(json.get("metadata").is_none());
+    }
+
+    #[test]
+    fn test_pallet_event_item_response_with_metadata() {
+        let response = PalletEventItemResponse {
+            at: AtResponse {
+                hash: "0xdef".to_string(),
+                height: "2000".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "5".to_string(),
+            event_item: "transfer".to_string(),
+            metadata: Some(EventItemMetadata {
+                name: "Transfer".to_string(),
+                fields: vec![],
+                index: "2".to_string(),
+                docs: vec![],
+                args: vec![],
+            }),
+        };
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["eventItem"], "transfer");
+        assert!(json.get("metadata").is_some());
+        assert_eq!(json["metadata"]["name"], "Transfer");
+    }
+
+    // -------------------------------------------------------------------------
+    // EventsItems enum serialization tests (untagged)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_events_items_full_serialization() {
+        let items = EventsItems::Full(vec![
+            EventItemMetadata {
+                name: "Transfer".to_string(),
+                fields: vec![],
+                index: "0".to_string(),
+                docs: vec![],
+                args: vec!["AccountId".to_string()],
+            },
+        ]);
+        let json = serde_json::to_value(&items).unwrap();
+        // Untagged enum should serialize as array directly
+        assert!(json.is_array());
+        assert_eq!(json[0]["name"], "Transfer");
+    }
+
+    #[test]
+    fn test_events_items_only_ids_serialization() {
+        let items = EventsItems::OnlyIds(vec![
+            "Transfer".to_string(),
+            "Deposit".to_string(),
+        ]);
+        let json = serde_json::to_value(&items).unwrap();
+        // Untagged enum should serialize as array of strings directly
+        assert!(json.is_array());
+        assert_eq!(json[0], "Transfer");
+        assert_eq!(json[1], "Deposit");
+    }
+
+    // -------------------------------------------------------------------------
+    // Query params deserialization tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_pallet_events_query_params_defaults() {
+        let params: PalletEventsQueryParams =
+            serde_json::from_str(r#"{}"#).unwrap();
+        assert!(params.at.is_none());
+        assert!(!params.only_ids);
+    }
+
+    #[test]
+    fn test_pallet_events_query_params_with_values() {
+        let params: PalletEventsQueryParams =
+            serde_json::from_str(r#"{"at": "1000", "onlyIds": true}"#).unwrap();
+        assert_eq!(params.at, Some("1000".to_string()));
+        assert!(params.only_ids);
+    }
+
+    #[test]
+    fn test_pallet_event_item_query_params_defaults() {
+        let params: PalletEventItemQueryParams =
+            serde_json::from_str(r#"{}"#).unwrap();
+        assert!(params.at.is_none());
+        assert!(!params.metadata);
+    }
+
+    #[test]
+    fn test_pallet_event_item_query_params_with_metadata() {
+        let params: PalletEventItemQueryParams =
+            serde_json::from_str(r#"{"at": "0xabc", "metadata": true}"#).unwrap();
+        assert_eq!(params.at, Some("0xabc".to_string()));
+        assert!(params.metadata);
+    }
+
+    // -------------------------------------------------------------------------
+    // Edge case tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_event_field_empty_docs() {
+        let field = EventField {
+            name: Some("value".to_string()),
+            ty: "1".to_string(),
+            type_name: None,
+            docs: vec![],
+        };
+        let json = serde_json::to_value(&field).unwrap();
+        assert!(json["docs"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_event_field_multiple_docs() {
+        let field = EventField {
+            name: Some("value".to_string()),
+            ty: "1".to_string(),
+            type_name: None,
+            docs: vec![
+                "First line of docs.".to_string(),
+                "Second line of docs.".to_string(),
+                "".to_string(),
+                "Fourth line after blank.".to_string(),
+            ],
+        };
+        let json = serde_json::to_value(&field).unwrap();
+        assert_eq!(json["docs"].as_array().unwrap().len(), 4);
+    }
+
+    #[test]
+    fn test_event_item_metadata_empty_fields() {
+        let metadata = EventItemMetadata {
+            name: "EmptyEvent".to_string(),
+            fields: vec![],
+            index: "0".to_string(),
+            docs: vec![],
+            args: vec![],
+        };
+        let json = serde_json::to_value(&metadata).unwrap();
+        assert!(json["fields"].as_array().unwrap().is_empty());
+        assert!(json["args"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_pallet_name_lowercase() {
+        // Verify pallet names are returned lowercase
+        let response = PalletEventsResponse {
+            at: AtResponse {
+                hash: "0x".to_string(),
+                height: "0".to_string(),
+            },
+            pallet: "Balances".to_lowercase(),
+            pallet_index: "5".to_string(),
+            items: EventsItems::OnlyIds(vec![]),
+        };
+        assert_eq!(response.pallet, "balances");
+    }
+
+    #[test]
+    fn test_event_item_camel_case_in_response() {
+        let response = PalletEventItemResponse {
+            at: AtResponse {
+                hash: "0x".to_string(),
+                height: "0".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "5".to_string(),
+            event_item: to_camel_case("ReserveRepatriated"),
+            metadata: None,
+        };
+        assert_eq!(response.event_item, "reserveRepatriated");
+    }
+}
