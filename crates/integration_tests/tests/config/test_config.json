@@ -336,46 +336,6 @@
         "description": "Test block endpoint at Asset Hub Polkadot block 11,308,795, for staking event test"
       },
       {
-        "endpoint": "/v1/pallets/staking/validators",
-        "block_height": 11350267,
-        "account_id": null,
-        "query_params": {
-          "at": "11350267"
-        },
-        "fixture_path": "asset-hub-polkadot/staking_validators_block_11350267.json",
-        "description": "Test block endpoint at Asset Hub Polkadot block 11,350,267, for staking validators test"
-      },
-      {
-        "endpoint": "/v1/rc/pallets/staking/validators",
-        "block_height": 120000,
-        "account_id": null,
-        "query_params": {
-          "at": "120000"
-        },
-        "fixture_path": "polkadot/staking_validators_block_12000.json",
-        "description": "Test staking validators endpoint at Polkadot block 120,000"
-      },
-      {
-        "endpoint": "/v1/pallets/staking/progress",
-        "block_height": 11350267,
-        "account_id": null,
-        "query_params": {
-          "at": "11350267"
-        },
-        "fixture_path": "asset-hub-polkadot/staking_progress_block_11350267.json",
-        "description": "Test block endpoint at Asset Hub Polkadot block 11,350,267, for staking progress test"
-      },
-      {
-        "endpoint": "/v1/rc/pallets/staking/progress",
-        "block_height": 120000,
-        "account_id": null,
-        "query_params": {
-          "at": "120000"
-        },
-        "fixture_path": "polkadot/staking_progress_block_12000.json",
-        "description": "Test staking validators endpoint at Polkadot block 120,000"
-      },
-      {
         "endpoint": "/v1/blocks/{blockId}/extrinsics-raw",
         "block_height": 1276963,
         "account_id": null,
