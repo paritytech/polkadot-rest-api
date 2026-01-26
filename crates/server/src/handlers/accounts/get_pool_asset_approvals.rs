@@ -82,10 +82,7 @@ async fn query_pool_asset_approval(
 ) -> Result<PoolAssetApprovalResponse, AccountsError> {
     let storage_query = ("PoolAssets", "Approvals");
 
-    let approvals_exists = client_at_block
-        .storage()
-        .entry(storage_query)
-        .is_ok();
+    let approvals_exists = client_at_block.storage().entry(storage_query).is_ok();
 
     if !approvals_exists {
         return Err(AccountsError::PalletNotAvailable("PoolAssets".to_string()));
