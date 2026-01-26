@@ -4,7 +4,7 @@
 
 ### Logging
 
-Logging levels supported are ```race, debug, info, http, warn, error```. **http** level allows for the emission of http information logging (method, route, elapsed time, success code). However currently tracing does not support *http*.  To mitigate this, **http** level falls back to *debug* for successful logs, *warn* for 4** request logs, and *error* for 5**
+Logging levels supported are ```trace, debug, info, http, warn, error```. **http** level allows for the emission of http information logging (method, route, elapsed time, success code). However currently tracing does not support *http*.  To mitigate this, **http** level falls back to *debug* for successful logs, *warn* for 4** request logs, and *error* for 5**
 
 ## Metrics and Monitoring
 
@@ -167,3 +167,12 @@ To update test fixtures with current blockchain data:
 ```bash
 ./scripts/update_fixtures.sh
 ```
+
+### Using `.env` files
+
+The application supports configuration via `.env` files (for example, `.env` or `.env.polkadot`), allowing you to define all environment variables in one place. A sample configuration is available in [.env.sample](./.env.sample). 
+To start `polkadot-rest-api` with a specific `.env` file, pass the file path as a command-line argument:
+```bash
+cargo run --release --bin polkadot-rest-api -- --env-file .env.polkadot
+```
+This command loads the environment variables specified in `.env.polkadot` file, which should be located in the project’s root directory.
