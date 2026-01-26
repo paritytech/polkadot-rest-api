@@ -361,6 +361,14 @@
         },
         "fixture_path": "asset-hub-polkadot/extrinsic_11308795_2_with_docs.json",
         "description": "Test extrinsic endpoint at Asset Hub Polkadot block 11,308,795, extrinsic index 2, with eventDocs and extrinsicDocs enabled"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}/header",
+        "block_height": 1276963,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/blocks_header_1276963.json",
+        "description": "Test block header endpoint at Asset Hub Polkadot block 1,276,963"
       }
     ],
     "asset-hub-kusama": [
