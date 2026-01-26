@@ -16,11 +16,9 @@ pub struct AddressValidationError(pub String);
 
 mod assets;
 mod pool_assets;
-mod timestamp;
 
 pub use assets::{query_all_assets_id, query_assets};
 pub use pool_assets::{query_all_pool_assets_id, query_pool_assets};
-pub use timestamp::fetch_timestamp;
 // ================================================================================================
 // Address Validation
 // ================================================================================================

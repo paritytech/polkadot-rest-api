@@ -2,10 +2,9 @@ use super::types::{
     AccountsError, BlockInfo, VestingInfoQueryParams, VestingInfoResponse, VestingSchedule,
 };
 use super::utils::validate_and_parse_address;
-use crate::handlers::accounts::utils::fetch_timestamp;
 use crate::handlers::common::accounts::{RawVestingInfo, query_vesting_info};
 use crate::state::AppState;
-use crate::utils::{self, find_ah_blocks_in_rc_block};
+use crate::utils::{self, find_ah_blocks_in_rc_block, fetch_block_timestamp};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -149,7 +148,7 @@ async fn handle_use_rc_block(
             &raw_info,
             Some(rc_block_hash.clone()),
             Some(rc_block_number_str.clone()),
-            fetch_timestamp(&client_at_block).await,
+            fetch_block_timestamp(&client_at_block).await,
         );
 
         results.push(response);

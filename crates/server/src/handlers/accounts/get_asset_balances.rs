@@ -1,8 +1,8 @@
 use super::types::{AccountsError, AssetBalancesQueryParams, AssetBalancesResponse, BlockInfo};
 use super::utils::validate_and_parse_address;
-use crate::handlers::accounts::utils::{fetch_timestamp, query_all_assets_id, query_assets};
+use crate::handlers::accounts::utils::{query_all_assets_id, query_assets};
 use crate::state::AppState;
-use crate::utils::{self, find_ah_blocks_in_rc_block};
+use crate::utils::{self, find_ah_blocks_in_rc_block, fetch_block_timestamp};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -66,8 +66,7 @@ async fn query_asset_balances(
     block: &utils::ResolvedBlock,
     asset_ids: &[u32],
 ) -> Result<AssetBalancesResponse, AccountsError> {
-    let storage_query =
-        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Assets", "Account");
+    let storage_query = ("Assets", "Account");
     let assets_exists = client_at_block.storage().entry(storage_query).is_ok();
 
     if !assets_exists {
@@ -160,7 +159,7 @@ async fn handle_use_rc_block(
         response.rc_block_number = Some(rc_block_number.clone());
 
         // Fetch AH timestamp
-        if let Some(timestamp) = fetch_timestamp(&client_at_block).await {
+        if let Some(timestamp) = fetch_block_timestamp(&client_at_block).await {
             response.ah_timestamp = Some(timestamp);
         }
 

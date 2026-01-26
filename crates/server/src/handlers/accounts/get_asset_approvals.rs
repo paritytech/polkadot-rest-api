@@ -2,9 +2,9 @@ use super::types::{
     AccountsError, AssetApprovalQueryParams, AssetApprovalResponse, BlockInfo, DecodedAssetApproval,
 };
 use super::utils::validate_and_parse_address;
-use crate::handlers::accounts::utils::{extract_u128_field, fetch_timestamp};
+use crate::handlers::accounts::utils::{extract_u128_field};
 use crate::state::AppState;
-use crate::utils::{self, find_ah_blocks_in_rc_block};
+use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -80,7 +80,7 @@ async fn query_asset_approval(
     asset_id: u32,
     block: &utils::ResolvedBlock,
 ) -> Result<AssetApprovalResponse, AccountsError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
+    let storage_query = (
         "Assets",
         "Approvals",
     );
@@ -284,7 +284,7 @@ async fn handle_use_rc_block(
         response.rc_block_number = Some(rc_block_number.clone());
 
         // Fetch AH timestamp
-        if let Some(timestamp) = fetch_timestamp(&client_at_block).await {
+        if let Some(timestamp) = fetch_block_timestamp(&client_at_block).await {
             response.ah_timestamp = Some(timestamp);
         }
 

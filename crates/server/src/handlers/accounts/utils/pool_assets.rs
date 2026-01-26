@@ -15,7 +15,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig, storage::StorageValue};
 pub async fn query_all_pool_assets_id(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
+    let storage_query = (
         "PoolAssets",
         "Asset",
     );
@@ -51,7 +51,7 @@ pub async fn query_pool_assets(
     account: &AccountId32,
     assets: &[u32],
 ) -> Result<Vec<PoolAssetBalance>, AccountsError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
+    let storage_query = (
         "PoolAssets",
         "Account",
     );

@@ -2,12 +2,11 @@ use super::types::{
     AccountsError, BlockInfo, ProxyDefinition, ProxyInfoQueryParams, ProxyInfoResponse,
 };
 use super::utils::validate_and_parse_address;
-use crate::handlers::accounts::utils::fetch_timestamp;
 use crate::handlers::common::accounts::{
-    RawProxyInfo, query_proxy_info as query_proxy_info_shared,
+    RawProxyInfo, query_proxy_info,
 };
 use crate::state::AppState;
-use crate::utils::{self, find_ah_blocks_in_rc_block};
+use crate::utils::{self, find_ah_blocks_in_rc_block, fetch_block_timestamp};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -57,7 +56,7 @@ pub async fn get_proxy_info(
         }
     };
 
-    let raw_info = query_proxy_info_shared(&client_at_block, &account, &resolved_block).await?;
+    let raw_info = query_proxy_info(&client_at_block, &account, &resolved_block).await?;
 
     let response = format_response(&raw_info, None, None, None);
 
@@ -144,13 +143,13 @@ async fn handle_use_rc_block(
             number: ah_block.number,
         };
         let client_at_block = state.client.at_block(ah_resolved.number).await?;
-        let raw_info = query_proxy_info_shared(&client_at_block, &account, &ah_resolved).await?;
+        let raw_info = query_proxy_info(&client_at_block, &account, &ah_resolved).await?;
 
         let response = format_response(
             &raw_info,
             Some(rc_block_hash.clone()),
             Some(rc_block_number.clone()),
-            fetch_timestamp(&client_at_block).await,
+            fetch_block_timestamp(&client_at_block).await,
         );
 
         results.push(response);
