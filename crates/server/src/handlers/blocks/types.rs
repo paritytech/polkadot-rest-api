@@ -53,6 +53,20 @@ fn default_true() -> bool {
     true
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtrinsicQueryParams {
+    /// When true, include documentation for events
+    #[serde(default)]
+    pub event_docs: bool,
+    /// When true, include documentation for extrinsics
+    #[serde(default)]
+    pub extrinsic_docs: bool,
+    /// When true, skip fee calculation for extrinsics (info will be empty object)
+    #[serde(default)]
+    pub no_fees: bool,
+}
+
 impl Default for BlockQueryParams {
     fn default() -> Self {
         Self {
@@ -139,6 +153,18 @@ pub enum GetBlockError {
 
     #[error("Service temporarily unavailable: {0}")]
     ServiceUnavailable(String),
+
+    #[error("Requested `extrinsicIndex` does not exist")]
+    ExtrinsicIndexNotFound,
+
+    #[error("Invalid extrinsic index: {0}")]
+    InvalidExtrinsicIndex(String),
+}
+
+impl From<OnlineClientAtBlockError> for GetBlockError {
+    fn from(err: OnlineClientAtBlockError) -> Self {
+        GetBlockError::ClientAtBlockFailed(Box::new(err))
+    }
 }
 
 impl IntoResponse for GetBlockError {
@@ -146,7 +172,11 @@ impl IntoResponse for GetBlockError {
         let (status, message) = match &self {
             GetBlockError::InvalidBlockParam(_)
             | GetBlockError::BlockResolveFailed(_)
-            | GetBlockError::RelayChainNotConfigured => (StatusCode::BAD_REQUEST, self.to_string()),
+            | GetBlockError::RelayChainNotConfigured
+            | GetBlockError::ExtrinsicIndexNotFound
+            | GetBlockError::InvalidExtrinsicIndex(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
             GetBlockError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
@@ -456,6 +486,24 @@ pub struct ExtrinsicInfo {
     /// Raw extrinsic bytes as hex (used internally for fee queries, not serialized)
     #[serde(skip)]
     pub raw_hex: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockIdentifiers {
+    /// Block height as string
+    pub height: String,
+    /// Block hash
+    pub hash: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtrinsicIndexResponse {
+    /// Block identifiers
+    pub at: BlockIdentifiers,
+    /// The extrinsic at the requested index
+    pub extrinsics: ExtrinsicInfo,
 }
 
 /// Basic block information

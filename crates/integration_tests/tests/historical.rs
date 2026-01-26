@@ -97,6 +97,10 @@ impl HistoricalTestRunner {
             replacements.insert("accountId".to_string(), account_id.clone());
         }
 
+        if let Some(extrinsic_index) = test_case.extrinsic_index {
+            replacements.insert("extrinsicIndex".to_string(), extrinsic_index.to_string());
+        }
+
         if let Some(ref asset_id) = test_case.asset_id {
             replacements.insert("assetId".to_string(), asset_id.clone());
         }
