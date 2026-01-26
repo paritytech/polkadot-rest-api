@@ -55,7 +55,7 @@ pub struct HistoricalTestCase {
     pub asset_id: Option<String>,
     /// Extrinsic index to test
     pub extrinsic_index: Option<u64>,
-    /// Pool identifier to test (for nomination pools)
+    /// Pool identifier for nomination pools
     pub pool_id: Option<String>,
     /// Query parameters (if any)
     #[serde(default)]
