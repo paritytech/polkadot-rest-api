@@ -266,7 +266,13 @@ async fn derive_staking_validators(
     while let Some(entry_result) = stream.next().await {
         let entry = match entry_result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                return Err(PalletError::StorageEntryFetchFailed {
+                    pallet: "Staking",
+                    entry: "Validators",
+                    error: format!("{}", e),
+                });
+            }
         };
 
         let key_bytes = entry.key_bytes();
@@ -399,7 +405,13 @@ async fn fetch_era_stakers_overview_keys(
     while let Some(entry_result) = stream.next().await {
         let entry = match entry_result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                return Err(PalletError::StorageEntryFetchFailed {
+                    pallet: "Staking",
+                    entry: "ErasStakersOverview",
+                    error: format!("{}", e),
+                });
+            }
         };
 
         let key_bytes = entry.key_bytes();

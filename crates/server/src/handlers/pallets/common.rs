@@ -53,6 +53,13 @@ pub enum PalletError {
         entry: &'static str,
     },
 
+    #[error("Fetch entry of {pallet}::{entry} storage failed with {error}")]
+    StorageEntryFetchFailed {
+        pallet: &'static str,
+        entry: &'static str,
+        error: String,
+    },
+
     #[error("Failed to decode {pallet}::{entry} storage")]
     StorageDecodeFailed {
         pallet: &'static str,
@@ -122,6 +129,9 @@ impl IntoResponse for PalletError {
 
             // Storage errors - NOT_FOUND for missing data, INTERNAL_SERVER_ERROR for decode failures
             PalletError::StorageFetchFailed { .. } => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::StorageEntryFetchFailed { .. } => {
+                (StatusCode::NOT_FOUND, self.to_string())
+            }
             PalletError::StorageDecodeFailed { .. } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
