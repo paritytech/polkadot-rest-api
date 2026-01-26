@@ -86,7 +86,7 @@ pub enum ParaInclusionsError {
     #[error("No para inclusions found at this block")]
     NoParaInclusionsFound,
 
-    #[error("No para inclusion found for paraId {0} at this block")]
+    #[error("paraId {0} does not exist in this block")]
     ParaIdNotFound(u32),
 }
 
