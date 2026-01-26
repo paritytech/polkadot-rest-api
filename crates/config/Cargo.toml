@@ -9,3 +9,9 @@ serde_json = "1.0"
 envy = "0.4"
 thiserror = "2.0"
 url = "2.5"
+clap = { version = "4.5.54", features = ["derive"] }
+dotenv = "0.15.0"
+
+[dev-dependencies]
+tempfile = "3.24.0"
+serial_test = "3.2"
