@@ -105,11 +105,8 @@ pub async fn pallets_staking_validators(
         )));
     }
 
-    let (validators, validators_to_be_chilled) = derive_staking_validators(
-        &client_at_block,
-        state.chain_info.ss58_prefix,
-    )
-    .await?;
+    let (validators, validators_to_be_chilled) =
+        derive_staking_validators(&client_at_block, state.chain_info.ss58_prefix).await?;
 
     let response = StakingValidatorsResponse {
         at,
@@ -156,11 +153,8 @@ pub async fn rc_pallets_staking_validators(
         )));
     }
 
-    let (validators, validators_to_be_chilled) = derive_staking_validators(
-        &client_at_block,
-        relay_chain_info.ss58_prefix,
-    )
-    .await?;
+    let (validators, validators_to_be_chilled) =
+        derive_staking_validators(&client_at_block, relay_chain_info.ss58_prefix).await?;
 
     let response = StakingValidatorsResponse {
         at,
@@ -224,11 +218,8 @@ async fn handle_use_rc_block(
 
         let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
-        let (validators, validators_to_be_chilled) = derive_staking_validators(
-            &client_at_block,
-            state.chain_info.ss58_prefix,
-        )
-        .await?;
+        let (validators, validators_to_be_chilled) =
+            derive_staking_validators(&client_at_block, state.chain_info.ss58_prefix).await?;
 
         let at = AtResponse {
             hash: ah_block.hash.clone(),
@@ -256,8 +247,7 @@ async fn derive_staking_validators(
     ss58_prefix: u16,
 ) -> Result<(Vec<ValidatorInfo>, Vec<ValidatorInfo>), PalletError> {
     // Get the active validator set
-    let mut active_set =
-        fetch_active_validators_set(client_at_block, ss58_prefix).await?;
+    let mut active_set = fetch_active_validators_set(client_at_block, ss58_prefix).await?;
 
     // Iterate over all Staking.Validators entries to get each validator's preferences
     let mut validators = Vec::new();
