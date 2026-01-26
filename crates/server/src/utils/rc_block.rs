@@ -198,7 +198,7 @@ fn extract_ah_block_from_candidate_included(
     })
 }
 
-fn extract_bytes_from_json(json: &serde_json::Value) -> Option<Vec<u8>> {
+pub fn extract_bytes_from_json(json: &serde_json::Value) -> Option<Vec<u8>> {
     match json {
         serde_json::Value::Array(arr) => {
             let bytes: Vec<u8> = arr
@@ -224,7 +224,7 @@ fn extract_bytes_from_json(json: &serde_json::Value) -> Option<Vec<u8>> {
     }
 }
 
-fn extract_block_number_from_header(header_bytes: &[u8]) -> Option<u64> {
+pub fn extract_block_number_from_header(header_bytes: &[u8]) -> Option<u64> {
     use parity_scale_codec::Decode;
 
     if header_bytes.len() < 32 {

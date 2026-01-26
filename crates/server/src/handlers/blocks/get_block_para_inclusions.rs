@@ -12,7 +12,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use parity_scale_codec::Decode;
 use scale_value::{Composite, Value, ValueDef};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -379,9 +378,9 @@ fn extract_candidate_receipt_data(
 
 fn extract_head_data(head_data: &Value<()>) -> Option<(u64, String)> {
     let json = serde_json::to_value(head_data).ok()?;
-    let header_bytes = extract_bytes_from_json(&json)?;
+    let header_bytes = utils::extract_bytes_from_json(&json)?;
 
-    let block_number = extract_block_number_from_header(&header_bytes)?;
+    let block_number = utils::extract_block_number_from_header(&header_bytes)?;
 
     let block_hash = BlakeTwo256::hash(&header_bytes);
     let block_hash_hex = format!("0x{}", hex::encode(block_hash.as_ref()));
@@ -405,7 +404,7 @@ fn get_field_from_composite<'a>(
 
 fn value_to_hex_string(value: &Value<()>) -> Option<String> {
     let json = serde_json::to_value(value).ok()?;
-    let bytes = extract_bytes_from_json(&json)?;
+    let bytes = utils::extract_bytes_from_json(&json)?;
     Some(format!("0x{}", hex::encode(&bytes)))
 }
 
@@ -431,40 +430,4 @@ fn extract_u32_from_value(value: &Value<()>) -> Option<u32> {
     }
 
     None
-}
-
-fn extract_bytes_from_json(json: &serde_json::Value) -> Option<Vec<u8>> {
-    match json {
-        serde_json::Value::Array(arr) => {
-            let bytes: Vec<u8> = arr
-                .iter()
-                .filter_map(|v| v.as_u64().and_then(|n| (n <= 255).then_some(n as u8)))
-                .collect();
-
-            if !bytes.is_empty() {
-                return Some(bytes);
-            }
-
-            if arr.len() == 1 {
-                return extract_bytes_from_json(&arr[0]);
-            }
-
-            None
-        }
-        serde_json::Value::String(s) => {
-            let hex_clean = s.strip_prefix("0x").unwrap_or(s);
-            hex::decode(hex_clean).ok()
-        }
-        _ => None,
-    }
-}
-
-fn extract_block_number_from_header(header_bytes: &[u8]) -> Option<u64> {
-    if header_bytes.len() < 32 {
-        return None;
-    }
-
-    let mut cursor = &header_bytes[32..];
-    let number_compact = parity_scale_codec::Compact::<u32>::decode(&mut cursor).ok()?;
-    Some(number_compact.0 as u64)
 }
