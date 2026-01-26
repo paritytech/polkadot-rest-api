@@ -7,7 +7,7 @@ use crate::handlers::common::accounts::{
     DecodedRewardDestination, RawStakingInfo, query_staking_info,
 };
 use crate::state::AppState;
-use crate::utils::{self, find_ah_blocks_in_rc_block, fetch_block_timestamp};
+use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
     extract::{Path, Query, State},

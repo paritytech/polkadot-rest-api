@@ -2,7 +2,7 @@ use super::types::{
     AccountsError, AssetApprovalQueryParams, AssetApprovalResponse, BlockInfo, DecodedAssetApproval,
 };
 use super::utils::validate_and_parse_address;
-use crate::handlers::accounts::utils::{extract_u128_field};
+use crate::handlers::accounts::utils::extract_u128_field;
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
@@ -80,15 +80,9 @@ async fn query_asset_approval(
     asset_id: u32,
     block: &utils::ResolvedBlock,
 ) -> Result<AssetApprovalResponse, AccountsError> {
-    let storage_query = (
-        "Assets",
-        "Approvals",
-    );
+    let storage_query = ("Assets", "Approvals");
 
-    let approvals_exists = client_at_block
-        .storage()
-        .entry(storage_query.clone())
-        .is_ok();
+    let approvals_exists = client_at_block.storage().entry(storage_query).is_ok();
 
     if !approvals_exists {
         return Err(AccountsError::PalletNotAvailable("Assets".to_string()));

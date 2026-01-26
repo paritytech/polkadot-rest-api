@@ -15,10 +15,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig, storage::StorageValue};
 pub async fn query_all_pool_assets_id(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    let storage_query = (
-        "PoolAssets",
-        "Asset",
-    );
+    let storage_query = ("PoolAssets", "Asset");
     let storage_entry = client_at_block.storage().entry(storage_query)?;
     let mut asset_ids = Vec::new();
 
@@ -51,10 +48,7 @@ pub async fn query_pool_assets(
     account: &AccountId32,
     assets: &[u32],
 ) -> Result<Vec<PoolAssetBalance>, AccountsError> {
-    let storage_query = (
-        "PoolAssets",
-        "Account",
-    );
+    let storage_query = ("PoolAssets", "Account");
     let storage_entry = client_at_block.storage().entry(storage_query)?;
 
     // Encode the storage key: (asset_id, account_id)

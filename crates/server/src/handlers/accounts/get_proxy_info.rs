@@ -2,11 +2,9 @@ use super::types::{
     AccountsError, BlockInfo, ProxyDefinition, ProxyInfoQueryParams, ProxyInfoResponse,
 };
 use super::utils::validate_and_parse_address;
-use crate::handlers::common::accounts::{
-    RawProxyInfo, query_proxy_info,
-};
+use crate::handlers::common::accounts::{RawProxyInfo, query_proxy_info};
 use crate::state::AppState;
-use crate::utils::{self, find_ah_blocks_in_rc_block, fetch_block_timestamp};
+use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
     extract::{Path, Query, State},

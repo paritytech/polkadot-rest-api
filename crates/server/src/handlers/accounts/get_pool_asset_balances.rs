@@ -1,11 +1,9 @@
 use super::types::{
     AccountsError, BlockInfo, PoolAssetBalancesQueryParams, PoolAssetBalancesResponse,
 };
-use super::utils::{
-    query_all_pool_assets_id, query_pool_assets, validate_and_parse_address,
-};
+use super::utils::{query_all_pool_assets_id, query_pool_assets, validate_and_parse_address};
 use crate::state::AppState;
-use crate::utils::{self, find_ah_blocks_in_rc_block, fetch_block_timestamp};
+use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -70,10 +68,7 @@ async fn query_pool_asset_balances(
     block: &utils::ResolvedBlock,
     asset_ids: &[u32],
 ) -> Result<PoolAssetBalancesResponse, AccountsError> {
-    let storage_query = (
-        "PoolAssets",
-        "Account",
-    );
+    let storage_query = ("PoolAssets", "Account");
 
     let pool_assets_exists = client_at_block.storage().entry(storage_query).is_ok();
 
