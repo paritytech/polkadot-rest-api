@@ -96,13 +96,17 @@ async fn handle_use_rc_block(
         return Err(GetBlockHeaderError::RelayChainNotConfigured);
     }
 
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(GetBlockHeaderError::RelayChainNotConfigured)?;
+
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(GetBlockHeaderError::RelayChainNotConfigured)?;
+
     let rc_block_id = block_id.parse::<utils::BlockId>()?;
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().unwrap(),
-        state.get_relay_chain_rpc().unwrap(),
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, Some(rc_block_id)).await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
