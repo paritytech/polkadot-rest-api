@@ -15,8 +15,6 @@ use axum::{
     extract::{Path, State},
     response::{IntoResponse, Response},
 };
-use serde_json::Value;
-use subxt_rpcs::rpc_params;
 
 /// Handler for GET /rc/blocks/{blockId}/extrinsics-raw
 ///
@@ -45,15 +43,12 @@ async fn build_rc_block_raw_response(
     let resolved_block =
         utils::resolve_block_with_rpc_client(relay_rpc_client, Some(block_id_parsed)).await?;
 
-    let header_json: Value = relay_rpc_client
-        .request("chain_getHeader", rpc_params![&resolved_block.hash])
-        .await
-        .map_err(GetBlockError::HeaderFetchFailed)?;
+    let block_json = state.get_relay_block_json(&resolved_block.hash).await?;
 
-    let block_json: Value = relay_rpc_client
-        .request("chain_getBlock", rpc_params![&resolved_block.hash])
-        .await
-        .map_err(GetBlockError::HeaderFetchFailed)?;
+    let header_json = block_json
+        .get("block")
+        .and_then(|b| b.get("header"))
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("block.header".to_string()))?;
 
-    build_block_raw_response_from_json(&header_json, resolved_block.number, &block_json)
+    build_block_raw_response_from_json(header_json, resolved_block.number, &block_json)
 }
