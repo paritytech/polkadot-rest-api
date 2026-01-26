@@ -84,7 +84,7 @@ async fn query_pool_asset_approval(
 
     let approvals_exists = client_at_block
         .storage()
-        .entry(storage_query.clone())
+        .entry(storage_query)
         .is_ok();
 
     if !approvals_exists {
