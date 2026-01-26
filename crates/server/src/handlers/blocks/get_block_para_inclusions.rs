@@ -16,8 +16,9 @@ use scale_value::{Composite, Value, ValueDef};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
-use subxt::error::OnlineClientAtBlockError;
 use thiserror::Error;
+
+use super::CommonBlockError;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,20 +65,8 @@ pub struct CandidateDescriptor {
 
 #[derive(Debug, Error)]
 pub enum ParaInclusionsError {
-    #[error("Invalid block parameter")]
-    InvalidBlockParam(#[from] utils::BlockIdParseError),
-
-    #[error("Block resolution failed")]
-    BlockResolveFailed(#[from] utils::BlockResolveError),
-
-    #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
-
-    #[error("Failed to fetch storage: {0}")]
-    StorageFetchFailed(String),
-
-    #[error("Failed to decode events: {0}")]
-    EventsDecodeFailed(String),
+    #[error(transparent)]
+    Common(#[from] CommonBlockError),
 
     #[error("Failed to decode event data: {0}")]
     EventDataDecodeFailed(String),
@@ -89,36 +78,35 @@ pub enum ParaInclusionsError {
     ParaIdNotFound(u32),
 }
 
+impl From<utils::BlockIdParseError> for ParaInclusionsError {
+    fn from(err: utils::BlockIdParseError) -> Self {
+        ParaInclusionsError::Common(CommonBlockError::from(err))
+    }
+}
+
+impl From<utils::BlockResolveError> for ParaInclusionsError {
+    fn from(err: utils::BlockResolveError) -> Self {
+        ParaInclusionsError::Common(CommonBlockError::from(err))
+    }
+}
+
 impl IntoResponse for ParaInclusionsError {
     fn into_response(self) -> Response {
-        let (status, message) = match &self {
-            ParaInclusionsError::InvalidBlockParam(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            ParaInclusionsError::BlockResolveFailed(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
+        match self {
+            ParaInclusionsError::Common(err) => err.into_response(),
             ParaInclusionsError::NoParaInclusionsFound | ParaInclusionsError::ParaIdNotFound(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
+                let body = Json(json!({
+                    "error": self.to_string(),
+                }));
+                (StatusCode::BAD_REQUEST, body).into_response()
             }
-            ParaInclusionsError::ClientAtBlockFailed(err) => {
-                if crate::utils::is_online_client_at_block_disconnected(err.as_ref()) {
-                    (
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        format!("Service temporarily unavailable: {}", err),
-                    )
-                } else {
-                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-                }
+            ParaInclusionsError::EventDataDecodeFailed(_) => {
+                let body = Json(json!({
+                    "error": self.to_string(),
+                }));
+                (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
             }
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-        };
-
-        let body = Json(json!({
-            "error": message,
-        }));
-
-        (status, body).into_response()
+        }
     }
 }
 
@@ -140,7 +128,7 @@ pub async fn get_block_para_inclusions(
         .client
         .at_block(resolved_block.number)
         .await
-        .map_err(|e| ParaInclusionsError::ClientAtBlockFailed(Box::new(e)))?;
+        .map_err(|e| CommonBlockError::ClientAtBlockFailed(Box::new(e)))?;
 
     // Use dynamic storage address for System::Events
     let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
@@ -148,11 +136,11 @@ pub async fn get_block_para_inclusions(
         .storage()
         .fetch(addr, ())
         .await
-        .map_err(|e| ParaInclusionsError::StorageFetchFailed(e.to_string()))?;
+        .map_err(|e| CommonBlockError::StorageFetchFailed(e.to_string()))?;
 
     let events_decoded: Value<()> = events_value
         .decode_as()
-        .map_err(|e| ParaInclusionsError::EventsDecodeFailed(e.to_string()))?;
+        .map_err(|e| CommonBlockError::EventsDecodeFailed(e.to_string()))?;
 
     let mut inclusions = extract_para_inclusions(&events_decoded)?;
 

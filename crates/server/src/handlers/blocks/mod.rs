@@ -13,6 +13,7 @@ pub mod processing;
 pub mod types;
 pub mod utils;
 
+pub use common::CommonBlockError;
 pub use get_block::get_block;
 pub use get_block_extrinsics_raw::get_block_extrinsics_raw;
 pub use get_block_head::get_block_head;
