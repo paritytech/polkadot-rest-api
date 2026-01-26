@@ -3,7 +3,8 @@ use crate::handlers::blocks::types::DigestLog;
 use crate::state::AppState;
 use crate::types::BlockHash;
 use crate::utils::{
-    self, RcBlockError, compute_block_hash_from_header_json, find_ah_blocks_in_rc_block,
+    self, RcBlockError, compute_block_hash_from_header_json, fetch_block_timestamp,
+    find_ah_blocks_in_rc_block,
 };
 use axum::{
     Json,
@@ -13,10 +14,9 @@ use axum::{
 };
 use config::ChainType;
 use heck::ToLowerCamelCase;
-use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use subxt_historic::error::OnlineClientAtBlockError;
+use subxt::error::OnlineClientAtBlockError;
 use subxt_rpcs::rpc_params;
 use thiserror::Error;
 
@@ -83,7 +83,7 @@ pub enum GetBlockHeadHeaderError {
     ServiceUnavailable(String),
 
     #[error("Failed to find Asset Hub blocks in Relay Chain block")]
-    RcBlockError(#[from] RcBlockError),
+    RcBlockError(#[source] Box<RcBlockError>),
 
     #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
     UseRcBlockNotSupported,
@@ -97,7 +97,7 @@ pub enum GetBlockHeadHeaderError {
     BlockResolveFailed(#[from] crate::utils::BlockResolveError),
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 }
 
 impl IntoResponse for GetBlockHeadHeaderError {
@@ -283,7 +283,9 @@ async fn handle_use_rc_block(
         return Err(GetBlockHeadHeaderError::RelayChainNotConfigured);
     };
 
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
+        .await
+        .map_err(|e| GetBlockHeadHeaderError::RcBlockError(Box::new(e)))?;
 
     if ah_blocks.is_empty() {
         return Ok(Json(json!([])).into_response());
@@ -322,17 +324,12 @@ async fn handle_use_rc_block(
         let digest_logs = decode_digest_logs(&header_json);
         let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
 
-        let mut ah_timestamp = None;
-        let client_at_block = state.client.at(ah_block.number).await?;
-        if let Ok(timestamp_entry) = client_at_block.storage().entry("Timestamp", "Now")
-            && let Ok(Some(timestamp)) = timestamp_entry.fetch(()).await
-        {
-            let timestamp_bytes = timestamp.into_bytes();
-            let mut cursor = &timestamp_bytes[..];
-            if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                ah_timestamp = Some(timestamp_value.to_string());
-            }
-        }
+        let client_at_block = state
+            .client
+            .at_block(ah_block.number)
+            .await
+            .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?;
+        let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
         results.push(BlockHeaderResponse {
             number: ah_block.number.to_string(),

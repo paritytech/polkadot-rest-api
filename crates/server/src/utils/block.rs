@@ -1,7 +1,8 @@
-use crate::state::AppState;
+use crate::state::{AppState, SubstrateLegacyRpc};
 use primitive_types::H256;
 use std::str::FromStr;
-use subxt_rpcs::{LegacyRpcMethods, RpcClient, rpc_params};
+use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
+use subxt_rpcs::{RpcClient, rpc_params};
 use thiserror::Error;
 
 /// Represents a block identifier that can be either a hash or a number
@@ -74,6 +75,21 @@ pub struct ResolvedBlock {
     pub number: u64,
 }
 
+/// Fetch the timestamp from the Timestamp.Now storage entry at a given block.
+pub async fn fetch_block_timestamp(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<String> {
+    // Use typed dynamic storage to decode timestamp directly as u64
+    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
+    let timestamp = client_at_block
+        .storage()
+        .fetch(timestamp_addr, ())
+        .await
+        .ok()?;
+    let timestamp_value = timestamp.decode().ok()?;
+    Some(timestamp_value.to_string())
+}
+
 /// Helper function to get header JSON and extract block number from hash
 async fn get_block_number_from_hash(
     state: &AppState,
@@ -144,7 +160,7 @@ pub async fn get_block_number_from_hash_with_rpc(
 
 pub async fn resolve_block_with_rpc(
     rpc_client: &RpcClient,
-    legacy_rpc: &LegacyRpcMethods<subxt_historic::SubstrateConfig>,
+    legacy_rpc: &SubstrateLegacyRpc,
     at: Option<BlockId>,
 ) -> Result<ResolvedBlock, BlockResolveError> {
     match at {
@@ -365,7 +381,11 @@ mod tests {
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
     /// Helper to create a test AppState with mocked RPC responses
-    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+    ///
+    /// Note: This helper creates an AppState with a placeholder OnlineClient.
+    /// Tests using this helper should only exercise code paths that don't
+    /// require the OnlineClient (e.g., RPC-based resolution paths).
+    async fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
         let config = SidecarConfig::default();
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
@@ -376,12 +396,16 @@ mod tests {
             ss58_prefix: 42,
         };
 
+        // Note: Creating an OnlineClient requires metadata from the node.
+        // For tests, we attempt to create one but tests should be designed
+        // to not rely on OnlineClient functionality when using mocks.
+        let client = subxt::OnlineClient::from_rpc_client((*rpc_client).clone())
+            .await
+            .expect("Failed to create test OnlineClient - ensure mock provides required metadata");
+
         AppState {
             config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
+            client: Arc::new(client),
             legacy_rpc,
             rpc_client,
             chain_info,
@@ -399,6 +423,12 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_block_finalized() {
         let mock_client = MockRpcClient::builder()
+            .method_handler("rpc_methods", async |_params| {
+                Json(json!({ "methods": [] }))
+            })
+            .method_handler("chain_getBlockHash", async |_params| {
+                Json("0x0000000000000000000000000000000000000000000000000000000000000000")
+            })
             .method_handler("chain_getFinalizedHead", async |_params| {
                 Json("0x1234567890123456789012345678901234567890123456789012345678901234")
             })
@@ -412,7 +442,7 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let result = resolve_block(&state, None).await;
         assert!(result.is_ok());
@@ -427,6 +457,12 @@ mod tests {
         let test_hash = "0xabcdef1234567890123456789012345678901234567890123456789012345678";
 
         let mock_client = MockRpcClient::builder()
+            .method_handler("rpc_methods", async |_params| {
+                Json(json!({ "methods": [] }))
+            })
+            .method_handler("chain_getBlockHash", async |_params| {
+                Json("0x0000000000000000000000000000000000000000000000000000000000000000")
+            })
             .method_handler("chain_getHeader", async |_params| {
                 Json(json!({
                     "number": "0x64", // Block 100
@@ -437,7 +473,7 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let block_id = BlockId::Hash(H256::from_str(test_hash).unwrap());
         let result = resolve_block(&state, Some(block_id)).await;
@@ -455,12 +491,16 @@ mod tests {
         let expected_hash = "0x9876543210987654321098765432109876543210987654321098765432109876";
 
         let mock_client = MockRpcClient::builder()
+            .method_handler("rpc_methods", async |_params| {
+                Json(json!({ "methods": [] }))
+            })
             .method_handler("chain_getBlockHash", async |_params| {
+                // Just return test hash - OnlineClient init uses different code path
                 Json("0x9876543210987654321098765432109876543210987654321098765432109876")
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let block_id = BlockId::Number(test_number);
         let result = resolve_block(&state, Some(block_id)).await;
@@ -477,12 +517,18 @@ mod tests {
         let test_hash = "0xabcdef1234567890123456789012345678901234567890123456789012345678";
 
         let mock_client = MockRpcClient::builder()
+            .method_handler("rpc_methods", async |_params| {
+                Json(json!({ "methods": [] }))
+            })
+            .method_handler("chain_getBlockHash", async |_params| {
+                Json("0x0000000000000000000000000000000000000000000000000000000000000000")
+            })
             .method_handler("chain_getHeader", async |_params| {
-                Json(serde_json::Value::Null) // Block doesn't exist
+                Json(json!(null)) // Block doesn't exist
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let block_id = BlockId::Hash(H256::from_str(test_hash).unwrap());
         let result = resolve_block(&state, Some(block_id)).await;
@@ -496,15 +542,38 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_block_number_not_found() {
+        use crate::test_fixtures::mock_rpc_client_builder;
+        use serde_json::value::RawValue;
+
         let test_number = 999999u64;
 
-        let mock_client = MockRpcClient::builder()
-            .method_handler("chain_getBlockHash", async |_params| {
-                Json(serde_json::Value::Null) // Block doesn't exist
-            })
+        // Use test fixtures as base, but override chain_getBlockHash to return null for test_number
+        let mock_client = mock_rpc_client_builder()
+            .method_handler(
+                "chain_getBlockHash",
+                move |params: Option<Box<RawValue>>| async move {
+                    // Parse the block number from params
+                    let block_num = params
+                        .and_then(|p| serde_json::from_str::<serde_json::Value>(p.get()).ok())
+                        .and_then(|v| v.get(0).and_then(|n| n.as_u64()));
+
+                    match block_num {
+                        // Return valid hash for genesis (block 0) - needed for OnlineClient init
+                        Some(0) | None => Json(json!(
+                            "0x0000000000000000000000000000000000000000000000000000000000000000"
+                        )),
+                        // Return null for test block number - not found
+                        Some(n) if n == 999999 => Json(json!(null)),
+                        // Return valid hash for other blocks
+                        _ => Json(json!(
+                            "0x1234567890123456789012345678901234567890123456789012345678901234"
+                        )),
+                    }
+                },
+            )
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let block_id = BlockId::Number(test_number);
         let result = resolve_block(&state, Some(block_id)).await;

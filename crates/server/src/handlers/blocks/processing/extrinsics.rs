@@ -20,14 +20,15 @@ use super::super::types::{
 };
 use super::super::utils::extract_numeric_string;
 
-/// Extract extrinsics from a block using subxt-historic
+/// Extract extrinsics from a block using subxt
 pub async fn extract_extrinsics(
     state: &AppState,
-    client_at_block: &BlockClient<'_>,
+    client_at_block: &BlockClient,
     block_number: u64,
 ) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
-    // Get the resolver for type-aware enum serialization
-    let resolver = client_at_block.resolver();
+    // Get the type resolver from metadata for type-aware enum serialization
+    let metadata = client_at_block.metadata();
+    let resolver = metadata.types().clone();
 
     let extrinsics = match client_at_block.extrinsics().fetch().await {
         Ok(exts) => exts,
@@ -44,16 +45,28 @@ pub async fn extract_extrinsics(
 
     let mut result = Vec::new();
 
-    for extrinsic in extrinsics.iter() {
+    for extrinsic_result in extrinsics.iter() {
+        // In new subxt, iter() returns Results since decoding can fail
+        let extrinsic = match extrinsic_result {
+            Ok(ext) => ext,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to decode extrinsic in block {}: {:?}. Skipping.",
+                    block_number,
+                    e
+                );
+                continue;
+            }
+        };
+
         // Extract pallet and method name from the call, converting to lowerCamelCase
-        let pallet_name = extrinsic.call().pallet_name().to_lower_camel_case();
-        let method_name = extrinsic.call().name().to_lower_camel_case();
+        let pallet_name = extrinsic.pallet_name().to_lower_camel_case();
+        let method_name = extrinsic.call_name().to_lower_camel_case();
 
         // Extract call arguments with field-name-based AccountId32 detection
-        let fields = extrinsic.call().fields();
         let mut args_map = serde_json::Map::new();
 
-        for field in fields.iter() {
+        for field in extrinsic.iter_call_data_fields() {
             let field_name = field.name();
             // Keep field names as-is (snake_case from SCALE metadata)
             // Only nested object keys are transformed to camelCase via transform_json_unified
@@ -197,8 +210,8 @@ pub async fn extract_extrinsics(
 
                 match ext_name {
                     "CheckNonce" => {
-                        // Decode as a u64/u32 compact value, then serialize to JSON
-                        if let Ok(n) = ext.decode_as::<scale_value::Value>()
+                        // Decode using decode_unchecked_as which takes any DecodeAsType
+                        if let Ok(n) = ext.decode_unchecked_as::<scale_value::Value>()
                             && let Ok(json_val) = serde_json::to_value(&n)
                         {
                             // The value might be nested in an object, so we need to extract it
@@ -207,8 +220,8 @@ pub async fn extract_extrinsics(
                         }
                     }
                     "ChargeTransactionPayment" | "ChargeAssetTxPayment" => {
-                        // The tip is typically a Compact<u128>
-                        if let Ok(t) = ext.decode_as::<scale_value::Value>()
+                        // Decode using decode_unchecked_as which takes any DecodeAsType
+                        if let Ok(t) = ext.decode_unchecked_as::<scale_value::Value>()
                             && let Ok(json_val) = serde_json::to_value(&t)
                         {
                             // If extraction fails, tip_value remains None (serialized as null)

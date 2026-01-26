@@ -74,6 +74,9 @@ struct EnvConfig {
     #[serde(default = "default_express_keep_alive_timeout")]
     express_keep_alive_timeout: u64,
 
+    #[serde(default = "default_express_block_fetch_concurrency")]
+    express_block_fetch_concurrency: usize,
+
     #[serde(default = "default_log_level")]
     log_level: String,
 
@@ -149,6 +152,10 @@ fn default_express_request_limit() -> usize {
 
 fn default_express_keep_alive_timeout() -> u64 {
     5000 // 5 seconds in milliseconds
+}
+
+fn default_express_block_fetch_concurrency() -> usize {
+    10
 }
 
 fn default_log_level() -> String {
@@ -290,6 +297,7 @@ impl SidecarConfig {
                 port: env_config.express_port,
                 request_limit: env_config.express_request_limit,
                 keep_alive_timeout: env_config.express_keep_alive_timeout,
+                block_fetch_concurrency: env_config.express_block_fetch_concurrency,
             },
             log: LogConfig {
                 level: env_config.log_level,

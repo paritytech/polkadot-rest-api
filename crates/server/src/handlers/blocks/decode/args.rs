@@ -8,9 +8,12 @@
 //! and "non-basic" enums (any variant has data):
 //! - Basic enums serialize as strings: `"Normal"`, `"Yes"`
 //! - Non-basic enums serialize as objects: `{"unlimited": null}`, `{"limited": {...}}`
+//!
+//! Updated for subxt 0.50.0 which uses PortableRegistry.
 
 use heck::ToLowerCamelCase;
 use scale_decode::visitor::{self, TypeIdFor};
+use scale_info::PortableRegistry;
 use scale_type_resolver::TypeResolver;
 use serde_json::Value;
 use sp_core::crypto::{AccountId32, Ss58Codec};
@@ -23,10 +26,7 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
 /// This determination is made at the TYPE level, not the variant level.
 /// For example, `WeightLimit::Unlimited` has no data, but `WeightLimit` is
 /// non-basic because `Limited(Weight)` has data.
-fn is_basic_enum<R: TypeResolver>(resolver: &R, type_id: R::TypeId) -> bool
-where
-    R::TypeId: Clone,
-{
+fn is_basic_enum(resolver: &PortableRegistry, type_id: u32) -> bool {
     let type_visitor =
         scale_type_resolver::visitor::new((), |_, _| false).visit_variant(|_, _, variants| {
             // Check if ANY variant has fields - if so, NOT basic
@@ -61,16 +61,14 @@ fn is_junction_variant(name: &str) -> bool {
 /// - Basic enums as strings (e.g., `"Normal"`), non-basic enums as objects (e.g., `{"unlimited": null}`)
 /// - Converting all numbers to strings (matching sidecar behavior)
 ///
-/// The key advantage over post-processing transformations is that this visitor has access to
-/// type information at every nesting level, allowing it to make correct decisions about
-/// SS58 encoding and array unwrapping.
-pub struct JsonVisitor<'r, R> {
+/// This version is specialized for PortableRegistry (u32 type IDs).
+pub struct JsonVisitor<'r> {
     ss58_prefix: u16,
-    resolver: &'r R,
+    resolver: &'r PortableRegistry,
 }
 
-impl<'r, R> JsonVisitor<'r, R> {
-    pub fn new(ss58_prefix: u16, resolver: &'r R) -> Self {
+impl<'r> JsonVisitor<'r> {
+    pub fn new(ss58_prefix: u16, resolver: &'r PortableRegistry) -> Self {
         JsonVisitor {
             ss58_prefix,
             resolver,
@@ -78,14 +76,10 @@ impl<'r, R> JsonVisitor<'r, R> {
     }
 }
 
-impl<'r, R> scale_decode::Visitor for JsonVisitor<'r, R>
-where
-    R: scale_type_resolver::TypeResolver,
-    R::TypeId: Clone,
-{
+impl<'r> scale_decode::Visitor for JsonVisitor<'r> {
     type Value<'scale, 'resolver> = Value;
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     fn visit_bool<'scale, 'resolver>(
         self,
@@ -257,7 +251,7 @@ where
             if field_count > 0 {
                 for field in value.by_ref() {
                     let field = field?;
-                    match field.decode_with_visitor(ByteCollector::<R>::new()) {
+                    match field.decode_with_visitor(ByteCollector::new()) {
                         Ok(field_bytes) => bytes.extend(field_bytes),
                         Err(_) => {
                             bytes.clear();
@@ -304,10 +298,7 @@ where
                 let mut bytes = Vec::with_capacity(field_count);
 
                 for field in &fields {
-                    match field
-                        .clone()
-                        .decode_with_visitor(ByteValueVisitor::<R>::new())
-                    {
+                    match field.clone().decode_with_visitor(ByteValueVisitor::new()) {
                         Ok(Some(byte)) => bytes.push(byte),
                         _ => {
                             is_byte_array = false;
@@ -352,7 +343,7 @@ where
         if name == "None" {
             // Consume the fields even though we're returning null
             for field in value.fields() {
-                field?.decode_with_visitor(SkipVisitor::<R>::new())?;
+                field?.decode_with_visitor(SkipVisitor::new())?;
             }
             return Ok(Value::Null);
         }
@@ -379,7 +370,7 @@ where
         if is_basic_enum(self.resolver, type_id) {
             // Consume any fields (there shouldn't be any for basic enum variants)
             for field in value.fields() {
-                field?.decode_with_visitor(SkipVisitor::<R>::new())?;
+                field?.decode_with_visitor(SkipVisitor::new())?;
             }
             return Ok(Value::String(variant_name));
         }
@@ -515,25 +506,18 @@ where
 }
 
 /// Helper visitor that collects bytes from a composite (for AccountId32 extraction)
-struct ByteCollector<R> {
-    _marker: core::marker::PhantomData<R>,
-}
+struct ByteCollector;
 
-impl<R> ByteCollector<R> {
+impl ByteCollector {
     fn new() -> Self {
-        ByteCollector {
-            _marker: core::marker::PhantomData,
-        }
+        ByteCollector
     }
 }
 
-impl<R> scale_decode::Visitor for ByteCollector<R>
-where
-    R: scale_type_resolver::TypeResolver,
-{
+impl scale_decode::Visitor for ByteCollector {
     type Value<'scale, 'resolver> = Vec<u8>;
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     fn visit_u8<'scale, 'resolver>(
         self,
@@ -549,7 +533,7 @@ where
         _type_id: TypeIdFor<Self>,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         let mut bytes = Vec::new();
-        while let Some(item) = value.decode_item(ByteCollector::<R>::new()) {
+        while let Some(item) = value.decode_item(ByteCollector::new()) {
             bytes.extend(item?);
         }
         Ok(bytes)
@@ -563,7 +547,7 @@ where
         let mut bytes = Vec::new();
         for field in value {
             let field = field?;
-            bytes.extend(field.decode_with_visitor(ByteCollector::<R>::new())?);
+            bytes.extend(field.decode_with_visitor(ByteCollector::new())?);
         }
         Ok(bytes)
     }
@@ -578,25 +562,18 @@ where
 }
 
 /// Helper visitor that checks if a value is a single u8 byte
-struct ByteValueVisitor<R> {
-    _marker: core::marker::PhantomData<R>,
-}
+struct ByteValueVisitor;
 
-impl<R> ByteValueVisitor<R> {
+impl ByteValueVisitor {
     fn new() -> Self {
-        ByteValueVisitor {
-            _marker: core::marker::PhantomData,
-        }
+        ByteValueVisitor
     }
 }
 
-impl<R> scale_decode::Visitor for ByteValueVisitor<R>
-where
-    R: scale_type_resolver::TypeResolver,
-{
+impl scale_decode::Visitor for ByteValueVisitor {
     type Value<'scale, 'resolver> = Option<u8>;
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     fn visit_u8<'scale, 'resolver>(
         self,
@@ -615,25 +592,18 @@ where
 }
 
 /// Helper visitor that skips/ignores a value (for consuming Option::None fields)
-struct SkipVisitor<R> {
-    _marker: core::marker::PhantomData<R>,
-}
+struct SkipVisitor;
 
-impl<R> SkipVisitor<R> {
+impl SkipVisitor {
     fn new() -> Self {
-        SkipVisitor {
-            _marker: core::marker::PhantomData,
-        }
+        SkipVisitor
     }
 }
 
-impl<R> scale_decode::Visitor for SkipVisitor<R>
-where
-    R: scale_type_resolver::TypeResolver,
-{
+impl scale_decode::Visitor for SkipVisitor {
     type Value<'scale, 'resolver> = ();
     type Error = scale_decode::Error;
-    type TypeResolver = R;
+    type TypeResolver = PortableRegistry;
 
     fn visit_unexpected<'scale, 'resolver>(
         self,

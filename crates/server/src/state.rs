@@ -7,11 +7,15 @@ use parity_scale_codec::{Compact, Decode, Encode};
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
-use subxt_historic::{OnlineClient, SubstrateConfig};
+use subxt::config::RpcConfigFor;
+use subxt::{OnlineClient, SubstrateConfig};
 use subxt_rpcs::client::reconnecting_rpc_client::{
     ExponentialBackoff, RpcClient as ReconnectingRpcClient,
 };
 use subxt_rpcs::{LegacyRpcMethods, RpcClient, rpc_params};
+
+/// Type alias for LegacyRpcMethods with correct RpcConfig wrapper
+pub type SubstrateLegacyRpc = LegacyRpcMethods<RpcConfigFor<SubstrateConfig>>;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -55,7 +59,7 @@ pub struct AppState {
     #[allow(dead_code)] // Will be used when implementing endpoints
     pub client: Arc<OnlineClient<SubstrateConfig>>,
     #[allow(dead_code)] // Will be used when implementing endpoints
-    pub legacy_rpc: Arc<LegacyRpcMethods<SubstrateConfig>>,
+    pub legacy_rpc: Arc<SubstrateLegacyRpc>,
     pub rpc_client: Arc<RpcClient>,
     pub chain_info: ChainInfo,
 
@@ -76,7 +80,7 @@ pub struct AppState {
     /// Registry of all available routes for introspection
     pub route_registry: RouteRegistry,
     /// Relay Chain RPC client (only present when multi-chain is configured with a relay chain)
-    pub relay_chain_rpc: Option<Arc<LegacyRpcMethods<SubstrateConfig>>>,
+    pub relay_chain_rpc: Option<Arc<SubstrateLegacyRpc>>,
 }
 
 impl AppState {
@@ -92,7 +96,7 @@ impl AppState {
         // Wrap in RpcClient for compatibility with existing code
         let rpc_client = RpcClient::new(reconnecting_client);
 
-        let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
+        let legacy_rpc: SubstrateLegacyRpc = LegacyRpcMethods::new(rpc_client.clone());
 
         // Get chain info first to determine which configuration to load
         let chain_info = get_chain_info(&legacy_rpc).await?;
@@ -110,8 +114,10 @@ impl AppState {
         let subxt_config = match chain_chain_config.legacy_types.as_str() {
             "polkadot" => {
                 // Load Polkadot-specific legacy types for historic block support
-                SubstrateConfig::new()
-                    .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
+                // Must use builder pattern - SubstrateConfig::new() doesn't have set_legacy_types
+                SubstrateConfig::builder()
+                    .set_legacy_types(frame_decode::legacy_types::polkadot::relay_chain())
+                    .build()
             }
             _ => {
                 // For chains without legacy types or unknown chains, use empty config
@@ -119,7 +125,13 @@ impl AppState {
             }
         };
 
-        let client = OnlineClient::from_rpc_client(subxt_config, rpc_client.clone());
+        // Note: from_rpc_client_with_config is now async in the new subxt
+        let client = OnlineClient::from_rpc_client_with_config(subxt_config, rpc_client.clone())
+            .await
+            .map_err(|e| StateError::ConnectionFailed {
+                url: config.substrate.url.clone(),
+                source: subxt_rpcs::Error::Client(Box::new(std::io::Error::other(e.to_string()))),
+            })?;
 
         // Check if this chain requires a relay chain connection
         let (relay_client, relay_rpc_client, relay_chain_info, relay_chain_config) = if let Some(
@@ -191,7 +203,7 @@ impl AppState {
         self.relay_client.as_ref()
     }
 
-    pub fn get_relay_chain_rpc(&self) -> Option<&Arc<LegacyRpcMethods<SubstrateConfig>>> {
+    pub fn get_relay_chain_rpc(&self) -> Option<&Arc<SubstrateLegacyRpc>> {
         self.relay_chain_rpc.as_ref()
     }
 
@@ -221,7 +233,7 @@ impl AppState {
                 source,
             })?;
 
-        let relay_legacy_rpc = LegacyRpcMethods::new(relay_rpc_client.clone());
+        let relay_legacy_rpc: SubstrateLegacyRpc = LegacyRpcMethods::new(relay_rpc_client.clone());
 
         // Get relay chain info
         let relay_chain_info = get_chain_info(&relay_legacy_rpc).await?;
@@ -240,13 +252,21 @@ impl AppState {
 
         // Configure SubstrateConfig with appropriate legacy types
         let relay_subxt_config = match relay_chain_config.legacy_types.as_str() {
-            "polkadot" => SubstrateConfig::new()
-                .set_legacy_types(subxt_historic::config::polkadot::legacy_types()),
+            "polkadot" => SubstrateConfig::builder()
+                .set_legacy_types(frame_decode::legacy_types::polkadot::relay_chain())
+                .build(),
             _ => SubstrateConfig::new(),
         };
 
         let relay_client =
-            OnlineClient::from_rpc_client(relay_subxt_config, relay_rpc_client.clone());
+            OnlineClient::from_rpc_client_with_config(relay_subxt_config, relay_rpc_client.clone())
+                .await
+                .map_err(|e| StateError::ConnectionFailed {
+                    url: relay_url.to_string(),
+                    source: subxt_rpcs::Error::Client(Box::new(std::io::Error::other(
+                        e.to_string(),
+                    ))),
+                })?;
 
         tracing::info!(
             "Connected to relay chain '{}' at {}",
@@ -267,6 +287,14 @@ impl AppState {
     pub async fn get_header_json(&self, hash: &str) -> Result<Value, subxt_rpcs::Error> {
         self.rpc_client
             .request("chain_getHeader", rpc_params![hash])
+            .await
+    }
+
+    /// Make a raw JSON-RPC call to get a full block (header + extrinsics) and return the result as a Value
+    /// This is used by the /blocks/{blockId}/extrinsics-raw endpoint to get raw extrinsic data
+    pub async fn get_block_json(&self, hash: &str) -> Result<Value, subxt_rpcs::Error> {
+        self.rpc_client
+            .request("chain_getBlock", rpc_params![hash])
             .await
     }
 
@@ -473,9 +501,7 @@ fn get_ss58_prefix(chain_type: &ChainType, spec_name: &str) -> u16 {
 }
 
 /// Query the chain to get runtime information via RPC
-async fn get_chain_info(
-    legacy_rpc: &LegacyRpcMethods<SubstrateConfig>,
-) -> Result<ChainInfo, StateError> {
+async fn get_chain_info(legacy_rpc: &SubstrateLegacyRpc) -> Result<ChainInfo, StateError> {
     let runtime_version = legacy_rpc
         .state_get_runtime_version(None)
         .await
