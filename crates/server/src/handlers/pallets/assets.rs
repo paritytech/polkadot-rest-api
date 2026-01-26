@@ -1,11 +1,11 @@
 //! Handler for /pallets/assets/{assetId}/asset-info endpoint.
 
-use crate::handlers::pallets::common::{
-    AtResponse, PalletError, fetch_timestamp, format_account_id,
-};
+use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
 use crate::state::AppState;
-use crate::utils;
-use crate::utils::rc_block::find_ah_blocks_in_rc_block;
+use crate::utils::{
+    BlockId, ResolvedBlock, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
+    resolve_block_with_rpc,
+};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -139,10 +139,10 @@ pub async fn pallets_assets_asset_info(
     let client_at_block = match params.at {
         None => state.client.at_current_block().await?,
         Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
+            let block_id = at_str.parse::<BlockId>()?;
             match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+                BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                BlockId::Number(number) => state.client.at_block(number).await?,
             }
         }
     };
@@ -195,9 +195,9 @@ async fn handle_use_rc_block(
         .at
         .as_ref()
         .ok_or(PalletError::AtParameterRequired)?
-        .parse::<utils::BlockId>()?;
+        .parse::<BlockId>()?;
 
-    let rc_resolved_block = utils::resolve_block_with_rpc(
+    let rc_resolved_block = resolve_block_with_rpc(
         state
             .get_relay_chain_rpc_client()
             .expect("relay chain client checked above"),
@@ -222,7 +222,7 @@ async fn handle_use_rc_block(
         height: ah_block.number.to_string(),
     };
 
-    let ah_timestamp = fetch_timestamp(&client_at_block).await;
+    let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
     let ss58_prefix = state.chain_info.ss58_prefix;
     let asset_info = fetch_asset_info(&client_at_block, asset_id, ss58_prefix).await;
     let asset_meta_data = fetch_asset_metadata(&client_at_block, asset_id).await;
@@ -314,7 +314,7 @@ async fn fetch_asset_metadata(
 }
 
 /// Builds an empty response when no AH blocks are found in the RC block.
-fn build_empty_rc_response(rc_resolved_block: &utils::ResolvedBlock) -> Response {
+fn build_empty_rc_response(rc_resolved_block: &ResolvedBlock) -> Response {
     let at = AtResponse {
         hash: rc_resolved_block.hash.clone(),
         height: rc_resolved_block.number.to_string(),

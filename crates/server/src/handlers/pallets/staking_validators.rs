@@ -1,9 +1,9 @@
-use crate::handlers::pallets::common::{
-    AtResponse, PalletError, fetch_timestamp, format_account_id,
-};
+use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
 use crate::handlers::pallets::constants::is_bad_staking_block;
 use crate::state::AppState;
-use crate::utils;
+use crate::utils::{
+    BlockId, fetch_block_timestamp, find_ah_blocks_in_rc_block, resolve_block_with_rpc,
+};
 use axum::{
     Json,
     extract::{Query, State},
@@ -84,10 +84,10 @@ pub async fn pallets_staking_validators(
     let client_at_block = match params.at {
         None => state.client.at_current_block().await?,
         Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
+            let block_id = at_str.parse::<BlockId>()?;
             match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+                BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                BlockId::Number(number) => state.client.at_block(number).await?,
             }
         }
     };
@@ -139,9 +139,8 @@ pub async fn rc_pallets_staking_validators(
         .as_ref()
         .ok_or(PalletError::RelayChainNotConfigured)?;
 
-    let block_id = params.at.map(|s| s.parse::<utils::BlockId>()).transpose()?;
-    let resolved_block =
-        utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+    let block_id = params.at.map(|s| s.parse::<BlockId>()).transpose()?;
+    let resolved_block = resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
 
     let client_at_block = relay_client.at_block(resolved_block.number).await?;
 
@@ -190,9 +189,9 @@ async fn handle_use_rc_block(
         .at
         .as_ref()
         .ok_or(PalletError::AtParameterRequired)?
-        .parse::<utils::BlockId>()?;
+        .parse::<BlockId>()?;
 
-    let rc_resolved_block = utils::resolve_block_with_rpc(
+    let rc_resolved_block = resolve_block_with_rpc(
         state
             .get_relay_chain_rpc_client()
             .ok_or(PalletError::RelayChainNotConfigured)?,
@@ -203,8 +202,7 @@ async fn handle_use_rc_block(
     )
     .await?;
 
-    let ah_blocks =
-        crate::utils::rc_block::find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
     if ah_blocks.is_empty() {
         return Ok((
@@ -226,7 +224,7 @@ async fn handle_use_rc_block(
             )));
         }
 
-        let ah_timestamp = fetch_timestamp(&client_at_block).await;
+        let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
         let (validators, validators_to_be_chilled) = derive_staking_validators(
             &client_at_block,
