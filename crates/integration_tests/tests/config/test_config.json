@@ -120,6 +120,24 @@
       "requires_block_height": false,
       "requires_account": false,
       "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
+    },
+    {
+      "path": "/v1/pallets/nomination-pools/info",
+      "query_params": [
+        {}
+      ],
+      "requires_block_height": false,
+      "requires_account": false,
+      "relay_chain_only": true
+    },
+    {
+      "path": "/v1/pallets/nomination-pools/1",
+      "query_params": [
+        {}
+      ],
+      "requires_block_height": false,
+      "requires_account": false,
+      "relay_chain_only": true
     }
   ],
   "historical_tests": {
@@ -277,6 +295,27 @@
         },
         "fixture_path": "polkadot/pallets_balances_dispatchables_transfer_allow_death_28500000.json",
         "description": "Test pallets balances dispatchables transfer_allow_death at Polkadot block 28,500,000"
+      },
+      {
+        "endpoint": "/v1/pallets/nomination-pools/info",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "28500000"
+        },
+        "fixture_path": "polkadot/pallets_nomination_pools_info_28500000.json",
+        "description": "Test nomination pools info at Polkadot block 28,500,000"
+      },
+      {
+        "endpoint": "/v1/pallets/nomination-pools/{poolId}",
+        "block_height": null,
+        "account_id": null,
+        "pool_id": "1",
+        "query_params": {
+          "at": "28500000"
+        },
+        "fixture_path": "polkadot/pallets_nomination_pools_1_28500000.json",
+        "description": "Test nomination pool 1 at Polkadot block 28,500,000"
       }
     ],
     "kusama": [
@@ -368,6 +407,27 @@
         },
         "fixture_path": "kusama/pallets_balances_dispatchables_transfer_allow_death_25000000.json",
         "description": "Test pallets balances dispatchables transfer_allow_death at Kusama block 25,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/nomination-pools/info",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "24000000"
+        },
+        "fixture_path": "kusama/pallets_nomination_pools_info_24000000.json",
+        "description": "Test nomination pools info at Kusama block 24,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/nomination-pools/{poolId}",
+        "block_height": null,
+        "account_id": null,
+        "pool_id": "1",
+        "query_params": {
+          "at": "24000000"
+        },
+        "fixture_path": "kusama/pallets_nomination_pools_1_24000000.json",
+        "description": "Test nomination pool 1 at Kusama block 24,000,000"
       }
     ],
     "asset-hub-polkadot": [
