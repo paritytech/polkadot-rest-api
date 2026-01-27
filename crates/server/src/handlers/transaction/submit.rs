@@ -156,17 +156,15 @@ pub async fn submit(
         return Err(SubmitError::MissingTx);
     }
 
-    let rpc_client: &std::sync::Arc<subxt_rpcs::RpcClient>;
-
-    if use_rc {
-        rpc_client = state.get_relay_chain_rpc_client().ok_or_else(|| {
+    let rpc_client: &std::sync::Arc<subxt_rpcs::RpcClient> = if use_rc {
+        state.get_relay_chain_rpc_client().ok_or_else(|| {
             SubmitError::RelayChainNotConfigured {
                 transaction: tx.clone(),
             }
-        })?;
+        })?
     } else {
-        rpc_client = &state.rpc_client;
-    }
+        &state.rpc_client
+    };
 
     let hash: String = rpc_client
         .request("author_submitExtrinsic", rpc_params![tx])

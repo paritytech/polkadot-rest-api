@@ -226,9 +226,9 @@ pub async fn dry_run(
     State(state): State<AppState>,
     Json(body): Json<DryRunRequest>,
 ) -> Result<Json<DryRunResponse>, DryRunError> {
-    let tx = body.tx.as_ref().ok_or(SubmitError::MissingTx)?;
+    let tx = body.tx.as_ref().ok_or(DryRunError::MissingTx)?;
     if tx.is_empty() {
-        return Err(SubmitError::MissingTx);
+        return Err(DryRunError::MissingTx);
     }
     let sender = validate_sender(&body.sender_address, tx)?;
 
@@ -289,9 +289,9 @@ pub async fn dry_run_rc(
     State(state): State<AppState>,
     Json(body): Json<DryRunRequest>,
 ) -> Result<Json<DryRunResponse>, DryRunError> {
-    let tx = body.tx.as_ref().ok_or(SubmitError::MissingTx)?;
+    let tx = body.tx.as_ref().ok_or(DryRunError::MissingTx)?;
     if tx.is_empty() {
-        return Err(SubmitError::MissingTx);
+        return Err(DryRunError::MissingTx);
     }
     let sender = validate_sender(&body.sender_address, tx)?;
 
@@ -305,7 +305,19 @@ pub async fn dry_run_rc(
     // Resolve block on relay chain
     let client_at = match &body.at {
         None => relay_client.at_current_block().await?,
-        Some(at_str) => relay_client.at_block(at_str).await?,
+        Some(at_str) => {
+            let block_id =
+                at_str
+                    .parse::<BlockId>()
+                    .map_err(|e| DryRunError::InvalidBlockParam {
+                        transaction: tx.to_string(),
+                        cause: e.to_string(),
+                    })?;
+            match block_id {
+                BlockId::Hash(hash) => relay_client.at_block(hash).await?,
+                BlockId::Number(num) => relay_client.at_block(num).await?,
+            }
+        }
     };
 
     // Build origin
@@ -341,14 +353,6 @@ pub async fn dry_run_rc(
     let result = client_at.runtime_apis().call(method).await?;
 
     parse_result_to_response(result, tx)
-}
-
-fn validate_tx(tx: &Option<String>) -> Result<&str, DryRunError> {
-    let tx = tx.as_ref().ok_or(DryRunError::MissingTx)?;
-    if tx.is_empty() {
-        return Err(DryRunError::MissingTx);
-    }
-    Ok(tx)
 }
 
 fn validate_sender<'a>(sender: &'a Option<String>, tx: &str) -> Result<&'a str, DryRunError> {
@@ -424,35 +428,27 @@ fn parse_result_to_response(
                 let ok_value = get_first_value(&variant.values).unwrap_or(&result);
 
                 // Check execution_result inside CallDryRunEffects
-                if let ValueDef::Composite(composite) = &ok_value.value {
-                    if let Some(exec_result) = get_named_value(composite, "execution_result") {
-                        if let ValueDef::Variant(exec_variant) = &exec_result.value {
-                            let inner_value =
-                                get_first_value(&exec_variant.values).unwrap_or(exec_result);
+                if let ValueDef::Composite(composite) = &ok_value.value
+                    && let Some(exec_result) = get_named_value(composite, "execution_result")
+                    && let ValueDef::Variant(exec_variant) = &exec_result.value
+                {
+                    let inner_value = get_first_value(&exec_variant.values).unwrap_or(exec_result);
 
-                            return match exec_variant.name.as_str() {
-                                "Ok" => Ok(Json(DryRunResponse {
-                                    result_type: "DispatchOutcome".to_string(),
-                                    result: to_json(inner_value),
-                                })),
-                                "Err" => Ok(Json(DryRunResponse {
-                                    result_type: "DispatchError".to_string(),
-                                    result: to_json(inner_value),
-                                })),
-                                _ => Ok(Json(DryRunResponse {
-                                    result_type: "DispatchOutcome".to_string(),
-                                    result: to_json(ok_value),
-                                })),
-                            };
-                        }
-                    }
-                }
-
-                // Fallback: return the whole Ok value
-                return Ok(Json(DryRunResponse {
-                    result_type: "DispatchOutcome".to_string(),
-                    result: to_json(ok_value),
-                }));
+                    return match exec_variant.name.as_str() {
+                        "Ok" => Ok(Json(DryRunResponse {
+                            result_type: "DispatchOutcome".to_string(),
+                            result: to_json(inner_value),
+                        })),
+                        "Err" => Ok(Json(DryRunResponse {
+                            result_type: "DispatchError".to_string(),
+                            result: to_json(inner_value),
+                        })),
+                        _ => Ok(Json(DryRunResponse {
+                            result_type: "DispatchOutcome".to_string(),
+                            result: to_json(ok_value),
+                        })),
+                    };
+                };
             }
             "Err" => {
                 // TransactionValidityError / XcmDryRunApiError
