@@ -533,17 +533,17 @@ async fn get_current_era(
 ) -> Result<u32, StakingQueryError> {
     let query = subxt::storage::dynamic::<(), scale_value::Value>("Staking", "CurrentEra");
 
-    if let Ok(entry) = client_at_block.storage().entry(query) {
-        if let Ok(Some(value)) = entry.try_fetch(()).await {
-            let decoded: Value<()> = value.decode_as().map_err(|_| {
-                StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
-                    "Failed to decode CurrentEra",
-                ))
-            })?;
+    if let Ok(entry) = client_at_block.storage().entry(query)
+        && let Ok(Some(value)) = entry.try_fetch(()).await
+    {
+        let decoded: Value<()> = value.decode_as().map_err(|_| {
+            StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
+                "Failed to decode CurrentEra",
+            ))
+        })?;
 
-            if let ValueDef::Primitive(scale_value::Primitive::U128(era)) = &decoded.value {
-                return Ok(*era as u32);
-            }
+        if let ValueDef::Primitive(scale_value::Primitive::U128(era)) = &decoded.value {
+            return Ok(*era as u32);
         }
     }
 
@@ -559,14 +559,12 @@ async fn get_current_era(
 async fn get_history_depth(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<u32> {
     // Try storage query (older runtimes stored it as a storage item)
     let query = subxt::storage::dynamic::<(), scale_value::Value>("Staking", "HistoryDepth");
-    if let Ok(entry) = client_at_block.storage().entry(query) {
-        if let Ok(Some(value)) = entry.try_fetch(()).await {
-            if let Ok(decoded) = value.decode_as::<Value<()>>() {
-                if let ValueDef::Primitive(scale_value::Primitive::U128(depth)) = &decoded.value {
-                    return Some(*depth as u32);
-                }
-            }
-        }
+    if let Ok(entry) = client_at_block.storage().entry(query)
+        && let Ok(Some(value)) = entry.try_fetch(()).await
+        && let Ok(decoded) = value.decode_as::<Value<()>>()
+        && let ValueDef::Primitive(scale_value::Primitive::U128(depth)) = &decoded.value
+    {
+        return Some(*depth as u32);
     }
 
     // Default history depth for most chains
@@ -672,10 +670,10 @@ async fn get_claimed_pages(
     if let Ok(entry) = client_at_block.storage().entry(query) {
         let key = vec![Value::u128(era as u128), Value::from_bytes(*stash_bytes)];
 
-        if let Ok(Some(value)) = entry.try_fetch(key).await {
-            if let Ok(decoded) = value.decode_as::<Value<()>>() {
-                return extract_u32_vec(&decoded);
-            }
+        if let Ok(Some(value)) = entry.try_fetch(key).await
+            && let Ok(decoded) = value.decode_as::<Value<()>>()
+        {
+            return extract_u32_vec(&decoded);
         }
     }
 
@@ -688,10 +686,10 @@ async fn get_claimed_pages(
     if let Ok(entry) = client_at_block.storage().entry(query) {
         let key = vec![Value::u128(era as u128), Value::from_bytes(*stash_bytes)];
 
-        if let Ok(Some(value)) = entry.try_fetch(key).await {
-            if let Ok(decoded) = value.decode_as::<Value<()>>() {
-                return extract_u32_vec(&decoded);
-            }
+        if let Ok(Some(value)) = entry.try_fetch(key).await
+            && let Ok(decoded) = value.decode_as::<Value<()>>()
+        {
+            return extract_u32_vec(&decoded);
         }
     }
 
@@ -712,19 +710,16 @@ async fn get_era_stakers_page_count(
     if let Ok(entry) = client_at_block.storage().entry(query) {
         let key = vec![Value::u128(era as u128), Value::from_bytes(*stash_bytes)];
 
-        if let Ok(Some(value)) = entry.try_fetch(key).await {
-            if let Ok(decoded) = value.decode_as::<Value<()>>() {
-                if let ValueDef::Composite(Composite::Named(fields)) = &decoded.value {
-                    // Look for pageCount field
-                    for (name, val) in fields {
-                        if name == "pageCount" || name == "page_count" {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(count)) =
-                                &val.value
-                            {
-                                return Some(*count as u32);
-                            }
-                        }
-                    }
+        if let Ok(Some(value)) = entry.try_fetch(key).await
+            && let Ok(decoded) = value.decode_as::<Value<()>>()
+            && let ValueDef::Composite(Composite::Named(fields)) = &decoded.value
+        {
+            // Look for pageCount field
+            for (name, val) in fields {
+                if (name == "pageCount" || name == "page_count")
+                    && let ValueDef::Primitive(scale_value::Primitive::U128(count)) = &val.value
+                {
+                    return Some(*count as u32);
                 }
             }
         }
@@ -739,20 +734,17 @@ async fn get_era_stakers_page_count(
     if let Ok(entry) = client_at_block.storage().entry(query) {
         let key = vec![Value::u128(era as u128), Value::from_bytes(*stash_bytes)];
 
-        if let Ok(Some(value)) = entry.try_fetch(key).await {
-            if let Ok(decoded) = value.decode_as::<Value<()>>() {
-                // Check if total > 0
-                if let ValueDef::Composite(Composite::Named(fields)) = &decoded.value {
-                    for (name, val) in fields {
-                        if name == "total" {
-                            if let ValueDef::Primitive(scale_value::Primitive::U128(total)) =
-                                &val.value
-                            {
-                                if *total > 0 {
-                                    return Some(1); // Old format always has 1 page
-                                }
-                            }
-                        }
+        if let Ok(Some(value)) = entry.try_fetch(key).await
+            && let Ok(decoded) = value.decode_as::<Value<()>>()
+        {
+            // Check if total > 0
+            if let ValueDef::Composite(Composite::Named(fields)) = &decoded.value {
+                for (name, val) in fields {
+                    if name == "total"
+                        && let ValueDef::Primitive(scale_value::Primitive::U128(total)) = &val.value
+                        && *total > 0
+                    {
+                        return Some(1); // Old format always has 1 page
                     }
                 }
             }
@@ -840,15 +832,15 @@ fn extract_account_id_from_value(value: &Value<()>) -> Option<String> {
             // Handle Option<AccountId> or similar variants
             match variant.name.as_str() {
                 "Some" | "Id" => {
-                    if let Composite::Unnamed(values) = &variant.values {
-                        if let Some(inner) = values.first() {
-                            return extract_account_id_from_value(inner);
-                        }
+                    if let Composite::Unnamed(values) = &variant.values
+                        && let Some(inner) = values.first()
+                    {
+                        return extract_account_id_from_value(inner);
                     }
-                    if let Composite::Named(fields) = &variant.values {
-                        if let Some((_, inner)) = fields.first() {
-                            return extract_account_id_from_value(inner);
-                        }
+                    if let Composite::Named(fields) = &variant.values
+                        && let Some((_, inner)) = fields.first()
+                    {
+                        return extract_account_id_from_value(inner);
                     }
                 }
                 _ => {}
