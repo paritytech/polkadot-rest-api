@@ -179,7 +179,7 @@ This command loads the environment variables specified in `.env.polkadot` file, 
 
 ### Multi-Chain Configuration
 
-For Asset Hub deployments that need relay chain access (e.g., for `useRcBlock` parameter support), configure `SAS_SUBSTRATE_MULTI_CHAIN_URL`:
+For Asset Hub deployments that need relay chain access (e.g., for `useRcBlock` parameter support or `/rc/` related endpoints), configure `SAS_SUBSTRATE_MULTI_CHAIN_URL`:
 
 ```bash
 # Primary connection: Asset Hub
