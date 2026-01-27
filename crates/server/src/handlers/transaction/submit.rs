@@ -34,7 +34,9 @@ pub struct TransactionFailedToParse {
 pub struct TransactionFailedToSubmit {
     pub code: u16,
     pub error: String,
+    pub transaction: String,
     pub cause: String,
+    pub stack: String,
 }
 
 /// Errors that can occur during transaction submission.
@@ -48,7 +50,11 @@ pub enum SubmitError {
     },
 
     #[error("Failed to submit transaction.")]
-    SubmitFailed { cause: String },
+    SubmitFailed {
+        transaction: String,
+        cause: String,
+        stack: String,
+    },
 
     #[error("Relay chain not configured")]
     RelayChainNotConfigured,
@@ -71,11 +77,17 @@ impl IntoResponse for SubmitError {
                 });
                 (StatusCode::BAD_REQUEST, body).into_response()
             }
-            SubmitError::SubmitFailed { cause } => {
+            SubmitError::SubmitFailed {
+                transaction,
+                cause,
+                stack,
+            } => {
                 let body = Json(TransactionFailedToSubmit {
                     code: 400,
                     error: "Failed to submit transaction.".to_string(),
+                    transaction,
                     cause,
+                    stack,
                 });
                 (StatusCode::BAD_REQUEST, body).into_response()
             }
@@ -137,7 +149,11 @@ pub async fn submit(
                     stack,
                 }
             } else {
-                SubmitError::SubmitFailed { cause }
+                SubmitError::SubmitFailed {
+                    transaction: body.tx.clone(),
+                    cause,
+                    stack,
+                }
             }
         })?;
 
@@ -168,7 +184,11 @@ pub async fn submit_rc(
                     stack,
                 }
             } else {
-                SubmitError::SubmitFailed { cause }
+                SubmitError::SubmitFailed {
+                    transaction: body.tx.clone(),
+                    cause,
+                    stack,
+                }
             }
         })?;
 
@@ -201,11 +221,15 @@ mod tests {
         let error = TransactionFailedToSubmit {
             code: 400,
             error: "Failed to submit transaction.".to_string(),
+            transaction: "0x1234".to_string(),
             cause: "Transaction pool is full".to_string(),
+            stack: "Error: Transaction pool is full\n    at submit_transaction".to_string(),
         };
         let json = serde_json::to_value(&error).unwrap();
         assert_eq!(json["code"], 400);
         assert_eq!(json["error"], "Failed to submit transaction.");
+        assert_eq!(json["transaction"], "0x1234");
         assert_eq!(json["cause"], "Transaction pool is full");
+        assert!(json["stack"].as_str().unwrap().contains("Error:"));
     }
 }
