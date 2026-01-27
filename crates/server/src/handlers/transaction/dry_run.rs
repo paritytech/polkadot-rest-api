@@ -695,6 +695,8 @@ mod tests {
         assert_eq!(json["code"], 400);
         assert_eq!(json["error"], "Unable to dry-run transaction");
         assert_eq!(json["transaction"], "0x1234");
+        assert_eq!(json["cause"], "DryRunApi not found");
+        assert!(json["stack"].as_str().unwrap().contains("Error:"));
     }
 
     #[test]
