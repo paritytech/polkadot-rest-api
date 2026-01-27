@@ -14,9 +14,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use futures::future::join_all;
-use parity_scale_codec::Decode;
+use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use subxt::SubstrateConfig;
+use subxt::error::StorageError;
 
 // ============================================================================
 // Query Parameters
@@ -85,6 +86,69 @@ pub struct DecidingStatus {
 }
 
 // ============================================================================
+// Scale Decode Types - For direct decoding from storage
+// ============================================================================
+
+/// Referendum status enum - we only care about Ongoing variant
+#[derive(Debug, DecodeAsType)]
+enum ReferendumStatus {
+    Ongoing(Box<OngoingDetails>),
+    #[allow(dead_code)]
+    Approved(u32, Option<DepositDetails>, Option<DepositDetails>),
+    #[allow(dead_code)]
+    Rejected(u32, Option<DepositDetails>, Option<DepositDetails>),
+    #[allow(dead_code)]
+    Cancelled(u32, Option<DepositDetails>, Option<DepositDetails>),
+    #[allow(dead_code)]
+    TimedOut(u32, Option<DepositDetails>, Option<DepositDetails>),
+    #[allow(dead_code)]
+    Killed(u32),
+}
+
+/// Details for ongoing referenda - extract only what we need
+#[derive(Debug, DecodeAsType)]
+struct OngoingDetails {
+    track: u16,
+    #[allow(dead_code)]
+    origin: scale_value::Value<()>,
+    #[allow(dead_code)]
+    proposal: scale_value::Value<()>,
+    enactment: EnactmentType,
+    submitted: u32,
+    decision_deposit: Option<DepositDetails>,
+    #[allow(dead_code)]
+    submission_deposit: DepositDetails,
+    deciding: Option<DecidingDetails>,
+    #[allow(dead_code)]
+    tally: scale_value::Value<()>,
+    #[allow(dead_code)]
+    in_queue: bool,
+    #[allow(dead_code)]
+    alarm: Option<scale_value::Value<()>>,
+}
+
+/// Enactment type enum
+#[derive(Debug, DecodeAsType)]
+enum EnactmentType {
+    After(u32),
+    At(u32),
+}
+
+/// Deposit details
+#[derive(Debug, DecodeAsType)]
+struct DepositDetails {
+    who: [u8; 32],
+    amount: u128,
+}
+
+/// Deciding status details
+#[derive(Debug, DecodeAsType)]
+struct DecidingDetails {
+    since: u32,
+    confirming: Option<u32>,
+}
+
+// ============================================================================
 // Main Handler
 // ============================================================================
 
@@ -147,48 +211,59 @@ async fn fetch_ongoing_referenda(
     let mut referenda = Vec::new();
 
     // First, get the ReferendumCount to know how many referenda have been created
-    let count_addr =
-        subxt::dynamic::storage::<(), scale_value::Value>("Referenda", "ReferendumCount");
+    // Use u32 as decode target - Subxt handles decoding automatically
+    let count_addr = subxt::dynamic::storage::<(), u32>("Referenda", "ReferendumCount");
     let referendum_count: u32 = match client_at_block.storage().fetch(count_addr, ()).await {
-        Ok(storage_val) => {
-            // Decode the storage value to get the count
-            let bytes = storage_val.into_bytes();
-            match u32::decode(&mut &bytes[..]) {
-                Ok(count) => {
-                    tracing::info!("Successfully decoded ReferendumCount: {}", count);
-                    count
+        Ok(storage_val) => match storage_val.decode() {
+            Ok(count) => {
+                tracing::info!("Successfully decoded ReferendumCount: {}", count);
+                count
+            }
+            Err(e) => {
+                tracing::warn!("Failed to decode ReferendumCount: {:?}", e);
+                return Err(PalletError::StorageDecodeFailed {
+                    pallet: "Referenda",
+                    entry: "ReferendumCount",
+                });
+            }
+        },
+        Err(e) => {
+            // Match on concrete StorageError types instead of string matching
+            match &e {
+                StorageError::PalletNameNotFound(name) => {
+                    tracing::warn!(
+                        "Referenda pallet '{}' not found at block {}",
+                        name,
+                        block_height
+                    );
+                    return Err(PalletError::PalletNotAvailableAtBlock {
+                        module: "api.query.referenda".to_string(),
+                        block_height: block_height.to_string(),
+                    });
                 }
-                Err(e) => {
-                    tracing::warn!("Failed to decode ReferendumCount from bytes: {:?}", e);
-                    return Err(PalletError::StorageDecodeFailed {
+                StorageError::StorageEntryNotFound {
+                    pallet_name,
+                    entry_name,
+                } => {
+                    tracing::warn!(
+                        "Storage entry '{}.{}' not found at block {}",
+                        pallet_name,
+                        entry_name,
+                        block_height
+                    );
+                    return Err(PalletError::PalletNotAvailableAtBlock {
+                        module: "api.query.referenda".to_string(),
+                        block_height: block_height.to_string(),
+                    });
+                }
+                _ => {
+                    tracing::warn!("Failed to fetch ReferendumCount: {:?}", e);
+                    return Err(PalletError::StorageFetchFailed {
                         pallet: "Referenda",
                         entry: "ReferendumCount",
                     });
                 }
             }
-        }
-        Err(e) => {
-            // Check if this is because the pallet doesn't exist
-            let error_str = format!("{:?}", e);
-            if error_str.contains("Pallet")
-                || error_str.contains("not found")
-                || error_str.contains("Storage")
-            {
-                tracing::warn!(
-                    "Referenda pallet not available at block {}: {:?}",
-                    block_height,
-                    e
-                );
-                return Err(PalletError::PalletNotAvailableAtBlock {
-                    module: "api.query.referenda".to_string(),
-                    block_height: block_height.to_string(),
-                });
-            }
-            tracing::warn!("Failed to fetch ReferendumCount: {:?}", e);
-            return Err(PalletError::StorageFetchFailed {
-                pallet: "Referenda",
-                entry: "ReferendumCount",
-            });
         }
     };
 
@@ -203,18 +278,18 @@ async fn fetch_ongoing_referenda(
         let batch_start = (id - batch_size as i64 + 1).max(0) as u32;
         let batch_end = id as u32;
 
-        // Create futures for batch fetching - decode immediately to avoid lifetime issues
+        // Create futures for batch fetching - decode directly to ReferendumStatus
         let futures: Vec<_> = (batch_start..=batch_end)
             .map(|ref_id| {
-                let storage_addr = subxt::dynamic::storage::<_, scale_value::Value>(
+                let storage_addr = subxt::dynamic::storage::<_, ReferendumStatus>(
                     "Referenda",
                     "ReferendumInfoFor",
                 );
                 let client = client_at_block.clone();
                 async move {
                     let result = client.storage().fetch(storage_addr, (ref_id,)).await;
-                    let decoded: Option<scale_value::Value<()>> = match result {
-                        Ok(val) => val.decode_as().ok(),
+                    let decoded: Option<ReferendumStatus> = match result {
+                        Ok(val) => val.decode().ok(),
                         Err(_) => None,
                     };
                     (ref_id, decoded)
@@ -231,13 +306,12 @@ async fn fetch_ongoing_referenda(
                 None => continue,
             };
 
-            // Check if this is an Ongoing referendum with track 0 (Root) or track 1 (WhitelistedCaller)
-            // This matches Sidecar's behavior which only returns these two tracks
+            // Extract ongoing referendum info using the typed struct
             if let Some((track, ongoing)) =
-                extract_ongoing_referendum_with_track(&decoded, ref_id, ss58_prefix)
+                extract_ongoing_from_status(decoded, ref_id, ss58_prefix)
             {
                 // Filter to only include track 0 (Root) and track 1 (WhitelistedCaller)
-                if track == "0" || track == "1" {
+                if track == 0 || track == 1 {
                     referenda.push(ongoing);
                 }
             }
@@ -262,77 +336,58 @@ async fn fetch_ongoing_referenda(
     Ok(referenda)
 }
 
-/// Extract ongoing referendum info from decoded storage value
+/// Extract ongoing referendum info from decoded ReferendumStatus
 /// Returns (track, ReferendumInfo) tuple for filtering
-/// Returns data in Sidecar-compatible format
-fn extract_ongoing_referendum_with_track(
-    value: &scale_value::Value<()>,
+fn extract_ongoing_from_status(
+    status: ReferendumStatus,
     id: u32,
     ss58_prefix: u16,
-) -> Option<(String, ReferendumInfo)> {
-    // The value is an enum: Ongoing, Approved, Rejected, Cancelled, TimedOut, Killed
-    // We only care about Ongoing variant
-    //
-    // The scale_value serializes as: {"name":"Ongoing","values":[{...struct fields...}]}
-    // where values[0] contains the struct with named fields
+) -> Option<(u16, ReferendumInfo)> {
+    match status {
+        ReferendumStatus::Ongoing(ongoing) => {
+            let ongoing = *ongoing; // Unbox
+            let track = ongoing.track;
 
-    let value_json = scale_value_to_json(value);
+            // Extract enactment in Sidecar format
+            let enactment = match ongoing.enactment {
+                EnactmentType::After(blocks) => EnactmentInfo {
+                    after: Some(blocks.to_string()),
+                    at: None,
+                },
+                EnactmentType::At(block) => EnactmentInfo {
+                    after: None,
+                    at: Some(block.to_string()),
+                },
+            };
 
-    // Check if this is an Ongoing variant by looking at the "name" field
-    let obj = value_json.as_object()?;
-    let variant_name = obj.get("name")?.as_str()?;
+            // Extract decision deposit
+            let decision_deposit = ongoing.decision_deposit.map(|d| Deposit {
+                who: format_account_id(&d.who, ss58_prefix),
+                amount: d.amount.to_string(),
+            });
 
-    if variant_name != "Ongoing" {
-        return None;
+            // Extract deciding status
+            let deciding = ongoing.deciding.map(|d| DecidingStatus {
+                since: d.since.to_string(),
+                confirming: d.confirming.map(|c| c.to_string()),
+            });
+
+            // Format ID with comma like Sidecar does (e.g., "1,308" instead of "1308")
+            let formatted_id = format_id_with_comma(id);
+
+            Some((
+                track,
+                ReferendumInfo {
+                    id: formatted_id,
+                    decision_deposit,
+                    enactment,
+                    submitted: ongoing.submitted.to_string(),
+                    deciding,
+                },
+            ))
+        }
+        _ => None, // Not ongoing, skip
     }
-
-    // Get the values array which contains one element: the Ongoing struct
-    let values = obj.get("values")?.as_array()?;
-
-    // The values array should have exactly one element containing the struct
-    if values.is_empty() {
-        tracing::debug!("Ongoing referendum {} has empty values array", id);
-        return None;
-    }
-
-    // Get the struct object from values[0]
-    let ongoing_obj = values[0].as_object()?;
-
-    // Extract track for filtering (track 0 = Root, track 1 = WhitelistedCaller)
-    let track = ongoing_obj
-        .get("track")
-        .map(extract_value_as_string)
-        .unwrap_or_default();
-
-    // Extract enactment in Sidecar format: {"after": "14400"} or {"at": "12345"}
-    let enactment = extract_enactment_sidecar_format(ongoing_obj.get("enactment")?);
-
-    let submitted = ongoing_obj
-        .get("submitted")
-        .map(extract_value_as_string)
-        .unwrap_or_default();
-
-    let decision_deposit = ongoing_obj
-        .get("decision_deposit")
-        .and_then(|v| extract_deposit_from_value(v, ss58_prefix));
-
-    let deciding = ongoing_obj
-        .get("deciding")
-        .and_then(extract_deciding_from_value);
-
-    // Format ID with comma like Sidecar does (e.g., "1,308" instead of "1308")
-    let formatted_id = format_id_with_comma(id);
-
-    Some((
-        track,
-        ReferendumInfo {
-            id: formatted_id,
-            decision_deposit,
-            enactment,
-            submitted,
-            deciding,
-        },
-    ))
 }
 
 /// Format ID with comma separator like Sidecar (e.g., 1308 -> "1,308")
@@ -349,187 +404,6 @@ fn format_id_with_comma(id: u32) -> String {
     result
 }
 
-/// Extract enactment in Sidecar format: {"after": "14400"} or {"at": "12345"}
-fn extract_enactment_sidecar_format(val: &serde_json::Value) -> EnactmentInfo {
-    // The enactment is an enum: After(BlockNumber) or At(BlockNumber)
-    // scale_value serializes as: {"name":"After","values":[14400]}
-
-    if let Some(obj) = val.as_object() {
-        let variant_name = obj.get("name").and_then(|n| n.as_str()).unwrap_or("");
-        let values = obj.get("values").and_then(|v| v.as_array());
-
-        if let Some(vals) = values
-            && let Some(first) = vals.first()
-        {
-            let value_str = extract_value_as_string(first);
-
-            match variant_name {
-                "After" => {
-                    return EnactmentInfo {
-                        after: Some(value_str),
-                        at: None,
-                    };
-                }
-                "At" => {
-                    return EnactmentInfo {
-                        after: None,
-                        at: Some(value_str),
-                    };
-                }
-                _ => {}
-            }
-        }
-    }
-
-    // Default fallback
-    EnactmentInfo {
-        after: None,
-        at: None,
-    }
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Convert scale_value::Value to serde_json::Value
-fn scale_value_to_json(value: &scale_value::Value<()>) -> serde_json::Value {
-    // Use serde to convert
-    serde_json::to_value(value).unwrap_or(serde_json::Value::Null)
-}
-
-/// Check if a JSON value represents a None variant
-fn is_none_variant(val: &serde_json::Value) -> bool {
-    if let Some(obj) = val.as_object()
-        && let Some(name) = obj.get("name")
-    {
-        return name.as_str() == Some("None");
-    }
-    false
-}
-
-/// Extract a value as a string (handles numbers, strings, and nested values)
-fn extract_value_as_string(val: &serde_json::Value) -> String {
-    match val {
-        serde_json::Value::Number(n) => n.to_string(),
-        serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Bool(b) => b.to_string(),
-        _ => val.to_string(),
-    }
-}
-
-/// Extract deposit from a value that might be Some or None variant
-fn extract_deposit_from_value(val: &serde_json::Value, ss58_prefix: u16) -> Option<Deposit> {
-    // Check if it's a None variant
-    if val.is_null() || is_none_variant(val) {
-        return None;
-    }
-
-    // Check if it's a Some variant with values
-    if let Some(obj) = val.as_object()
-        && obj.get("name").and_then(|n| n.as_str()) == Some("Some")
-        && let Some(values) = obj.get("values").and_then(|v| v.as_array())
-        && let Some(deposit_val) = values.first()
-    {
-        return extract_deposit_direct(deposit_val, ss58_prefix);
-    }
-
-    // Try direct extraction
-    extract_deposit_direct(val, ss58_prefix)
-}
-
-/// Extract deposit directly from a deposit object
-fn extract_deposit_direct(val: &serde_json::Value, ss58_prefix: u16) -> Option<Deposit> {
-    let obj = val.as_object()?;
-
-    // The deposit has "who" and "amount" fields
-    let who_val = obj.get("who")?;
-    let amount_val = obj.get("amount")?;
-
-    let who = extract_account_from_value(who_val, ss58_prefix)?;
-    let amount = extract_value_as_string(amount_val);
-
-    Some(Deposit { who, amount })
-}
-
-/// Extract account ID from a value (handles nested arrays)
-fn extract_account_from_value(val: &serde_json::Value, ss58_prefix: u16) -> Option<String> {
-    // The account might be nested in an array like [[bytes...]]
-    if let Some(arr) = val.as_array() {
-        if arr.len() == 1
-            && let Some(inner_arr) = arr[0].as_array()
-        {
-            // It's [[byte, byte, ...]]
-            let bytes: Vec<u8> = inner_arr
-                .iter()
-                .filter_map(|v| v.as_u64().map(|n| n as u8))
-                .collect();
-            if bytes.len() == 32 {
-                let bytes_arr: [u8; 32] = bytes.try_into().ok()?;
-                return Some(format_account_id(&bytes_arr, ss58_prefix));
-            }
-        }
-        // It's [byte, byte, ...]
-        let bytes: Vec<u8> = arr
-            .iter()
-            .filter_map(|v| v.as_u64().map(|n| n as u8))
-            .collect();
-        if bytes.len() == 32 {
-            let bytes_arr: [u8; 32] = bytes.try_into().ok()?;
-            return Some(format_account_id(&bytes_arr, ss58_prefix));
-        }
-    }
-    None
-}
-
-/// Extract deciding status from a value
-fn extract_deciding_from_value(val: &serde_json::Value) -> Option<DecidingStatus> {
-    // Check if it's a None variant
-    if val.is_null() || is_none_variant(val) {
-        return None;
-    }
-
-    // Check if it's a Some variant with values
-    if let Some(obj) = val.as_object()
-        && obj.get("name").and_then(|n| n.as_str()) == Some("Some")
-        && let Some(values) = obj.get("values").and_then(|v| v.as_array())
-        && let Some(deciding_val) = values.first()
-    {
-        return extract_deciding_direct(deciding_val);
-    }
-
-    extract_deciding_direct(val)
-}
-
-/// Extract deciding status directly
-fn extract_deciding_direct(val: &serde_json::Value) -> Option<DecidingStatus> {
-    let obj = val.as_object()?;
-
-    let since_val = obj.get("since")?;
-    let since = extract_value_as_string(since_val);
-
-    let confirming = if let Some(confirming_val) = obj.get("confirming") {
-        if is_none_variant(confirming_val) || confirming_val.is_null() {
-            None
-        } else if let Some(obj) = confirming_val.as_object() {
-            if obj.get("name").and_then(|n| n.as_str()) == Some("Some") {
-                obj.get("values")
-                    .and_then(|v| v.as_array())
-                    .and_then(|arr| arr.first())
-                    .map(extract_value_as_string)
-            } else {
-                None
-            }
-        } else {
-            Some(extract_value_as_string(confirming_val))
-        }
-    } else {
-        None
-    };
-
-    Some(DecidingStatus { since, confirming })
-}
-
 // ============================================================================
 // Unit Tests
 // ============================================================================
@@ -537,7 +411,6 @@ fn extract_deciding_direct(val: &serde_json::Value) -> Option<DecidingStatus> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     // ========================================================================
     // format_id_with_comma tests
@@ -581,247 +454,6 @@ mod tests {
     #[test]
     fn test_format_id_with_comma_zero() {
         assert_eq!(format_id_with_comma(0), "0");
-    }
-
-    // ========================================================================
-    // is_none_variant tests
-    // ========================================================================
-
-    #[test]
-    fn test_is_none_variant_true() {
-        let none_val = json!({"name": "None", "values": []});
-        assert!(is_none_variant(&none_val));
-    }
-
-    #[test]
-    fn test_is_none_variant_false_some() {
-        let some_val = json!({"name": "Some", "values": [123]});
-        assert!(!is_none_variant(&some_val));
-    }
-
-    #[test]
-    fn test_is_none_variant_false_other() {
-        let other_val = json!({"name": "Ongoing", "values": []});
-        assert!(!is_none_variant(&other_val));
-    }
-
-    #[test]
-    fn test_is_none_variant_false_null() {
-        let null_val = json!(null);
-        assert!(!is_none_variant(&null_val));
-    }
-
-    #[test]
-    fn test_is_none_variant_false_no_name() {
-        let no_name = json!({"values": []});
-        assert!(!is_none_variant(&no_name));
-    }
-
-    // ========================================================================
-    // extract_value_as_string tests
-    // ========================================================================
-
-    #[test]
-    fn test_extract_value_as_string_number() {
-        let num = json!(12345);
-        assert_eq!(extract_value_as_string(&num), "12345");
-    }
-
-    #[test]
-    fn test_extract_value_as_string_string() {
-        let s = json!("hello");
-        assert_eq!(extract_value_as_string(&s), "hello");
-    }
-
-    #[test]
-    fn test_extract_value_as_string_bool() {
-        let b = json!(true);
-        assert_eq!(extract_value_as_string(&b), "true");
-    }
-
-    #[test]
-    fn test_extract_value_as_string_large_number() {
-        let num = json!(1000000000000000_u64);
-        assert_eq!(extract_value_as_string(&num), "1000000000000000");
-    }
-
-    // ========================================================================
-    // extract_enactment_sidecar_format tests
-    // ========================================================================
-
-    #[test]
-    fn test_extract_enactment_after() {
-        let val = json!({"name": "After", "values": [14400]});
-        let result = extract_enactment_sidecar_format(&val);
-        assert_eq!(result.after, Some("14400".to_string()));
-        assert_eq!(result.at, None);
-    }
-
-    #[test]
-    fn test_extract_enactment_at() {
-        let val = json!({"name": "At", "values": [12345]});
-        let result = extract_enactment_sidecar_format(&val);
-        assert_eq!(result.after, None);
-        assert_eq!(result.at, Some("12345".to_string()));
-    }
-
-    #[test]
-    fn test_extract_enactment_unknown_variant() {
-        let val = json!({"name": "Unknown", "values": [100]});
-        let result = extract_enactment_sidecar_format(&val);
-        assert_eq!(result.after, None);
-        assert_eq!(result.at, None);
-    }
-
-    #[test]
-    fn test_extract_enactment_empty_values() {
-        let val = json!({"name": "After", "values": []});
-        let result = extract_enactment_sidecar_format(&val);
-        assert_eq!(result.after, None);
-        assert_eq!(result.at, None);
-    }
-
-    #[test]
-    fn test_extract_enactment_null() {
-        let val = json!(null);
-        let result = extract_enactment_sidecar_format(&val);
-        assert_eq!(result.after, None);
-        assert_eq!(result.at, None);
-    }
-
-    // ========================================================================
-    // extract_deciding_from_value tests
-    // ========================================================================
-
-    #[test]
-    fn test_extract_deciding_none_variant() {
-        let val = json!({"name": "None", "values": []});
-        assert!(extract_deciding_from_value(&val).is_none());
-    }
-
-    #[test]
-    fn test_extract_deciding_null() {
-        let val = json!(null);
-        assert!(extract_deciding_from_value(&val).is_none());
-    }
-
-    #[test]
-    fn test_extract_deciding_some_variant() {
-        let val = json!({
-            "name": "Some",
-            "values": [{
-                "since": 23687165,
-                "confirming": {"name": "None", "values": []}
-            }]
-        });
-        let result = extract_deciding_from_value(&val);
-        assert!(result.is_some());
-        let deciding = result.unwrap();
-        assert_eq!(deciding.since, "23687165");
-        assert!(deciding.confirming.is_none());
-    }
-
-    #[test]
-    fn test_extract_deciding_direct() {
-        let val = json!({
-            "since": 23687165,
-            "confirming": {"name": "None", "values": []}
-        });
-        let result = extract_deciding_from_value(&val);
-        assert!(result.is_some());
-        let deciding = result.unwrap();
-        assert_eq!(deciding.since, "23687165");
-        assert!(deciding.confirming.is_none());
-    }
-
-    #[test]
-    fn test_extract_deciding_with_confirming() {
-        let val = json!({
-            "since": 23687165,
-            "confirming": {"name": "Some", "values": [24000000]}
-        });
-        let result = extract_deciding_from_value(&val);
-        assert!(result.is_some());
-        let deciding = result.unwrap();
-        assert_eq!(deciding.since, "23687165");
-        assert_eq!(deciding.confirming, Some("24000000".to_string()));
-    }
-
-    // ========================================================================
-    // extract_deposit_from_value tests
-    // ========================================================================
-
-    #[test]
-    fn test_extract_deposit_none_variant() {
-        let val = json!({"name": "None", "values": []});
-        assert!(extract_deposit_from_value(&val, 0).is_none());
-    }
-
-    #[test]
-    fn test_extract_deposit_null() {
-        let val = json!(null);
-        assert!(extract_deposit_from_value(&val, 0).is_none());
-    }
-
-    #[test]
-    fn test_extract_deposit_some_variant() {
-        // Use a known account ID (32 bytes)
-        let account_bytes: Vec<u8> = vec![
-            0x8e, 0xaf, 0x04, 0x15, 0x16, 0x87, 0x73, 0x63, 0x26, 0xc9, 0xfe, 0xa1, 0x7e, 0x25,
-            0xfc, 0x52, 0x87, 0x61, 0x36, 0x93, 0xc9, 0x12, 0x90, 0x9c, 0xb2, 0x26, 0xaa, 0x47,
-            0x94, 0xf2, 0x6a, 0x48,
-        ];
-        let val = json!({
-            "name": "Some",
-            "values": [{
-                "who": [account_bytes],
-                "amount": "1000000000000000"
-            }]
-        });
-        let result = extract_deposit_from_value(&val, 0);
-        assert!(result.is_some());
-        let deposit = result.unwrap();
-        assert_eq!(deposit.amount, "1000000000000000");
-        // Account should be SS58 encoded
-        assert!(!deposit.who.is_empty());
-    }
-
-    // ========================================================================
-    // extract_account_from_value tests
-    // ========================================================================
-
-    #[test]
-    fn test_extract_account_flat_array() {
-        // 32 bytes as flat array
-        let account_bytes: Vec<serde_json::Value> = (0..32).map(|i| json!(i as u8)).collect();
-        let val = json!(account_bytes);
-        let result = extract_account_from_value(&val, 0);
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_extract_account_nested_array() {
-        // 32 bytes as nested array [[...]]
-        let account_bytes: Vec<serde_json::Value> = (0..32).map(|i| json!(i as u8)).collect();
-        let val = json!([account_bytes]);
-        let result = extract_account_from_value(&val, 0);
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_extract_account_wrong_length() {
-        // Only 16 bytes - should fail
-        let account_bytes: Vec<serde_json::Value> = (0..16).map(|i| json!(i as u8)).collect();
-        let val = json!(account_bytes);
-        let result = extract_account_from_value(&val, 0);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_extract_account_not_array() {
-        let val = json!("not an array");
-        let result = extract_account_from_value(&val, 0);
-        assert!(result.is_none());
     }
 
     // ========================================================================
