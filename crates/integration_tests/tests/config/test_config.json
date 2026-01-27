@@ -725,6 +725,15 @@
         },
         "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_transfer_allow_death_10260000.json",
         "description": "Test pallets balances dispatchables transfer_allow_death at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/pallets/pool-assets/{assetId}/asset-info",
+        "block_height": null,
+        "account_id": null,
+        "asset_id": "0",
+        "query_params": { "at": "10260000" },
+        "fixture_path": "asset-hub-polkadot/pallets_pool_assets_0_asset_info_10260000.json",
+        "description": "Test pallets pool-assets asset-info for pool asset 0 (LP token) at Asset Hub Polkadot block 10,260,000"
       }
     ],
     "asset-hub-kusama": [
@@ -851,6 +860,15 @@
         },
         "fixture_path": "asset-hub-kusama/pallets_balances_dispatchables_transfer_allow_death_8000000.json",
         "description": "Test pallets balances dispatchables transfer_allow_death at Asset Hub Kusama block 8,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/pool-assets/{assetId}/asset-info",
+        "block_height": null,
+        "account_id": null,
+        "asset_id": "0",
+        "query_params": { "at": "8000000" },
+        "fixture_path": "asset-hub-kusama/pallets_pool_assets_0_asset_info_8000000.json",
+        "description": "Test pallets pool-assets asset-info for pool asset 0 (LP token) at Asset Hub Kusama block 8,000,000"
       }
     ],
     "coretime-kusama": [

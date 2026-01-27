@@ -1,9 +1,10 @@
 //! Common types and utilities shared across pallet endpoints.
 //!
-//! This module provides shared error types and response types
-//! used by the assets endpoint.
+//! This module provides shared error types, response types, and SCALE decode types
+//! used by the pallet endpoints.
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
+use parity_scale_codec::Decode;
 use serde::Serialize;
 use serde_json::json;
 use thiserror::Error;
@@ -74,6 +75,9 @@ pub enum PalletError {
 
     #[error("Nomination pool not found: {0}")]
     PoolNotFound(String),
+
+    #[error("Pool asset not found: {0}")]
+    PoolAssetNotFound(String),
 
     // ========================================================================
     // Metadata/Constant Errors
@@ -161,6 +165,7 @@ impl IntoResponse for PalletError {
             PalletError::PalletNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::AssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::PoolNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::PoolAssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
 
             // Metadata errors
             PalletError::ConstantNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
@@ -301,4 +306,53 @@ impl Default for DeprecationInfo {
     fn default() -> Self {
         DeprecationInfo::NotDeprecated(None)
     }
+}
+
+// ============================================================================
+// Shared SCALE Decode Types (used by Assets and PoolAssets pallets)
+// ============================================================================
+
+/// Asset status enum used in both Assets and PoolAssets pallets.
+#[derive(Debug, Clone, Decode)]
+pub enum AssetStatus {
+    Live,
+    Frozen,
+    Destroying,
+}
+
+impl AssetStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AssetStatus::Live => "Live",
+            AssetStatus::Frozen => "Frozen",
+            AssetStatus::Destroying => "Destroying",
+        }
+    }
+}
+
+/// Asset details struct used in both Assets::Asset and PoolAssets::Asset storage.
+#[derive(Debug, Clone, Decode)]
+pub struct AssetDetails {
+    pub owner: [u8; 32],
+    pub issuer: [u8; 32],
+    pub admin: [u8; 32],
+    pub freezer: [u8; 32],
+    pub supply: u128,
+    pub deposit: u128,
+    pub min_balance: u128,
+    pub is_sufficient: bool,
+    pub accounts: u32,
+    pub sufficients: u32,
+    pub approvals: u32,
+    pub status: AssetStatus,
+}
+
+/// Asset metadata struct used in both Assets::Metadata and PoolAssets::Metadata storage.
+#[derive(Debug, Clone, Decode)]
+pub struct AssetMetadataStorage {
+    pub deposit: u128,
+    pub name: Vec<u8>,
+    pub symbol: Vec<u8>,
+    pub decimals: u8,
+    pub is_frozen: bool,
 }

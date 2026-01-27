@@ -1,6 +1,8 @@
 //! Handler for /pallets/assets/{assetId}/asset-info endpoint.
 
-use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::common::{
+    AssetDetails, AssetMetadataStorage, AtResponse, PalletError, format_account_id,
+};
 use crate::state::AppState;
 use crate::utils::{
     BlockId, ResolvedBlock, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
@@ -70,52 +72,6 @@ pub struct PalletsAssetsInfoResponse {
     pub rc_block_number: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ah_timestamp: Option<String>,
-}
-
-// ============================================================================
-// Internal SCALE Decode Types
-// ============================================================================
-
-#[derive(Debug, Clone, Decode)]
-enum AssetStatus {
-    Live,
-    Frozen,
-    Destroying,
-}
-
-impl AssetStatus {
-    fn as_str(&self) -> &'static str {
-        match self {
-            AssetStatus::Live => "Live",
-            AssetStatus::Frozen => "Frozen",
-            AssetStatus::Destroying => "Destroying",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Decode)]
-struct AssetDetails {
-    owner: [u8; 32],
-    issuer: [u8; 32],
-    admin: [u8; 32],
-    freezer: [u8; 32],
-    supply: u128,
-    deposit: u128,
-    min_balance: u128,
-    is_sufficient: bool,
-    accounts: u32,
-    sufficients: u32,
-    approvals: u32,
-    status: AssetStatus,
-}
-
-#[derive(Debug, Clone, Decode)]
-struct AssetMetadataStorage {
-    deposit: u128,
-    name: Vec<u8>,
-    symbol: Vec<u8>,
-    decimals: u8,
-    is_frozen: bool,
 }
 
 // ============================================================================
