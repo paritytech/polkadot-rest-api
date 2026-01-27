@@ -226,6 +226,28 @@ pub async fn dry_run(
     State(state): State<AppState>,
     Json(body): Json<DryRunRequest>,
 ) -> Result<Json<DryRunResponse>, DryRunError> {
+    dry_run_internal(&state.client, body).await
+}
+
+pub async fn dry_run_rc(
+    State(state): State<AppState>,
+    Json(body): Json<DryRunRequest>,
+) -> Result<Json<DryRunResponse>, DryRunError> {
+    let tx = body.tx.as_deref().unwrap_or_default();
+    let relay_client =
+        state
+            .get_relay_chain_client()
+            .ok_or_else(|| DryRunError::RelayChainNotConfigured {
+                transaction: tx.to_string(),
+            })?;
+
+    dry_run_internal(relay_client, body).await
+}
+
+async fn dry_run_internal(
+    client: &subxt::OnlineClient<subxt::SubstrateConfig>,
+    body: DryRunRequest,
+) -> Result<Json<DryRunResponse>, DryRunError> {
     let tx = body.tx.as_ref().ok_or(DryRunError::MissingTx)?;
     if tx.is_empty() {
         return Err(DryRunError::MissingTx);
@@ -234,7 +256,7 @@ pub async fn dry_run(
 
     // Resolve block
     let client_at = match &body.at {
-        None => state.client.at_current_block().await?,
+        None => client.at_current_block().await?,
         Some(at_str) => {
             let block_id =
                 at_str
@@ -244,8 +266,8 @@ pub async fn dry_run(
                         cause: e.to_string(),
                     })?;
             match block_id {
-                BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                BlockId::Number(num) => state.client.at_block(num).await?,
+                BlockId::Hash(hash) => client.at_block(hash).await?,
+                BlockId::Number(num) => client.at_block(num).await?,
             }
         }
     };
@@ -271,76 +293,6 @@ pub async fn dry_run(
             transaction: tx.to_string(),
             cause: format!("Invalid hex encoding: {}", e),
             stack: format!("Error: Invalid hex encoding: {}\n    at dry_run", e),
-        })?;
-    let call = subxt::dynamic::Value::from_bytes(tx_bytes);
-
-    // Call DryRunApi.dry_run_call(origin, call)
-    let method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
-        "DryRunApi",
-        "dry_run_call",
-        (origin, call),
-    );
-    let result = client_at.runtime_apis().call(method).await?;
-
-    parse_result_to_response(result, tx)
-}
-
-pub async fn dry_run_rc(
-    State(state): State<AppState>,
-    Json(body): Json<DryRunRequest>,
-) -> Result<Json<DryRunResponse>, DryRunError> {
-    let tx = body.tx.as_ref().ok_or(DryRunError::MissingTx)?;
-    if tx.is_empty() {
-        return Err(DryRunError::MissingTx);
-    }
-    let sender = validate_sender(&body.sender_address, tx)?;
-
-    let relay_client =
-        state
-            .get_relay_chain_client()
-            .ok_or_else(|| DryRunError::RelayChainNotConfigured {
-                transaction: tx.to_string(),
-            })?;
-
-    // Resolve block on relay chain
-    let client_at = match &body.at {
-        None => relay_client.at_current_block().await?,
-        Some(at_str) => {
-            let block_id =
-                at_str
-                    .parse::<BlockId>()
-                    .map_err(|e| DryRunError::InvalidBlockParam {
-                        transaction: tx.to_string(),
-                        cause: e.to_string(),
-                    })?;
-            match block_id {
-                BlockId::Hash(hash) => relay_client.at_block(hash).await?,
-                BlockId::Number(num) => relay_client.at_block(num).await?,
-            }
-        }
-    };
-
-    // Build origin
-    let sender_bytes = decode_ss58_address(sender).map_err(|e| DryRunError::ParseFailed {
-        transaction: tx.to_string(),
-        cause: e.clone(),
-        stack: format!("Error: {}\n    at dry_run_rc", e),
-    })?;
-
-    let origin = subxt::dynamic::Value::named_composite([(
-        "System",
-        subxt::dynamic::Value::named_composite([(
-            "Signed",
-            subxt::dynamic::Value::from_bytes(sender_bytes),
-        )]),
-    )]);
-
-    // Decode transaction bytes
-    let tx_bytes =
-        hex::decode(tx.strip_prefix("0x").unwrap_or(tx)).map_err(|e| DryRunError::ParseFailed {
-            transaction: tx.to_string(),
-            cause: format!("Invalid hex encoding: {}", e),
-            stack: format!("Error: Invalid hex encoding: {}\n    at dry_run_rc", e),
         })?;
     let call = subxt::dynamic::Value::from_bytes(tx_bytes);
 
