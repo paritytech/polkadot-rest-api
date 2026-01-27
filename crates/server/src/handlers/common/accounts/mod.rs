@@ -16,8 +16,8 @@ pub use balance_info::{
 pub use proxy_info::{DecodedProxyDefinition, ProxyQueryError, RawProxyInfo, query_proxy_info};
 
 pub use staking_info::{
-    DecodedNominationsInfo, DecodedRewardDestination, DecodedStakingLedger, DecodedUnlockingChunk,
-    RawStakingInfo, StakingQueryError, query_staking_info,
+    ClaimStatus, DecodedNominationsInfo, DecodedRewardDestination, DecodedStakingLedger,
+    DecodedUnlockingChunk, EraClaimStatus, RawStakingInfo, StakingQueryError, query_staking_info,
 };
 
 pub use staking_payouts::{

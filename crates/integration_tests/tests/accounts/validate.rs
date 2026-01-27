@@ -1,6 +1,6 @@
 //! Integration tests for /accounts/{accountId}/validate endpoint
 
-use super::{Colorize, get_client};
+use super::{Colorize, get_client, test_accounts};
 use anyhow::{Context, Result};
 
 #[tokio::test]
@@ -229,7 +229,7 @@ async fn test_validate_invalid_address() -> Result<()> {
     let local_client = get_client().await?;
 
     // An invalid address (random string)
-    let invalid_addr = "invalid-address-123";
+    let invalid_addr = test_accounts::INVALID_ADDRESS;
     let endpoint = format!("/accounts/{}/validate", invalid_addr);
 
     println!(

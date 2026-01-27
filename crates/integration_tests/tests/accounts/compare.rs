@@ -1,6 +1,6 @@
 //! Integration tests for /accounts/compare endpoint
 
-use super::{Colorize, get_client};
+use super::{Colorize, get_client, test_accounts};
 use anyhow::{Context, Result};
 
 #[tokio::test]
@@ -203,7 +203,7 @@ async fn test_compare_with_invalid_address() -> Result<()> {
     let local_client = get_client().await?;
 
     let valid_addr = "1xN1Q5eKQmS5AzASdjt6R6sHF76611vKR4PFpFjy1kXau4m";
-    let invalid_addr = "invalid-address-123";
+    let invalid_addr = test_accounts::INVALID_ADDRESS;
 
     let endpoint = format!(
         "/accounts/compare?addresses={},{}",

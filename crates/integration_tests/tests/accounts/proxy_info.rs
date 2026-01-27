@@ -1,13 +1,13 @@
 //! Integration tests for /accounts/{accountId}/proxy-info endpoint
 
-use super::{Colorize, get_client};
+use super::{Colorize, get_client, test_accounts};
 use anyhow::{Context, Result};
 
 #[tokio::test]
 async fn test_proxy_info_basic() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let endpoint = format!("/accounts/{}/proxy-info", account_id);
 
     println!(
@@ -107,7 +107,7 @@ async fn test_proxy_info_basic() -> Result<()> {
 async fn test_proxy_info_at_specific_block() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let block_number = 10260000;
     let endpoint = format!("/accounts/{}/proxy-info?at={}", account_id, block_number);
 
@@ -158,7 +158,7 @@ async fn test_proxy_info_at_specific_block() -> Result<()> {
 async fn test_proxy_info_invalid_address() -> Result<()> {
     let local_client = get_client().await?;
 
-    let invalid_address = "invalid-address-123";
+    let invalid_address = test_accounts::INVALID_ADDRESS;
     let endpoint = format!("/accounts/{}/proxy-info", invalid_address);
 
     println!(
@@ -196,7 +196,7 @@ async fn test_proxy_info_invalid_address() -> Result<()> {
 async fn test_proxy_info_no_proxies() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d";
+    let account_id = test_accounts::ALICE_HEX;
     let endpoint = format!("/accounts/{}/proxy-info", account_id);
 
     println!(
@@ -247,7 +247,7 @@ async fn test_proxy_info_no_proxies() -> Result<()> {
 async fn test_proxy_info_use_rc_block() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let rc_block_number = 26054957;
     let endpoint = format!(
         "/accounts/{}/proxy-info?useRcBlock=true&at={}",
@@ -343,7 +343,7 @@ async fn test_proxy_info_use_rc_block() -> Result<()> {
 async fn test_proxy_info_hex_address() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d";
+    let account_id = test_accounts::ALICE_HEX;
     let endpoint = format!("/accounts/{}/proxy-info", account_id);
 
     println!(

@@ -1,87 +1,43 @@
 //! Integration tests for /accounts/{accountId}/balance-info endpoint
 //! Tests both standard (/accounts) and relay chain (/rc/accounts) endpoints
-use super::{Colorize, get_client};
+
+use super::{
+    Colorize, EndpointType, get_client, print_skip_message, should_skip_rc_test, test_accounts,
+};
 use anyhow::{Context, Result};
 
 // ================================================================================================
-// Endpoint Type Abstraction
+// Balance Info Endpoint Extension
 // ================================================================================================
 
-#[derive(Clone, Copy)]
-enum EndpointType {
-    Standard,
-    RelayChain,
+/// Extension trait for EndpointType to build balance-info endpoints
+trait BalanceEndpoint {
+    fn build_balance_endpoint(&self, account_id: &str, query: Option<&str>) -> String;
+    fn get_balance_test_account(&self) -> &'static str;
+    fn get_balance_test_block(&self) -> u64;
 }
 
-impl EndpointType {
-    fn base_path(&self) -> &'static str {
-        match self {
-            EndpointType::Standard => "/accounts",
-            EndpointType::RelayChain => "/rc/accounts",
-        }
-    }
-
-    fn name(&self) -> &'static str {
-        match self {
-            EndpointType::Standard => "Standard",
-            EndpointType::RelayChain => "RelayChain",
-        }
-    }
-
-    fn test_account(&self) -> &'static str {
-        match self {
-            EndpointType::Standard => "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu",
-            EndpointType::RelayChain => "1xN1Q5eKQmS5AzASdjt6R6sHF76611vKR4PFpFjy1kXau4m",
-        }
-    }
-
-    fn test_block_number(&self) -> u64 {
-        match self {
-            EndpointType::Standard => 10260000,
-            EndpointType::RelayChain => 1000000,
-        }
-    }
-
-    fn build_endpoint(&self, account_id: &str, query: Option<&str>) -> String {
+impl BalanceEndpoint for EndpointType {
+    fn build_balance_endpoint(&self, account_id: &str, query: Option<&str>) -> String {
         match query {
             Some(q) => format!("{}/{}/balance-info?{}", self.base_path(), account_id, q),
             None => format!("{}/{}/balance-info", self.base_path(), account_id),
         }
     }
-}
 
-// ================================================================================================
-// Helper Functions
-// ================================================================================================
-
-/// Check if relay chain is not available and skip the test if so
-fn should_skip_rc_test(status: u16, json: &serde_json::Value) -> bool {
-    if status != 400 && status != 500 {
-        return false;
-    }
-    if let Some(response_obj) = json.as_object() {
-        if let Some(error) = response_obj.get("error") {
-            let error_str = error.as_str().unwrap_or("");
-            if error_str.contains("Relay chain not available")
-                || error_str.contains("relay chain")
-                || error_str.contains("not found")
-                || error_str.contains("pallet")
-            {
-                return true;
-            }
+    fn get_balance_test_account(&self) -> &'static str {
+        match self {
+            EndpointType::Standard => test_accounts::ASSET_HUB_ACCOUNT,
+            EndpointType::RelayChain => test_accounts::POLKADOT_TREASURY,
         }
     }
-    false
-}
 
-fn print_skip_message(test_name: &str) {
-    println!("  {} Relay chain not configured", "⚠".yellow());
-    println!(
-        "{} {} test skipped - no relay chain configured",
-        "⚠".yellow().bold(),
-        test_name
-    );
-    println!("{}", "═".repeat(80).bright_white());
+    fn get_balance_test_block(&self) -> u64 {
+        match self {
+            EndpointType::Standard => 10260000,
+            EndpointType::RelayChain => 1000000,
+        }
+    }
 }
 
 // ================================================================================================
@@ -91,8 +47,8 @@ fn print_skip_message(test_name: &str) {
 async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = endpoint_type.test_account();
-    let endpoint = endpoint_type.build_endpoint(account_id, None);
+    let account_id = endpoint_type.get_balance_test_account();
+    let endpoint = endpoint_type.build_balance_endpoint(account_id, None);
 
     println!(
         "\n{} Testing {} balance-info endpoint (basic)",
@@ -117,7 +73,7 @@ async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
     if matches!(endpoint_type, EndpointType::RelayChain)
         && should_skip_rc_test(local_status.as_u16(), &local_json)
     {
-        print_skip_message("basic");
+        print_skip_message("basic", "Relay chain not configured");
         return Ok(());
     }
 
@@ -176,9 +132,10 @@ async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
 async fn run_at_specific_block_test(endpoint_type: EndpointType) -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = endpoint_type.test_account();
-    let block_number = endpoint_type.test_block_number();
-    let endpoint = endpoint_type.build_endpoint(account_id, Some(&format!("at={}", block_number)));
+    let account_id = endpoint_type.get_balance_test_account();
+    let block_number = endpoint_type.get_balance_test_block();
+    let endpoint =
+        endpoint_type.build_balance_endpoint(account_id, Some(&format!("at={}", block_number)));
 
     println!(
         "\n{} Testing {} balance-info at block {}",
@@ -196,7 +153,7 @@ async fn run_at_specific_block_test(endpoint_type: EndpointType) -> Result<()> {
     if matches!(endpoint_type, EndpointType::RelayChain)
         && should_skip_rc_test(local_status.as_u16(), &local_json)
     {
-        print_skip_message("at specific block");
+        print_skip_message("at specific block", "Relay chain not configured");
         return Ok(());
     }
 
@@ -225,8 +182,8 @@ async fn run_at_specific_block_test(endpoint_type: EndpointType) -> Result<()> {
 async fn run_invalid_address_test(endpoint_type: EndpointType) -> Result<()> {
     let local_client = get_client().await?;
 
-    let invalid_address = "invalid-address-123";
-    let endpoint = endpoint_type.build_endpoint(invalid_address, None);
+    let invalid_address = test_accounts::INVALID_ADDRESS;
+    let endpoint = endpoint_type.build_balance_endpoint(invalid_address, None);
 
     println!(
         "\n{} Testing {} balance-info with invalid address",
@@ -270,8 +227,8 @@ async fn run_invalid_address_test(endpoint_type: EndpointType) -> Result<()> {
 async fn run_with_denominated_test(endpoint_type: EndpointType) -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = endpoint_type.test_account();
-    let endpoint = endpoint_type.build_endpoint(account_id, Some("denominated=true"));
+    let account_id = endpoint_type.get_balance_test_account();
+    let endpoint = endpoint_type.build_balance_endpoint(account_id, Some("denominated=true"));
 
     println!(
         "\n{} Testing {} balance-info with denominated=true",
@@ -288,7 +245,7 @@ async fn run_with_denominated_test(endpoint_type: EndpointType) -> Result<()> {
     if matches!(endpoint_type, EndpointType::RelayChain)
         && should_skip_rc_test(local_status.as_u16(), &local_json)
     {
-        print_skip_message("denominated");
+        print_skip_message("denominated", "Relay chain not configured");
         return Ok(());
     }
 
@@ -321,8 +278,8 @@ async fn run_with_denominated_test(endpoint_type: EndpointType) -> Result<()> {
 async fn run_locks_structure_test(endpoint_type: EndpointType) -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = endpoint_type.test_account();
-    let endpoint = endpoint_type.build_endpoint(account_id, None);
+    let account_id = endpoint_type.get_balance_test_account();
+    let endpoint = endpoint_type.build_balance_endpoint(account_id, None);
 
     println!(
         "\n{} Testing {} balance-info locks structure",
@@ -339,7 +296,7 @@ async fn run_locks_structure_test(endpoint_type: EndpointType) -> Result<()> {
     if matches!(endpoint_type, EndpointType::RelayChain)
         && should_skip_rc_test(local_status.as_u16(), &local_json)
     {
-        print_skip_message("locks structure");
+        print_skip_message("locks structure", "Relay chain not configured");
         return Ok(());
     }
 
@@ -386,8 +343,8 @@ async fn run_locks_structure_test(endpoint_type: EndpointType) -> Result<()> {
 async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = endpoint_type.test_account();
-    let endpoint = endpoint_type.build_endpoint(account_id, None);
+    let account_id = endpoint_type.get_balance_test_account();
+    let endpoint = endpoint_type.build_balance_endpoint(account_id, None);
 
     println!(
         "\n{} Testing {} balance-info response structure",
@@ -404,7 +361,7 @@ async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> 
     if matches!(endpoint_type, EndpointType::RelayChain)
         && should_skip_rc_test(local_status.as_u16(), &local_json)
     {
-        print_skip_message("response structure");
+        print_skip_message("response structure", "Relay chain not configured");
         return Ok(());
     }
 
@@ -485,8 +442,8 @@ async fn run_hex_address_test(endpoint_type: EndpointType) -> Result<()> {
     let local_client = get_client().await?;
 
     // Hex address (32 bytes = 64 hex chars)
-    let hex_address = "0x2a39366f6620a6c2e2fed5990a3d419e6a19dd127fc7a50b515cf17e2dc5cc59";
-    let endpoint = endpoint_type.build_endpoint(hex_address, None);
+    let hex_address = endpoint_type.get_hex_address();
+    let endpoint = endpoint_type.build_balance_endpoint(hex_address, None);
 
     println!(
         "\n{} Testing {} balance-info with hex address",
@@ -503,7 +460,7 @@ async fn run_hex_address_test(endpoint_type: EndpointType) -> Result<()> {
     if matches!(endpoint_type, EndpointType::RelayChain)
         && should_skip_rc_test(local_status.as_u16(), &local_json)
     {
-        print_skip_message("hex address");
+        print_skip_message("hex address", "Relay chain not configured");
         return Ok(());
     }
 
@@ -526,8 +483,8 @@ async fn run_hex_address_test(endpoint_type: EndpointType) -> Result<()> {
 async fn run_frozen_fields_test(endpoint_type: EndpointType) -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = endpoint_type.test_account();
-    let endpoint = endpoint_type.build_endpoint(account_id, None);
+    let account_id = endpoint_type.get_balance_test_account();
+    let endpoint = endpoint_type.build_balance_endpoint(account_id, None);
 
     println!(
         "\n{} Testing {} balance-info frozen fields",
@@ -544,7 +501,7 @@ async fn run_frozen_fields_test(endpoint_type: EndpointType) -> Result<()> {
     if matches!(endpoint_type, EndpointType::RelayChain)
         && should_skip_rc_test(local_status.as_u16(), &local_json)
     {
-        print_skip_message("frozen fields");
+        print_skip_message("frozen fields", "Relay chain not configured");
         return Ok(());
     }
 
@@ -685,7 +642,7 @@ async fn test_rc_balance_info_frozen_fields() -> Result<()> {
 async fn test_balance_info_use_rc_block() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let rc_block_number = 10554957;
     let endpoint = format!(
         "/accounts/{}/balance-info?useRcBlock=true&at={}",
@@ -764,7 +721,7 @@ async fn test_balance_info_use_rc_block() -> Result<()> {
 async fn test_balance_info_use_rc_block_empty() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     // Block 10554958 is a Relay Chain block that doesn't include any Asset Hub blocks
     let rc_block_number = 10554958;
     let endpoint = format!(

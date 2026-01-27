@@ -1,6 +1,6 @@
 //! Integration tests for /accounts/{accountId}/vesting-info endpoint
 
-use super::{Colorize, get_client};
+use super::{Colorize, get_client, test_accounts};
 use anyhow::{Context, Result};
 
 /// Check if error indicates vesting pallet not available
@@ -44,7 +44,7 @@ fn should_skip_vesting_test(status: u16, json: &serde_json::Value) -> bool {
 async fn test_vesting_info_basic() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let endpoint = format!("/accounts/{}/vesting-info", account_id);
 
     println!(
@@ -146,7 +146,7 @@ async fn test_vesting_info_basic() -> Result<()> {
 async fn test_vesting_info_at_specific_block() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let block_number = 10260000;
     let endpoint = format!("/accounts/{}/vesting-info?at={}", account_id, block_number);
 
@@ -191,7 +191,7 @@ async fn test_vesting_info_at_specific_block() -> Result<()> {
 async fn test_vesting_info_invalid_address() -> Result<()> {
     let local_client = get_client().await?;
 
-    let invalid_address = "invalid-address-123";
+    let invalid_address = test_accounts::INVALID_ADDRESS;
     let endpoint = format!("/accounts/{}/vesting-info", invalid_address);
 
     println!(
@@ -229,7 +229,7 @@ async fn test_vesting_info_invalid_address() -> Result<()> {
 async fn test_vesting_info_schedule_structure() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let endpoint = format!("/accounts/{}/vesting-info", account_id);
 
     println!(
@@ -333,7 +333,7 @@ async fn test_vesting_info_schedule_structure() -> Result<()> {
 async fn test_vesting_info_use_rc_block() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let rc_block_number = 10554957;
     let endpoint = format!(
         "/accounts/{}/vesting-info?useRcBlock=true&at={}",
@@ -419,7 +419,7 @@ async fn test_vesting_info_use_rc_block() -> Result<()> {
 async fn test_vesting_info_use_rc_block_empty() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let rc_block_number = 10554958;
     let endpoint = format!(
         "/accounts/{}/vesting-info?useRcBlock=true&at={}",

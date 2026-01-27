@@ -1,5 +1,5 @@
 use super::types::{
-    AccountsError, NominationsInfo, RcStakingInfoQueryParams, RcStakingInfoResponse,
+    AccountsError, ClaimedReward, NominationsInfo, RcStakingInfoQueryParams, RcStakingInfoResponse,
     RelayChainAccess, RewardDestination, StakingLedger,
 };
 use crate::handlers::accounts::utils::validate_and_parse_address;
@@ -47,7 +47,13 @@ pub async fn get_staking_info(
         utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
     let client_at_block = rc_client.at_block(resolved_block.number).await?;
 
-    let raw_info = query_staking_info(&client_at_block, &account, &resolved_block).await?;
+    let raw_info = query_staking_info(
+        &client_at_block,
+        &account,
+        &resolved_block,
+        params.include_claimed_rewards,
+    )
+    .await?;
 
     let response = format_response(&raw_info);
 
@@ -107,12 +113,23 @@ fn format_response(raw: &RawStakingInfo) -> RcStakingInfoResponse {
         .filter_map(|c| c.value.parse::<u128>().ok())
         .sum();
 
+    // Convert claimed rewards if present
+    let claimed_rewards = raw.staking.claimed_rewards.as_ref().map(|rewards| {
+        rewards
+            .iter()
+            .map(|r| ClaimedReward {
+                era: r.era.to_string(),
+                status: r.status.as_str().to_string(),
+            })
+            .collect()
+    });
+
     let staking = StakingLedger {
         stash: raw.staking.stash.clone(),
         total: raw.staking.total.clone(),
         active: raw.staking.active.clone(),
         unlocking: unlocking_total.to_string(),
-        claimed_rewards: None, // TODO: Implement when include_claimed_rewards is true
+        claimed_rewards,
     };
 
     RcStakingInfoResponse {

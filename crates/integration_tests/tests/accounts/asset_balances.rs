@@ -1,6 +1,6 @@
 //! Integration tests for /accounts/{accountId}/asset-balances endpoint
 
-use super::{Colorize, get_client};
+use super::{Colorize, get_client, test_accounts};
 use anyhow::{Context, Result};
 use integration_tests::utils::compare_json;
 use serde_json::Value;
@@ -34,7 +34,7 @@ fn should_skip_test(status: u16, json: &serde_json::Value) -> bool {
 async fn test_asset_balances_basic() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let endpoint = format!("/accounts/{}/asset-balances", account_id);
 
     println!(
@@ -112,7 +112,7 @@ async fn test_asset_balances_basic() -> Result<()> {
 async fn test_asset_balances_comparison() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let block_number = 10260000;
     let endpoint = format!(
         "/accounts/{}/asset-balances?at={}",
@@ -164,7 +164,7 @@ async fn test_asset_balances_comparison() -> Result<()> {
 async fn test_asset_balances_with_filter() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let endpoint = format!(
         "/accounts/{}/asset-balances?assets[]=1337&assets[]=22222087",
         account_id
@@ -209,7 +209,7 @@ async fn test_asset_balances_with_filter() -> Result<()> {
 async fn test_asset_balances_invalid_address() -> Result<()> {
     let local_client = get_client().await?;
 
-    let invalid_address = "invalid-address-123";
+    let invalid_address = test_accounts::INVALID_ADDRESS;
     let endpoint = format!("/accounts/{}/asset-balances", invalid_address);
 
     let (local_status, local_json) = local_client
@@ -246,7 +246,7 @@ async fn test_asset_balances_invalid_address() -> Result<()> {
 async fn test_asset_balances_use_rc_block() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let rc_block_number = 10554957;
     let endpoint = format!(
         "/accounts/{}/asset-balances?useRcBlock=true&at={}",
@@ -324,7 +324,7 @@ async fn test_asset_balances_use_rc_block() -> Result<()> {
 async fn test_asset_balances_use_rc_block_empty() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let rc_block_number = 10554958;
     let endpoint = format!(
         "/accounts/{}/asset-balances?useRcBlock=true&at={}",

@@ -1,6 +1,6 @@
 //! Integration tests for /accounts/{accountId}/asset-approvals endpoint
 
-use super::{Colorize, get_client};
+use super::{Colorize, get_client, test_accounts};
 use anyhow::{Context, Result};
 
 /// Check if error indicates pallet or feature unavailable
@@ -30,7 +30,7 @@ fn should_skip_test(status: u16, json: &serde_json::Value) -> bool {
 async fn test_asset_approvals_basic() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let delegate = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
     let asset_id = 1984;
     let endpoint = format!(
@@ -112,7 +112,7 @@ async fn test_asset_approvals_basic() -> Result<()> {
 async fn test_asset_approvals_at_specific_block() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let delegate = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
     let asset_id = 1984;
     let block_number = 10260000;
@@ -162,7 +162,7 @@ async fn test_asset_approvals_at_specific_block() -> Result<()> {
 async fn test_asset_approvals_invalid_address() -> Result<()> {
     let local_client = get_client().await?;
 
-    let invalid_address = "invalid-address-123";
+    let invalid_address = test_accounts::INVALID_ADDRESS;
     let delegate = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
     let asset_id = 1984;
     let endpoint = format!(
@@ -210,7 +210,7 @@ async fn test_asset_approvals_invalid_address() -> Result<()> {
 async fn test_asset_approvals_invalid_delegate() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let invalid_delegate = "invalid-delegate-123";
     let asset_id = 1984;
     let endpoint = format!(
@@ -253,7 +253,7 @@ async fn test_asset_approvals_invalid_delegate() -> Result<()> {
 async fn test_asset_approvals_missing_required_params() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
 
     println!(
         "\n{} Testing asset approvals with missing required parameters",
@@ -312,7 +312,7 @@ async fn test_asset_approvals_missing_required_params() -> Result<()> {
 async fn test_asset_approvals_use_rc_block() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let delegate = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
     let asset_id = 1984;
     let rc_block_number = 10554957;
@@ -404,7 +404,7 @@ async fn test_asset_approvals_use_rc_block() -> Result<()> {
 async fn test_asset_approvals_use_rc_block_empty() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let delegate = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
     let asset_id = 1984;
     let rc_block_number = 10554958;
@@ -454,7 +454,7 @@ async fn test_asset_approvals_use_rc_block_empty() -> Result<()> {
 async fn test_asset_approvals_non_existent_approval() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let delegate = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
     let asset_id = 999999;
     let endpoint = format!(

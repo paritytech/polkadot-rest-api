@@ -4,38 +4,20 @@
 //! - `/accounts/{accountId}/staking-info` (standard endpoint)
 //! - `/rc/accounts/{accountId}/staking-info` (relay chain endpoint)
 
-use super::{Colorize, get_client};
+use super::{Colorize, EndpointType, get_client, test_accounts};
 use anyhow::{Context, Result};
 
 // ================================================================================================
 // Test Configuration
 // ================================================================================================
 
-/// Endpoint type for parameterized testing
-#[derive(Debug, Clone, Copy)]
-enum EndpointType {
-    /// Standard endpoint: /accounts/{accountId}/staking-info
-    Standard,
-    /// RC endpoint: /rc/accounts/{accountId}/staking-info
-    RelayChain,
+/// Extension trait for EndpointType specific to staking-info tests
+trait StakingEndpoint {
+    fn build_staking_endpoint(&self, account_id: &str, query: Option<&str>) -> String;
 }
 
-impl EndpointType {
-    fn base_path(&self) -> &'static str {
-        match self {
-            EndpointType::Standard => "/accounts",
-            EndpointType::RelayChain => "/rc/accounts",
-        }
-    }
-
-    fn name(&self) -> &'static str {
-        match self {
-            EndpointType::Standard => "standard",
-            EndpointType::RelayChain => "RC",
-        }
-    }
-
-    fn build_endpoint(&self, account_id: &str, query: Option<&str>) -> String {
+impl StakingEndpoint for EndpointType {
+    fn build_staking_endpoint(&self, account_id: &str, query: Option<&str>) -> String {
         let base = format!("{}/{}/staking-info", self.base_path(), account_id);
         match query {
             Some(q) => format!("{}?{}", base, q),
@@ -131,8 +113,8 @@ fn should_skip_test(
 
 async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
-    let endpoint = endpoint_type.build_endpoint(account_id, None);
+    let account_id = endpoint_type.get_test_staker();
+    let endpoint = endpoint_type.build_staking_endpoint(account_id, None);
 
     println!(
         "\n{} Testing {} staking-info endpoint (basic)",
@@ -229,12 +211,10 @@ async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
 
 async fn run_at_specific_block_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
-    let block_number = match endpoint_type {
-        EndpointType::Standard => 10260000,
-        EndpointType::RelayChain => 20000000,
-    };
-    let endpoint = endpoint_type.build_endpoint(account_id, Some(&format!("at={}", block_number)));
+    let account_id = endpoint_type.get_test_staker();
+    let block_number = endpoint_type.get_recent_block();
+    let endpoint =
+        endpoint_type.build_staking_endpoint(account_id, Some(&format!("at={}", block_number)));
 
     println!(
         "\n{} Testing {} staking-info at specific block {}",
@@ -281,7 +261,7 @@ async fn run_at_specific_block_test(endpoint_type: EndpointType) -> Result<()> {
 async fn run_invalid_address_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
     let invalid_address = "invalid-address-123";
-    let endpoint = endpoint_type.build_endpoint(invalid_address, None);
+    let endpoint = endpoint_type.build_staking_endpoint(invalid_address, None);
 
     println!(
         "\n{} Testing {} staking-info with invalid address",
@@ -326,13 +306,8 @@ async fn run_invalid_address_test(endpoint_type: EndpointType) -> Result<()> {
 
 async fn run_non_stash_account_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let account_id = match endpoint_type {
-        EndpointType::Standard => {
-            "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"
-        }
-        EndpointType::RelayChain => "1xN1Q5eKQmS5AzASdjt6R6sHF76611vKR4PFpFjy1kXau4m",
-    };
-    let endpoint = endpoint_type.build_endpoint(account_id, None);
+    let account_id = endpoint_type.get_non_stash_address();
+    let endpoint = endpoint_type.build_staking_endpoint(account_id, None);
 
     println!(
         "\n{} Testing {} staking-info for potential non-stash account",
@@ -387,8 +362,8 @@ async fn run_non_stash_account_test(endpoint_type: EndpointType) -> Result<()> {
 
 async fn run_hex_address_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let hex_address = "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d";
-    let endpoint = endpoint_type.build_endpoint(hex_address, None);
+    let hex_address = endpoint_type.get_hex_address();
+    let endpoint = endpoint_type.build_staking_endpoint(hex_address, None);
 
     println!(
         "\n{} Testing {} staking-info with hex address",
@@ -434,8 +409,8 @@ async fn run_hex_address_test(endpoint_type: EndpointType) -> Result<()> {
 
 async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
-    let endpoint = endpoint_type.build_endpoint(account_id, None);
+    let account_id = endpoint_type.get_test_staker();
+    let endpoint = endpoint_type.build_staking_endpoint(account_id, None);
 
     println!(
         "\n{} Testing {} staking-info response structure",
@@ -509,6 +484,13 @@ async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> 
         "staking.unlocking should be a valid number string"
     );
 
+    // 'claimedRewards' is optional - only present when includeClaimedRewards=true
+    // Since we're not requesting it, it should NOT be present
+    assert!(
+        !staking_obj.contains_key("claimedRewards"),
+        "staking.claimedRewards should NOT be present without includeClaimedRewards=true"
+    );
+
     // Validate 'nominations' structure if present
     if let Some(nominations) = response_obj.get("nominations") {
         let nominations_obj = nominations
@@ -556,8 +538,8 @@ async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> 
 
 async fn run_reward_destination_variants_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
-    let endpoint = endpoint_type.build_endpoint(account_id, None);
+    let account_id = endpoint_type.get_test_staker();
+    let endpoint = endpoint_type.build_staking_endpoint(account_id, None);
 
     println!(
         "\n{} Testing {} staking-info reward destination variants",
@@ -702,8 +684,8 @@ async fn test_rc_staking_info_reward_destination_variants() -> Result<()> {
 #[tokio::test]
 async fn test_standard_staking_info_use_rc_block() -> Result<()> {
     let client = get_client().await?;
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
-    let rc_block_number = 26054957;
+    let account_id = test_accounts::POLKADOT_STAKER;
+    let rc_block_number = EndpointType::RelayChain.get_recent_block();
     let endpoint = format!(
         "/accounts/{}/staking-info?useRcBlock=true&at={}",
         account_id, rc_block_number
@@ -798,4 +780,266 @@ async fn test_standard_staking_info_use_rc_block() -> Result<()> {
     );
     println!("{}", "=".repeat(80).bright_white());
     Ok(())
+}
+
+// ================================================================================================
+// Include Claimed Rewards Tests
+// ================================================================================================
+
+async fn run_include_claimed_rewards_test(endpoint_type: EndpointType) -> Result<()> {
+    let client = get_client().await?;
+    let account_id = endpoint_type.get_test_staker();
+    let endpoint =
+        endpoint_type.build_staking_endpoint(account_id, Some("includeClaimedRewards=true"));
+
+    println!(
+        "\n{} Testing {} staking-info with includeClaimedRewards=true",
+        "Testing".cyan().bold(),
+        endpoint_type.name()
+    );
+    println!("{}", "=".repeat(80).bright_white());
+
+    let (status, json) = client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from API")?;
+
+    if should_skip_test(endpoint_type, status.as_u16(), &json)? {
+        println!("{}", "=".repeat(80).bright_white());
+        return Ok(());
+    }
+
+    assert!(
+        status.is_success(),
+        "{} API returned status {}",
+        endpoint_type.name(),
+        status
+    );
+
+    let response_obj = json.as_object().expect("Response is not an object");
+    let staking_obj = response_obj.get("staking").unwrap().as_object().unwrap();
+
+    // When includeClaimedRewards=true, the claimedRewards field should be present
+    assert!(
+        staking_obj.contains_key("claimedRewards"),
+        "staking.claimedRewards should be present when includeClaimedRewards=true"
+    );
+
+    let claimed_rewards = staking_obj.get("claimedRewards").unwrap();
+    assert!(
+        claimed_rewards.is_array(),
+        "staking.claimedRewards should be an array"
+    );
+
+    let claimed_rewards_arr = claimed_rewards.as_array().unwrap();
+    println!(
+        "  {} Found {} claimed reward entries",
+        "+".green(),
+        claimed_rewards_arr.len()
+    );
+
+    // Validate structure of each claimed reward entry
+    for (i, entry) in claimed_rewards_arr.iter().enumerate() {
+        let entry_obj = entry
+            .as_object()
+            .expect("claimedRewards entry should be an object");
+
+        assert!(
+            entry_obj.contains_key("era"),
+            "claimedRewards[{}] missing 'era' field",
+            i
+        );
+        assert!(
+            entry_obj.contains_key("status"),
+            "claimedRewards[{}] missing 'status' field",
+            i
+        );
+
+        let era = entry_obj.get("era").unwrap();
+        assert!(
+            era.is_string(),
+            "claimedRewards[{}].era should be a string",
+            i
+        );
+
+        let status_val = entry_obj.get("status").unwrap();
+        assert!(
+            status_val.is_string(),
+            "claimedRewards[{}].status should be a string",
+            i
+        );
+
+        // Validate status is one of the expected values
+        let status_str = status_val.as_str().unwrap();
+        let valid_statuses = ["claimed", "unclaimed", "partially claimed", "undefined"];
+        assert!(
+            valid_statuses.contains(&status_str),
+            "claimedRewards[{}].status '{}' is not a valid status",
+            i,
+            status_str
+        );
+
+        // Print first few entries for debugging
+        if i < 3 {
+            println!(
+                "  {} Era {}: {}",
+                "+".green(),
+                era.as_str().unwrap(),
+                status_str
+            );
+        }
+    }
+
+    if claimed_rewards_arr.len() > 3 {
+        println!(
+            "  {} ... and {} more entries",
+            "+".green(),
+            claimed_rewards_arr.len() - 3
+        );
+    }
+
+    println!(
+        "{} {} includeClaimedRewards test passed!",
+        "+".green().bold(),
+        endpoint_type.name()
+    );
+    println!("{}", "=".repeat(80).bright_white());
+    Ok(())
+}
+
+async fn run_no_claimed_rewards_by_default_test(endpoint_type: EndpointType) -> Result<()> {
+    let client = get_client().await?;
+    let account_id = endpoint_type.get_test_staker();
+    let endpoint = endpoint_type.build_staking_endpoint(account_id, None);
+
+    println!(
+        "\n{} Testing {} staking-info without includeClaimedRewards (should not include claimedRewards)",
+        "Testing".cyan().bold(),
+        endpoint_type.name()
+    );
+    println!("{}", "=".repeat(80).bright_white());
+
+    let (status, json) = client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from API")?;
+
+    if should_skip_test(endpoint_type, status.as_u16(), &json)? {
+        println!("{}", "=".repeat(80).bright_white());
+        return Ok(());
+    }
+
+    assert!(
+        status.is_success(),
+        "{} API returned status {}",
+        endpoint_type.name(),
+        status
+    );
+
+    let response_obj = json.as_object().expect("Response is not an object");
+    let staking_obj = response_obj.get("staking").unwrap().as_object().unwrap();
+
+    // When includeClaimedRewards is not set (defaults to false), claimedRewards should NOT be present
+    assert!(
+        !staking_obj.contains_key("claimedRewards"),
+        "staking.claimedRewards should NOT be present when includeClaimedRewards is not set"
+    );
+
+    println!(
+        "  {} Confirmed: claimedRewards is not present in response",
+        "+".green()
+    );
+
+    println!(
+        "{} {} no claimedRewards by default test passed!",
+        "+".green().bold(),
+        endpoint_type.name()
+    );
+    println!("{}", "=".repeat(80).bright_white());
+    Ok(())
+}
+
+async fn run_include_claimed_rewards_false_test(endpoint_type: EndpointType) -> Result<()> {
+    let client = get_client().await?;
+    let account_id = endpoint_type.get_test_staker();
+    let endpoint =
+        endpoint_type.build_staking_endpoint(account_id, Some("includeClaimedRewards=false"));
+
+    println!(
+        "\n{} Testing {} staking-info with includeClaimedRewards=false",
+        "Testing".cyan().bold(),
+        endpoint_type.name()
+    );
+    println!("{}", "=".repeat(80).bright_white());
+
+    let (status, json) = client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from API")?;
+
+    if should_skip_test(endpoint_type, status.as_u16(), &json)? {
+        println!("{}", "=".repeat(80).bright_white());
+        return Ok(());
+    }
+
+    assert!(
+        status.is_success(),
+        "{} API returned status {}",
+        endpoint_type.name(),
+        status
+    );
+
+    let response_obj = json.as_object().expect("Response is not an object");
+    let staking_obj = response_obj.get("staking").unwrap().as_object().unwrap();
+
+    // When includeClaimedRewards=false, claimedRewards should NOT be present
+    assert!(
+        !staking_obj.contains_key("claimedRewards"),
+        "staking.claimedRewards should NOT be present when includeClaimedRewards=false"
+    );
+
+    println!(
+        "  {} Confirmed: claimedRewards is not present when explicitly set to false",
+        "+".green()
+    );
+
+    println!(
+        "{} {} includeClaimedRewards=false test passed!",
+        "+".green().bold(),
+        endpoint_type.name()
+    );
+    println!("{}", "=".repeat(80).bright_white());
+    Ok(())
+}
+
+// Standard endpoint claimed rewards tests
+#[tokio::test]
+async fn test_standard_staking_info_include_claimed_rewards() -> Result<()> {
+    run_include_claimed_rewards_test(EndpointType::Standard).await
+}
+
+#[tokio::test]
+async fn test_standard_staking_info_no_claimed_rewards_by_default() -> Result<()> {
+    run_no_claimed_rewards_by_default_test(EndpointType::Standard).await
+}
+
+#[tokio::test]
+async fn test_standard_staking_info_include_claimed_rewards_false() -> Result<()> {
+    run_include_claimed_rewards_false_test(EndpointType::Standard).await
+}
+
+// RC endpoint claimed rewards tests
+#[tokio::test]
+async fn test_rc_staking_info_include_claimed_rewards() -> Result<()> {
+    run_include_claimed_rewards_test(EndpointType::RelayChain).await
+}
+
+#[tokio::test]
+async fn test_rc_staking_info_no_claimed_rewards_by_default() -> Result<()> {
+    run_no_claimed_rewards_by_default_test(EndpointType::RelayChain).await
+}
+
+#[tokio::test]
+async fn test_rc_staking_info_include_claimed_rewards_false() -> Result<()> {
+    run_include_claimed_rewards_false_test(EndpointType::RelayChain).await
 }

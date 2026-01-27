@@ -1,6 +1,6 @@
 use super::types::{
-    AccountsError, BlockInfo, NominationsInfo, RewardDestination, StakingInfoQueryParams,
-    StakingInfoResponse, StakingLedger,
+    AccountsError, BlockInfo, ClaimedReward, NominationsInfo, RewardDestination,
+    StakingInfoQueryParams, StakingInfoResponse, StakingLedger,
 };
 use super::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
@@ -47,7 +47,13 @@ pub async fn get_staking_info(
     let resolved_block = utils::resolve_block(&state, block_id).await?;
     let client_at_block = state.client.at_block(resolved_block.number).await?;
 
-    let raw_info = query_staking_info(&client_at_block, &account, &resolved_block).await?;
+    let raw_info = query_staking_info(
+        &client_at_block,
+        &account,
+        &resolved_block,
+        params.include_claimed_rewards,
+    )
+    .await?;
 
     let response = format_response(&raw_info, None, None, None);
 
@@ -85,12 +91,23 @@ fn format_response(
         .filter_map(|c| c.value.parse::<u128>().ok())
         .sum();
 
+    // Convert claimed rewards if present
+    let claimed_rewards = raw.staking.claimed_rewards.as_ref().map(|rewards| {
+        rewards
+            .iter()
+            .map(|r| ClaimedReward {
+                era: r.era.to_string(),
+                status: r.status.as_str().to_string(),
+            })
+            .collect()
+    });
+
     let staking = StakingLedger {
         stash: raw.staking.stash.clone(),
         total: raw.staking.total.clone(),
         active: raw.staking.active.clone(),
         unlocking: unlocking_total.to_string(),
-        claimed_rewards: None, // TODO: Implement when include_claimed_rewards is true
+        claimed_rewards,
     };
 
     StakingInfoResponse {
@@ -156,7 +173,13 @@ async fn handle_use_rc_block(
             number: ah_block.number,
         };
         let client_at_block = state.client.at_block(ah_resolved.number).await?;
-        let raw_info = query_staking_info(&client_at_block, &account, &ah_resolved).await?;
+        let raw_info = query_staking_info(
+            &client_at_block,
+            &account,
+            &ah_resolved,
+            params.include_claimed_rewards,
+        )
+        .await?;
 
         let response = format_response(
             &raw_info,

@@ -4,38 +4,20 @@
 //! - `/accounts/{accountId}/staking-payouts` (standard endpoint)
 //! - `/rc/accounts/{accountId}/staking-payouts` (relay chain endpoint)
 
-use super::{Colorize, get_client};
+use super::{Colorize, EndpointType, get_client, test_accounts};
 use anyhow::{Context, Result};
 
 // ================================================================================================
-// Test Configuration
+// Staking Payouts Endpoint Extension
 // ================================================================================================
 
-/// Endpoint type for parameterized testing
-#[derive(Debug, Clone, Copy)]
-enum EndpointType {
-    /// Standard endpoint: /accounts/{accountId}/staking-payouts
-    Standard,
-    /// RC endpoint: /rc/accounts/{accountId}/staking-payouts
-    RelayChain,
+/// Extension trait for EndpointType to build staking-payouts endpoints
+trait StakingPayoutsEndpoint {
+    fn build_payouts_endpoint(&self, account_id: &str, query: Option<&str>) -> String;
 }
 
-impl EndpointType {
-    fn base_path(&self) -> &'static str {
-        match self {
-            EndpointType::Standard => "/accounts",
-            EndpointType::RelayChain => "/rc/accounts",
-        }
-    }
-
-    fn name(&self) -> &'static str {
-        match self {
-            EndpointType::Standard => "standard",
-            EndpointType::RelayChain => "RC",
-        }
-    }
-
-    fn build_endpoint(&self, account_id: &str, query: Option<&str>) -> String {
+impl StakingPayoutsEndpoint for EndpointType {
+    fn build_payouts_endpoint(&self, account_id: &str, query: Option<&str>) -> String {
         let base = format!("{}/{}/staking-payouts", self.base_path(), account_id);
         match query {
             Some(q) => format!("{}?{}", base, q),
@@ -141,8 +123,8 @@ fn should_skip_test(
 
 async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
-    let endpoint = endpoint_type.build_endpoint(account_id, None);
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
+    let endpoint = endpoint_type.build_payouts_endpoint(account_id, None);
 
     println!(
         "\n{} Testing {} staking-payouts endpoint (basic)",
@@ -205,9 +187,10 @@ async fn run_basic_test(endpoint_type: EndpointType) -> Result<()> {
 
 async fn run_depth_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let depth = 3;
-    let endpoint = endpoint_type.build_endpoint(account_id, Some(&format!("depth={}", depth)));
+    let endpoint =
+        endpoint_type.build_payouts_endpoint(account_id, Some(&format!("depth={}", depth)));
 
     println!(
         "\n{} Testing {} staking-payouts with depth={}",
@@ -257,8 +240,8 @@ async fn run_depth_test(endpoint_type: EndpointType) -> Result<()> {
 
 async fn run_unclaimed_only_false_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
-    let endpoint = endpoint_type.build_endpoint(account_id, Some("unclaimedOnly=false"));
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
+    let endpoint = endpoint_type.build_payouts_endpoint(account_id, Some("unclaimedOnly=false"));
 
     println!(
         "\n{} Testing {} staking-payouts with unclaimedOnly=false",
@@ -303,8 +286,8 @@ async fn run_unclaimed_only_false_test(endpoint_type: EndpointType) -> Result<()
 
 async fn run_invalid_address_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let invalid_address = "invalid-address-123";
-    let endpoint = endpoint_type.build_endpoint(invalid_address, None);
+    let invalid_address = test_accounts::INVALID_ADDRESS;
+    let endpoint = endpoint_type.build_payouts_endpoint(invalid_address, None);
 
     println!(
         "\n{} Testing {} staking-payouts with invalid address",
@@ -349,8 +332,8 @@ async fn run_invalid_address_test(endpoint_type: EndpointType) -> Result<()> {
 
 async fn run_invalid_depth_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
-    let endpoint = endpoint_type.build_endpoint(account_id, Some("depth=0"));
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
+    let endpoint = endpoint_type.build_payouts_endpoint(account_id, Some("depth=0"));
 
     println!(
         "\n{} Testing {} staking-payouts with invalid depth=0",
@@ -401,8 +384,8 @@ async fn run_invalid_depth_test(endpoint_type: EndpointType) -> Result<()> {
 
 async fn run_hex_address_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let hex_address = "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d";
-    let endpoint = endpoint_type.build_endpoint(hex_address, None);
+    let hex_address = test_accounts::ALICE_HEX;
+    let endpoint = endpoint_type.build_payouts_endpoint(hex_address, None);
 
     println!(
         "\n{} Testing {} staking-payouts with hex address",
@@ -448,8 +431,8 @@ async fn run_hex_address_test(endpoint_type: EndpointType) -> Result<()> {
 
 async fn run_response_structure_test(endpoint_type: EndpointType) -> Result<()> {
     let client = get_client().await?;
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
-    let endpoint = endpoint_type.build_endpoint(account_id, None);
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
+    let endpoint = endpoint_type.build_payouts_endpoint(account_id, None);
 
     println!(
         "\n{} Testing {} staking-payouts response structure",
@@ -666,7 +649,7 @@ async fn test_rc_staking_payouts_response_structure() -> Result<()> {
 #[tokio::test]
 async fn test_standard_staking_payouts_use_rc_block() -> Result<()> {
     let client = get_client().await?;
-    let account_id = "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu";
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let rc_block_number = 26054957;
     let endpoint = format!(
         "/accounts/{}/staking-payouts?useRcBlock=true&at={}",

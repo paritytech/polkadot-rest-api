@@ -25,6 +25,64 @@ mod validate;
 mod vesting_info;
 
 // ================================================================================================
+// Test Account Addresses
+// ================================================================================================
+
+/// Well-known test addresses for integration tests.
+/// These addresses are chosen to be valid on various Substrate chains.
+pub mod test_accounts {
+    // =============================================================================================
+    // Polkadot Relay Chain Addresses
+    // =============================================================================================
+
+    /// Polkadot relay chain staker (Web3 Foundation validator)
+    pub const POLKADOT_STAKER: &str = "16SpacegeUTft9v3ts27CEC3tJaxgvE4uZeCctThFH3Vb24p";
+
+    /// Alternative Polkadot staker (Parity validator)
+    pub const POLKADOT_STAKER_ALT: &str = "1zugcag7cJVBtVRnFxv5Qftn7xKAnR6YJ9x4x3XLgGgmNnS";
+
+    /// Polkadot treasury account
+    pub const POLKADOT_TREASURY: &str = "13UVJyLnbVp9RBZYFwFGyDvVd1y27Tt8tkntv6Q7JVPhFsTB";
+
+    // =============================================================================================
+    // Generic Substrate Addresses (Alice, Bob, etc.)
+    // =============================================================================================
+
+    /// Alice's SS58 address (generic substrate prefix 42)
+    pub const ALICE: &str = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
+
+    /// Alice's hex public key
+    pub const ALICE_HEX: &str =
+        "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d";
+
+    /// Bob's SS58 address (generic substrate prefix 42)
+    pub const BOB: &str = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty";
+
+    /// Charlie's SS58 address (generic substrate prefix 42)
+    pub const CHARLIE: &str = "5FLSigC9HGRKVhB9FiEo4Y3koPsNmBmLJbpXg2mp1hXcS59Y";
+
+    // =============================================================================================
+    // Asset Hub Addresses
+    // =============================================================================================
+
+    /// Asset Hub Polkadot address with known assets
+    pub const ASSET_HUB_ACCOUNT: &str = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
+
+    // =============================================================================================
+    // Special Purpose Addresses
+    // =============================================================================================
+
+    /// Known non-stash address for negative staking tests
+    pub const NON_STASH_ADDRESS: &str = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty";
+
+    /// Invalid address string for error handling tests
+    pub const INVALID_ADDRESS: &str = "invalid-address-123";
+
+    /// Empty address for edge case tests
+    pub const EMPTY_ADDRESS: &str = "";
+}
+
+// ================================================================================================
 // Shared Test Client
 // ================================================================================================
 
@@ -55,7 +113,7 @@ fn init_tracing() {
 // Endpoint Type Abstraction (for tests supporting both standard and RC endpoints)
 // ================================================================================================
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum EndpointType {
     Standard,
     RelayChain,
@@ -73,6 +131,61 @@ impl EndpointType {
         match self {
             EndpointType::Standard => "Standard",
             EndpointType::RelayChain => "RelayChain",
+        }
+    }
+
+    /// Get a primary test account appropriate for this endpoint type
+    pub fn get_test_account(&self) -> &'static str {
+        match self {
+            EndpointType::Standard => test_accounts::ALICE,
+            EndpointType::RelayChain => test_accounts::POLKADOT_TREASURY,
+        }
+    }
+
+    /// Get a staker account appropriate for this endpoint type
+    pub fn get_test_staker(&self) -> &'static str {
+        match self {
+            EndpointType::Standard => test_accounts::ALICE, // May not be a staker
+            EndpointType::RelayChain => test_accounts::POLKADOT_STAKER,
+        }
+    }
+
+    /// Get an alternative staker account
+    pub fn get_alt_test_staker(&self) -> &'static str {
+        match self {
+            EndpointType::Standard => test_accounts::BOB,
+            EndpointType::RelayChain => test_accounts::POLKADOT_STAKER_ALT,
+        }
+    }
+
+    /// Get a hex format address for testing
+    pub fn get_hex_address(&self) -> &'static str {
+        test_accounts::ALICE_HEX
+    }
+
+    /// Get an invalid address for error testing
+    pub fn get_invalid_address(&self) -> &'static str {
+        test_accounts::INVALID_ADDRESS
+    }
+
+    /// Get a non-stash address for negative staking tests
+    pub fn get_non_stash_address(&self) -> &'static str {
+        test_accounts::NON_STASH_ADDRESS
+    }
+
+    /// Get a recommended historical block number for this endpoint type
+    pub fn get_historical_block(&self) -> u64 {
+        match self {
+            EndpointType::Standard => 5_000_000, // Asset Hub historical block
+            EndpointType::RelayChain => 20_000_000, // Polkadot relay chain historical block
+        }
+    }
+
+    /// Get a recent block number for this endpoint type
+    pub fn get_recent_block(&self) -> u64 {
+        match self {
+            EndpointType::Standard => 8_000_000,
+            EndpointType::RelayChain => 23_000_000,
         }
     }
 }

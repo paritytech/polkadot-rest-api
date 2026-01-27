@@ -1,6 +1,6 @@
 //! Integration tests for /accounts/{accountId}/convert endpoint
 
-use super::{Colorize, get_client};
+use super::{Colorize, get_client, test_accounts};
 use anyhow::{Context, Result};
 
 #[tokio::test]
@@ -8,7 +8,7 @@ async fn test_convert_basic() -> Result<()> {
     let local_client = get_client().await?;
 
     // Use a known account ID (32 bytes hex)
-    let account_id = "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"; // Alice
+    let account_id = test_accounts::ALICE_HEX; // Alice
     let endpoint = format!("/accounts/{}/convert", account_id);
 
     println!(
@@ -95,7 +95,7 @@ async fn test_convert_basic() -> Result<()> {
 async fn test_convert_with_polkadot_prefix() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"; // Alice
+    let account_id = test_accounts::ALICE_HEX; // Alice
     let endpoint = format!("/accounts/{}/convert?prefix=0", account_id);
 
     println!(
@@ -145,7 +145,7 @@ async fn test_convert_with_polkadot_prefix() -> Result<()> {
 async fn test_convert_with_kusama_prefix() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"; // Alice
+    let account_id = test_accounts::ALICE_HEX; // Alice
     let endpoint = format!("/accounts/{}/convert?prefix=2", account_id);
 
     println!(
