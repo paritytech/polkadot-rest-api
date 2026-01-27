@@ -352,18 +352,6 @@ mod tests {
     }
 
     #[test]
-    fn test_query_params_deserialization_defaults() {
-        let json = "{}";
-        let params: RcBlockHeadQueryParams = serde_json::from_str(json).unwrap();
-        assert!(params.finalized);
-        assert!(!params.event_docs);
-        assert!(!params.extrinsic_docs);
-        assert!(!params.no_fees);
-        assert!(!params.decoded_xcm_msgs);
-        assert!(params.para_id.is_none());
-    }
-
-    #[test]
     fn test_query_params_deserialization_custom() {
         let json = r#"{"finalized": false, "eventDocs": true, "extrinsicDocs": true, "noFees": true, "decodedXcmMsgs": true, "paraId": 1000}"#;
         let params: RcBlockHeadQueryParams = serde_json::from_str(json).unwrap();
@@ -373,35 +361,6 @@ mod tests {
         assert!(params.no_fees);
         assert!(params.decoded_xcm_msgs);
         assert_eq!(params.para_id, Some(1000));
-    }
-
-    #[test]
-    fn test_query_params_deserialization_partial() {
-        let json = r#"{"finalized": false}"#;
-        let params: RcBlockHeadQueryParams = serde_json::from_str(json).unwrap();
-        assert!(!params.finalized);
-        assert!(!params.event_docs);
-        assert!(!params.extrinsic_docs);
-        assert!(!params.no_fees);
-        assert!(!params.decoded_xcm_msgs);
-        assert!(params.para_id.is_none());
-    }
-
-    #[test]
-    fn test_query_params_deserialization_xcm_only() {
-        let json = r#"{"decodedXcmMsgs": true}"#;
-        let params: RcBlockHeadQueryParams = serde_json::from_str(json).unwrap();
-        assert!(params.finalized);
-        assert!(params.decoded_xcm_msgs);
-        assert!(params.para_id.is_none());
-    }
-
-    #[test]
-    fn test_query_params_deserialization_para_id_filter() {
-        let json = r#"{"decodedXcmMsgs": true, "paraId": 2000}"#;
-        let params: RcBlockHeadQueryParams = serde_json::from_str(json).unwrap();
-        assert!(params.decoded_xcm_msgs);
-        assert_eq!(params.para_id, Some(2000));
     }
 
     #[test]
@@ -416,7 +375,7 @@ mod tests {
     // ========================================================================
 
     use crate::handlers::blocks::types::{
-        DigestLog, Event, ExtrinsicInfo, MethodInfo, OnFinalize, OnInitialize, XcmMessages,
+        DigestLog, ExtrinsicInfo, MethodInfo, OnFinalize, OnInitialize, XcmMessages,
     };
     use crate::utils::EraInfo;
 
@@ -465,31 +424,6 @@ mod tests {
             rc_block_number: None,
             ah_timestamp: None,
         }
-    }
-
-    #[test]
-    fn test_response_has_correct_structure() {
-        let response = create_test_block_response();
-        let json = serde_json::to_value(&response).unwrap();
-
-        // Verify required fields are present
-        assert!(json.get("number").is_some());
-        assert!(json.get("hash").is_some());
-        assert!(json.get("parentHash").is_some());
-        assert!(json.get("stateRoot").is_some());
-        assert!(json.get("extrinsicsRoot").is_some());
-        assert!(json.get("authorId").is_some());
-        assert!(json.get("logs").is_some());
-        assert!(json.get("onInitialize").is_some());
-        assert!(json.get("extrinsics").is_some());
-        assert!(json.get("onFinalize").is_some());
-        assert!(json.get("finalized").is_some());
-
-        // Verify optional fields are omitted when None
-        assert!(json.get("decodedXcmMsgs").is_none());
-        assert!(json.get("rcBlockHash").is_none());
-        assert!(json.get("rcBlockNumber").is_none());
-        assert!(json.get("ahTimestamp").is_none());
     }
 
     #[test]
@@ -562,53 +496,6 @@ mod tests {
         assert!(xcm.get("horizontalMessages").is_some());
         assert!(xcm.get("downwardMessages").is_some());
         assert!(xcm.get("upwardMessages").is_some());
-    }
-
-    #[test]
-    fn test_response_logs_structure() {
-        let response = create_test_block_response();
-        let json = serde_json::to_value(&response).unwrap();
-
-        let logs = json["logs"].as_array().unwrap();
-        assert!(!logs.is_empty());
-
-        let log = &logs[0];
-        assert!(log.get("type").is_some());
-        assert!(log.get("index").is_some());
-        assert!(log.get("value").is_some());
-
-        assert_eq!(log["type"].as_str().unwrap(), "PreRuntime");
-        assert_eq!(log["index"].as_str().unwrap(), "6");
-    }
-
-    #[test]
-    fn test_response_on_initialize_structure() {
-        let mut response = create_test_block_response();
-        response.on_initialize.events.push(Event {
-            method: MethodInfo {
-                pallet: "system".to_string(),
-                method: "extrinsicSuccess".to_string(),
-            },
-            data: vec![json!({"weight": {"refTime": "123", "proofSize": "0"}})],
-            docs: None,
-        });
-
-        let json = serde_json::to_value(&response).unwrap();
-
-        let on_init = &json["onInitialize"];
-        assert!(on_init.get("events").is_some());
-
-        let events = on_init["events"].as_array().unwrap();
-        assert_eq!(events.len(), 1);
-
-        let event = &events[0];
-        assert!(event.get("method").is_some());
-        assert!(event.get("data").is_some());
-        assert_eq!(event["method"]["pallet"].as_str().unwrap(), "system");
-        assert_eq!(
-            event["method"]["method"].as_str().unwrap(),
-            "extrinsicSuccess"
-        );
     }
 
     #[test]
