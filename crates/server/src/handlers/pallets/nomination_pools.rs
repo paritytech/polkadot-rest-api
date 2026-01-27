@@ -14,6 +14,7 @@ use axum::{
 };
 use config::ChainType;
 use parity_scale_codec::Decode;
+use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
@@ -200,18 +201,18 @@ pub async fn pallets_nomination_pools_info(
 
     // Fetch all nomination pools info storage values
     let counter_for_bonded_pools =
-        fetch_storage_value_u32(&client_at_block, "NominationPools", "CounterForBondedPools")
+        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "CounterForBondedPools")
             .await
             .unwrap_or(0);
     let counter_for_metadata =
-        fetch_storage_value_u32(&client_at_block, "NominationPools", "CounterForMetadata")
+        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "CounterForMetadata")
             .await
             .unwrap_or(0);
     let counter_for_pool_members =
-        fetch_storage_value_u32(&client_at_block, "NominationPools", "CounterForPoolMembers")
+        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "CounterForPoolMembers")
             .await
             .unwrap_or(0);
-    let counter_for_reverse_pool_id_lookup = fetch_storage_value_u32(
+    let counter_for_reverse_pool_id_lookup = fetch_storage_value::<u32>(
         &client_at_block,
         "NominationPools",
         "CounterForReversePoolIdLookup",
@@ -219,35 +220,41 @@ pub async fn pallets_nomination_pools_info(
     .await
     .unwrap_or(0);
     let counter_for_reward_pools =
-        fetch_storage_value_u32(&client_at_block, "NominationPools", "CounterForRewardPools")
+        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "CounterForRewardPools")
             .await
             .unwrap_or(0);
-    let counter_for_sub_pools_storage = fetch_storage_value_u32(
+    let counter_for_sub_pools_storage = fetch_storage_value::<u32>(
         &client_at_block,
         "NominationPools",
         "CounterForSubPoolsStorage",
     )
     .await
     .unwrap_or(0);
-    let last_pool_id = fetch_storage_value_u32(&client_at_block, "NominationPools", "LastPoolId")
-        .await
-        .unwrap_or(0);
+    let last_pool_id =
+        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "LastPoolId")
+            .await
+            .unwrap_or(0);
     let max_pool_members =
-        fetch_storage_value_option_u32(&client_at_block, "NominationPools", "MaxPoolMembers").await;
-    let max_pool_members_per_pool = fetch_storage_value_option_u32(
+        fetch_storage_value::<Option<u32>>(&client_at_block, "NominationPools", "MaxPoolMembers")
+            .await
+            .flatten();
+    let max_pool_members_per_pool = fetch_storage_value::<Option<u32>>(
         &client_at_block,
         "NominationPools",
         "MaxPoolMembersPerPool",
     )
-    .await;
+    .await
+    .flatten();
     let max_pools =
-        fetch_storage_value_option_u32(&client_at_block, "NominationPools", "MaxPools").await;
+        fetch_storage_value::<Option<u32>>(&client_at_block, "NominationPools", "MaxPools")
+            .await
+            .flatten();
     let min_create_bond =
-        fetch_storage_value_u128(&client_at_block, "NominationPools", "MinCreateBond")
+        fetch_storage_value::<u128>(&client_at_block, "NominationPools", "MinCreateBond")
             .await
             .unwrap_or(0);
     let min_join_bond =
-        fetch_storage_value_u128(&client_at_block, "NominationPools", "MinJoinBond")
+        fetch_storage_value::<u128>(&client_at_block, "NominationPools", "MinJoinBond")
             .await
             .unwrap_or(0);
 
@@ -346,37 +353,19 @@ pub async fn pallets_nomination_pools_pool(
 // Helper Functions - Storage Value Fetchers
 // ============================================================================
 
-/// Fetches a u32 storage value.
-async fn fetch_storage_value_u32(
+/// Generic function to fetch and decode a storage value.
+/// Uses `DecodeAsType` for type-guided decoding.
+async fn fetch_storage_value<T>(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     pallet: &str,
     entry: &str,
-) -> Option<u32> {
-    let addr = subxt::dynamic::storage::<(), u32>(pallet, entry);
-    let value = client_at_block.storage().fetch(addr, ()).await.ok()?;
-    value.decode().ok()
-}
-
-/// Fetches an Option<u32> storage value (for max values that can be None).
-async fn fetch_storage_value_option_u32(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-    pallet: &str,
-    entry: &str,
-) -> Option<u32> {
-    let addr = subxt::dynamic::storage::<(), Option<u32>>(pallet, entry);
-    let value = client_at_block.storage().fetch(addr, ()).await.ok()?;
-    value.decode().ok().flatten()
-}
-
-/// Fetches a u128 storage value.
-async fn fetch_storage_value_u128(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-    pallet: &str,
-    entry: &str,
-) -> Option<u128> {
-    let addr = subxt::dynamic::storage::<(), u128>(pallet, entry);
-    let value = client_at_block.storage().fetch(addr, ()).await.ok()?;
-    value.decode().ok()
+) -> Option<T>
+where
+    T: DecodeAsType,
+{
+    let addr = subxt::dynamic::storage::<(), scale_value::Value>(pallet, entry);
+    let storage_value = client_at_block.storage().fetch(addr, ()).await.ok()?;
+    storage_value.decode_as().ok()
 }
 
 // ============================================================================
@@ -396,13 +385,22 @@ async fn fetch_bonded_pool(
     };
 
     // Try modern V2 format first (with commission)
-    if let Ok(storage) = BondedPoolStorageV2::decode(&mut &raw_bytes[..]) {
-        return Some(bonded_pool_v2_to_json(&storage, ss58_prefix));
+    // Using raw Decode since we're confident about the exact byte layout
+    let mut cursor = &raw_bytes[..];
+    if let Ok(storage) = BondedPoolStorageV2::decode(&mut cursor) {
+        // Sanity check: ensure all bytes were consumed
+        if cursor.is_empty() {
+            return Some(bonded_pool_v2_to_json(&storage, ss58_prefix));
+        }
     }
 
     // Fall back to V1 format (legacy without commission)
-    if let Ok(storage) = BondedPoolStorageV1::decode(&mut &raw_bytes[..]) {
-        return Some(bonded_pool_v1_to_json(&storage, ss58_prefix));
+    let mut cursor = &raw_bytes[..];
+    if let Ok(storage) = BondedPoolStorageV1::decode(&mut cursor) {
+        // Sanity check: ensure all bytes were consumed
+        if cursor.is_empty() {
+            return Some(bonded_pool_v1_to_json(&storage, ss58_prefix));
+        }
     }
 
     None
@@ -476,25 +474,34 @@ async fn fetch_reward_pool(
     };
 
     // Try modern V2 format first (with commission tracking)
-    if let Ok(storage) = RewardPoolStorageV2::decode(&mut &raw_bytes[..]) {
-        return Some(json!({
-            "lastRecordedRewardCounter": storage.last_recorded_reward_counter.to_string(),
-            "lastRecordedTotalPayouts": storage.last_recorded_total_payouts.to_string(),
-            "totalRewardsClaimed": storage.total_rewards_claimed.to_string(),
-            "totalCommissionPending": storage.total_commission_pending.to_string(),
-            "totalCommissionClaimed": storage.total_commission_claimed.to_string()
-        }));
+    // Using raw Decode since we're confident about the exact byte layout
+    let mut cursor = &raw_bytes[..];
+    if let Ok(storage) = RewardPoolStorageV2::decode(&mut cursor) {
+        // Sanity check: ensure all bytes were consumed
+        if cursor.is_empty() {
+            return Some(json!({
+                "lastRecordedRewardCounter": storage.last_recorded_reward_counter.to_string(),
+                "lastRecordedTotalPayouts": storage.last_recorded_total_payouts.to_string(),
+                "totalRewardsClaimed": storage.total_rewards_claimed.to_string(),
+                "totalCommissionPending": storage.total_commission_pending.to_string(),
+                "totalCommissionClaimed": storage.total_commission_claimed.to_string()
+            }));
+        }
     }
 
     // Fall back to V1 format (legacy without commission)
-    if let Ok(storage) = RewardPoolStorageV1::decode(&mut &raw_bytes[..]) {
-        return Some(json!({
-            "lastRecordedRewardCounter": storage.last_recorded_reward_counter.to_string(),
-            "lastRecordedTotalPayouts": storage.last_recorded_total_payouts.to_string(),
-            "totalRewardsClaimed": storage.total_rewards_claimed.to_string(),
-            "totalCommissionPending": "0",
-            "totalCommissionClaimed": "0"
-        }));
+    let mut cursor = &raw_bytes[..];
+    if let Ok(storage) = RewardPoolStorageV1::decode(&mut cursor) {
+        // Sanity check: ensure all bytes were consumed
+        if cursor.is_empty() {
+            return Some(json!({
+                "lastRecordedRewardCounter": storage.last_recorded_reward_counter.to_string(),
+                "lastRecordedTotalPayouts": storage.last_recorded_total_payouts.to_string(),
+                "totalRewardsClaimed": storage.total_rewards_claimed.to_string(),
+                "totalCommissionPending": "0",
+                "totalCommissionClaimed": "0"
+            }));
+        }
     }
 
     None
