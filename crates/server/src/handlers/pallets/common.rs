@@ -53,6 +53,13 @@ pub enum PalletError {
         entry: &'static str,
     },
 
+    #[error("Fetch entry of {pallet}::{entry} storage failed with {error}")]
+    StorageEntryFetchFailed {
+        pallet: &'static str,
+        entry: &'static str,
+        error: String,
+    },
+
     #[error("Failed to decode {pallet}::{entry} storage")]
     StorageDecodeFailed {
         pallet: &'static str,
@@ -82,6 +89,9 @@ pub enum PalletError {
 
     #[error("Active era not found at this block")]
     ActiveEraNotFound,
+
+    #[error("No active or current era was found")]
+    CurrentOrActiveEraNotFound,
 
     #[error("Era start session index not found in BondedEras for active era")]
     EraStartSessionNotFound,
@@ -122,6 +132,9 @@ impl IntoResponse for PalletError {
 
             // Storage errors - NOT_FOUND for missing data, INTERNAL_SERVER_ERROR for decode failures
             PalletError::StorageFetchFailed { .. } => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::StorageEntryFetchFailed { .. } => {
+                (StatusCode::NOT_FOUND, self.to_string())
+            }
             PalletError::StorageDecodeFailed { .. } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
@@ -136,6 +149,7 @@ impl IntoResponse for PalletError {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             PalletError::ActiveEraNotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::CurrentOrActiveEraNotFound => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::EraStartSessionNotFound => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }

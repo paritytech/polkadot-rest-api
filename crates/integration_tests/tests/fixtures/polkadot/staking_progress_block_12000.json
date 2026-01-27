@@ -1,0 +1,18 @@
+{
+  "at": {
+    "hash": "0xccd33c54a8d372c6859a4b01b557b78a5e3dac16f3e3ec770ea31fe4dbfdd76a",
+    "height": "120000"
+  },
+  "activeEra": "0",
+  "forceEra": "ForceNone",
+  "nextSessionEstimate": "122391",
+  "unappliedSlashes": [],
+  "validatorSet": [
+    "12H7nsDUrJUSCQQJrTKAFfyCWSactiSdjoVUixqcd9CZHTGt",
+    "15zF7zvdUiy2eYCgN6KWbv2SJPdbSP6vdHs1YTZDGjRcSMHN",
+    "12zSBXtK9evQRCG9Gsdr72RbqNzbNn2Suox2cTfugCLmWjqG",
+    "146YJHyD5cjFN77HrfKhxUFbU8WjApwk9ncGD6NbxE66vhMS",
+    "13wY4rD88C3Xzd4brFMPkAMEMC3dSuAR2NC6PZ5BEsZ5t6rJ",
+    "167f5SpFqXtEKEShxjKVWG2YbmrzLuLAL1DFNZcMGDxRgFhM"
+  ]
+}
