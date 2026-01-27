@@ -321,7 +321,9 @@
         "block_height": null,
         "account_id": null,
         "asset_id": "1984",
-        "query_params": { "at": "10260000" },
+        "query_params": {
+          "at": "10260000"
+        },
         "fixture_path": "asset-hub-polkadot/pallets_assets_1984_asset_info_10260000.json",
         "description": "Test pallets assets asset-info for USDT (asset 1984) at Asset Hub Polkadot block 10,260,000"
       },
@@ -453,7 +455,9 @@
         "block_height": null,
         "account_id": null,
         "asset_id": "1984",
-        "query_params": { "at": "11152000" },
+        "query_params": {
+          "at": "11152000"
+        },
         "fixture_path": "asset-hub-kusama/pallets_assets_1984_asset_info_11152000.json",
         "description": "Test pallets assets asset-info for USDT (asset 1984) at Asset Hub Kusama block 11,152,000"
       }

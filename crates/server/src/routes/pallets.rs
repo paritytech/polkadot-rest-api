@@ -22,17 +22,32 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
             "/pallets/staking/progress",
             "get",
             get(pallets::pallets_staking_progress),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/staking/validators",
+            "get",
+            get(pallets::pallets_staking_validators),
         );
 
     // Only register /rc/ routes for parachains, not relay chains
     if *chain_type != ChainType::Relay {
-        router.route_registered(
-            registry,
-            API_VERSION,
-            "/rc/pallets/staking/progress",
-            "get",
-            get(pallets::rc_pallets_staking_progress),
-        )
+        router
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/staking/progress",
+                "get",
+                get(pallets::rc_pallets_staking_progress),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/staking/validators",
+                "get",
+                get(pallets::rc_pallets_staking_validators),
+            )
     } else {
         router
     }
