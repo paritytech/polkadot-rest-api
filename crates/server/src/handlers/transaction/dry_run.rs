@@ -13,8 +13,8 @@ use thiserror::Error;
 #[serde(rename_all = "camelCase")]
 pub struct DryRunRequest {
     /// Hex-encoded signed extrinsic with 0x prefix.
-    pub tx: String,
-    /// Sender address in SS58 format (optional).
+    pub tx: Option<String>,
+    /// Sender address in SS58 format.
     pub sender_address: Option<String>,
     /// Block height to execute against (optional).
     pub at: Option<String>,
@@ -49,6 +49,12 @@ pub struct DryRunFailure {
 /// Errors that can occur during transaction dry-run.
 #[derive(Debug, Error)]
 pub enum DryRunError {
+    #[error("Missing field `tx` on request body.")]
+    MissingTx,
+
+    #[error("Missing field `senderAddress` on request body.")]
+    MissingSenderAddress { transaction: String },
+
     #[error("Failed to parse transaction.")]
     ParseFailed {
         transaction: String,
@@ -86,6 +92,28 @@ pub enum DryRunError {
 impl IntoResponse for DryRunError {
     fn into_response(self) -> axum::response::Response {
         match self {
+            DryRunError::MissingTx => {
+                let cause = "Missing field `tx` on request body.".to_string();
+                let body = Json(DryRunFailure {
+                    code: 400,
+                    error: "Failed to parse transaction.".to_string(),
+                    transaction: String::new(),
+                    cause: cause.clone(),
+                    stack: format!("Error: {}\n    at dry_run", cause),
+                });
+                (StatusCode::BAD_REQUEST, body).into_response()
+            }
+            DryRunError::MissingSenderAddress { transaction } => {
+                let cause = "Missing field `senderAddress` on request body.".to_string();
+                let body = Json(DryRunFailure {
+                    code: 400,
+                    error: "Failed to parse transaction.".to_string(),
+                    transaction,
+                    cause: cause.clone(),
+                    stack: format!("Error: {}\n    at dry_run", cause),
+                });
+                (StatusCode::BAD_REQUEST, body).into_response()
+            }
             DryRunError::ParseFailed {
                 transaction,
                 cause,
@@ -431,19 +459,32 @@ pub async fn dry_run(
     State(state): State<AppState>,
     Json(body): Json<DryRunRequest>,
 ) -> Result<Json<DryRunResponse>, DryRunError> {
-    // Get the sender address - use a default if not provided
-    let sender_address = body
-        .sender_address
-        .as_deref()
-        .unwrap_or("5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"); // Alice's address as default
+    // Validate tx field
+    let tx = body.tx.as_ref().ok_or(DryRunError::MissingTx)?;
+    if tx.is_empty() {
+        return Err(DryRunError::MissingTx);
+    }
+
+    // Validate senderAddress field
+    let sender_address =
+        body.sender_address
+            .as_ref()
+            .ok_or_else(|| DryRunError::MissingSenderAddress {
+                transaction: tx.clone(),
+            })?;
+    if sender_address.is_empty() {
+        return Err(DryRunError::MissingSenderAddress {
+            transaction: tx.clone(),
+        });
+    }
 
     // Resolve block hash
-    let block_hash = resolve_block_hash(&state, body.at.as_deref(), &body.tx).await?;
+    let block_hash = resolve_block_hash(&state, body.at.as_deref(), tx).await?;
 
     // Decode the transaction
-    let tx_hex = body.tx.strip_prefix("0x").unwrap_or(&body.tx);
+    let tx_hex = tx.strip_prefix("0x").unwrap_or(tx);
     let tx_bytes = hex::decode(tx_hex).map_err(|e| DryRunError::ParseFailed {
-        transaction: body.tx.clone(),
+        transaction: tx.clone(),
         cause: format!("Invalid hex encoding: {}", e),
         stack: "Failed to decode transaction hex".to_string(),
     })?;
@@ -451,7 +492,7 @@ pub async fn dry_run(
     // Decode the sender address to bytes
     let sender_bytes =
         decode_ss58_address(sender_address).map_err(|e| DryRunError::ParseFailed {
-            transaction: body.tx.clone(),
+            transaction: tx.clone(),
             cause: e,
             stack: "Failed to decode sender address".to_string(),
         })?;
@@ -491,7 +532,7 @@ pub async fn dry_run(
             match parse_dry_run_result(&result_hex) {
                 Ok(response) => Ok(Json(response)),
                 Err(e) => Err(DryRunError::DryRunFailed {
-                    transaction: body.tx,
+                    transaction: tx.clone(),
                     cause: e,
                     stack: "Failed to parse dry-run result".to_string(),
                 }),
@@ -503,12 +544,12 @@ pub async fn dry_run(
             // Check if DryRunApi is not available
             if error_str.contains("not found") || error_str.contains("does not exist") {
                 return Err(DryRunError::DryRunApiNotAvailable {
-                    transaction: body.tx,
+                    transaction: tx.clone(),
                 });
             }
 
             Err(DryRunError::DryRunFailed {
-                transaction: body.tx,
+                transaction: tx.clone(),
                 cause: error_str.clone(),
                 stack: format!("Error: {}\n    at dry_run", error_str),
             })
@@ -521,31 +562,45 @@ pub async fn dry_run_rc(
     State(state): State<AppState>,
     Json(body): Json<DryRunRequest>,
 ) -> Result<Json<DryRunResponse>, DryRunError> {
+    // Validate tx field
+    let tx = body.tx.as_ref().ok_or(DryRunError::MissingTx)?;
+    if tx.is_empty() {
+        return Err(DryRunError::MissingTx);
+    }
+
+    // Validate senderAddress field
+    let sender_address =
+        body.sender_address
+            .as_ref()
+            .ok_or_else(|| DryRunError::MissingSenderAddress {
+                transaction: tx.clone(),
+            })?;
+    if sender_address.is_empty() {
+        return Err(DryRunError::MissingSenderAddress {
+            transaction: tx.clone(),
+        });
+    }
+
     // Get relay chain RPC client
     let relay_rpc =
         state
             .get_relay_chain_rpc_client()
             .ok_or_else(|| DryRunError::RelayChainNotConfigured {
-                transaction: body.tx.clone(),
+                transaction: tx.clone(),
             })?;
-
-    let sender_address = body
-        .sender_address
-        .as_deref()
-        .unwrap_or("5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY");
 
     // Resolve block hash using relay chain
     let block_hash = match &body.at {
         None => {
             let relay_legacy = state.get_relay_chain_rpc().ok_or_else(|| {
                 DryRunError::RelayChainNotConfigured {
-                    transaction: body.tx.clone(),
+                    transaction: tx.clone(),
                 }
             })?;
             let hash = relay_legacy.chain_get_finalized_head().await.map_err(|e| {
                 let cause = e.to_string();
                 DryRunError::RpcFailed {
-                    transaction: body.tx.clone(),
+                    transaction: tx.clone(),
                     cause: cause.clone(),
                     stack: format!("Error: {}\n    at dry_run_rc", cause),
                 }
@@ -557,7 +612,7 @@ pub async fn dry_run_rc(
                 at_str
                     .parse::<utils::BlockId>()
                     .map_err(|e| DryRunError::InvalidBlockParam {
-                        transaction: body.tx.clone(),
+                        transaction: tx.clone(),
                         cause: e.to_string(),
                     })?;
             match block_id {
@@ -569,13 +624,13 @@ pub async fn dry_run_rc(
                         .map_err(|e| {
                             let cause = e.to_string();
                             DryRunError::RpcFailed {
-                                transaction: body.tx.clone(),
+                                transaction: tx.clone(),
                                 cause: cause.clone(),
                                 stack: format!("Error: {}\n    at dry_run_rc", cause),
                             }
                         })?;
                     hash.ok_or_else(|| DryRunError::BlockNotFound {
-                        transaction: body.tx.clone(),
+                        transaction: tx.clone(),
                         cause: format!("Block at height {} not found", number),
                     })?
                 }
@@ -584,16 +639,16 @@ pub async fn dry_run_rc(
     };
 
     // Decode the transaction and sender
-    let tx_hex = body.tx.strip_prefix("0x").unwrap_or(&body.tx);
+    let tx_hex = tx.strip_prefix("0x").unwrap_or(tx);
     let tx_bytes = hex::decode(tx_hex).map_err(|e| DryRunError::ParseFailed {
-        transaction: body.tx.clone(),
+        transaction: tx.clone(),
         cause: format!("Invalid hex encoding: {}", e),
         stack: "Failed to decode transaction hex".to_string(),
     })?;
 
     let sender_bytes =
         decode_ss58_address(sender_address).map_err(|e| DryRunError::ParseFailed {
-            transaction: body.tx.clone(),
+            transaction: tx.clone(),
             cause: e,
             stack: "Failed to decode sender address".to_string(),
         })?;
@@ -621,7 +676,7 @@ pub async fn dry_run_rc(
         Ok(result_hex) => match parse_dry_run_result(&result_hex) {
             Ok(response) => Ok(Json(response)),
             Err(e) => Err(DryRunError::DryRunFailed {
-                transaction: body.tx,
+                transaction: tx.clone(),
                 cause: e,
                 stack: "Failed to parse dry-run result".to_string(),
             }),
@@ -630,11 +685,11 @@ pub async fn dry_run_rc(
             let error_str = e.to_string();
             if error_str.contains("not found") || error_str.contains("does not exist") {
                 return Err(DryRunError::DryRunApiNotAvailable {
-                    transaction: body.tx,
+                    transaction: tx.clone(),
                 });
             }
             Err(DryRunError::DryRunFailed {
-                transaction: body.tx,
+                transaction: tx.clone(),
                 cause: error_str.clone(),
                 stack: format!("Error: {}\n    at dry_run_rc", error_str),
             })
