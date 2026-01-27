@@ -1,7 +1,6 @@
 use crate::state::AppState;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use subxt_rpcs::rpc_params;
 use thiserror::Error;
 
@@ -9,7 +8,7 @@ use thiserror::Error;
 #[derive(Debug, Deserialize)]
 pub struct SubmitRequest {
     /// Hex-encoded signed extrinsic with 0x prefix.
-    pub tx: String,
+    pub tx: Option<String>,
 }
 
 /// Response for successful transaction submission.
@@ -19,19 +18,9 @@ pub struct SubmitResponse {
     pub hash: String,
 }
 
-/// Error response when transaction fails to parse.
+/// Error response when transaction fails to parse or parse.
 #[derive(Debug, Serialize)]
-pub struct TransactionFailedToParse {
-    pub code: u16,
-    pub error: String,
-    pub transaction: String,
-    pub cause: String,
-    pub stack: String,
-}
-
-/// Error response when transaction fails to submit.
-#[derive(Debug, Serialize)]
-pub struct TransactionFailedToSubmit {
+pub struct TransactionError {
     pub code: u16,
     pub error: String,
     pub transaction: String,
@@ -42,6 +31,9 @@ pub struct TransactionFailedToSubmit {
 /// Errors that can occur during transaction submission.
 #[derive(Debug, Error)]
 pub enum SubmitError {
+    #[error("Missing field `tx` on request body.")]
+    MissingTx,
+
     #[error("Failed to parse transaction.")]
     ParseFailed {
         transaction: String,
@@ -57,18 +49,29 @@ pub enum SubmitError {
     },
 
     #[error("Relay chain not configured")]
-    RelayChainNotConfigured,
+    RelayChainNotConfigured { transaction: String },
 }
 
 impl IntoResponse for SubmitError {
     fn into_response(self) -> axum::response::Response {
         match self {
+            SubmitError::MissingTx => {
+                let cause = "Missing field `tx` on request body.".to_string();
+                let body = Json(TransactionError {
+                    code: 400,
+                    error: "Failed to parse transaction.".to_string(),
+                    transaction: String::new(),
+                    cause: cause.clone(),
+                    stack: format!("Error: {}\n    at submit_transaction", cause),
+                });
+                (StatusCode::BAD_REQUEST, body).into_response()
+            }
             SubmitError::ParseFailed {
                 transaction,
                 cause,
                 stack,
             } => {
-                let body = Json(TransactionFailedToParse {
+                let body = Json(TransactionError {
                     code: 400,
                     error: "Failed to parse transaction.".to_string(),
                     transaction,
@@ -82,7 +85,7 @@ impl IntoResponse for SubmitError {
                 cause,
                 stack,
             } => {
-                let body = Json(TransactionFailedToSubmit {
+                let body = Json(TransactionError {
                     code: 400,
                     error: "Failed to submit transaction.".to_string(),
                     transaction,
@@ -91,11 +94,15 @@ impl IntoResponse for SubmitError {
                 });
                 (StatusCode::BAD_REQUEST, body).into_response()
             }
-            SubmitError::RelayChainNotConfigured => {
-                let body = Json(json!({
-                    "code": 503,
-                    "error": "Relay chain not configured",
-                }));
+            SubmitError::RelayChainNotConfigured { transaction } => {
+                let cause = "Relay chain not configured".to_string();
+                let body = Json(TransactionError {
+                    code: 503,
+                    error: "Failed to submit transaction.".to_string(),
+                    transaction,
+                    cause: cause.clone(),
+                    stack: format!("Error: {}\n    at submit", cause),
+                });
                 (StatusCode::SERVICE_UNAVAILABLE, body).into_response()
             }
         }
@@ -131,12 +138,26 @@ fn is_parse_error(err: &subxt_rpcs::Error) -> bool {
 pub async fn submit(
     State(state): State<AppState>,
     Json(body): Json<SubmitRequest>,
+    use_rc: bool,
 ) -> Result<Json<SubmitResponse>, SubmitError> {
-    // Submit via author_submitExtrinsic RPC
-    // The node will validate and parse the transaction
-    let hash: String = state
-        .rpc_client
-        .request("author_submitExtrinsic", rpc_params![&body.tx])
+    // Validate tx field
+    let tx = body.tx.as_ref().ok_or(SubmitError::MissingTx)?;
+    if tx.is_empty() {
+        return Err(SubmitError::MissingTx);
+    }
+
+    let rpc_client: &std::sync::Arc<subxt_rpcs::RpcClient> = if use_rc {
+        state
+            .get_relay_chain_rpc_client()
+            .ok_or_else(|| SubmitError::RelayChainNotConfigured {
+                transaction: tx.clone(),
+            })?
+    } else {
+        &state.rpc_client
+    };
+
+    let hash: String = rpc_client
+        .request("author_submitExtrinsic", rpc_params![tx])
         .await
         .map_err(|e| {
             let (cause, stack) = extract_cause_and_stack(&e);
@@ -144,48 +165,13 @@ pub async fn submit(
             // Determine if this is a parse error or submit error based on the error content
             if is_parse_error(&e) {
                 SubmitError::ParseFailed {
-                    transaction: body.tx.clone(),
+                    transaction: tx.clone(),
                     cause,
                     stack,
                 }
             } else {
                 SubmitError::SubmitFailed {
-                    transaction: body.tx.clone(),
-                    cause,
-                    stack,
-                }
-            }
-        })?;
-
-    Ok(Json(SubmitResponse { hash }))
-}
-
-/// Submit a signed extrinsic to the relay chain's transaction pool.
-pub async fn submit_rc(
-    State(state): State<AppState>,
-    Json(body): Json<SubmitRequest>,
-) -> Result<Json<SubmitResponse>, SubmitError> {
-    // Get relay chain RPC client
-    let relay_rpc = state
-        .get_relay_chain_rpc_client()
-        .ok_or(SubmitError::RelayChainNotConfigured)?;
-
-    // Submit via relay chain's author_submitExtrinsic RPC
-    let hash: String = relay_rpc
-        .request("author_submitExtrinsic", rpc_params![&body.tx])
-        .await
-        .map_err(|e| {
-            let (cause, stack) = extract_cause_and_stack(&e);
-
-            if is_parse_error(&e) {
-                SubmitError::ParseFailed {
-                    transaction: body.tx.clone(),
-                    cause,
-                    stack,
-                }
-            } else {
-                SubmitError::SubmitFailed {
-                    transaction: body.tx.clone(),
+                    transaction: tx.clone(),
                     cause,
                     stack,
                 }
@@ -201,7 +187,7 @@ mod tests {
 
     #[test]
     fn test_parse_error_response_serialization() {
-        let error = TransactionFailedToParse {
+        let error = TransactionError {
             code: 400,
             error: "Failed to parse transaction.".to_string(),
             transaction: "0x1234".to_string(),
@@ -218,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_submit_error_response_serialization() {
-        let error = TransactionFailedToSubmit {
+        let error = TransactionError {
             code: 400,
             error: "Failed to submit transaction.".to_string(),
             transaction: "0x1234".to_string(),

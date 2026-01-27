@@ -14,13 +14,27 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             API_VERSION,
             "/transaction",
             "post",
-            post(transaction::submit),
+            post(|state, body| transaction::submit(state, body, false)),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/transaction/dry-run",
+            "post",
+            post(transaction::dry_run),
         )
         .route_registered(
             registry,
             API_VERSION,
             "/rc/transaction",
             "post",
-            post(transaction::submit_rc),
+            post(|state, body| transaction::submit(state, body, true)),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/rc/transaction/dry-run",
+            "post",
+            post(transaction::dry_run_rc),
         )
 }
