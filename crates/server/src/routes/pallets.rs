@@ -43,4 +43,18 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             "get",
             get(pallets::rc_pallets_staking_validators),
         )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/:pallet_id/consts",
+            "get",
+            get(pallets::pallets_constants),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/:pallet_id/consts/:constant_item_id",
+            "get",
+            get(pallets::pallets_constant_item),
+        )
 }
