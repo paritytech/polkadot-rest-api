@@ -16,6 +16,7 @@ use parity_scale_codec::Decode;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use std::sync::Arc;
+use subxt::config::substrate::DigestItem;
 use subxt::{OnlineClientAtBlock, SubstrateConfig, error::OnlineClientAtBlockError};
 use subxt_rpcs::{RpcClient, rpc_params};
 use thiserror::Error;
@@ -179,6 +180,38 @@ pub fn convert_digest_logs_to_sidecar_format(logs: Vec<DigestLog>) -> Vec<Value>
         })
         .collect()
 }
+pub fn convert_digest_items_to_logs(items: &[DigestItem]) -> Vec<DigestLog> {
+    items
+        .iter()
+        .map(|item| match item {
+            DigestItem::PreRuntime(engine_id, data) => DigestLog {
+                log_type: "PreRuntime".to_string(),
+                index: "6".to_string(),
+                value: json!([hex_with_prefix(engine_id), hex_with_prefix(data)]),
+            },
+            DigestItem::Consensus(engine_id, data) => DigestLog {
+                log_type: "Consensus".to_string(),
+                index: "4".to_string(),
+                value: json!([hex_with_prefix(engine_id), hex_with_prefix(data)]),
+            },
+            DigestItem::Seal(engine_id, data) => DigestLog {
+                log_type: "Seal".to_string(),
+                index: "5".to_string(),
+                value: json!([hex_with_prefix(engine_id), hex_with_prefix(data)]),
+            },
+            DigestItem::RuntimeEnvironmentUpdated => DigestLog {
+                log_type: "RuntimeEnvironmentUpdated".to_string(),
+                index: "8".to_string(),
+                value: Value::Null,
+            },
+            DigestItem::Other(data) => DigestLog {
+                log_type: "Other".to_string(),
+                index: "0".to_string(),
+                value: json!(hex_with_prefix(data)),
+            },
+        })
+        .collect()
+}
 
 // ================================================================================================
 // Header Field Parsing
@@ -319,19 +352,20 @@ pub async fn extract_author(
     block_number: u64,
 ) -> Option<String> {
     extract_author_with_prefix(
-        state.chain_info.ss58_prefix,
         client_at_block,
         logs,
+        state.chain_info.ss58_prefix,
         block_number,
     )
     .await
 }
 
-/// Extract author ID with explicit ss58 prefix
+/// Extract author ID from block header digest logs by mapping authority index to validator.
+/// This is the core implementation that accepts ss58_prefix directly.
 pub async fn extract_author_with_prefix(
-    ss58_prefix: u16,
     client_at_block: &BlockClient,
     logs: &[DigestLog],
+    ss58_prefix: u16,
     block_number: u64,
 ) -> Option<String> {
     use sp_consensus_babe::digests::PreDigest;
