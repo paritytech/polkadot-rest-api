@@ -139,8 +139,8 @@ impl AppState {
         ) =
             &chain_chain_config.relay_chain
         {
-            // If relay chain URL is provided, connect to it
-            if let Some(relay_url) = &config.substrate.relay_chain_url {
+            // If relay chain URL is provided in multi_chain_urls, connect to it
+            if let Some(relay_url) = config.substrate.get_relay_chain_url() {
                 match Self::connect_relay_chain(relay_url, relay_chain_name, &chain_configs).await {
                     Ok((client, rpc, info, config)) => {
                         (Some(client), Some(rpc), Some(info), Some(config))
@@ -156,8 +156,8 @@ impl AppState {
                 }
             } else {
                 tracing::info!(
-                    "Chain '{}' is a parachain with relay chain '{}', but SAS_RELAY_CHAIN_URL not set. \
-                        Relay chain features will be unavailable.",
+                    "Chain '{}' is a parachain with relay chain '{}', but no relay chain URL found in SAS_SUBSTRATE_MULTI_CHAIN_URL. \
+                        Relay chain features will be unavailable. Add: '[{{\"url\":\"wss://...\",\"type\":\"relay\"}}]'",
                     chain_info.spec_name,
                     relay_chain_name
                 );
