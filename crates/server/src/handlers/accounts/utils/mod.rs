@@ -79,6 +79,30 @@ pub fn extract_is_sufficient_from_reason(reason_value: &Value<()>) -> bool {
 }
 
 // ================================================================================================
+// SS58 Network Name Lookup
+// ================================================================================================
+
+/// Get the network name for a given SS58 prefix.
+/// Uses the official ss58-registry crate from https://github.com/paritytech/ss58-registry
+///
+/// For unknown prefixes, returns a generic name like "unknown-{prefix}"
+/// to support custom networks and provide consistent API responses.
+pub fn get_network_name(prefix: u16) -> Option<String> {
+    use sp_core::crypto::Ss58AddressFormat;
+    use ss58_registry::Ss58AddressFormatRegistry;
+
+    let format = Ss58AddressFormat::custom(prefix);
+    match Ss58AddressFormatRegistry::try_from(format) {
+        Ok(registry) => Some(registry.to_string()),
+        Err(_) => {
+            // For unknown prefixes, return a generic name
+            // This is more flexible for custom networks
+            Some(format!("unknown-{}", prefix))
+        }
+    }
+}
+
+// ================================================================================================
 // Tests
 // ================================================================================================
 

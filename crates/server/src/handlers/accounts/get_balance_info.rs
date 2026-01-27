@@ -46,17 +46,7 @@ pub async fn get_balance_info(
         .map(|s| s.parse::<utils::BlockId>())
         .transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
-
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    let client_at_block = state.client.at_block(resolved_block.number).await?;
 
     println!(
         "Fetching balance info for account {:?} at block {}",
@@ -162,16 +152,6 @@ async fn handle_use_rc_block(
     let rc_block_hash = rc_resolved.hash.clone();
     let rc_block_number = rc_resolved.number.to_string();
 
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
     // Process each AH block
     let mut results = Vec::new();
     for ah_block in ah_blocks {
@@ -179,6 +159,7 @@ async fn handle_use_rc_block(
             hash: ah_block.hash.clone(),
             number: ah_block.number,
         };
+        let client_at_block = state.client.at_block(ah_resolved.number).await?;
 
         let raw_info = query_balance_info(
             &client_at_block,

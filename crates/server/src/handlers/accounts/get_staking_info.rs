@@ -45,17 +45,7 @@ pub async fn get_staking_info(
         .map(|s| s.parse::<utils::BlockId>())
         .transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
-
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    let client_at_block = state.client.at_block(resolved_block.number).await?;
 
     let raw_info = query_staking_info(&client_at_block, &account, &resolved_block).await?;
 

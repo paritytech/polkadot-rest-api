@@ -44,17 +44,7 @@ pub async fn get_vesting_info(
 
     let resolved_block =
         utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
-
-    let client_at_block = match params.at {
-        None => rc_client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => rc_client.at_block(hash).await?,
-                utils::BlockId::Number(number) => rc_client.at_block(number).await?,
-            }
-        }
-    };
+    let client_at_block = rc_client.at_block(resolved_block.number).await?;
 
     let raw_info = query_vesting_info(&client_at_block, &account, &resolved_block).await?;
 
