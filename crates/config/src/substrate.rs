@@ -422,10 +422,7 @@ mod tests {
             ],
             ..Default::default()
         };
-        assert_eq!(
-            config.get_relay_chain_url(),
-            Some("ws://polkadot:9944")
-        );
+        assert_eq!(config.get_relay_chain_url(), Some("ws://polkadot:9944"));
 
         // Without relay chain
         let config_no_relay = SubstrateConfig {
