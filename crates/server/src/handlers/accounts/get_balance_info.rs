@@ -48,11 +48,6 @@ pub async fn get_balance_info(
     let resolved_block = utils::resolve_block(&state, block_id).await?;
     let client_at_block = state.client.at_block(resolved_block.number).await?;
 
-    println!(
-        "Fetching balance info for account {:?} at block {}",
-        account, resolved_block.number
-    );
-
     let raw_info = query_balance_info(
         &client_at_block,
         &state.chain_info.spec_name,
