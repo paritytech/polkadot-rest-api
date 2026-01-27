@@ -81,6 +81,15 @@ pub enum PalletError {
         constant: &'static str,
     },
 
+    #[error("Constant item '{item}' not found in pallet '{pallet}'")]
+    ConstantItemNotFound { pallet: String, item: String },
+
+    #[error("Failed to fetch metadata")]
+    MetadataFetchFailed,
+
+    #[error("Failed to decode metadata")]
+    MetadataDecodeFailed,
+
     // ========================================================================
     // Staking-Specific Errors
     // ========================================================================
@@ -143,6 +152,13 @@ impl IntoResponse for PalletError {
 
             // Metadata errors
             PalletError::ConstantNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::ConstantItemNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::MetadataFetchFailed => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            PalletError::MetadataDecodeFailed => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
 
             // Staking-specific errors
             PalletError::UnsupportedChainForStaking(_) => {
