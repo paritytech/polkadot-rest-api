@@ -5,4 +5,5 @@ pub mod health;
 pub mod metrics;
 pub mod pallets;
 pub mod runtime;
+pub mod transaction;
 pub mod version;
