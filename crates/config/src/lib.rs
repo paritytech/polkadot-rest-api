@@ -101,9 +101,6 @@ struct EnvConfig {
     #[serde(default = "default_substrate_url")]
     substrate_url: String,
 
-    #[serde(default)]
-    relay_chain_url: Option<String>,
-
     #[serde(default = "default_substrate_multi_chain_url")]
     substrate_multi_chain_url: String,
 
@@ -310,7 +307,6 @@ impl SidecarConfig {
             },
             substrate: SubstrateConfig {
                 url: env_config.substrate_url,
-                relay_chain_url: env_config.relay_chain_url,
                 multi_chain_urls,
                 reconnect_initial_delay_ms: env_config.substrate_reconnect_initial_delay_ms,
                 reconnect_max_delay_ms: env_config.substrate_reconnect_max_delay_ms,
