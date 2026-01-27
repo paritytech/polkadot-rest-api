@@ -18,19 +18,9 @@ pub struct SubmitResponse {
     pub hash: String,
 }
 
-/// Error response when transaction fails to parse.
+/// Error response when transaction fails to parse or parse.
 #[derive(Debug, Serialize)]
-pub struct TransactionFailedToParse {
-    pub code: u16,
-    pub error: String,
-    pub transaction: String,
-    pub cause: String,
-    pub stack: String,
-}
-
-/// Error response when transaction fails to submit.
-#[derive(Debug, Serialize)]
-pub struct TransactionFailedToSubmit {
+pub struct TransactionError {
     pub code: u16,
     pub error: String,
     pub transaction: String,
@@ -67,7 +57,7 @@ impl IntoResponse for SubmitError {
         match self {
             SubmitError::MissingTx => {
                 let cause = "Missing field `tx` on request body.".to_string();
-                let body = Json(TransactionFailedToParse {
+                let body = Json(TransactionError {
                     code: 400,
                     error: "Failed to parse transaction.".to_string(),
                     transaction: String::new(),
@@ -81,7 +71,7 @@ impl IntoResponse for SubmitError {
                 cause,
                 stack,
             } => {
-                let body = Json(TransactionFailedToParse {
+                let body = Json(TransactionError {
                     code: 400,
                     error: "Failed to parse transaction.".to_string(),
                     transaction,
@@ -95,7 +85,7 @@ impl IntoResponse for SubmitError {
                 cause,
                 stack,
             } => {
-                let body = Json(TransactionFailedToSubmit {
+                let body = Json(TransactionError {
                     code: 400,
                     error: "Failed to submit transaction.".to_string(),
                     transaction,
@@ -106,7 +96,7 @@ impl IntoResponse for SubmitError {
             }
             SubmitError::RelayChainNotConfigured { transaction } => {
                 let cause = "Relay chain not configured".to_string();
-                let body = Json(TransactionFailedToSubmit {
+                let body = Json(TransactionError {
                     code: 503,
                     error: "Failed to submit transaction.".to_string(),
                     transaction,
@@ -157,11 +147,11 @@ pub async fn submit(
     }
 
     let rpc_client: &std::sync::Arc<subxt_rpcs::RpcClient> = if use_rc {
-        state.get_relay_chain_rpc_client().ok_or_else(|| {
-            SubmitError::RelayChainNotConfigured {
+        state
+            .get_relay_chain_rpc_client()
+            .ok_or_else(|| SubmitError::RelayChainNotConfigured {
                 transaction: tx.clone(),
-            }
-        })?
+            })?
     } else {
         &state.rpc_client
     };
@@ -197,7 +187,7 @@ mod tests {
 
     #[test]
     fn test_parse_error_response_serialization() {
-        let error = TransactionFailedToParse {
+        let error = TransactionError {
             code: 400,
             error: "Failed to parse transaction.".to_string(),
             transaction: "0x1234".to_string(),
@@ -214,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_submit_error_response_serialization() {
-        let error = TransactionFailedToSubmit {
+        let error = TransactionError {
             code: 400,
             error: "Failed to submit transaction.".to_string(),
             transaction: "0x1234".to_string(),
