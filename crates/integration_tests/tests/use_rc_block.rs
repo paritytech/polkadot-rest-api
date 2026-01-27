@@ -324,6 +324,104 @@ fn value_type_name(v: &Value) -> &'static str {
     }
 }
 
+#[tokio::test]
+async fn test_use_rc_block_header_by_id() -> Result<()> {
+    init_tracing();
+
+    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let local_client = TestClient::new(api_url);
+
+    local_client
+        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
+        .await
+        .context("Local API is not ready")?;
+
+    let rc_block_number = 10293194;
+    let endpoint = format!("/blocks/{}/header?useRcBlock=true", rc_block_number);
+
+    println!(
+        "\n{} Testing useRcBlock for /blocks/{}/header",
+        "Testing".cyan().bold(),
+        rc_block_number
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    println!(
+        "{} Fetching from local API: {}{}",
+        "→".cyan(),
+        local_client.base_url(),
+        endpoint
+    );
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    println!("{} Local API response: {}", "✓".green(), "OK".green());
+
+    println!("{} Loading expected response from fixture", "→".cyan());
+    let fixture_path = get_fixture_path("use_rc_block_header_10293194.json")?;
+    let fixture_content = fs::read_to_string(&fixture_path)
+        .with_context(|| format!("Failed to read fixture file: {:?}", fixture_path))?;
+    let expected_json: Value = serde_json::from_str(&fixture_content)
+        .context("Failed to parse expected response from fixture")?;
+    println!("{} Expected response loaded from fixture", "✓".green());
+
+    println!("\n{} Validating responses...", "→".cyan().bold());
+
+    let local_array = local_json
+        .as_array()
+        .expect("Local response is not an array");
+    let expected_array = expected_json
+        .as_array()
+        .expect("Expected response is not an array");
+
+    println!(
+        "  {} Local response contains {} block(s)",
+        "✓".green(),
+        local_array.len()
+    );
+    println!(
+        "  {} Expected response contains {} block(s)",
+        "✓".green(),
+        expected_array.len()
+    );
+
+    assert_eq!(
+        local_array.len(),
+        expected_array.len(),
+        "Block count mismatch: local={}, expected={}",
+        local_array.len(),
+        expected_array.len()
+    );
+
+    println!("\n{} Comparing JSON responses...", "→".cyan().bold());
+    let comparison_result = compare_json(&local_json, &expected_json, &[])?;
+
+    if !comparison_result.is_match() {
+        println!("{} JSON responses differ:", "✗".red().bold());
+        let diff_output = comparison_result.format_diff(&expected_json, &local_json);
+        println!("{}", diff_output);
+        println!("{}", "═".repeat(80).bright_white());
+    }
+
+    assert!(
+        comparison_result.is_match(),
+        "Found {} difference(s) between local and expected responses",
+        comparison_result.differences().len()
+    );
+
+    println!("{} All JSON responses match!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
 fn get_fixture_path(filename: &str) -> Result<PathBuf> {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let fixture_path = PathBuf::from(manifest_dir)

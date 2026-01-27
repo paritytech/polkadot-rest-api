@@ -5,6 +5,7 @@
 
 use crate::utils::{self, EraInfo, RcBlockError};
 use axum::{Json, http::StatusCode, response::IntoResponse};
+use heck::ToLowerCamelCase;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use subxt::error::{OnlineClientAtBlockError, StorageError};
@@ -52,6 +53,20 @@ fn default_true() -> bool {
     true
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtrinsicQueryParams {
+    /// When true, include documentation for events
+    #[serde(default)]
+    pub event_docs: bool,
+    /// When true, include documentation for extrinsics
+    #[serde(default)]
+    pub extrinsic_docs: bool,
+    /// When true, skip fee calculation for extrinsics (info will be empty object)
+    #[serde(default)]
+    pub no_fees: bool,
+}
+
 impl Default for BlockQueryParams {
     fn default() -> Self {
         Self {
@@ -64,6 +79,14 @@ impl Default for BlockQueryParams {
             para_id: None,
         }
     }
+}
+
+/// Query parameters for /blocks/{blockId}/header endpoint
+#[derive(Debug, Deserialize)]
+pub struct BlockHeaderQueryParams {
+    /// When true, treat block identifier as Relay Chain block and return Asset Hub blocks included in it
+    #[serde(default, rename = "useRcBlock")]
+    pub use_rc_block: bool,
 }
 
 // ================================================================================================
@@ -130,6 +153,18 @@ pub enum GetBlockError {
 
     #[error("Service temporarily unavailable: {0}")]
     ServiceUnavailable(String),
+
+    #[error("Requested `extrinsicIndex` does not exist")]
+    ExtrinsicIndexNotFound,
+
+    #[error("Invalid extrinsic index: {0}")]
+    InvalidExtrinsicIndex(String),
+}
+
+impl From<OnlineClientAtBlockError> for GetBlockError {
+    fn from(err: OnlineClientAtBlockError) -> Self {
+        GetBlockError::ClientAtBlockFailed(Box::new(err))
+    }
 }
 
 impl IntoResponse for GetBlockError {
@@ -137,7 +172,11 @@ impl IntoResponse for GetBlockError {
         let (status, message) = match &self {
             GetBlockError::InvalidBlockParam(_)
             | GetBlockError::BlockResolveFailed(_)
-            | GetBlockError::RelayChainNotConfigured => (StatusCode::BAD_REQUEST, self.to_string()),
+            | GetBlockError::RelayChainNotConfigured
+            | GetBlockError::ExtrinsicIndexNotFound
+            | GetBlockError::InvalidExtrinsicIndex(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
             GetBlockError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
@@ -167,6 +206,71 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::RcBlockError(_)
             | GetBlockError::UseRcBlockNotSupported
             | GetBlockError::HashComputationFailed(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+        };
+
+        let body = Json(json!({
+            "error": message,
+        }));
+
+        (status, body).into_response()
+    }
+}
+
+/// Error types for /blocks/{blockId}/header endpoint
+#[derive(Debug, Error)]
+pub enum GetBlockHeaderError {
+    #[error("Invalid block parameter")]
+    InvalidBlockParam(#[from] utils::BlockIdParseError),
+
+    #[error("Block resolution failed")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Failed to get block header")]
+    HeaderFetchFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Header field missing: {0}")]
+    HeaderFieldMissing(String),
+
+    #[error("Failed to compute block hash: {0}")]
+    HashComputationFailed(#[from] crate::utils::HashError),
+
+    #[error("Service temporarily unavailable: {0}")]
+    ServiceUnavailable(String),
+
+    #[error("Failed to find Asset Hub blocks in Relay Chain block")]
+    RcBlockError(#[from] RcBlockError),
+
+    #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
+    UseRcBlockNotSupported,
+
+    #[error(
+        "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL"
+    )]
+    RelayChainNotConfigured,
+
+    #[error("Failed to get client at block: {0}")]
+    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+}
+
+impl IntoResponse for GetBlockHeaderError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            GetBlockHeaderError::InvalidBlockParam(_)
+            | GetBlockHeaderError::BlockResolveFailed(_)
+            | GetBlockHeaderError::UseRcBlockNotSupported
+            | GetBlockHeaderError::RelayChainNotConfigured => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockHeaderError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
+            GetBlockHeaderError::HeaderFetchFailed(err) => utils::rpc_error_to_status(err),
+            GetBlockHeaderError::HeaderFieldMissing(_)
+            | GetBlockHeaderError::HashComputationFailed(_)
+            | GetBlockHeaderError::RcBlockError(_)
+            | GetBlockHeaderError::ClientAtBlockFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -268,6 +372,40 @@ pub struct DigestLog {
     pub value: Value,
 }
 
+pub fn convert_digest_logs_to_sidecar_format(logs: Vec<DigestLog>) -> Vec<serde_json::Value> {
+    logs.into_iter()
+        .map(|log| {
+            let log_type_camel = log.log_type.to_lower_camel_case();
+            let mut obj = serde_json::Map::new();
+            obj.insert(log_type_camel, log.value);
+            serde_json::Value::Object(obj)
+        })
+        .collect()
+}
+
+/// Lightweight block header information (no author/logs decoding)
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockHeaderResponse {
+    pub parent_hash: String,
+    pub number: String,
+    pub state_root: String,
+    pub extrinsics_root: String,
+    pub digest: serde_json::Value,
+    /// Block hash (only present for /blocks/head/header, not for /blocks/{blockId}/header)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+    /// Relay Chain block hash (only present when useRcBlock=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    /// Relay Chain block number (only present when useRcBlock=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    /// Asset Hub block timestamp (only present when useRcBlock=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
 /// Method information for extrinsic calls
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -348,6 +486,24 @@ pub struct ExtrinsicInfo {
     /// Raw extrinsic bytes as hex (used internally for fee queries, not serialized)
     #[serde(skip)]
     pub raw_hex: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockIdentifiers {
+    /// Block height as string
+    pub height: String,
+    /// Block hash
+    pub hash: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtrinsicIndexResponse {
+    /// Block identifiers
+    pub at: BlockIdentifiers,
+    /// The extrinsic at the requested index
+    pub extrinsics: ExtrinsicInfo,
 }
 
 /// Basic block information
