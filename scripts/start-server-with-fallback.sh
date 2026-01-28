@@ -33,39 +33,39 @@ fi
 case $CHAIN in
     polkadot)
         RPC_URLS=(
-            "wss://rpc.polkadot.io"
-            "wss://polkadot.api.onfinality.io/public-ws"
+            # "wss://rpc.polkadot.io" NOTE: Do not use parity hosted RPC nodes because of rate limiting
+            "wss://rpc.ibp.network/polkadot"
+            "wss://polkadot.dotters.network"
             "wss://polkadot-rpc.dwellir.com"
         )
         ;;
     kusama)
         RPC_URLS=(
-            "wss://kusama-rpc.polkadot.io"
-            "wss://kusama.api.onfinality.io/public-ws"
+            "wss://rpc.ibp.network/kusama"
+            "wss://kusama.dotters.network"
             "wss://kusama-rpc.dwellir.com"
         )
         ;;
     asset-hub-polkadot)
         RPC_URLS=(
-            "wss://polkadot-asset-hub-rpc.polkadot.io"
-            "wss://statemint.api.onfinality.io/public-ws"
+            "wss://sys.ibp.network/asset-hub-polkadot"
             "wss://asset-hub-polkadot-rpc.dwellir.com"
+            "wss://asset-hub-polkadot.dotters.network"
         )
-        RELAY_CHAIN_URL="wss://rpc.polkadot.io"
+        RELAY_URL="wss://rpc.ibp.network/polkadot"
         ;;
     asset-hub-kusama)
         RPC_URLS=(
-            "wss://kusama-asset-hub-rpc.polkadot.io"
-            "wss://statemine.api.onfinality.io/public-ws"
-            "wss://asset-hub-kusama-rpc.dwellir.com"
+            "wss://sys.ibp.network/asset-hub-kusama"
+            "wss://asset-hub-kusama.dotters.network"
+            "wss://asset-hub-kusama-rpc.n.dwellir.com"
         )
-        RELAY_CHAIN_URL="wss://kusama-rpc.polkadot.io"
+        RELAY_URL="wss://rpc.ibp.network/kusama"
         ;;
     westend)
         RPC_URLS=(
-            "wss://westend-rpc.polkadot.io"
-            "wss://westend.api.onfinality.io/public-ws"
             "wss://westend-rpc.dwellir.com"
+            "wss://westend-rpc-tn.dwellir.com"
         )
         ;;
     *)
@@ -111,8 +111,9 @@ for url in "${RPC_URLS[@]}"; do
     stop_server
 
     # Start server with this RPC URL (and relay chain URL if configured)
-    if [ -n "$RELAY_CHAIN_URL" ]; then
-        RUST_LOG=info SAS_SUBSTRATE_URL="$url" SAS_RELAY_CHAIN_URL="$RELAY_CHAIN_URL" "$SERVER_BINARY" > "$LOG_FILE" 2>&1 &
+    if [ -n "$RELAY_URL" ]; then
+        MULTI_CHAIN_JSON="[{\"url\":\"${RELAY_URL}\",\"type\":\"relay\"}]"
+        RUST_LOG=info SAS_SUBSTRATE_URL="$url" SAS_SUBSTRATE_MULTI_CHAIN_URL="$MULTI_CHAIN_JSON" "$SERVER_BINARY" > "$LOG_FILE" 2>&1 &
     else
         RUST_LOG=info SAS_SUBSTRATE_URL="$url" "$SERVER_BINARY" > "$LOG_FILE" 2>&1 &
     fi
@@ -128,8 +129,8 @@ for url in "${RPC_URLS[@]}"; do
             echo "========================================"
             echo "SUCCESS: $CHAIN server is ready"
             echo "  RPC: $url"
-            if [ -n "$RELAY_CHAIN_URL" ]; then
-                echo "  Relay Chain: $RELAY_CHAIN_URL"
+            if [ -n "$RELAY_URL" ]; then
+                echo "  Relay Chain: $RELAY_URL"
             fi
             echo "  API: http://localhost:${API_PORT}"
             echo "  PID: $(cat $PID_FILE)"

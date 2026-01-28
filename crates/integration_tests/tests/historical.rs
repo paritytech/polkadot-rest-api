@@ -1,12 +1,13 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
-use futures::stream::{FuturesUnordered, StreamExt};
 use integration_tests::{
     client::TestClient, config::TestConfig, constants::API_READY_TIMEOUT_SECONDS,
     fixtures::FixtureLoader, utils::compare_json,
 };
 use std::collections::HashMap;
 use std::env;
+use std::time::Duration;
+use tokio::time::sleep;
 
 /// Test runner for historical integration tests
 struct HistoricalTestRunner {
@@ -36,6 +37,13 @@ impl HistoricalTestRunner {
         let test_cases = self.config.get_historical_tests(&self.chain_name);
         let total_tests = test_cases.len();
 
+        // Get delay between requests from environment variable (default: 0ms)
+        // Set TEST_DELAY_MS to add delay between requests to avoid rate limiting
+        let delay_ms: u64 = env::var("TEST_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+
         println!(
             "\n{} {} historical test cases for chain: {}\n",
             "Running".cyan().bold(),
@@ -43,18 +51,23 @@ impl HistoricalTestRunner {
             self.chain_name.yellow()
         );
 
-        // Create FuturesUnordered for streaming results as they complete
-        let mut futures: FuturesUnordered<_> = test_cases
-            .iter()
-            .map(|test_case| async move {
-                let result = self.run_test_case(test_case).await;
-                (test_case, result)
-            })
-            .collect();
+        if delay_ms > 0 {
+            println!(
+                "{}: {}ms delay between requests\n",
+                "Rate limit protection".yellow(),
+                delay_ms
+            );
+        }
 
-        // Process results as they complete
+        // Run tests sequentially with optional delay to avoid rate limiting
         let mut results = TestResults::default();
-        while let Some((test_case, result)) = futures.next().await {
+        for test_case in test_cases {
+            // Add delay before each request (except the first one)
+            if delay_ms > 0 && (results.passed + results.failed) > 0 {
+                sleep(Duration::from_millis(delay_ms)).await;
+            }
+
+            let result = self.run_test_case(&test_case).await;
             let test_name = if let Some(block_height) = test_case.block_height {
                 format!("{} (block {})", test_case.endpoint, block_height)
             } else {
