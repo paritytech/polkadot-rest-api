@@ -734,6 +734,38 @@
         "query_params": { "at": "10260000" },
         "fixture_path": "asset-hub-polkadot/pallets_pool_assets_0_asset_info_10260000.json",
         "description": "Test pallets pool-assets asset-info for pool asset 0 (LP token) at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/rc/blocks/{blockId}/extrinsics/{extrinsicIndex}",
+        "block_height": 29698001,
+        "account_id": null,
+        "extrinsic_index": 1,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_extrinsic_1.json",
+        "description": "Test RC extrinsic endpoint at Polkadot Relay Chain block 29,698,001, extrinsic index 1"
+      },
+      {
+        "endpoint": "/v1/rc/blocks/{blockId}/extrinsics/{extrinsicIndex}",
+        "block_height": 29698001,
+        "account_id": null,
+        "extrinsic_index": 1,
+        "query_params": {
+          "eventDocs": "true",
+          "extrinsicDocs": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_extrinsic_1_eventDocs_extrinsicDocs.json",
+        "description": "Test RC extrinsic endpoint with eventDocs and extrinsicDocs at Polkadot Relay Chain block 29,698,001, extrinsic index 1"
+      },
+      {
+        "endpoint": "/v1/rc/blocks/{blockId}/extrinsics/{extrinsicIndex}",
+        "block_height": 29698001,
+        "account_id": null,
+        "extrinsic_index": 1,
+        "query_params": {
+          "noFees": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_extrinsic_1_noFees.json",
+        "description": "Test RC extrinsic endpoint with noFees=true at Polkadot Relay Chain block 29,698,001, extrinsic index 1"
       }
     ],
     "asset-hub-kusama": [
