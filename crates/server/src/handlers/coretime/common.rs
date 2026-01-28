@@ -20,8 +20,11 @@ pub enum CoretimeError {
     #[error("Invalid block parameter")]
     InvalidBlockParam(#[from] crate::utils::BlockIdParseError),
 
-    #[error("Block resolution failed")]
+    #[error("{0}")]
     BlockResolveFailed(#[from] crate::utils::BlockResolveError),
+
+    #[error("Invalid block hash format")]
+    InvalidBlockHash,
 
     #[error("Failed to get client at block")]
     ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
@@ -65,6 +68,7 @@ impl IntoResponse for CoretimeError {
             // Block/Client errors
             CoretimeError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             CoretimeError::BlockResolveFailed(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            CoretimeError::InvalidBlockHash => (StatusCode::BAD_REQUEST, self.to_string()),
             CoretimeError::ClientAtBlockFailed(err) => {
                 if crate::utils::is_online_client_at_block_disconnected(err) {
                     (

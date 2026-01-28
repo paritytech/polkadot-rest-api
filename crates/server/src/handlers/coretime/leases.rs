@@ -6,7 +6,7 @@
 
 use crate::handlers::coretime::common::{AtResponse, CoretimeError, CoretimeQueryParams};
 use crate::state::AppState;
-use crate::utils::BlockId;
+use crate::utils::{BlockId, resolve_block};
 use axum::{
     Json,
     extract::{Query, State},
@@ -15,7 +15,9 @@ use axum::{
 };
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
+use primitive_types::H256;
 use serde::Serialize;
+use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 // ============================================================================
@@ -83,21 +85,24 @@ pub async fn coretime_leases(
     State(state): State<AppState>,
     Query(params): Query<CoretimeQueryParams>,
 ) -> Result<Response, CoretimeError> {
-    // Get client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<BlockId>()?;
-            match block_id {
-                BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
+    // Parse the block ID if provided
+    let block_id = match &params.at {
+        None => None,
+        Some(at_str) => Some(at_str.parse::<BlockId>()?),
     };
 
+    // Resolve the block first to get a proper "Block not found" error
+    // if the block doesn't exist (instead of a generic client error)
+    let resolved_block = resolve_block(&state, block_id).await?;
+
+    // Get client at the resolved block hash
+    let block_hash =
+        H256::from_str(&resolved_block.hash).map_err(|_| CoretimeError::InvalidBlockHash)?;
+    let client_at_block = state.client.at_block(block_hash).await?;
+
     let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
+        hash: resolved_block.hash,
+        height: resolved_block.number.to_string(),
     };
 
     // Verify that the Broker pallet exists at this block
