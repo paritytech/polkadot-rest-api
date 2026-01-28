@@ -20,7 +20,7 @@ pub use get_block_head::get_block_head;
 pub use get_block_header::get_block_header;
 pub use get_block_para_inclusions::{
     AtBlock, CandidateDescriptor, ParaInclusion, ParaInclusionsError, ParaInclusionsQueryParams,
-    ParaInclusionsResponse, extract_para_inclusions, fetch_para_inclusions_from_client,
+    ParaInclusionsResponse, extract_para_inclusions_from_events, fetch_para_inclusions_from_client,
     get_block_para_inclusions,
 };
 pub use get_blocks::get_blocks;

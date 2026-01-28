@@ -9,7 +9,7 @@ use crate::handlers::blocks::{
     fetch_para_inclusions_from_client,
 };
 use crate::state::AppState;
-use crate::utils;
+use crate::utils::{self, BlockId, ResolvedBlock};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -57,29 +57,20 @@ pub async fn get_rc_block_para_inclusions(
         .get_relay_chain_client()
         .ok_or(RcParaInclusionsError::RelayChainNotConfigured)?;
 
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(RcParaInclusionsError::RelayChainNotConfigured)?;
-
-    let relay_chain_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(RcParaInclusionsError::RelayChainNotConfigured)?;
-
     let block_id_parsed = block_id
         .parse::<utils::BlockId>()
         .map_err(ParaInclusionsError::from)?;
 
-    let resolved_block =
-        utils::resolve_block_with_rpc(relay_rpc_client, relay_chain_rpc, Some(block_id_parsed))
-            .await
-            .map_err(ParaInclusionsError::from)?;
+    let client_at_block = match block_id_parsed {
+        BlockId::Number(number) => relay_client.at_block(number).await,
+        BlockId::Hash(hash) => relay_client.at_block(hash).await,
+    }
+    .map_err(|e| ParaInclusionsError::Common(CommonBlockError::ClientAtBlockFailed(Box::new(e))))?;
 
-    let client_at_block = relay_client
-        .at_block(resolved_block.number)
-        .await
-        .map_err(|e| {
-            ParaInclusionsError::Common(CommonBlockError::ClientAtBlockFailed(Box::new(e)))
-        })?;
+    let resolved_block = ResolvedBlock {
+        hash: format!("{:#x}", client_at_block.block_hash()),
+        number: client_at_block.block_number(),
+    };
 
     Ok(
         fetch_para_inclusions_from_client(&client_at_block, &resolved_block, params.para_id)
