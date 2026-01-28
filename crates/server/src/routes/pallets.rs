@@ -1,4 +1,5 @@
 use axum::{Router, routing::get};
+use config::ChainType;
 
 use crate::{
     handlers::pallets,
@@ -6,8 +7,8 @@ use crate::{
     state::AppState,
 };
 
-pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
-    Router::new()
+pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppState> {
+    let router = Router::new()
         .route_registered(
             registry,
             API_VERSION,
@@ -25,22 +26,29 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
         .route_registered(
             registry,
             API_VERSION,
-            "/rc/pallets/staking/progress",
-            "get",
-            get(pallets::rc_pallets_staking_progress),
-        )
-        .route_registered(
-            registry,
-            API_VERSION,
             "/pallets/staking/validators",
             "get",
             get(pallets::pallets_staking_validators),
-        )
-        .route_registered(
-            registry,
-            API_VERSION,
-            "/rc/pallets/staking/validators",
-            "get",
-            get(pallets::rc_pallets_staking_validators),
-        )
+        );
+
+    // Only register /rc/ routes for parachains, not relay chains
+    if *chain_type != ChainType::Relay {
+        router
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/staking/progress",
+                "get",
+                get(pallets::rc_pallets_staking_progress),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/staking/validators",
+                "get",
+                get(pallets::rc_pallets_staking_validators),
+            )
+    } else {
+        router
+    }
 }
