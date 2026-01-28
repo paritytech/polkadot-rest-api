@@ -1,4 +1,4 @@
-pub mod common;
+pub(crate) mod common;
 pub mod decode;
 pub mod docs;
 pub mod get_block;
@@ -10,7 +10,7 @@ pub mod get_blocks;
 pub mod get_blocks_head_header;
 pub mod get_extrinsic;
 pub mod processing;
-pub mod types;
+pub(crate) mod types;
 pub mod utils;
 
 pub use common::CommonBlockError;

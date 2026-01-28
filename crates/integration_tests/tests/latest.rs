@@ -75,8 +75,17 @@ impl LatestTestRunner {
 
         let mut results = TestResults::default();
 
-        // Test each configured endpoint
-        let endpoint_configs = self.config.latest_endpoints.clone();
+        // Test each configured endpoint, filtering by chain if only_chains is specified
+        let endpoint_configs: Vec<_> = self
+            .config
+            .latest_endpoints
+            .iter()
+            .filter(|e| match &e.only_chains {
+                Some(chains) if !chains.is_empty() => chains.contains(&self.chain_name),
+                _ => true,
+            })
+            .cloned()
+            .collect();
         let total_endpoints = endpoint_configs.len();
 
         println!(
