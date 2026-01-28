@@ -1,4 +1,3 @@
-use crate::handlers::blocks::types::GetBlockError;
 use crate::routes::RouteRegistry;
 use crate::utils::{
     QueryFeeDetailsCache, RuntimeDispatchInfoRaw, WeightRaw, dispatch_class_from_u8,
@@ -297,18 +296,6 @@ impl AppState {
         self.rpc_client
             .request("chain_getBlock", rpc_params![hash])
             .await
-    }
-
-    /// Make a raw JSON-RPC call to get a full block from the relay chain
-    pub async fn get_relay_block_json(&self, hash: &str) -> Result<Value, GetBlockError> {
-        let rpc_client = self
-            .relay_rpc_client
-            .as_ref()
-            .ok_or(GetBlockError::RelayChainNotConfigured)?;
-        rpc_client
-            .request("chain_getBlock", rpc_params![hash])
-            .await
-            .map_err(GetBlockError::BlockFetchFailed)
     }
 
     /// Make a raw JSON-RPC call to get a block hash at a specific block number
