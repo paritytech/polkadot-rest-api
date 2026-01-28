@@ -3,17 +3,14 @@
 //! This module provides the handler for fetching the latest block (head).
 
 use crate::state::AppState;
-use crate::types::BlockHash;
-use crate::utils::{compute_block_hash_from_header_json, parse_block_number_from_json};
 use axum::{
     Json,
     extract::{Query, State},
 };
 use heck::{ToSnakeCase, ToUpperCamelCase};
 use serde::Deserialize;
-use subxt_rpcs::rpc_params;
 
-use super::common::{add_docs_to_events, decode_digest_logs, extract_author};
+use super::common::{add_docs_to_events, convert_digest_items_to_logs, extract_author};
 use super::decode::XcmDecoder;
 use super::docs::Docs;
 use super::processing::{
@@ -84,100 +81,57 @@ pub async fn get_block_head(
     State(state): State<AppState>,
     Query(params): Query<BlockHeadQueryParams>,
 ) -> Result<Json<BlockResponse>, GetBlockError> {
-    // Resolve head block hash based on finalized parameter
-    // Returns (block_hash, block_number, is_finalized, header_json)
-    let (block_hash, block_number, is_finalized, header_json) = if params.finalized {
-        let finalized_hash = state
-            .legacy_rpc
-            .chain_get_finalized_head()
+    let (client_at_block, is_finalized) = if params.finalized {
+        let client = state
+            .client
+            .at_current_block()
             .await
-            .map_err(GetBlockError::FinalizedHeadFailed)?;
-        let block_hash_typed = BlockHash::from(finalized_hash);
-        let hash_str = block_hash_typed.to_string();
-        let header_json = state
-            .get_header_json(&hash_str)
-            .await
-            .map_err(GetBlockError::HeaderFetchFailed)?;
-        let block_number = header_json
-            .get("number")
-            .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))
-            .and_then(|v| {
-                parse_block_number_from_json(v)
-                    .map_err(|e| GetBlockError::HeaderFieldMissing(format!("number: {}", e)))
-            })?;
+            .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
 
-        (hash_str, block_number, true, header_json)
+        (client, true)
     } else {
-        // Get canonical head (may not be finalized)
-        // We need to also fetch the finalized head to determine if canonical is finalized
-        let (canonical_header_json, finalized_hash) = tokio::join!(
+        let best_hash = state
+            .legacy_rpc
+            .chain_get_block_hash(None)
+            .await
+            .map_err(GetBlockError::RpcCallFailed)?
+            .ok_or_else(|| GetBlockError::HeaderFieldMissing("best block hash".to_string()))?;
+
+        let (canonical_client, finalized_client) = tokio::try_join!(
             async {
                 state
-                    .rpc_client
-                    .request::<serde_json::Value>("chain_getHeader", rpc_params![])
+                    .client
+                    .at_block(best_hash)
                     .await
+                    .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))
             },
-            state.legacy_rpc.chain_get_finalized_head()
-        );
+            async {
+                state
+                    .client
+                    .at_current_block()
+                    .await
+                    .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))
+            }
+        )?;
 
-        let header_json = canonical_header_json.map_err(GetBlockError::HeaderFetchFailed)?;
-        let finalized_hash = finalized_hash.map_err(GetBlockError::FinalizedHeadFailed)?;
+        let is_finalized = canonical_client.block_number() <= finalized_client.block_number();
 
-        // Extract block number from canonical header JSON
-        let block_number = header_json
-            .get("number")
-            .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))
-            .and_then(|v| {
-                parse_block_number_from_json(v)
-                    .map_err(|e| GetBlockError::HeaderFieldMissing(format!("number: {}", e)))
-            })?;
-
-        let finalized_hash_str = BlockHash::from(finalized_hash).to_string();
-        let finalized_header_json = state
-            .get_header_json(&finalized_hash_str)
-            .await
-            .map_err(GetBlockError::HeaderFetchFailed)?;
-        let finalized_block_number = finalized_header_json
-            .get("number")
-            .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))
-            .and_then(|v| {
-                parse_block_number_from_json(v)
-                    .map_err(|e| GetBlockError::HeaderFieldMissing(format!("number: {}", e)))
-            })?;
-
-        // Block is finalized if its number <= finalized head number
-        let is_finalized = block_number <= finalized_block_number;
-        let block_hash_typed = compute_block_hash_from_header_json(&header_json)?;
-        let block_hash = block_hash_typed.to_string();
-
-        (block_hash, block_number, is_finalized, header_json)
+        (canonical_client, is_finalized)
     };
 
-    let parent_hash = header_json
-        .get("parentHash")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("parentHash".to_string()))?
-        .to_string();
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_number = client_at_block.block_number();
 
-    let state_root = header_json
-        .get("stateRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("stateRoot".to_string()))?
-        .to_string();
-
-    let extrinsics_root = header_json
-        .get("extrinsicsRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
-        .to_string();
-
-    let logs = decode_digest_logs(&header_json);
-
-    let client_at_block = state
-        .client
-        .at_block(block_number)
+    let header = client_at_block
+        .block_header()
         .await
-        .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+        .map_err(GetBlockError::BlockHeaderFailed)?;
+
+    let parent_hash = format!("{:#x}", header.parent_hash);
+    let state_root = format!("{:#x}", header.state_root);
+    let extrinsics_root = format!("{:#x}", header.extrinsics_root);
+
+    let logs = convert_digest_items_to_logs(&header.digest.logs);
 
     let (author_id, extrinsics_result, events_result) = tokio::join!(
         extract_author(&state, &client_at_block, &logs, block_number),
@@ -216,13 +170,7 @@ pub async fn get_block_head(
 
     // Populate fee info for signed extrinsics that pay fees (unless noFees=true)
     if !params.no_fees {
-        let spec_version = state
-            .get_runtime_version_at_hash(&block_hash)
-            .await
-            .ok()
-            .and_then(|v| v.get("specVersion").and_then(|sv| sv.as_u64()))
-            .map(|v| v as u32)
-            .unwrap_or(state.chain_info.spec_version);
+        let spec_version = client_at_block.spec_version();
 
         for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
             if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {

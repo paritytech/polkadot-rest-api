@@ -134,6 +134,12 @@ pub enum GetBlockError {
     #[error("Failed to get finalized head")]
     FinalizedHeadFailed(#[source] subxt_rpcs::Error),
 
+    #[error("RPC call failed")]
+    RpcCallFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Failed to get block header")]
+    BlockHeaderFailed(#[source] subxt::error::BlockError),
+
     #[error("Failed to get canonical block hash")]
     CanonicalHashFailed(#[source] subxt_rpcs::Error),
 
@@ -218,8 +224,12 @@ impl IntoResponse for GetBlockError {
             GetBlockError::HeaderFetchFailed(err)
             | GetBlockError::BlockFetchFailed(err)
             | GetBlockError::FinalizedHeadFailed(err)
+            | GetBlockError::RpcCallFailed(err)
             | GetBlockError::CanonicalHashFailed(err)
             | GetBlockError::RuntimeVersionFailed(err) => utils::rpc_error_to_status(err),
+            GetBlockError::BlockHeaderFailed(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
             // All other errors are internal server errors
             GetBlockError::HeaderFieldMissing(_)
             | GetBlockError::ClientAtBlockFailed(_)

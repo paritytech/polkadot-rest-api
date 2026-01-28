@@ -83,8 +83,8 @@ pub enum GetRcBlockHeadError {
     )]
     RelayChainNotConfigured,
 
-    #[error("Failed to get finalized head")]
-    FinalizedHeadFailed(#[source] subxt_rpcs::Error),
+    #[error("RPC call failed")]
+    RpcCallFailed(#[source] subxt_rpcs::Error),
 
     #[error("Failed to get block header: {0}")]
     BlockHeaderFailed(#[source] subxt::error::BlockError),
@@ -105,7 +105,7 @@ impl IntoResponse for GetRcBlockHeadError {
             GetRcBlockHeadError::RelayChainNotConfigured => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
-            GetRcBlockHeadError::FinalizedHeadFailed(err) => crate::utils::rpc_error_to_status(err),
+            GetRcBlockHeadError::RpcCallFailed(err) => crate::utils::rpc_error_to_status(err),
             GetRcBlockHeadError::BlockHeaderFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
@@ -163,41 +163,35 @@ pub async fn get_rc_blocks_head(
     let ss58_prefix = relay_chain_info.ss58_prefix;
 
     let (client_at_block, is_finalized) = if params.finalized {
-        let finalized_hash = relay_rpc
-            .chain_get_finalized_head()
-            .await
-            .map_err(GetRcBlockHeadError::FinalizedHeadFailed)?;
-
         let client = relay_client
-            .at_block(finalized_hash)
+            .at_current_block()
             .await
             .map_err(|e| GetRcBlockHeadError::ClientAtBlockFailed(Box::new(e)))?;
 
         (client, true)
     } else {
-        let (best_hash_result, finalized_hash_result) = tokio::join!(
-            relay_rpc.chain_get_block_hash(None),
-            relay_rpc.chain_get_finalized_head()
-        );
-
-        let best_hash = best_hash_result
-            .map_err(GetRcBlockHeadError::FinalizedHeadFailed)?
+        let best_hash = relay_rpc
+            .chain_get_block_hash(None)
+            .await
+            .map_err(GetRcBlockHeadError::RpcCallFailed)?
             .ok_or_else(|| {
                 GetRcBlockHeadError::HeaderFieldMissing("best block hash".to_string())
             })?;
 
-        let finalized_hash =
-            finalized_hash_result.map_err(GetRcBlockHeadError::FinalizedHeadFailed)?;
-
-        let canonical_client = relay_client
-            .at_block(best_hash)
-            .await
-            .map_err(|e| GetRcBlockHeadError::ClientAtBlockFailed(Box::new(e)))?;
-
-        let finalized_client = relay_client
-            .at_block(finalized_hash)
-            .await
-            .map_err(|e| GetRcBlockHeadError::ClientAtBlockFailed(Box::new(e)))?;
+        let (canonical_client, finalized_client) = tokio::try_join!(
+            async {
+                relay_client
+                    .at_block(best_hash)
+                    .await
+                    .map_err(|e| GetRcBlockHeadError::ClientAtBlockFailed(Box::new(e)))
+            },
+            async {
+                relay_client
+                    .at_current_block()
+                    .await
+                    .map_err(|e| GetRcBlockHeadError::ClientAtBlockFailed(Box::new(e)))
+            }
+        )?;
 
         let is_finalized = canonical_client.block_number() <= finalized_client.block_number();
 
