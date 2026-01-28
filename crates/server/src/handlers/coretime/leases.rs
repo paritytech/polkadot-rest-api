@@ -181,13 +181,11 @@ async fn fetch_leases(
 
     // Decode as a Vec<LeaseRecordItem>
     // The storage value is a BoundedVec which decodes as a regular Vec
-    let leases: Vec<LeaseRecordItem> =
-        Vec::<LeaseRecordItem>::decode(&mut &raw_bytes[..]).map_err(|e| {
-            CoretimeError::StorageDecodeFailed {
-                pallet: "Broker",
-                entry: "Leases",
-                details: e.to_string(),
-            }
+    let leases: Vec<LeaseRecordItem> = Vec::<LeaseRecordItem>::decode(&mut &raw_bytes[..])
+        .map_err(|e| CoretimeError::StorageDecodeFailed {
+            pallet: "Broker",
+            entry: "Leases",
+            details: e.to_string(),
         })?;
 
     Ok(leases)
@@ -199,8 +197,7 @@ async fn fetch_workloads(
 ) -> Result<Vec<WorkloadInfo>, CoretimeError> {
     // Broker::Workload is a StorageMap with CoreIndex (u16) as key
     // Use tuple for the key type
-    let workload_addr =
-        subxt::dynamic::storage::<(u16,), scale_value::Value>("Broker", "Workload");
+    let workload_addr = subxt::dynamic::storage::<(u16,), scale_value::Value>("Broker", "Workload");
 
     let mut workloads = Vec::new();
 
@@ -392,10 +389,16 @@ mod tests {
         // Four byte mode: values 16384-1073741823
         // Format: xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx10 (little endian)
         // Value 16384: (16384 << 2) | 0b10 = 65538 = 0x00010002 -> [0x02, 0x00, 0x01, 0x00]
-        assert_eq!(decode_compact_u32(&[0x02, 0x00, 0x01, 0x00]), Some((16384, 4)));
+        assert_eq!(
+            decode_compact_u32(&[0x02, 0x00, 0x01, 0x00]),
+            Some((16384, 4))
+        );
 
         // Value 100000: (100000 << 2) | 0b10 = 400002 = 0x00061A82 -> [0x82, 0x1A, 0x06, 0x00]
-        assert_eq!(decode_compact_u32(&[0x82, 0x1A, 0x06, 0x00]), Some((100000, 4)));
+        assert_eq!(
+            decode_compact_u32(&[0x82, 0x1A, 0x06, 0x00]),
+            Some((100000, 4))
+        );
     }
 
     #[test]
