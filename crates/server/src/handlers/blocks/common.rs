@@ -11,7 +11,7 @@
 use crate::state::AppState;
 use crate::utils::{self, hex_with_prefix};
 use axum::{Json, http::StatusCode, response::IntoResponse};
-use heck::ToUpperCamelCase;
+use heck::{ToLowerCamelCase, ToUpperCamelCase};
 use parity_scale_codec::Decode;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
@@ -165,6 +165,82 @@ pub fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
             })
         })
         .collect()
+}
+
+/// Convert DigestLog entries to sidecar JSON format.
+/// Each log becomes an object with a single key (the log type in lowerCamelCase).
+pub fn convert_digest_logs_to_sidecar_format(logs: Vec<DigestLog>) -> Vec<Value> {
+    logs.into_iter()
+        .map(|log| {
+            let log_type_camel = log.log_type.to_lower_camel_case();
+            let mut obj = serde_json::Map::new();
+            obj.insert(log_type_camel, log.value);
+            Value::Object(obj)
+        })
+        .collect()
+}
+
+// ================================================================================================
+// Header Field Parsing
+// ================================================================================================
+
+/// Parsed header fields extracted from a JSON header response.
+#[derive(Debug, Clone)]
+pub struct ParsedHeaderFields {
+    pub number: u64,
+    pub parent_hash: String,
+    pub state_root: String,
+    pub extrinsics_root: String,
+    pub digest_logs: Vec<Value>,
+}
+
+/// Error type for header field parsing.
+#[derive(Debug, thiserror::Error)]
+pub enum HeaderParseError {
+    #[error("Header field missing: {0}")]
+    FieldMissing(String),
+}
+
+/// Parse header fields from a JSON header response.
+///
+/// Extracts number, parentHash, stateRoot, extrinsicsRoot, and decoded digest logs.
+pub fn parse_header_fields(header_json: &Value) -> Result<ParsedHeaderFields, HeaderParseError> {
+    let number_hex = header_json
+        .get("number")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| HeaderParseError::FieldMissing("number".to_string()))?;
+
+    let number = u64::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16)
+        .map_err(|_| HeaderParseError::FieldMissing("number (invalid format)".to_string()))?;
+
+    let parent_hash = header_json
+        .get("parentHash")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| HeaderParseError::FieldMissing("parentHash".to_string()))?
+        .to_string();
+
+    let state_root = header_json
+        .get("stateRoot")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| HeaderParseError::FieldMissing("stateRoot".to_string()))?
+        .to_string();
+
+    let extrinsics_root = header_json
+        .get("extrinsicsRoot")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| HeaderParseError::FieldMissing("extrinsicsRoot".to_string()))?
+        .to_string();
+
+    let digest_logs = decode_digest_logs(header_json);
+    let digest_logs = convert_digest_logs_to_sidecar_format(digest_logs);
+
+    Ok(ParsedHeaderFields {
+        number,
+        parent_hash,
+        state_root,
+        extrinsics_root,
+        digest_logs,
+    })
 }
 
 // ================================================================================================

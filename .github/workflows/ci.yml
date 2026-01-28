@@ -150,7 +150,7 @@ jobs:
         timeout-minutes: 10
 
       - name: Run latest integration tests (Polkadot)
-        run: cargo test --package integration_tests --test latest
+        run: cargo test --package integration_tests test_latest_polkadot
         env:
           API_URL: http://localhost:8080
           RUST_LOG: info
