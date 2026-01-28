@@ -36,6 +36,10 @@ pub struct EndpointConfig {
     /// Whether this endpoint requires an account identifier
     #[serde(default)]
     pub requires_account: bool,
+    /// Optional list of chains to test this endpoint on.
+    /// If None or empty, the endpoint is tested on all chains.
+    #[serde(default)]
+    pub only_chains: Option<Vec<String>>,
 }
 
 /// Historical test case configuration

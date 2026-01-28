@@ -68,7 +68,8 @@
         {"finalized": "false"}
       ],
       "requires_block_height": false,
-      "requires_account": false
+      "requires_account": false,
+      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
     }
   ],
   "historical_tests": {
