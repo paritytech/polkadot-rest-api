@@ -1,10 +1,7 @@
+use crate::handlers::rc::node;
+use crate::routes::{API_VERSION, RegisterRoute, RouteRegistry};
+use crate::state::AppState;
 use axum::{Router, routing::get};
-
-use crate::{
-    handlers::rc::node,
-    routes::{API_VERSION, RegisterRoute, RouteRegistry},
-    state::AppState,
-};
 
 pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
     Router::new()

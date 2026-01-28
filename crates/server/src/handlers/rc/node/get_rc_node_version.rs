@@ -1,23 +1,18 @@
 use crate::handlers::node::NodeVersionResponse;
 use crate::handlers::node::common::{FetchError, fetch_node_version};
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
-use config::ChainType;
 use serde_json::json;
-use std::sync::Arc;
 use subxt::SubstrateConfig;
 use subxt::config::RpcConfigFor;
-use subxt_rpcs::{LegacyRpcMethods, RpcClient};
+use subxt_rpcs::LegacyRpcMethods;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum GetRcNodeVersionError {
-    #[error("Relay chain connection not available")]
-    RelayChainNotAvailable,
-
-    #[error("Failed to connect to relay chain from multi-chain URLs")]
-    MultiChainConnectionFailed(#[source] subxt_rpcs::Error),
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 
     #[error("Failed to get runtime version")]
     RuntimeVersionFailed(#[source] subxt_rpcs::Error),
@@ -41,10 +36,10 @@ impl From<FetchError> for GetRcNodeVersionError {
 impl IntoResponse for GetRcNodeVersionError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
-            GetRcNodeVersionError::RelayChainNotAvailable => {
-                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            GetRcNodeVersionError::RelayChain(RelayChainError::NotConfigured) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
             }
-            GetRcNodeVersionError::MultiChainConnectionFailed(_) => {
+            GetRcNodeVersionError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetRcNodeVersionError::RuntimeVersionFailed(err)
@@ -60,27 +55,6 @@ impl IntoResponse for GetRcNodeVersionError {
     }
 }
 
-async fn get_relay_rpc_client(state: &AppState) -> Result<Arc<RpcClient>, GetRcNodeVersionError> {
-    if let Some(relay_rpc_client) = &state.relay_rpc_client {
-        return Ok(relay_rpc_client.clone());
-    }
-
-    let relay_url = state
-        .config
-        .substrate
-        .multi_chain_urls
-        .iter()
-        .find(|chain_url| chain_url.chain_type == ChainType::Relay)
-        .map(|chain_url| chain_url.url.clone())
-        .ok_or(GetRcNodeVersionError::RelayChainNotAvailable)?;
-
-    let relay_rpc_client = RpcClient::from_insecure_url(&relay_url)
-        .await
-        .map_err(GetRcNodeVersionError::MultiChainConnectionFailed)?;
-
-    Ok(Arc::new(relay_rpc_client))
-}
-
 /// Handler for GET /rc/node/version
 ///
 /// Returns the relay chain node's version information. This endpoint is specifically
@@ -88,7 +62,7 @@ async fn get_relay_rpc_client(state: &AppState) -> Result<Arc<RpcClient>, GetRcN
 pub async fn get_rc_node_version(
     State(state): State<AppState>,
 ) -> Result<Json<NodeVersionResponse>, GetRcNodeVersionError> {
-    let relay_rpc_client = get_relay_rpc_client(&state).await?;
+    let relay_rpc_client = state.get_or_init_relay_rpc_client().await?;
     let relay_legacy_rpc =
         LegacyRpcMethods::<RpcConfigFor<SubstrateConfig>>::new((*relay_rpc_client).clone());
 
@@ -140,6 +114,7 @@ mod tests {
             chain_configs: Arc::new(config::ChainConfigs::default()),
             chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
             route_registry: crate::routes::RouteRegistry::new(),
+            lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 

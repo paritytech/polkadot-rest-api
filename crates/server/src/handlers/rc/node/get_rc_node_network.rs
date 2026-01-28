@@ -1,21 +1,15 @@
 use crate::handlers::node::NodeNetworkResponse;
 use crate::handlers::node::common::{FetchError, fetch_node_network};
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
-use config::ChainType;
 use serde_json::json;
-use std::sync::Arc;
-use subxt_rpcs::RpcClient;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum GetRcNodeNetworkError {
-    #[error("Relay chain connection not available")]
-    RelayChainNotAvailable,
-
-    #[error("Failed to connect to relay chain from multi-chain URLs")]
-    MultiChainConnectionFailed(#[source] subxt_rpcs::Error),
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 
     #[error("Failed to get system health")]
     SystemHealthFailed(#[source] subxt_rpcs::Error),
@@ -42,10 +36,10 @@ impl From<FetchError> for GetRcNodeNetworkError {
 impl IntoResponse for GetRcNodeNetworkError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
-            GetRcNodeNetworkError::RelayChainNotAvailable => {
-                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            GetRcNodeNetworkError::RelayChain(RelayChainError::NotConfigured) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
             }
-            GetRcNodeNetworkError::MultiChainConnectionFailed(_) => {
+            GetRcNodeNetworkError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetRcNodeNetworkError::SystemHealthFailed(err)
@@ -64,27 +58,6 @@ impl IntoResponse for GetRcNodeNetworkError {
     }
 }
 
-async fn get_relay_rpc_client(state: &AppState) -> Result<Arc<RpcClient>, GetRcNodeNetworkError> {
-    if let Some(relay_rpc_client) = &state.relay_rpc_client {
-        return Ok(relay_rpc_client.clone());
-    }
-
-    let relay_url = state
-        .config
-        .substrate
-        .multi_chain_urls
-        .iter()
-        .find(|chain_url| chain_url.chain_type == ChainType::Relay)
-        .map(|chain_url| chain_url.url.clone())
-        .ok_or(GetRcNodeNetworkError::RelayChainNotAvailable)?;
-
-    let relay_rpc_client = RpcClient::from_insecure_url(&relay_url)
-        .await
-        .map_err(GetRcNodeNetworkError::MultiChainConnectionFailed)?;
-
-    Ok(Arc::new(relay_rpc_client))
-}
-
 /// Handler for GET /rc/node/network
 ///
 /// Returns the relay chain node's network information. This endpoint is specifically
@@ -92,7 +65,7 @@ async fn get_relay_rpc_client(state: &AppState) -> Result<Arc<RpcClient>, GetRcN
 pub async fn get_rc_node_network(
     State(state): State<AppState>,
 ) -> Result<Json<NodeNetworkResponse>, GetRcNodeNetworkError> {
-    let relay_rpc_client = get_relay_rpc_client(&state).await?;
+    let relay_rpc_client = state.get_or_init_relay_rpc_client().await?;
     let response = fetch_node_network(&relay_rpc_client).await?;
     Ok(Json(response))
 }
@@ -142,6 +115,7 @@ mod tests {
             chain_configs: Arc::new(config::ChainConfigs::default()),
             chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
             route_registry: crate::routes::RouteRegistry::new(),
+            lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 

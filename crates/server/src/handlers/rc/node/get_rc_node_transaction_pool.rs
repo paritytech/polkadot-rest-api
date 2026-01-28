@@ -6,7 +6,7 @@ use crate::handlers::node::common::{
 #[cfg(test)]
 use crate::handlers::node::common::extract_tip_from_extrinsic_bytes;
 use crate::handlers::node::{TransactionPoolQueryParams, TransactionPoolResponse};
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils;
 use axum::{
     Json,
@@ -14,19 +14,13 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use config::ChainType;
 use serde_json::json;
-use std::sync::Arc;
-use subxt_rpcs::RpcClient;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum GetRcNodeTransactionPoolError {
-    #[error("Relay chain connection not available")]
-    RelayChainNotAvailable,
-
-    #[error("Failed to connect to relay chain from multi-chain URLs")]
-    MultiChainConnectionFailed(#[source] subxt_rpcs::Error),
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 
     #[error("Failed to get pending extrinsics")]
     PendingExtrinsicsFailed(#[source] subxt_rpcs::Error),
@@ -69,10 +63,10 @@ impl From<FetchError> for GetRcNodeTransactionPoolError {
 impl IntoResponse for GetRcNodeTransactionPoolError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
-            GetRcNodeTransactionPoolError::RelayChainNotAvailable => {
-                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            GetRcNodeTransactionPoolError::RelayChain(RelayChainError::NotConfigured) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
             }
-            GetRcNodeTransactionPoolError::MultiChainConnectionFailed(_) => {
+            GetRcNodeTransactionPoolError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetRcNodeTransactionPoolError::PendingExtrinsicsFailed(err)
@@ -95,29 +89,6 @@ impl IntoResponse for GetRcNodeTransactionPoolError {
     }
 }
 
-async fn get_relay_rpc_client(
-    state: &AppState,
-) -> Result<Arc<RpcClient>, GetRcNodeTransactionPoolError> {
-    if let Some(relay_rpc_client) = &state.relay_rpc_client {
-        return Ok(relay_rpc_client.clone());
-    }
-
-    let relay_url = state
-        .config
-        .substrate
-        .multi_chain_urls
-        .iter()
-        .find(|chain_url| chain_url.chain_type == ChainType::Relay)
-        .map(|chain_url| chain_url.url.clone())
-        .ok_or(GetRcNodeTransactionPoolError::RelayChainNotAvailable)?;
-
-    let relay_rpc_client = RpcClient::from_insecure_url(&relay_url)
-        .await
-        .map_err(GetRcNodeTransactionPoolError::MultiChainConnectionFailed)?;
-
-    Ok(Arc::new(relay_rpc_client))
-}
-
 /// Handler for GET /rc/node/transaction-pool
 ///
 /// Returns the relay chain's transaction pool with optional fee information.
@@ -127,7 +98,7 @@ pub async fn get_rc_node_transaction_pool(
     State(state): State<AppState>,
     Query(params): Query<TransactionPoolQueryParams>,
 ) -> Result<Json<TransactionPoolResponse>, GetRcNodeTransactionPoolError> {
-    let relay_rpc_client = get_relay_rpc_client(&state).await?;
+    let relay_rpc_client = state.get_or_init_relay_rpc_client().await?;
 
     let response = if params.include_fee {
         fetch_transaction_pool_with_fees(&relay_rpc_client).await?
@@ -182,6 +153,7 @@ mod tests {
             chain_configs: Arc::new(config::ChainConfigs::default()),
             chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
             route_registry: crate::routes::RouteRegistry::new(),
+            lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 

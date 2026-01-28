@@ -403,6 +403,7 @@ mod tests {
             chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
             route_registry: crate::routes::RouteRegistry::new(),
             relay_chain_rpc: None,
+            lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 
