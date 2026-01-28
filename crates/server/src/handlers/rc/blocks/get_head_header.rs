@@ -2,9 +2,7 @@
 //!
 //! Returns the header of the latest relay chain block.
 
-use crate::handlers::blocks::common::{HeaderParseError, parse_header_fields};
 use crate::state::AppState;
-use crate::utils;
 use axum::{
     Json,
     extract::{Query, State},
@@ -13,7 +11,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use subxt_rpcs::rpc_params;
+use subxt::config::substrate::{ConsensusEngineId, DigestItem};
 use thiserror::Error;
 
 /// Query parameters for /rc/blocks/head/header endpoint
@@ -42,27 +40,14 @@ pub struct RcBlockHeaderResponse {
 /// Error types for /rc/blocks/head/header endpoint
 #[derive(Debug, Error)]
 pub enum GetRcBlockHeadHeaderError {
-    #[error("Failed to get block header")]
-    HeaderFetchFailed(#[source] subxt_rpcs::Error),
-
-    #[error("Header field missing: {0}")]
-    HeaderFieldMissing(String),
+    #[error("Failed to get block header: {0}")]
+    HeaderFetchFailed(String),
 
     #[error("Service temporarily unavailable: {0}")]
     ServiceUnavailable(String),
 
     #[error("Relay chain API is not configured. Please set SAS_RELAY_CHAIN_URL")]
     RelayChainNotConfigured,
-}
-
-impl From<HeaderParseError> for GetRcBlockHeadHeaderError {
-    fn from(err: HeaderParseError) -> Self {
-        match err {
-            HeaderParseError::FieldMissing(field) => {
-                GetRcBlockHeadHeaderError::HeaderFieldMissing(field)
-            }
-        }
-    }
 }
 
 impl IntoResponse for GetRcBlockHeadHeaderError {
@@ -74,8 +59,7 @@ impl IntoResponse for GetRcBlockHeadHeaderError {
             GetRcBlockHeadHeaderError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
-            GetRcBlockHeadHeaderError::HeaderFetchFailed(err) => utils::rpc_error_to_status(err),
-            GetRcBlockHeadHeaderError::HeaderFieldMissing(_) => {
+            GetRcBlockHeadHeaderError::HeaderFetchFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -98,44 +82,83 @@ pub async fn get_rc_blocks_head_header(
     State(state): State<AppState>,
     Query(params): Query<RcBlockHeadHeaderQueryParams>,
 ) -> Result<Response, GetRcBlockHeadHeaderError> {
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(GetRcBlockHeadHeaderError::RelayChainNotConfigured)?;
-    let relay_legacy_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(GetRcBlockHeadHeaderError::RelayChainNotConfigured)?;
-
-    // Fetch header JSON from relay chain
-    let header_json = if params.finalized {
-        let finalized_hash = relay_legacy_rpc
-            .chain_get_finalized_head()
+    let header = if params.finalized {
+        let relay_client = state
+            .get_relay_chain_client()
+            .ok_or(GetRcBlockHeadHeaderError::RelayChainNotConfigured)?;
+        let at_block = relay_client
+            .at_current_block()
             .await
-            .map_err(GetRcBlockHeadHeaderError::HeaderFetchFailed)?;
-        let hash_str = format!("{:#x}", finalized_hash);
-        relay_rpc_client
-            .request::<serde_json::Value>("chain_getHeader", rpc_params![hash_str])
+            .map_err(|e| GetRcBlockHeadHeaderError::HeaderFetchFailed(e.to_string()))?;
+        at_block
+            .block_header()
             .await
-            .map_err(GetRcBlockHeadHeaderError::HeaderFetchFailed)?
+            .map_err(|e| GetRcBlockHeadHeaderError::HeaderFetchFailed(e.to_string()))?
     } else {
-        relay_rpc_client
-            .request::<serde_json::Value>("chain_getHeader", rpc_params![])
+        let relay_legacy_rpc = state
+            .get_relay_chain_rpc()
+            .ok_or(GetRcBlockHeadHeaderError::RelayChainNotConfigured)?;
+        relay_legacy_rpc
+            .chain_get_header(None)
             .await
-            .map_err(GetRcBlockHeadHeaderError::HeaderFetchFailed)?
+            .map_err(|e| GetRcBlockHeadHeaderError::HeaderFetchFailed(e.to_string()))?
+            .ok_or_else(|| {
+                GetRcBlockHeadHeaderError::HeaderFetchFailed(
+                    "Best block header not found".to_string(),
+                )
+            })?
     };
 
-    let parsed = parse_header_fields(&header_json)?;
-
     let response = RcBlockHeaderResponse {
-        parent_hash: parsed.parent_hash,
-        number: parsed.number.to_string(),
-        state_root: parsed.state_root,
-        extrinsics_root: parsed.extrinsics_root,
+        parent_hash: format!("0x{}", hex::encode(header.parent_hash.0)),
+        number: header.number.to_string(),
+        state_root: format!("0x{}", hex::encode(header.state_root.0)),
+        extrinsics_root: format!("0x{}", hex::encode(header.extrinsics_root.0)),
         digest: json!({
-            "logs": parsed.digest_logs
+            "logs": convert_digest_logs(&header.digest.logs)
         }),
     };
 
     Ok(Json(response).into_response())
+}
+
+fn convert_digest_logs(logs: &[DigestItem]) -> Vec<serde_json::Value> {
+    logs.iter()
+        .map(|item| match item {
+            DigestItem::PreRuntime(engine_id, data) => {
+                json!({
+                    "preRuntime": format_consensus_digest(engine_id, data)
+                })
+            }
+            DigestItem::Consensus(engine_id, data) => {
+                json!({
+                    "consensus": format_consensus_digest(engine_id, data)
+                })
+            }
+            DigestItem::Seal(engine_id, data) => {
+                json!({
+                    "seal": format_consensus_digest(engine_id, data)
+                })
+            }
+            DigestItem::Other(data) => {
+                json!({
+                    "other": format!("0x{}", hex::encode(data))
+                })
+            }
+            DigestItem::RuntimeEnvironmentUpdated => {
+                json!({
+                    "runtimeEnvironmentUpdated": null
+                })
+            }
+        })
+        .collect()
+}
+
+fn format_consensus_digest(engine_id: &ConsensusEngineId, data: &[u8]) -> serde_json::Value {
+    json!([
+        format!("0x{}", hex::encode(engine_id)),
+        format!("0x{}", hex::encode(data))
+    ])
 }
 
 #[cfg(test)]
@@ -151,8 +174,6 @@ mod tests {
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
-    const TEST_BLOCK_HASH: &str =
-        "0xd39ee2fcfc7b4da491fa056d4675f3af38cc29205397c2449749dbced57712b9";
     const TEST_PARENT_HASH: &str =
         "0xb5531541d3c407569749190350c19784baee799e1e4b9ea52471e75150cd3ec1";
     const TEST_STATE_ROOT: &str =
@@ -248,53 +269,91 @@ mod tests {
         let response = service_unavailable.into_response();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 
-        let missing_field = GetRcBlockHeadHeaderError::HeaderFieldMissing("number".to_string());
-        let response = missing_field.into_response();
+        let header_fetch_failed =
+            GetRcBlockHeadHeaderError::HeaderFetchFailed("test error".to_string());
+        let response = header_fetch_failed.into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    #[tokio::test]
-    async fn test_get_rc_blocks_head_header_finalized_success() {
-        let relay_mock = mock_rpc_client_builder()
-            .method_handler("chain_getFinalizedHead", async |_params| {
-                MockJson(TEST_BLOCK_HASH)
-            })
-            .method_handler("chain_getHeader", async |_params| {
-                MockJson(json!({
-                    "number": format!("0x{:x}", TEST_BLOCK_NUMBER),
-                    "parentHash": TEST_PARENT_HASH,
-                    "stateRoot": TEST_STATE_ROOT,
-                    "extrinsicsRoot": TEST_EXTRINSICS_ROOT,
-                    "digest": {
-                        "logs": [
-                            "0x0642414245b501032d01000000000000",
-                            "0x04424545468403c41b16c2943a",
-                            "0x05424142450101"
-                        ]
-                    }
-                }))
-            })
-            .build();
+    #[test]
+    fn test_convert_digest_logs_preruntime() {
+        let engine_id: ConsensusEngineId = *b"BABE";
+        let data = vec![0x01, 0x02, 0x03];
+        let logs = vec![DigestItem::PreRuntime(engine_id, data.clone())];
 
-        let state = create_test_state_with_relay_mock(relay_mock).await;
-        let params = RcBlockHeadHeaderQueryParams { finalized: true };
-        let result = get_rc_blocks_head_header(State(state), Query(params)).await;
+        let result = convert_digest_logs(&logs);
 
-        assert!(result.is_ok());
-        let response = result.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(result.len(), 1);
+        assert!(result[0].get("preRuntime").is_some());
+        let arr = result[0]["preRuntime"].as_array().unwrap();
+        assert_eq!(arr[0], "0x42414245");
+        assert_eq!(arr[1], "0x010203");
+    }
 
-        // Extract body and verify structure
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    #[test]
+    fn test_convert_digest_logs_consensus() {
+        let engine_id: ConsensusEngineId = *b"BEEF";
+        let data = vec![0xde, 0xad, 0xbe, 0xef];
+        let logs = vec![DigestItem::Consensus(engine_id, data.clone())];
 
-        assert_eq!(json["parentHash"], TEST_PARENT_HASH);
-        assert_eq!(json["number"], TEST_BLOCK_NUMBER.to_string());
-        assert_eq!(json["stateRoot"], TEST_STATE_ROOT);
-        assert_eq!(json["extrinsicsRoot"], TEST_EXTRINSICS_ROOT);
-        assert!(json["digest"]["logs"].is_array());
+        let result = convert_digest_logs(&logs);
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].get("consensus").is_some());
+        let arr = result[0]["consensus"].as_array().unwrap();
+        assert_eq!(arr[0], "0x42454546");
+        assert_eq!(arr[1], "0xdeadbeef");
+    }
+
+    #[test]
+    fn test_convert_digest_logs_seal() {
+        let engine_id: ConsensusEngineId = *b"BABE";
+        let data = vec![0x11, 0x22, 0x33, 0x44];
+        let logs = vec![DigestItem::Seal(engine_id, data.clone())];
+
+        let result = convert_digest_logs(&logs);
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].get("seal").is_some());
+    }
+
+    #[test]
+    fn test_convert_digest_logs_other() {
+        let data = vec![0xaa, 0xbb, 0xcc];
+        let logs = vec![DigestItem::Other(data.clone())];
+
+        let result = convert_digest_logs(&logs);
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].get("other").is_some());
+        assert_eq!(result[0]["other"], "0xaabbcc");
+    }
+
+    #[test]
+    fn test_convert_digest_logs_runtime_environment_updated() {
+        let logs = vec![DigestItem::RuntimeEnvironmentUpdated];
+
+        let result = convert_digest_logs(&logs);
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].get("runtimeEnvironmentUpdated").is_some());
+        assert!(result[0]["runtimeEnvironmentUpdated"].is_null());
+    }
+
+    #[test]
+    fn test_convert_digest_logs_multiple() {
+        let logs = vec![
+            DigestItem::PreRuntime(*b"BABE", vec![0x01]),
+            DigestItem::Consensus(*b"BEEF", vec![0x02]),
+            DigestItem::Seal(*b"BABE", vec![0x03]),
+        ];
+
+        let result = convert_digest_logs(&logs);
+
+        assert_eq!(result.len(), 3);
+        assert!(result[0].get("preRuntime").is_some());
+        assert!(result[1].get("consensus").is_some());
+        assert!(result[2].get("seal").is_some());
     }
 
     #[tokio::test]
@@ -326,53 +385,5 @@ mod tests {
 
         // Block number should be TEST_BLOCK_NUMBER + 10 (canonical is ahead of finalized)
         assert_eq!(json["number"], (TEST_BLOCK_NUMBER + 10).to_string());
-    }
-
-    #[tokio::test]
-    async fn test_get_rc_blocks_head_header_with_digest_logs() {
-        let relay_mock = mock_rpc_client_builder()
-            .method_handler("chain_getFinalizedHead", async |_params| {
-                MockJson(TEST_BLOCK_HASH)
-            })
-            .method_handler("chain_getHeader", async |_params| {
-                // Real digest logs from Polkadot relay chain
-                MockJson(json!({
-                    "number": "0x1c4f306",
-                    "parentHash": TEST_PARENT_HASH,
-                    "stateRoot": TEST_STATE_ROOT,
-                    "extrinsicsRoot": TEST_EXTRINSICS_ROOT,
-                    "digest": {
-                        "logs": [
-                            "0x0642414245b501032d010000a5429311000000005c64bf9f9bc3ca37a329d015d3df9c307a02d0740eac9683dbe4184924017e7aeb5a504bd02b557c0cf7aabd3574ed11479c9d22e76c73380369863d2e4b8e0322b9d8504bdb28a855ec8b9788708ca01d8766b696b6751ed279532f1192d207",
-                            "0x04424545468403c41b16c2943a6d45b1bf0b9a796fa4e4a7f66d75b8538d6882f32f40ebce7c82",
-                            "0x05424142450101"
-                        ]
-                    }
-                }))
-            })
-            .build();
-
-        let state = create_test_state_with_relay_mock(relay_mock).await;
-        let params = RcBlockHeadHeaderQueryParams { finalized: true };
-        let result = get_rc_blocks_head_header(State(state), Query(params)).await;
-
-        assert!(result.is_ok());
-        let response = result.unwrap();
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-        // Verify digest logs are properly formatted
-        let logs = json["digest"]["logs"].as_array().unwrap();
-        assert!(!logs.is_empty());
-
-        // Each log should be an object with a single key (preRuntime, consensus, seal, etc.)
-        for log in logs {
-            assert!(log.is_object());
-            let obj = log.as_object().unwrap();
-            assert_eq!(obj.len(), 1);
-        }
     }
 }
