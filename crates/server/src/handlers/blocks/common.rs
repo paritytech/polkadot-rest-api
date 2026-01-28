@@ -2,18 +2,21 @@
 //!
 //! This module contains foundational utilities for block data:
 //! - `BlockClient` type alias for working with blocks at specific heights
+//! - Common error types used across multiple block endpoints
 //! - Digest log decoding (PreRuntime, Consensus, Seal)
 //! - Chain state queries (canonical hash, finalized head, validators)
 //! - Block author extraction from consensus digests
 //! - Documentation helpers for events
 
 use crate::state::AppState;
-use crate::utils::hex_with_prefix;
+use crate::utils::{self, hex_with_prefix};
+use axum::{Json, http::StatusCode, response::IntoResponse};
 use heck::ToUpperCamelCase;
 use parity_scale_codec::Decode;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
-use subxt::{OnlineClientAtBlock, SubstrateConfig};
+use subxt::{OnlineClientAtBlock, SubstrateConfig, error::OnlineClientAtBlockError};
+use thiserror::Error;
 
 use super::docs::Docs;
 use super::types::{
@@ -24,6 +27,61 @@ use super::types::{
 /// This represents a client pinned to a specific block height with access to
 /// storage, extrinsics, and metadata for that block.
 pub type BlockClient = OnlineClientAtBlock<SubstrateConfig>;
+
+// ================================================================================================
+// Common Error Types
+// ================================================================================================
+
+/// Common errors that appear across multiple block-related endpoints.
+///
+/// This enum consolidates frequently repeated error variants to reduce code duplication.
+/// Endpoint-specific error types can include these variants via composition or wrapping.
+#[derive(Debug, Error)]
+pub enum CommonBlockError {
+    #[error("Invalid block parameter")]
+    InvalidBlockParam(#[from] utils::BlockIdParseError),
+
+    #[error("Block resolution failed")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Failed to get client at block: {0}")]
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
+
+    #[error("Failed to fetch storage: {0}")]
+    StorageFetchFailed(String),
+
+    #[error("Failed to decode events: {0}")]
+    EventsDecodeFailed(String),
+}
+
+impl IntoResponse for CommonBlockError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            CommonBlockError::InvalidBlockParam(_) | CommonBlockError::BlockResolveFailed(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            CommonBlockError::ClientAtBlockFailed(err) => {
+                if utils::is_online_client_at_block_disconnected(err.as_ref()) {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        format!("Service temporarily unavailable: {}", err),
+                    )
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
+            CommonBlockError::StorageFetchFailed(_) | CommonBlockError::EventsDecodeFailed(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+        };
+
+        let body = Json(json!({
+            "error": message,
+        }));
+
+        (status, body).into_response()
+    }
+}
 
 // ================================================================================================
 // Digest Processing
