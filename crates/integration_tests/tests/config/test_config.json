@@ -110,7 +110,7 @@
       ],
       "requires_block_height": false,
       "requires_account": false,
-      "chain_types": ["asset-hub"]
+      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
     },
     {
       "path": "/v1/pallets/asset-conversion/liquidity-pools",
@@ -119,7 +119,7 @@
       ],
       "requires_block_height": false,
       "requires_account": false,
-      "chain_types": ["asset-hub"]
+      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
     }
   ],
   "historical_tests": {
