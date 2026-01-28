@@ -33,38 +33,37 @@ fi
 case $CHAIN in
     polkadot)
         RPC_URLS=(
-            "wss://rpc.polkadot.io"
-            "wss://polkadot.api.onfinality.io/public-ws"
+            "wss://rpc.ibp.network/polkadot"
+            "wss://polkadot.dotters.network"
             "wss://polkadot-rpc.dwellir.com"
         )
         ;;
     kusama)
         RPC_URLS=(
-            "wss://kusama-rpc.polkadot.io"
-            "wss://kusama.api.onfinality.io/public-ws"
+            "wss://rpc.ibp.network/kusama"
+            "wss://kusama.dotters.network"
             "wss://kusama-rpc.dwellir.com"
         )
         ;;
     asset-hub-polkadot)
         RPC_URLS=(
-            "wss://polkadot-asset-hub-rpc.polkadot.io"
-            "wss://statemint.api.onfinality.io/public-ws"
+            "wss://sys.ibp.network/asset-hub-polkadot"
             "wss://asset-hub-polkadot-rpc.dwellir.com"
+            "wss://asset-hub-polkadot.dotters.network"
         )
-        RELAY_CHAIN_URL="wss://rpc.polkadot.io"
+        RELAY_CHAIN_URL="wss://rpc.ibp.network/polkadot"
         ;;
     asset-hub-kusama)
         RPC_URLS=(
-            "wss://kusama-asset-hub-rpc.polkadot.io"
-            "wss://statemine.api.onfinality.io/public-ws"
-            "wss://asset-hub-kusama-rpc.dwellir.com"
+            "wss://asset-hub-kusama.dotters.network"
+            "wss://asset-hub-kusama-rpc.n.dwellir.com"
+            "wss://sys.ibp.network/asset-hub-kusama"
         )
-        RELAY_CHAIN_URL="wss://kusama-rpc.polkadot.io"
+        RELAY_CHAIN_URL="wss://rpc.ibp.network/kusama"
         ;;
     westend)
         RPC_URLS=(
-            "wss://westend-rpc.polkadot.io"
-            "wss://westend.api.onfinality.io/public-ws"
+            "wss://westend-rpc-tn.dwellir.com"
             "wss://westend-rpc.dwellir.com"
         )
         ;;
