@@ -10,23 +10,15 @@ use axum::{
     extract::{Path, Query, State},
     response::IntoResponse,
 };
-use heck::{ToSnakeCase, ToUpperCamelCase};
-use serde::Deserialize;
 
-use super::common::add_docs_to_events;
-use super::docs::Docs;
+use super::common::{add_docs_to_events, add_docs_to_extrinsic, associate_events_with_extrinsics};
 use super::processing::{
     categorize_events, extract_extrinsics, extract_fee_info_for_extrinsic, fetch_block_events,
 };
-use super::types::{BlockIdentifiers, ExtrinsicIndexResponse, ExtrinsicQueryParams, GetBlockError};
-
-#[derive(Debug, Deserialize)]
-pub struct ExtrinsicPathParams {
-    #[serde(rename = "blockId")]
-    pub block_id: String,
-    #[serde(rename = "extrinsicIndex")]
-    pub extrinsic_index: String,
-}
+use super::types::{
+    BlockIdentifiers, ExtrinsicIndexResponse, ExtrinsicPathParams, ExtrinsicQueryParams,
+    GetBlockError,
+};
 
 /// Handler for GET /blocks/{blockId}/extrinsics/{extrinsicIndex}
 ///
@@ -81,19 +73,11 @@ pub async fn get_extrinsic(
         categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
-    for (i, (extrinsic_events, outcome)) in per_extrinsic_events
-        .iter()
-        .zip(extrinsic_outcomes.iter())
-        .enumerate()
-    {
-        if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            extrinsic.events = extrinsic_events.clone();
-            extrinsic.success = outcome.success;
-            if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
-                extrinsic.pays_fee = outcome.pays_fee;
-            }
-        }
-    }
+    associate_events_with_extrinsics(
+        &mut extrinsics_with_events,
+        &per_extrinsic_events,
+        &extrinsic_outcomes,
+    );
 
     let mut extrinsic = extrinsics_with_events
         .into_iter()
@@ -132,10 +116,7 @@ pub async fn get_extrinsic(
         }
 
         if params.extrinsic_docs {
-            let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
-            let method_name = extrinsic.method.method.to_snake_case();
-            extrinsic.docs =
-                Docs::for_call_subxt(&metadata, &pallet_name, &method_name).map(|d| d.to_string());
+            add_docs_to_extrinsic(&mut extrinsic, &metadata);
         }
     }
 

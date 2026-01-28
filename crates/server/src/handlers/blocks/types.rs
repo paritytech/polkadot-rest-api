@@ -75,6 +75,16 @@ pub struct ExtrinsicQueryParams {
     pub no_fees: bool,
 }
 
+/// Path parameters for /blocks/{blockId}/extrinsics/{extrinsicIndex} and
+/// /rc/blocks/{blockId}/extrinsics/{extrinsicIndex} endpoints
+#[derive(Debug, Deserialize)]
+pub struct ExtrinsicPathParams {
+    #[serde(rename = "blockId")]
+    pub block_id: String,
+    #[serde(rename = "extrinsicIndex")]
+    pub extrinsic_index: String,
+}
+
 impl Default for BlockQueryParams {
     fn default() -> Self {
         Self {

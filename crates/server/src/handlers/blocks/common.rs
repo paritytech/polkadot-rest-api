@@ -24,7 +24,8 @@ use thiserror::Error;
 use serde::Serialize;
 
 use super::docs::Docs;
-use super::types::{DigestLog, Event, GetBlockError};
+use super::types::{DigestLog, Event, ExtrinsicInfo, ExtrinsicOutcome, GetBlockError};
+use heck::ToSnakeCase;
 
 /// Relay chain block header response
 #[derive(Debug, Serialize)]
@@ -299,6 +300,38 @@ pub fn add_docs_to_events(events: &mut [Event], metadata: &subxt::Metadata) {
         let pallet_name = event.method.pallet.to_upper_camel_case();
         event.docs = Docs::for_event_subxt(metadata, &pallet_name, &event.method.method)
             .map(|d| d.to_string());
+    }
+}
+
+/// Add documentation to a single extrinsic if extrinsicDocs is enabled
+pub fn add_docs_to_extrinsic(extrinsic: &mut ExtrinsicInfo, metadata: &subxt::Metadata) {
+    let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
+    let method_name = extrinsic.method.method.to_snake_case();
+    extrinsic.docs =
+        Docs::for_call_subxt(metadata, &pallet_name, &method_name).map(|d| d.to_string());
+}
+
+/// Associate events and outcomes with extrinsics.
+///
+/// This function takes the categorized events and outcomes and attaches them
+/// to the corresponding extrinsics in-place.
+pub fn associate_events_with_extrinsics(
+    extrinsics: &mut [ExtrinsicInfo],
+    per_extrinsic_events: &[Vec<Event>],
+    extrinsic_outcomes: &[ExtrinsicOutcome],
+) {
+    for (i, (extrinsic_events, outcome)) in per_extrinsic_events
+        .iter()
+        .zip(extrinsic_outcomes.iter())
+        .enumerate()
+    {
+        if let Some(extrinsic) = extrinsics.get_mut(i) {
+            extrinsic.events = extrinsic_events.clone();
+            extrinsic.success = outcome.success;
+            if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
+                extrinsic.pays_fee = outcome.pays_fee;
+            }
+        }
     }
 }
 
