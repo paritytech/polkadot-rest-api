@@ -181,7 +181,7 @@ async fn build_rc_block_response(
     let logs = decode_digest_logs(&header_json);
 
     let author_id =
-        extract_author_with_prefix(ss58_prefix, client_at_block, &logs, block_number).await;
+        extract_author_with_prefix(client_at_block, &logs, ss58_prefix, block_number).await;
 
     let (extrinsics_result, events_result) = tokio::join!(
         extract_extrinsics_with_prefix(ss58_prefix, client_at_block, block_number),
