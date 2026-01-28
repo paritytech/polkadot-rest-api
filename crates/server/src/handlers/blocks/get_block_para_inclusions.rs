@@ -214,10 +214,7 @@ pub fn extract_para_inclusions_from_events(
         let event_fields: Value<()> = match event.decode_fields_unchecked_as() {
             Ok(v) => v,
             Err(e) => {
-                tracing::warn!(
-                    "Failed to decode CandidateIncluded event fields: {:?}",
-                    e
-                );
+                tracing::warn!("Failed to decode CandidateIncluded event fields: {:?}", e);
                 continue;
             }
         };
