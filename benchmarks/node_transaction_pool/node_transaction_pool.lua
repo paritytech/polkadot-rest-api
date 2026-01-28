@@ -1,11 +1,11 @@
--- Health endpoint benchmark script
--- Tests the /health endpoint for latency and throughput
+-- Node transaction pool endpoint benchmark script
+-- Tests the /v1/node/transaction-pool endpoint for latency and throughput
 
 local util = require("util")
 
 -- Setup the request
 request = function()
-    return wrk.format("GET", "/v1/health")
+    return wrk.format("GET", "/v1/node/transaction-pool")
 end
 
 -- No delay between requests for maximum throughput

@@ -1,7 +1,7 @@
 -- Runtime/spec endpoint benchmark script
 -- Tests the /runtime/spec endpoint for latency and throughput
 
-local util = require("../util")
+local util = require("util")
 
 -- Setup the request
 request = function()
