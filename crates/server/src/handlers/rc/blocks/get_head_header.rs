@@ -213,6 +213,7 @@ mod tests {
             chain_configs: Arc::new(config::ChainConfigs::default()),
             chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
             route_registry: RouteRegistry::new(),
+            lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 
