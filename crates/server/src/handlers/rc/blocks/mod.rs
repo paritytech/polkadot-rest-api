@@ -1,0 +1,3 @@
+mod get_rc_block_extrinsics_raw;
+
+pub use get_rc_block_extrinsics_raw::get_rc_block_extrinsics_raw;

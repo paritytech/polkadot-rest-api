@@ -4,6 +4,7 @@ pub mod capabilities;
 pub mod health;
 pub mod metrics;
 pub mod pallets;
+pub mod rc;
 pub mod registry;
 pub mod root;
 pub mod runtime;

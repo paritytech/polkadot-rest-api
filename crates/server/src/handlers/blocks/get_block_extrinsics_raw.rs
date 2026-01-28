@@ -117,8 +117,14 @@ async fn fetch_raw_extrinsics(
     let block_json = state
         .get_block_json(block_hash)
         .await
-        .map_err(GetBlockError::HeaderFetchFailed)?;
+        .map_err(GetBlockError::BlockFetchFailed)?;
 
+    extract_raw_extrinsics_from_json(&block_json)
+}
+
+fn extract_raw_extrinsics_from_json(
+    block_json: &serde_json::Value,
+) -> Result<Vec<String>, GetBlockError> {
     let extrinsics = block_json
         .get("block")
         .and_then(|b| b.get("extrinsics"))

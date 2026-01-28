@@ -104,6 +104,9 @@ pub enum GetBlockError {
     #[error("Failed to get block header")]
     HeaderFetchFailed(#[source] subxt_rpcs::Error),
 
+    #[error("Failed to fetch block")]
+    BlockFetchFailed(#[source] subxt_rpcs::Error),
+
     #[error("Header field missing: {0}")]
     HeaderFieldMissing(String),
 
@@ -191,6 +194,7 @@ impl IntoResponse for GetBlockError {
             }
             // Handle RPC errors with appropriate status codes
             GetBlockError::HeaderFetchFailed(err)
+            | GetBlockError::BlockFetchFailed(err)
             | GetBlockError::FinalizedHeadFailed(err)
             | GetBlockError::CanonicalHashFailed(err)
             | GetBlockError::RuntimeVersionFailed(err) => utils::rpc_error_to_status(err),
