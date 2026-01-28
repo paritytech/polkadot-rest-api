@@ -46,7 +46,7 @@ pub enum GetRcBlockHeadHeaderError {
     #[error("Service temporarily unavailable: {0}")]
     ServiceUnavailable(String),
 
-    #[error("Relay chain API is not configured. Please set SAS_RELAY_CHAIN_URL")]
+    #[error("Relay chain API is not configured. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL")]
     RelayChainNotConfigured,
 }
 
