@@ -26,6 +26,13 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
         .route_registered(
             registry,
             API_VERSION,
+            "/transaction/fee-estimate",
+            "post",
+            post(transaction::fee_estimate),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
             "/rc/transaction",
             "post",
             post(|state, body| transaction::submit(state, body, true)),
@@ -36,5 +43,12 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             "/rc/transaction/dry-run",
             "post",
             post(transaction::dry_run_rc),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/rc/transaction/fee-estimate",
+            "post",
+            post(transaction::fee_estimate_rc),
         )
 }
