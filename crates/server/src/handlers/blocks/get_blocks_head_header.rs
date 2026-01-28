@@ -56,7 +56,7 @@ pub enum GetBlockHeadHeaderError {
     UseRcBlockNotSupported,
 
     #[error(
-        "useRcBlock parameter requires relay chain API to be available. Please configure SAS_RELAY_CHAIN_URL"
+        "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL"
     )]
     RelayChainNotConfigured,
 

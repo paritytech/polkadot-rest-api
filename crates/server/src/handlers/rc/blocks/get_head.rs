@@ -78,7 +78,9 @@ impl Default for RcBlockHeadQueryParams {
 /// Error types for /rc/blocks/head endpoint
 #[derive(Debug, Error)]
 pub enum GetRcBlockHeadError {
-    #[error("Relay chain API is not configured. Please set SAS_RELAY_CHAIN_URL")]
+    #[error(
+        "Relay chain API is not configured. Please set SAS_SUBSTRATE_MULTI_CHAIN_URL with a relay chain entry"
+    )]
     RelayChainNotConfigured,
 
     #[error("Failed to get finalized head")]
@@ -133,7 +135,7 @@ impl IntoResponse for GetRcBlockHeadError {
 /// Handler for GET /rc/blocks/head
 ///
 /// Returns block information for the latest block (head) on the relay chain.
-/// This endpoint requires a relay chain to be configured via SAS_RELAY_CHAIN_URL.
+/// This endpoint requires a relay chain to be configured via SAS_SUBSTRATE_MULTI_CHAIN_URL.
 ///
 /// Query Parameters:
 /// - `finalized` (boolean, default: true): When true, returns finalized head. When false, returns canonical head.
