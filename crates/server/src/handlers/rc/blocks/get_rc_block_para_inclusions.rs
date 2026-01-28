@@ -5,7 +5,8 @@
 //! which parachain blocks were included in the relay chain block.
 
 use crate::handlers::blocks::{
-    ParaInclusionsError, ParaInclusionsQueryParams, fetch_para_inclusions_from_client,
+    CommonBlockError, ParaInclusionsError, ParaInclusionsQueryParams,
+    fetch_para_inclusions_from_client,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -76,7 +77,9 @@ pub async fn get_rc_block_para_inclusions(
     let client_at_block = relay_client
         .at_block(resolved_block.number)
         .await
-        .map_err(|e| ParaInclusionsError::ClientAtBlockFailed(Box::new(e)))?;
+        .map_err(|e| {
+            ParaInclusionsError::Common(CommonBlockError::ClientAtBlockFailed(Box::new(e)))
+        })?;
 
     Ok(
         fetch_para_inclusions_from_client(&client_at_block, &resolved_block, params.para_id)
