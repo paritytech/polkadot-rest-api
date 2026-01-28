@@ -152,7 +152,7 @@ async fn fee_estimate_internal(
         }
     })?;
 
-    let block_hash = format!("{:?}", client_at.block_ref().hash());
+    let block_hash = format!("{:#}", client_at.block_ref().hash());
 
     // Decode transaction bytes
     let tx_bytes = hex::decode(tx.strip_prefix("0x").unwrap_or(tx)).map_err(|e| {
