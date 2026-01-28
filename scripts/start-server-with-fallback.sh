@@ -55,16 +55,16 @@ case $CHAIN in
         ;;
     asset-hub-kusama)
         RPC_URLS=(
+            "wss://sys.ibp.network/asset-hub-kusama"
             "wss://asset-hub-kusama.dotters.network"
             "wss://asset-hub-kusama-rpc.n.dwellir.com"
-            "wss://sys.ibp.network/asset-hub-kusama"
         )
         RELAY_CHAIN_URL="wss://rpc.ibp.network/kusama"
         ;;
     westend)
         RPC_URLS=(
-            "wss://westend-rpc-tn.dwellir.com"
             "wss://westend-rpc.dwellir.com"
+            "wss://westend-rpc-tn.dwellir.com"
         )
         ;;
     *)
