@@ -21,7 +21,6 @@ use axum::{
     extract::{Path, Query, State},
     response::IntoResponse,
 };
-use subxt_rpcs::rpc_params;
 
 /// Handler for GET /rc/blocks/{blockId}/extrinsics/{extrinsicIndex}
 ///
@@ -49,10 +48,6 @@ pub async fn get_rc_extrinsic(
         .get_relay_chain_rpc_client()
         .ok_or(GetBlockError::RelayChainNotConfigured)?
         .clone();
-    let relay_chain_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(GetBlockError::RelayChainNotConfigured)?
-        .clone();
     let relay_chain_info = state
         .relay_chain_info
         .clone()
@@ -61,14 +56,13 @@ pub async fn get_rc_extrinsic(
     let ss58_prefix = relay_chain_info.ss58_prefix;
 
     let block_id_parsed = path_params.block_id.parse::<utils::BlockId>()?;
-    let resolved_block =
-        utils::resolve_block_with_rpc(&relay_rpc_client, &relay_chain_rpc, Some(block_id_parsed))
-            .await?;
+    let client_at_block = match block_id_parsed {
+        utils::BlockId::Hash(hash) => relay_client.at_block(hash).await?,
+        utils::BlockId::Number(number) => relay_client.at_block(number).await?,
+    };
 
-    let block_hash = &resolved_block.hash;
-    let block_number = resolved_block.number;
-
-    let client_at_block = relay_client.at_block(block_number).await?;
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_number = client_at_block.block_number();
 
     let header = client_at_block
         .block_header()
@@ -104,16 +98,7 @@ pub async fn get_rc_extrinsic(
         .ok_or(GetBlockError::ExtrinsicIndexNotFound)?;
 
     if !params.no_fees && extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
-        let spec_version: serde_json::Value = relay_rpc_client
-            .request("state_getRuntimeVersion", rpc_params![block_hash])
-            .await
-            .map_err(GetBlockError::RuntimeVersionFailed)?;
-
-        let spec_version = spec_version
-            .get("specVersion")
-            .and_then(|sv| sv.as_u64())
-            .map(|v| v as u32)
-            .ok_or_else(|| GetBlockError::HeaderFieldMissing("specVersion".to_string()))?;
+        let spec_version = client_at_block.spec_version();
 
         let fee_info = extract_fee_info_for_extrinsic(
             &state,
@@ -144,7 +129,7 @@ pub async fn get_rc_extrinsic(
     let response = ExtrinsicIndexResponse {
         at: BlockIdentifiers {
             height: block_number.to_string(),
-            hash: block_hash.to_string(),
+            hash: block_hash,
         },
         extrinsics: extrinsic,
     };

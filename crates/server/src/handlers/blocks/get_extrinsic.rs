@@ -39,23 +39,19 @@ pub async fn get_extrinsic(
         .map_err(|_| GetBlockError::InvalidExtrinsicIndex(path_params.extrinsic_index.clone()))?;
 
     let block_id_parsed = path_params.block_id.parse::<utils::BlockId>()?;
-    let resolved_block = utils::resolve_block(&state, Some(block_id_parsed)).await?;
+    let client_at_block = match block_id_parsed {
+        utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+        utils::BlockId::Number(number) => state.client.at_block(number).await?,
+    };
 
-    let block_hash = &resolved_block.hash;
-    let block_number = resolved_block.number;
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_number = client_at_block.block_number();
 
-    let header_json = state
-        .get_header_json(block_hash)
+    let header = client_at_block
+        .block_header()
         .await
-        .map_err(GetBlockError::HeaderFetchFailed)?;
-
-    let parent_hash = header_json
-        .get("parentHash")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("parentHash".to_string()))?
-        .to_string();
-
-    let client_at_block = state.client.at_block(block_number).await?;
+        .map_err(GetBlockError::BlockHeaderFailed)?;
+    let parent_hash = format!("{:#x}", header.parent_hash);
 
     let (extrinsics_result, events_result) = tokio::join!(
         extract_extrinsics(&state, &client_at_block, block_number),
@@ -85,14 +81,7 @@ pub async fn get_extrinsic(
         .ok_or(GetBlockError::ExtrinsicIndexNotFound)?;
 
     if !params.no_fees && extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
-        let spec_version = state
-            .get_runtime_version_at_hash(block_hash)
-            .await
-            .map_err(GetBlockError::RuntimeVersionFailed)?
-            .get("specVersion")
-            .and_then(|sv| sv.as_u64())
-            .map(|v| v as u32)
-            .ok_or_else(|| GetBlockError::HeaderFieldMissing("specVersion".to_string()))?;
+        let spec_version = client_at_block.spec_version();
 
         let fee_info = extract_fee_info_for_extrinsic(
             &state,
@@ -123,7 +112,7 @@ pub async fn get_extrinsic(
     let response = ExtrinsicIndexResponse {
         at: BlockIdentifiers {
             height: block_number.to_string(),
-            hash: block_hash.to_string(),
+            hash: block_hash,
         },
         extrinsics: extrinsic,
     };
