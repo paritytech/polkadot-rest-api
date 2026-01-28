@@ -431,11 +431,17 @@ fn extract_pallet_constants(
     metadata: &Metadata,
     pallet_id: &str,
 ) -> Result<PalletConstantsInfo, PalletError> {
-    // Try to find pallet by index first, then by name
+    // Try to find pallet by index first, then by name (case-insensitive)
     let pallet = if let Ok(index) = pallet_id.parse::<u8>() {
         metadata.pallets().find(|p| p.call_index() == index)
     } else {
-        metadata.pallet_by_name(pallet_id)
+        // Try exact match first, then case-insensitive match
+        metadata.pallet_by_name(pallet_id).or_else(|| {
+            let pallet_id_lower = pallet_id.to_lowercase();
+            metadata
+                .pallets()
+                .find(|p| p.name().to_lowercase() == pallet_id_lower)
+        })
     };
 
     let pallet = pallet.ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;

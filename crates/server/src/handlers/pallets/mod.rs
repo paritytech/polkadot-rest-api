@@ -4,7 +4,6 @@ pub mod assets;
 pub mod common;
 pub mod constants;
 pub mod consts;
-pub mod staking_params;
 pub mod staking_progress;
 pub mod staking_validators;
 
