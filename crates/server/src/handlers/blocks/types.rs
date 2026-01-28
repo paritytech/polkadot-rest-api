@@ -12,13 +12,6 @@ use subxt::error::{OnlineClientAtBlockError, StorageError};
 use thiserror::Error;
 
 // ================================================================================================
-// Constants
-// ================================================================================================
-
-/// Length of consensus engine ID in digest items (e.g., "BABE", "aura", "pow_")
-pub const CONSENSUS_ENGINE_ID_LEN: usize = 4;
-
-// ================================================================================================
 // Query Parameters
 // ================================================================================================
 
@@ -134,6 +127,12 @@ pub enum GetBlockError {
     #[error("Failed to get finalized head")]
     FinalizedHeadFailed(#[source] subxt_rpcs::Error),
 
+    #[error("RPC call failed")]
+    RpcCallFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Failed to get block header")]
+    BlockHeaderFailed(#[source] subxt::error::BlockError),
+
     #[error("Failed to get canonical block hash")]
     CanonicalHashFailed(#[source] subxt_rpcs::Error),
 
@@ -144,7 +143,7 @@ pub enum GetBlockError {
     UseRcBlockNotSupported,
 
     #[error(
-        "useRcBlock parameter requires relay chain API to be available. Please configure SAS_RELAY_CHAIN_URL"
+        "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL"
     )]
     RelayChainNotConfigured,
 
@@ -218,8 +217,12 @@ impl IntoResponse for GetBlockError {
             GetBlockError::HeaderFetchFailed(err)
             | GetBlockError::BlockFetchFailed(err)
             | GetBlockError::FinalizedHeadFailed(err)
+            | GetBlockError::RpcCallFailed(err)
             | GetBlockError::CanonicalHashFailed(err)
             | GetBlockError::RuntimeVersionFailed(err) => utils::rpc_error_to_status(err),
+            GetBlockError::BlockHeaderFailed(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
             // All other errors are internal server errors
             GetBlockError::HeaderFieldMissing(_)
             | GetBlockError::ClientAtBlockFailed(_)
@@ -255,6 +258,9 @@ pub enum GetBlockHeaderError {
 
     #[error("Failed to get block header")]
     HeaderFetchFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Failed to get block header")]
+    BlockHeaderFailed(#[source] subxt::error::BlockError),
 
     #[error("Header field missing: {0}")]
     HeaderFieldMissing(String),
@@ -296,7 +302,8 @@ impl IntoResponse for GetBlockHeaderError {
             GetBlockHeaderError::HeaderFieldMissing(_)
             | GetBlockHeaderError::HashComputationFailed(_)
             | GetBlockHeaderError::RcBlockError(_)
-            | GetBlockHeaderError::ClientAtBlockFailed(_) => {
+            | GetBlockHeaderError::ClientAtBlockFailed(_)
+            | GetBlockHeaderError::BlockHeaderFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };

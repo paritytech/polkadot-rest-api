@@ -1,6 +1,6 @@
 pub(crate) mod common;
 pub mod decode;
-pub mod docs;
+pub(crate) mod docs;
 pub mod get_block;
 pub mod get_block_extrinsics_raw;
 pub mod get_block_head;

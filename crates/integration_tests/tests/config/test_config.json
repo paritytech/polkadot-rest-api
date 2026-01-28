@@ -70,6 +70,22 @@
       "requires_block_height": false,
       "requires_account": false,
       "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
+    },
+    {
+      "path": "/v1/rc/blocks/head",
+      "query_params": [
+        {},
+        {"finalized": "true"},
+        {"finalized": "false"},
+        {"eventDocs": "true"},
+        {"extrinsicDocs": "true"},
+        {"noFees": "true"},
+        {"decodedXcmMsgs": "true"},
+        {"decodedXcmMsgs": "true", "paraId": "1000"}
+      ],
+      "requires_block_height": false,
+      "requires_account": false,
+      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
     }
   ],
   "historical_tests": {
