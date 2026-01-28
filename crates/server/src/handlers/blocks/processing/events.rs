@@ -181,9 +181,43 @@ pub fn extract_class_from_event_data(event_data: &[Value], is_success: bool) -> 
     }
 }
 
+/// Fetch and parse all events for a block with explicit ss58_prefix
+///
+/// This version allows specifying the ss58_prefix explicitly, useful for
+/// processing blocks from different chains (e.g., relay chain blocks).
+pub async fn fetch_block_events_with_prefix(
+    ss58_prefix: u16,
+    client_at_block: &BlockClient,
+    block_number: u64,
+) -> Result<Vec<ParsedEvent>, GetBlockError> {
+    fetch_block_events_impl(ss58_prefix, client_at_block, block_number).await
+}
+
+/// Fetch and parse all events for a block using the client_at_block only
+///
+/// This version is useful when you don't have access to AppState.
+/// It uses ss58_prefix 0 (Polkadot) as default.
+pub async fn fetch_block_events_with_client(
+    client_at_block: &BlockClient,
+    block_number: u64,
+) -> Result<Vec<ParsedEvent>, GetBlockError> {
+    // Use default Polkadot prefix - callers should use fetch_block_events_with_prefix
+    // if they need a specific prefix
+    fetch_block_events_impl(0, client_at_block, block_number).await
+}
+
 /// Fetch and parse all events for a block
 pub async fn fetch_block_events(
     state: &AppState,
+    client_at_block: &BlockClient,
+    block_number: u64,
+) -> Result<Vec<ParsedEvent>, GetBlockError> {
+    fetch_block_events_impl(state.chain_info.ss58_prefix, client_at_block, block_number).await
+}
+
+/// Internal implementation for fetching block events
+async fn fetch_block_events_impl(
+    ss58_prefix: u16,
     client_at_block: &BlockClient,
     block_number: u64,
 ) -> Result<Vec<ParsedEvent>, GetBlockError> {
@@ -267,20 +301,18 @@ pub async fn fetch_block_events(
                         if let Some(tn) = type_name {
                             if tn == "AccountId32" || tn == "MultiAddress" || tn == "AccountId" {
                                 let with_hex = convert_bytes_to_hex(json_value.clone());
-                                if let Some(ss58_value) = try_convert_accountid_to_ss58(
-                                    &with_hex,
-                                    state.chain_info.ss58_prefix,
-                                ) {
+                                if let Some(ss58_value) =
+                                    try_convert_accountid_to_ss58(&with_hex, ss58_prefix)
+                                {
                                     return ss58_value;
                                 }
                             } else if tn == "RewardDestination"
                                 && let Some(account_value) = json_value.get("account")
                             {
                                 let with_hex = convert_bytes_to_hex(account_value.clone());
-                                if let Some(ss58_value) = try_convert_accountid_to_ss58(
-                                    &with_hex,
-                                    state.chain_info.ss58_prefix,
-                                ) {
+                                if let Some(ss58_value) =
+                                    try_convert_accountid_to_ss58(&with_hex, ss58_prefix)
+                                {
                                     return serde_json::json!({
                                         "account": ss58_value
                                     });

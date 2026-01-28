@@ -15,7 +15,9 @@ use heck::ToUpperCamelCase;
 use parity_scale_codec::Decode;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
+use std::sync::Arc;
 use subxt::{OnlineClientAtBlock, SubstrateConfig, error::OnlineClientAtBlockError};
+use subxt_rpcs::{RpcClient, rpc_params};
 use thiserror::Error;
 
 use super::docs::Docs;
@@ -240,6 +242,22 @@ pub async fn extract_author(
     logs: &[DigestLog],
     block_number: u64,
 ) -> Option<String> {
+    extract_author_with_prefix(
+        state.chain_info.ss58_prefix,
+        client_at_block,
+        logs,
+        block_number,
+    )
+    .await
+}
+
+/// Extract author ID with explicit ss58 prefix
+pub async fn extract_author_with_prefix(
+    ss58_prefix: u16,
+    client_at_block: &BlockClient,
+    logs: &[DigestLog],
+    block_number: u64,
+) -> Option<String> {
     use sp_consensus_babe::digests::PreDigest;
 
     const BABE_ENGINE: &[u8] = b"BABE";
@@ -282,11 +300,7 @@ pub async fn extract_author(
                     let author = validators.get(authority_index)?;
 
                     // Convert to SS58 format
-                    return Some(
-                        author
-                            .clone()
-                            .to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
-                    );
+                    return Some(author.clone().to_ss58check_with_version(ss58_prefix.into()));
                 }
                 AURA_ENGINE => {
                     // Aura: slot_number (u64 LE), calculate index = slot % validator_count
@@ -300,11 +314,7 @@ pub async fn extract_author(
                         let author = validators.get(index)?;
 
                         // Convert to SS58 format
-                        return Some(
-                            author
-                                .clone()
-                                .to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
-                        );
+                        return Some(author.clone().to_ss58check_with_version(ss58_prefix.into()));
                     }
                 }
                 _ => continue,
@@ -332,9 +342,7 @@ pub async fn extract_author(
                     let mut arr = [0u8; 32];
                     arr.copy_from_slice(&payload);
                     let account_id = AccountId32::from(arr);
-                    return Some(
-                        account_id.to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
-                    );
+                    return Some(account_id.to_ss58check_with_version(ss58_prefix.into()));
                 } else {
                     tracing::debug!(
                         "PoW payload has unexpected length: {} bytes (expected 32)",
@@ -361,4 +369,105 @@ pub fn add_docs_to_events(events: &mut [Event], metadata: &subxt::Metadata) {
         event.docs = Docs::for_event_subxt(metadata, &pallet_name, &event.method.method)
             .map(|d| d.to_string());
     }
+}
+
+// ================================================================================================
+// Range Parsing
+// ================================================================================================
+
+/// Error type for range parsing
+#[derive(Debug, Clone, Copy)]
+pub enum RangeParseError {
+    InvalidFormat,
+    InvalidMin,
+    InvalidMax,
+    MinGreaterThanOrEqualToMax,
+    RangeTooLarge,
+}
+
+impl From<RangeParseError> for GetBlockError {
+    fn from(err: RangeParseError) -> Self {
+        match err {
+            RangeParseError::InvalidFormat => GetBlockError::InvalidRangeFormat,
+            RangeParseError::InvalidMin => GetBlockError::InvalidRangeMin,
+            RangeParseError::InvalidMax => GetBlockError::InvalidRangeMax,
+            RangeParseError::MinGreaterThanOrEqualToMax => GetBlockError::InvalidRangeMinMax,
+            RangeParseError::RangeTooLarge => GetBlockError::RangeTooLarge,
+        }
+    }
+}
+
+pub fn parse_range(range: &str) -> Result<(u64, u64), RangeParseError> {
+    let parts: Vec<_> = range.split('-').collect();
+    if parts.len() != 2 {
+        return Err(RangeParseError::InvalidFormat);
+    }
+
+    let start_str = parts[0].trim();
+    let end_str = parts[1].trim();
+
+    if start_str.is_empty() || end_str.is_empty() {
+        return Err(RangeParseError::InvalidFormat);
+    }
+
+    let start: u64 = start_str.parse().map_err(|_| RangeParseError::InvalidMin)?;
+    let end: u64 = end_str.parse().map_err(|_| RangeParseError::InvalidMax)?;
+
+    if start >= end {
+        return Err(RangeParseError::MinGreaterThanOrEqualToMax);
+    }
+
+    let count = end
+        .checked_sub(start)
+        .and_then(|d| d.checked_add(1))
+        .ok_or(RangeParseError::RangeTooLarge)?;
+
+    if count > 500 {
+        return Err(RangeParseError::RangeTooLarge);
+    }
+
+    Ok((start, end))
+}
+
+// ================================================================================================
+// Relay Chain State Queries
+// ================================================================================================
+
+pub async fn get_finalized_block_number_with_rpc(
+    legacy_rpc: &Arc<crate::state::SubstrateLegacyRpc>,
+    rpc_client: &Arc<RpcClient>,
+) -> Result<u64, GetBlockError> {
+    let finalized_hash = legacy_rpc
+        .chain_get_finalized_head()
+        .await
+        .map_err(GetBlockError::FinalizedHeadFailed)?;
+
+    let finalized_hash_str = format!("0x{}", hex::encode(finalized_hash.0));
+
+    let header_json: serde_json::Value = rpc_client
+        .request("chain_getHeader", rpc_params![finalized_hash_str])
+        .await
+        .map_err(GetBlockError::HeaderFetchFailed)?;
+
+    let number_hex = header_json
+        .get("number")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))?;
+
+    let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
+        .map_err(|_| GetBlockError::HeaderFieldMissing("number (invalid format)".to_string()))?;
+
+    Ok(number)
+}
+
+pub async fn get_canonical_hash_at_number_with_rpc(
+    legacy_rpc: &Arc<crate::state::SubstrateLegacyRpc>,
+    block_number: u64,
+) -> Result<Option<String>, GetBlockError> {
+    let hash = legacy_rpc
+        .chain_get_block_hash(Some(block_number.into()))
+        .await
+        .map_err(GetBlockError::CanonicalHashFailed)?;
+
+    Ok(hash.map(|h| format!("0x{}", hex::encode(h.0))))
 }

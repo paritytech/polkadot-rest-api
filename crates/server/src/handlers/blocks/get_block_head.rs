@@ -228,6 +228,7 @@ pub async fn get_block_head(
             if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
                 extrinsic.info = extract_fee_info_for_extrinsic(
                     &state,
+                    None,
                     &extrinsic.raw_hex,
                     &extrinsic.events,
                     extrinsic_outcomes.get(i),
