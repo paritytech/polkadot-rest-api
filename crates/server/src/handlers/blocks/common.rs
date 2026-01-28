@@ -11,7 +11,7 @@
 use crate::state::AppState;
 use crate::utils::{self, hex_with_prefix};
 use axum::{Json, http::StatusCode, response::IntoResponse};
-use heck::{ToLowerCamelCase, ToUpperCamelCase};
+use heck::ToUpperCamelCase;
 use parity_scale_codec::Decode;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
@@ -22,9 +22,7 @@ use subxt_rpcs::{RpcClient, rpc_params};
 use thiserror::Error;
 
 use super::docs::Docs;
-use super::types::{
-    CONSENSUS_ENGINE_ID_LEN, DigestItemDiscriminant, DigestLog, Event, GetBlockError,
-};
+use super::types::{DigestLog, Event, GetBlockError};
 
 /// Type alias for the ClientAtBlock type used throughout the codebase.
 /// This represents a client pinned to a specific block height with access to
@@ -90,96 +88,6 @@ impl IntoResponse for CommonBlockError {
 // Digest Processing
 // ================================================================================================
 
-/// Decode a consensus digest item (PreRuntime, Consensus, or Seal)
-/// The data here is SCALE-encoded as: (ConsensusEngineId, Vec<u8>)
-/// where ConsensusEngineId is 4 raw bytes, and Vec<u8> is compact_length + bytes
-pub fn decode_consensus_digest(data: &[u8]) -> Option<Value> {
-    // First 4 bytes are the consensus engine ID (not length-prefixed)
-    if data.len() < CONSENSUS_ENGINE_ID_LEN {
-        return None;
-    }
-
-    let engine_id = hex_with_prefix(&data[0..CONSENSUS_ENGINE_ID_LEN]);
-
-    // The rest is a SCALE-encoded Vec<u8> (compact length + payload bytes)
-    let mut remaining = &data[CONSENSUS_ENGINE_ID_LEN..];
-    let payload_bytes = Vec::<u8>::decode(&mut remaining).ok()?;
-    let payload = hex_with_prefix(&payload_bytes);
-
-    Some(json!([engine_id, payload]))
-}
-
-/// Decode digest logs from hex-encoded strings in the JSON response
-/// Each hex string is a SCALE-encoded DigestItem
-pub fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
-    let logs = match header_json
-        .get("digest")
-        .and_then(|d| d.get("logs"))
-        .and_then(|l| l.as_array())
-    {
-        Some(logs) => logs,
-        None => return Vec::new(),
-    };
-
-    logs.iter()
-        .filter_map(|log_hex| {
-            let hex_str = log_hex.as_str()?;
-            let hex_data = hex_str.strip_prefix("0x")?;
-            let bytes = hex::decode(hex_data).ok()?;
-
-            if bytes.is_empty() {
-                return None;
-            }
-
-            // The first byte is the digest item type discriminant
-            let discriminant_byte = bytes[0];
-            let data = &bytes[1..];
-
-            // Try to parse the discriminant into a known type
-            let discriminant = DigestItemDiscriminant::try_from(discriminant_byte)
-                .unwrap_or(DigestItemDiscriminant::Other);
-
-            let (log_type, value) = match discriminant {
-                // Consensus-related digests: PreRuntime, Consensus, Seal
-                // All have format: [consensus_engine_id (4 bytes), payload_data]
-                DigestItemDiscriminant::PreRuntime
-                | DigestItemDiscriminant::Consensus
-                | DigestItemDiscriminant::Seal => match decode_consensus_digest(data) {
-                    Some(val) => (discriminant.as_str().to_string(), val),
-                    None => ("Other".to_string(), json!(hex_with_prefix(&bytes))),
-                },
-                // RuntimeEnvironmentUpdated has no associated data
-                DigestItemDiscriminant::RuntimeEnvironmentUpdated => {
-                    (discriminant.as_str().to_string(), Value::Null)
-                }
-                // Other (includes unknown discriminants that were converted to Other)
-                DigestItemDiscriminant::Other => (
-                    discriminant.as_str().to_string(),
-                    json!(hex_with_prefix(data)),
-                ),
-            };
-
-            Some(DigestLog {
-                log_type,
-                index: discriminant_byte.to_string(),
-                value,
-            })
-        })
-        .collect()
-}
-
-/// Convert DigestLog entries to sidecar JSON format.
-/// Each log becomes an object with a single key (the log type in lowerCamelCase).
-pub fn convert_digest_logs_to_sidecar_format(logs: Vec<DigestLog>) -> Vec<Value> {
-    logs.into_iter()
-        .map(|log| {
-            let log_type_camel = log.log_type.to_lower_camel_case();
-            let mut obj = serde_json::Map::new();
-            obj.insert(log_type_camel, log.value);
-            Value::Object(obj)
-        })
-        .collect()
-}
 pub fn convert_digest_items_to_logs(items: &[DigestItem]) -> Vec<DigestLog> {
     items
         .iter()
@@ -211,69 +119,6 @@ pub fn convert_digest_items_to_logs(items: &[DigestItem]) -> Vec<DigestLog> {
             },
         })
         .collect()
-}
-
-// ================================================================================================
-// Header Field Parsing
-// ================================================================================================
-
-/// Parsed header fields extracted from a JSON header response.
-#[derive(Debug, Clone)]
-pub struct ParsedHeaderFields {
-    pub number: u64,
-    pub parent_hash: String,
-    pub state_root: String,
-    pub extrinsics_root: String,
-    pub digest_logs: Vec<Value>,
-}
-
-/// Error type for header field parsing.
-#[derive(Debug, thiserror::Error)]
-pub enum HeaderParseError {
-    #[error("Header field missing: {0}")]
-    FieldMissing(String),
-}
-
-/// Parse header fields from a JSON header response.
-///
-/// Extracts number, parentHash, stateRoot, extrinsicsRoot, and decoded digest logs.
-pub fn parse_header_fields(header_json: &Value) -> Result<ParsedHeaderFields, HeaderParseError> {
-    let number_hex = header_json
-        .get("number")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| HeaderParseError::FieldMissing("number".to_string()))?;
-
-    let number = u64::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16)
-        .map_err(|_| HeaderParseError::FieldMissing("number (invalid format)".to_string()))?;
-
-    let parent_hash = header_json
-        .get("parentHash")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| HeaderParseError::FieldMissing("parentHash".to_string()))?
-        .to_string();
-
-    let state_root = header_json
-        .get("stateRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| HeaderParseError::FieldMissing("stateRoot".to_string()))?
-        .to_string();
-
-    let extrinsics_root = header_json
-        .get("extrinsicsRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| HeaderParseError::FieldMissing("extrinsicsRoot".to_string()))?
-        .to_string();
-
-    let digest_logs = decode_digest_logs(header_json);
-    let digest_logs = convert_digest_logs_to_sidecar_format(digest_logs);
-
-    Ok(ParsedHeaderFields {
-        number,
-        parent_hash,
-        state_root,
-        extrinsics_root,
-        digest_logs,
-    })
 }
 
 // ================================================================================================

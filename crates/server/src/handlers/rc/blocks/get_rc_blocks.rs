@@ -1,5 +1,5 @@
 use crate::handlers::blocks::common::{
-    BlockClient, add_docs_to_events, decode_digest_logs, extract_author_with_prefix,
+    BlockClient, add_docs_to_events, convert_digest_items_to_logs, extract_author_with_prefix,
     get_canonical_hash_at_number_with_rpc, get_finalized_block_number_with_rpc, parse_range,
 };
 use crate::handlers::blocks::decode::XcmDecoder;
@@ -155,30 +155,16 @@ async fn build_rc_block_response(
 ) -> Result<BlockResponse, GetBlockError> {
     let ss58_prefix = relay_chain_info.ss58_prefix;
 
-    let header_json: serde_json::Value = relay_rpc_client
-        .request("chain_getHeader", rpc_params![block_hash])
+    let header = client_at_block
+        .block_header()
         .await
-        .map_err(GetBlockError::HeaderFetchFailed)?;
+        .map_err(GetBlockError::BlockHeaderFailed)?;
 
-    let parent_hash = header_json
-        .get("parentHash")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("parentHash".to_string()))?
-        .to_string();
+    let parent_hash = format!("{:#x}", header.parent_hash);
+    let state_root = format!("{:#x}", header.state_root);
+    let extrinsics_root = format!("{:#x}", header.extrinsics_root);
 
-    let state_root = header_json
-        .get("stateRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("stateRoot".to_string()))?
-        .to_string();
-
-    let extrinsics_root = header_json
-        .get("extrinsicsRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
-        .to_string();
-
-    let logs = decode_digest_logs(&header_json);
+    let logs = convert_digest_items_to_logs(&header.digest.logs);
 
     let author_id =
         extract_author_with_prefix(client_at_block, &logs, ss58_prefix, block_number).await;

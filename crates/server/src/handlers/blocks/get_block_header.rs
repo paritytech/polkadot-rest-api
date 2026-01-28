@@ -3,7 +3,7 @@
 //! This module provides the handler for fetching block header information
 //! for a specific block identified by hash or number.
 
-use crate::handlers::blocks::common::decode_digest_logs;
+use crate::handlers::blocks::common::convert_digest_items_to_logs;
 use crate::handlers::blocks::types::{
     BlockHeaderQueryParams, BlockHeaderResponse, GetBlockHeaderError,
     convert_digest_logs_to_sidecar_format,
@@ -40,30 +40,22 @@ pub async fn get_block_header(
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
     let resolved_block = utils::resolve_block(&state, Some(block_id_parsed)).await?;
 
-    let header_json = state
-        .get_header_json(&resolved_block.hash)
+    let client_at_block = state
+        .client
+        .at_block(resolved_block.number)
         .await
-        .map_err(GetBlockHeaderError::HeaderFetchFailed)?;
+        .map_err(GetBlockHeaderError::ClientAtBlockFailed)?;
 
-    let parent_hash = header_json
-        .get("parentHash")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockHeaderError::HeaderFieldMissing("parentHash".to_string()))?
-        .to_string();
+    let header = client_at_block
+        .block_header()
+        .await
+        .map_err(GetBlockHeaderError::BlockHeaderFailed)?;
 
-    let state_root = header_json
-        .get("stateRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockHeaderError::HeaderFieldMissing("stateRoot".to_string()))?
-        .to_string();
+    let parent_hash = format!("{:#x}", header.parent_hash);
+    let state_root = format!("{:#x}", header.state_root);
+    let extrinsics_root = format!("{:#x}", header.extrinsics_root);
 
-    let extrinsics_root = header_json
-        .get("extrinsicsRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockHeaderError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
-        .to_string();
-
-    let digest_logs = decode_digest_logs(&header_json);
+    let digest_logs = convert_digest_items_to_logs(&header.digest.logs);
     let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
 
     let response = BlockHeaderResponse {
@@ -119,37 +111,24 @@ async fn handle_use_rc_block(
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {
-        let header_json = state
-            .get_header_json(&ah_block.hash)
-            .await
-            .map_err(GetBlockHeaderError::HeaderFetchFailed)?;
-
-        let parent_hash = header_json
-            .get("parentHash")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| GetBlockHeaderError::HeaderFieldMissing("parentHash".to_string()))?
-            .to_string();
-
-        let state_root = header_json
-            .get("stateRoot")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| GetBlockHeaderError::HeaderFieldMissing("stateRoot".to_string()))?
-            .to_string();
-
-        let extrinsics_root = header_json
-            .get("extrinsicsRoot")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| GetBlockHeaderError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
-            .to_string();
-
-        let digest_logs = decode_digest_logs(&header_json);
-        let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
-
         let client_at_block = state
             .client
             .at_block(ah_block.number)
             .await
             .map_err(GetBlockHeaderError::ClientAtBlockFailed)?;
+
+        let header = client_at_block
+            .block_header()
+            .await
+            .map_err(GetBlockHeaderError::BlockHeaderFailed)?;
+
+        let parent_hash = format!("{:#x}", header.parent_hash);
+        let state_root = format!("{:#x}", header.state_root);
+        let extrinsics_root = format!("{:#x}", header.extrinsics_root);
+
+        let digest_logs = convert_digest_items_to_logs(&header.digest.logs);
+        let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
+
         let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
         results.push(BlockHeaderResponse {

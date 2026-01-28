@@ -12,13 +12,6 @@ use subxt::error::{OnlineClientAtBlockError, StorageError};
 use thiserror::Error;
 
 // ================================================================================================
-// Constants
-// ================================================================================================
-
-/// Length of consensus engine ID in digest items (e.g., "BABE", "aura", "pow_")
-pub const CONSENSUS_ENGINE_ID_LEN: usize = 4;
-
-// ================================================================================================
 // Query Parameters
 // ================================================================================================
 
@@ -266,6 +259,9 @@ pub enum GetBlockHeaderError {
     #[error("Failed to get block header")]
     HeaderFetchFailed(#[source] subxt_rpcs::Error),
 
+    #[error("Failed to get block header")]
+    BlockHeaderFailed(#[source] subxt::error::BlockError),
+
     #[error("Header field missing: {0}")]
     HeaderFieldMissing(String),
 
@@ -306,7 +302,8 @@ impl IntoResponse for GetBlockHeaderError {
             GetBlockHeaderError::HeaderFieldMissing(_)
             | GetBlockHeaderError::HashComputationFailed(_)
             | GetBlockHeaderError::RcBlockError(_)
-            | GetBlockHeaderError::ClientAtBlockFailed(_) => {
+            | GetBlockHeaderError::ClientAtBlockFailed(_)
+            | GetBlockHeaderError::BlockHeaderFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };

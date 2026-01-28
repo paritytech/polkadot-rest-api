@@ -1,11 +1,7 @@
-use crate::handlers::blocks::common::{HeaderParseError, parse_header_fields};
-use crate::handlers::blocks::types::BlockHeaderResponse;
+use crate::handlers::blocks::common::convert_digest_items_to_logs;
+use crate::handlers::blocks::types::{BlockHeaderResponse, convert_digest_logs_to_sidecar_format};
 use crate::state::AppState;
-use crate::types::BlockHash;
-use crate::utils::{
-    self, RcBlockError, compute_block_hash_from_header_json, fetch_block_timestamp,
-    find_ah_blocks_in_rc_block,
-};
+use crate::utils::{self, RcBlockError, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
     extract::{Query, State},
@@ -16,7 +12,6 @@ use config::ChainType;
 use serde::Deserialize;
 use serde_json::json;
 use subxt::error::OnlineClientAtBlockError;
-use subxt_rpcs::rpc_params;
 use thiserror::Error;
 
 /// Query parameters for /blocks/head/header endpoint
@@ -40,11 +35,11 @@ pub enum GetBlockHeadHeaderError {
     #[error("Failed to get block header")]
     HeaderFetchFailed(#[source] subxt_rpcs::Error),
 
+    #[error("Failed to get block header")]
+    BlockHeaderFailed(#[source] subxt::error::BlockError),
+
     #[error("Header field missing: {0}")]
     HeaderFieldMissing(String),
-
-    #[error("Failed to compute block hash: {0}")]
-    HashComputationFailed(#[from] crate::utils::HashError),
 
     #[error("Service temporarily unavailable: {0}")]
     ServiceUnavailable(String),
@@ -60,21 +55,8 @@ pub enum GetBlockHeadHeaderError {
     )]
     RelayChainNotConfigured,
 
-    #[error("Block resolution failed")]
-    BlockResolveFailed(#[from] crate::utils::BlockResolveError),
-
     #[error("Failed to get client at block: {0}")]
     ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
-}
-
-impl From<HeaderParseError> for GetBlockHeadHeaderError {
-    fn from(err: HeaderParseError) -> Self {
-        match err {
-            HeaderParseError::FieldMissing(field) => {
-                GetBlockHeadHeaderError::HeaderFieldMissing(field)
-            }
-        }
-    }
 }
 
 impl IntoResponse for GetBlockHeadHeaderError {
@@ -87,13 +69,11 @@ impl IntoResponse for GetBlockHeadHeaderError {
             GetBlockHeadHeaderError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
-            // Handle RPC errors with appropriate status codes
             GetBlockHeadHeaderError::HeaderFetchFailed(err) => utils::rpc_error_to_status(err),
             GetBlockHeadHeaderError::HeaderFieldMissing(_)
-            | GetBlockHeadHeaderError::HashComputationFailed(_)
             | GetBlockHeadHeaderError::RcBlockError(_)
-            | GetBlockHeadHeaderError::BlockResolveFailed(_)
-            | GetBlockHeadHeaderError::ClientAtBlockFailed(_) => {
+            | GetBlockHeadHeaderError::ClientAtBlockFailed(_)
+            | GetBlockHeadHeaderError::BlockHeaderFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -113,10 +93,6 @@ impl IntoResponse for GetBlockHeadHeaderError {
 /// Query Parameters:
 /// - `finalized` (boolean, default: true): When true, returns finalized head. When false, returns canonical head.
 /// - `useRcBlock` (boolean, default: false): When true, treat as Relay Chain block and return Asset Hub blocks
-///
-/// Optimizations:
-/// - Computes block hash locally from header data (saves 1 RPC call)
-/// - Reuses header data instead of fetching twice (saves 1 RPC call)
 pub async fn get_blocks_head_header(
     State(state): State<AppState>,
     Query(params): Query<BlockQueryParams>,
@@ -124,47 +100,52 @@ pub async fn get_blocks_head_header(
     if params.use_rc_block {
         return handle_use_rc_block(state, params).await;
     }
-    let (block_hash, header_json) = if params.finalized {
-        let finalized_hash = state
-            .legacy_rpc
-            .chain_get_finalized_head()
-            .await
-            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
-        let block_hash_typed = BlockHash::from(finalized_hash);
-        let hash_str = block_hash_typed.to_string();
-        let header_json = state
-            .get_header_json(&hash_str)
-            .await
-            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
 
-        (hash_str, header_json)
+    let client_at_block = if params.finalized {
+        state
+            .client
+            .at_current_block()
+            .await
+            .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?
     } else {
-        // Canonical head (may not be finalized): get latest header
-        // OPTIMIZATION: This returns the header without hash, so we compute it locally
-        let header_json = state
-            .rpc_client
-            .request::<serde_json::Value>("chain_getHeader", rpc_params![])
+        let best_hash = state
+            .legacy_rpc
+            .chain_get_block_hash(None)
             .await
-            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
+            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?
+            .ok_or_else(|| {
+                GetBlockHeadHeaderError::HeaderFieldMissing("best block hash".to_string())
+            })?;
 
-        // OPTIMIZATION: Compute hash locally from header data
-        // This saves 1 RPC call (chain_getBlockHash)
-        let block_hash_typed = compute_block_hash_from_header_json(&header_json)?;
-        let block_hash = block_hash_typed.to_string();
-
-        (block_hash, header_json)
+        state
+            .client
+            .at_block(best_hash)
+            .await
+            .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?
     };
 
-    let parsed = parse_header_fields(&header_json)?;
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_number = client_at_block.block_number();
 
-    // Build lightweight header response
+    let header = client_at_block
+        .block_header()
+        .await
+        .map_err(GetBlockHeadHeaderError::BlockHeaderFailed)?;
+
+    let parent_hash = format!("{:#x}", header.parent_hash);
+    let state_root = format!("{:#x}", header.state_root);
+    let extrinsics_root = format!("{:#x}", header.extrinsics_root);
+
+    let digest_logs = convert_digest_items_to_logs(&header.digest.logs);
+    let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
+
     let response = BlockHeaderResponse {
-        parent_hash: parsed.parent_hash,
-        number: parsed.number.to_string(),
-        state_root: parsed.state_root,
-        extrinsics_root: parsed.extrinsics_root,
+        parent_hash,
+        number: block_number.to_string(),
+        state_root,
+        extrinsics_root,
         digest: json!({
-            "logs": parsed.digest_logs
+            "logs": digest_logs_formatted
         }),
         hash: Some(block_hash),
         rc_block_hash: None,
@@ -183,50 +164,37 @@ async fn handle_use_rc_block(
         return Err(GetBlockHeadHeaderError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(GetBlockHeadHeaderError::RelayChainNotConfigured);
-    }
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(GetBlockHeadHeaderError::RelayChainNotConfigured)?;
 
-    let rc_resolved_block = if let (Some(rc_rpc), Some(rc_legacy_rpc)) = (
-        state.get_relay_chain_rpc_client(),
-        state.get_relay_chain_rpc(),
-    ) {
-        if params.finalized {
-            let hash = rc_legacy_rpc
-                .chain_get_finalized_head()
-                .await
-                .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
-            let hash_str = format!("{:#x}", hash);
-            let number =
-                crate::utils::get_block_number_from_hash_with_rpc(rc_rpc, &hash_str).await?;
-            crate::utils::ResolvedBlock {
-                hash: hash_str,
-                number,
-            }
-        } else {
-            let header_json = rc_rpc
-                .request::<serde_json::Value>("chain_getHeader", rpc_params![])
-                .await
-                .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
-            let number_hex = header_json
-                .get("number")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("number".to_string()))?;
-            let number =
-                u64::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16)
-                    .map_err(|_| {
-                        GetBlockHeadHeaderError::HeaderFieldMissing(
-                            "number (invalid format)".to_string(),
-                        )
-                    })?;
-            let hash = compute_block_hash_from_header_json(&header_json)?;
-            crate::utils::ResolvedBlock {
-                hash: hash.to_string(),
-                number,
-            }
-        }
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(GetBlockHeadHeaderError::RelayChainNotConfigured)?;
+
+    let rc_client_at_block = if params.finalized {
+        relay_client
+            .at_current_block()
+            .await
+            .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?
     } else {
-        return Err(GetBlockHeadHeaderError::RelayChainNotConfigured);
+        let best_hash = relay_rpc
+            .chain_get_block_hash(None)
+            .await
+            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?
+            .ok_or_else(|| {
+                GetBlockHeadHeaderError::HeaderFieldMissing("best block hash".to_string())
+            })?;
+
+        relay_client
+            .at_block(best_hash)
+            .await
+            .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?
+    };
+
+    let rc_resolved_block = crate::utils::ResolvedBlock {
+        hash: format!("{:#x}", rc_client_at_block.block_hash()),
+        number: rc_client_at_block.block_number(),
     };
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
@@ -242,27 +210,33 @@ async fn handle_use_rc_block(
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {
-        let header_json = state
-            .get_header_json(&ah_block.hash)
-            .await
-            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
-
-        let parsed = parse_header_fields(&header_json)?;
-
         let client_at_block = state
             .client
             .at_block(ah_block.number)
             .await
             .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?;
+
+        let header = client_at_block
+            .block_header()
+            .await
+            .map_err(GetBlockHeadHeaderError::BlockHeaderFailed)?;
+
+        let parent_hash = format!("{:#x}", header.parent_hash);
+        let state_root = format!("{:#x}", header.state_root);
+        let extrinsics_root = format!("{:#x}", header.extrinsics_root);
+
+        let digest_logs = convert_digest_items_to_logs(&header.digest.logs);
+        let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
+
         let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
         results.push(BlockHeaderResponse {
-            parent_hash: parsed.parent_hash,
+            parent_hash,
             number: ah_block.number.to_string(),
-            state_root: parsed.state_root,
-            extrinsics_root: parsed.extrinsics_root,
+            state_root,
+            extrinsics_root,
             digest: json!({
-                "logs": parsed.digest_logs
+                "logs": digest_logs_formatted
             }),
             hash: Some(ah_block.hash),
             rc_block_hash: Some(rc_block_hash.clone()),
