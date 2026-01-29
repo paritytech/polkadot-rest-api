@@ -141,9 +141,11 @@ pub async fn coretime_leases(
         return Err(CoretimeError::BrokerPalletNotFound);
     }
 
-    // Fetch leases and workload data
-    let leases = fetch_leases(&client_at_block).await?;
-    let workloads = fetch_workloads(&client_at_block).await?;
+    // Fetch leases and workload data in parallel (independent RPC calls)
+    let (leases, workloads) = tokio::try_join!(
+        fetch_leases(&client_at_block),
+        fetch_workloads(&client_at_block)
+    )?;
 
     // Correlate leases with their assigned cores from workload data
     let leases_with_cores: Vec<LeaseWithCore> = leases
