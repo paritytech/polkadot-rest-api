@@ -34,4 +34,11 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             "get",
             get(rc::get_rc_block_extrinsics_raw),
         )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/rc/blocks/:blockId",
+            "get",
+            get(blocks::get_rc_block),
+        )
 }

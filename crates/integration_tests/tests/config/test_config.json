@@ -513,6 +513,35 @@
         },
         "fixture_path": "asset-hub-polkadot/blocks_range_use_rc_block_10293194-10293197.json",
         "description": "Test /blocks endpoint with range 10293194-10293197 and useRcBlock=true"
+      },
+      {
+        "endpoint": "/v1/rc/blocks/{blockId}",
+        "block_height": 29698001,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001.json",
+        "description": "Test /rc/blocks/{blockId} endpoint at Polkadot Relay Chain block 29,698,001"
+      },
+      {
+        "endpoint": "/v1/rc/blocks/{blockId}",
+        "block_height": 29698001,
+        "account_id": null,
+        "query_params": {
+          "eventDocs": "true",
+          "extrinsicDocs": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_eventDocs_extrinsicDocs.json",
+        "description": "Test /rc/blocks/{blockId} endpoint with eventDocs and extrinsicDocs at Polkadot Relay Chain block 29,698,001"
+      },
+      {
+        "endpoint": "/v1/rc/blocks/{blockId}",
+        "block_height": 29698001,
+        "account_id": null,
+        "query_params": {
+          "noFees": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_noFees.json",
+        "description": "Test /rc/blocks/{blockId} endpoint with noFees=true at Polkadot Relay Chain block 29,698,001"
       }
     ],
     "asset-hub-kusama": [
