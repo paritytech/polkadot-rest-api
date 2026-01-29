@@ -141,9 +141,6 @@ pub async fn get_rc_block(
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
         .ok_or(GetRcBlockError::RelayChainNotConfigured)?;
-    let relay_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(GetRcBlockError::RelayChainNotConfigured)?;
     let relay_chain_info = state
         .relay_chain_info
         .as_ref()
@@ -168,8 +165,8 @@ pub async fn get_rc_block(
 
     let ctx = BlockBuildContext {
         state: &state,
+        client: relay_client,
         rpc_client: Some(&relay_rpc_client),
-        legacy_rpc: &relay_rpc,
         ss58_prefix: relay_chain_info.ss58_prefix,
         chain_type: ChainType::Relay,
     };

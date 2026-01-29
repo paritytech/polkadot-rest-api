@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use std::sync::Arc;
 use subxt::config::substrate::DigestItem;
-use subxt::{OnlineClientAtBlock, SubstrateConfig, error::OnlineClientAtBlockError};
+use subxt::{OnlineClient, OnlineClientAtBlock, SubstrateConfig, error::OnlineClientAtBlockError};
 use subxt_rpcs::{RpcClient, rpc_params};
 use thiserror::Error;
 
@@ -124,43 +124,6 @@ pub fn convert_digest_items_to_logs(items: &[DigestItem]) -> Vec<DigestLog> {
 // ================================================================================================
 // Block Header & Chain State
 // ================================================================================================
-
-/// Fetch the canonical block hash at a given block number
-/// This is used to verify that a queried block hash is on the canonical chain
-pub async fn get_canonical_hash_at_number(
-    state: &AppState,
-    block_number: u64,
-) -> Result<Option<String>, GetBlockError> {
-    let hash = state
-        .legacy_rpc
-        .chain_get_block_hash(Some(block_number.into()))
-        .await
-        .map_err(GetBlockError::CanonicalHashFailed)?;
-
-    Ok(hash.map(|h| format!("0x{}", hex::encode(h.0))))
-}
-
-/// Fetch the finalized block number from the chain
-pub async fn get_finalized_block_number(state: &AppState) -> Result<u64, GetBlockError> {
-    let finalized_hash = state
-        .legacy_rpc
-        .chain_get_finalized_head()
-        .await
-        .map_err(GetBlockError::FinalizedHeadFailed)?;
-    let finalized_hash_str = format!("0x{}", hex::encode(finalized_hash.0));
-    let header_json = state
-        .get_header_json(&finalized_hash_str)
-        .await
-        .map_err(GetBlockError::HeaderFetchFailed)?;
-    let number_hex = header_json
-        .get("number")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))?;
-    let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
-        .map_err(|_| GetBlockError::HeaderFieldMissing("number (invalid format)".to_string()))?;
-
-    Ok(number)
-}
 
 /// Fetch validator set from chain state at a specific block
 pub async fn get_validators_at_block(
@@ -444,10 +407,10 @@ use heck::ToSnakeCase;
 pub struct BlockBuildContext<'a> {
     /// Application state (needed for fee extraction)
     pub state: &'a AppState,
+    /// OnlineClient for Subxt 0.50 APIs (finalized head, canonical hash)
+    pub client: &'a Arc<OnlineClient<SubstrateConfig>>,
     /// RPC client to use for fee queries (None = use state.rpc_client)
     pub rpc_client: Option<&'a Arc<RpcClient>>,
-    /// Legacy RPC for chain queries
-    pub legacy_rpc: &'a Arc<crate::state::SubstrateLegacyRpc>,
     /// SS58 prefix for address encoding
     pub ss58_prefix: u16,
     /// Chain type for XCM decoding
@@ -482,14 +445,26 @@ pub async fn build_block_response_generic(
             fetch_block_events_with_prefix(ctx.ss58_prefix, client_at_block, block_number),
             async {
                 if include_finalized {
-                    Some(get_finalized_block_number_with_rpc(ctx.legacy_rpc, ctx.rpc_client.unwrap_or(&ctx.state.rpc_client)).await)
+                    Some(
+                        ctx.client
+                            .at_current_block()
+                            .await
+                            .map(|b| b.block_number())
+                            .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e.into()))),
+                    )
                 } else {
                     None
                 }
             },
             async {
                 if queried_by_hash && include_finalized {
-                    Some(get_canonical_hash_at_number_with_rpc(ctx.legacy_rpc, block_number).await)
+                    let hash = ctx
+                        .client
+                        .at_block(block_number)
+                        .await
+                        .ok()
+                        .map(|b| format!("{:#x}", b.block_hash()));
+                    Some(Ok::<_, GetBlockError>(hash))
                 } else {
                     None
                 }
