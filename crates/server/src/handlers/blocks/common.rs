@@ -426,3 +426,205 @@ pub async fn get_canonical_hash_at_number_with_rpc(
 
     Ok(hash.map(|h| format!("0x{}", hex::encode(h.0))))
 }
+
+// ================================================================================================
+// Generic Block Response Builder
+// ================================================================================================
+
+use super::decode::XcmDecoder;
+use super::processing::{
+    categorize_events, extract_extrinsics_with_prefix, extract_fee_info_for_extrinsic,
+    fetch_block_events_with_prefix,
+};
+use super::types::{BlockBuildParams, BlockResponse};
+use config::ChainType;
+use heck::ToSnakeCase;
+
+/// Context for building a block response.
+pub struct BlockBuildContext<'a> {
+    /// Application state (needed for fee extraction)
+    pub state: &'a AppState,
+    /// RPC client to use for fee queries (None = use state.rpc_client)
+    pub rpc_client: Option<&'a Arc<RpcClient>>,
+    /// Legacy RPC for chain queries
+    pub legacy_rpc: &'a Arc<crate::state::SubstrateLegacyRpc>,
+    /// SS58 prefix for address encoding
+    pub ss58_prefix: u16,
+    /// Chain type for XCM decoding
+    pub chain_type: ChainType,
+}
+
+/// Build a block response using the generic context.
+pub async fn build_block_response_generic(
+    ctx: &BlockBuildContext<'_>,
+    client_at_block: &BlockClient,
+    block_hash: &str,
+    block_number: u64,
+    queried_by_hash: bool,
+    params: &BlockBuildParams,
+    include_finalized: bool,
+) -> Result<BlockResponse, GetBlockError> {
+    let header = client_at_block
+        .block_header()
+        .await
+        .map_err(GetBlockError::BlockHeaderFailed)?;
+
+    let parent_hash = format!("{:#x}", header.parent_hash);
+    let state_root = format!("{:#x}", header.state_root);
+    let extrinsics_root = format!("{:#x}", header.extrinsics_root);
+
+    let logs = convert_digest_items_to_logs(&header.digest.logs);
+
+    let (author_id, extrinsics_result, events_result, finalized_result, canonical_hash_result) =
+        tokio::join!(
+            extract_author_with_prefix(client_at_block, &logs, ctx.ss58_prefix, block_number),
+            extract_extrinsics_with_prefix(ctx.ss58_prefix, client_at_block, block_number),
+            fetch_block_events_with_prefix(ctx.ss58_prefix, client_at_block, block_number),
+            async {
+                if include_finalized {
+                    Some(get_finalized_block_number_with_rpc(ctx.legacy_rpc, ctx.rpc_client.unwrap_or(&ctx.state.rpc_client)).await)
+                } else {
+                    None
+                }
+            },
+            async {
+                if queried_by_hash && include_finalized {
+                    Some(get_canonical_hash_at_number_with_rpc(ctx.legacy_rpc, block_number).await)
+                } else {
+                    None
+                }
+            },
+        );
+
+    let extrinsics = extrinsics_result?;
+    let block_events = events_result?;
+
+    let finalized = if let Some(finalized_result) = finalized_result {
+        match finalized_result {
+            Ok(finalized_number) => {
+                if block_number <= finalized_number {
+                    if queried_by_hash {
+                        if let Some(canonical_result) = canonical_hash_result {
+                            match canonical_result {
+                                Ok(Some(canonical_hash)) => Some(canonical_hash == block_hash),
+                                Ok(None) => Some(false),
+                                Err(_) => Some(false),
+                            }
+                        } else {
+                            Some(true)
+                        }
+                    } else {
+                        Some(true)
+                    }
+                } else {
+                    Some(false)
+                }
+            }
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
+        categorize_events(block_events, extrinsics.len());
+
+    let mut extrinsics_with_events = extrinsics;
+    for (i, (extrinsic_events, outcome)) in per_extrinsic_events
+        .iter()
+        .zip(extrinsic_outcomes.iter())
+        .enumerate()
+    {
+        if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
+            extrinsic.events = extrinsic_events.clone();
+            extrinsic.success = outcome.success;
+            if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
+                extrinsic.pays_fee = outcome.pays_fee;
+            }
+        }
+    }
+
+    if !params.no_fees {
+        let fee_indices: Vec<usize> = extrinsics_with_events
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.signature.is_some() && e.pays_fee == Some(true))
+            .map(|(i, _)| i)
+            .collect();
+
+        if !fee_indices.is_empty() {
+            let spec_version = client_at_block.spec_version();
+
+            let fee_futures: Vec<_> = fee_indices
+                .iter()
+                .map(|&i| {
+                    let extrinsic = &extrinsics_with_events[i];
+                    extract_fee_info_for_extrinsic(
+                        ctx.state,
+                        ctx.rpc_client,
+                        &extrinsic.raw_hex,
+                        &extrinsic.events,
+                        extrinsic_outcomes.get(i),
+                        &parent_hash,
+                        spec_version,
+                    )
+                })
+                .collect();
+
+            let fee_results = futures::future::join_all(fee_futures).await;
+
+            for (idx, fee_info) in fee_indices.into_iter().zip(fee_results.into_iter()) {
+                extrinsics_with_events[idx].info = fee_info;
+            }
+        }
+    }
+
+    let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
+
+    if params.event_docs || params.extrinsic_docs {
+        let metadata = client_at_block.metadata();
+
+        if params.event_docs {
+            add_docs_to_events(&mut on_initialize.events, &metadata);
+            add_docs_to_events(&mut on_finalize.events, &metadata);
+
+            for extrinsic in extrinsics_with_events.iter_mut() {
+                add_docs_to_events(&mut extrinsic.events, &metadata);
+            }
+        }
+
+        if params.extrinsic_docs {
+            for extrinsic in extrinsics_with_events.iter_mut() {
+                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
+                let method_name = extrinsic.method.method.to_snake_case();
+                extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
+                    .map(|d| d.to_string());
+            }
+        }
+    }
+
+    let decoded_xcm_msgs = if params.decoded_xcm_msgs {
+        let decoder = XcmDecoder::new(ctx.chain_type.clone(), &extrinsics_with_events, params.para_id);
+        Some(decoder.decode())
+    } else {
+        None
+    };
+
+    Ok(BlockResponse {
+        number: block_number.to_string(),
+        hash: block_hash.to_string(),
+        parent_hash,
+        state_root,
+        extrinsics_root,
+        author_id,
+        logs,
+        on_initialize,
+        extrinsics: extrinsics_with_events,
+        on_finalize,
+        finalized,
+        decoded_xcm_msgs,
+        rc_block_hash: None,
+        rc_block_number: None,
+        ah_timestamp: None,
+    })
+}

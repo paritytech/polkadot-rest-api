@@ -3,17 +3,8 @@
 //! Returns block information for a specific block by height or hash on the relay chain.
 //! This endpoint is designed for Asset Hub or parachain endpoints that have a relay chain configured.
 
-use crate::handlers::blocks::common::{
-    add_docs_to_events, convert_digest_items_to_logs, extract_author_with_prefix,
-    get_canonical_hash_at_number_with_rpc, get_finalized_block_number_with_rpc,
-};
-use crate::handlers::blocks::decode::XcmDecoder;
-use crate::handlers::blocks::docs::Docs;
-use crate::handlers::blocks::processing::{
-    categorize_events, extract_extrinsics_with_prefix, extract_fee_info_for_extrinsic,
-    fetch_block_events_with_prefix,
-};
-use crate::handlers::blocks::types::{BlockResponse, GetBlockError};
+use crate::handlers::blocks::common::{build_block_response_generic, BlockBuildContext};
+use crate::handlers::blocks::types::{BlockBuildParams, GetBlockError};
 use crate::state::AppState;
 use crate::utils;
 use axum::{
@@ -23,7 +14,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use heck::{ToSnakeCase, ToUpperCamelCase};
 use serde::Deserialize;
 use serde_json::json;
 use thiserror::Error;
@@ -65,6 +55,18 @@ impl Default for RcBlockQueryParams {
     }
 }
 
+impl RcBlockQueryParams {
+    pub fn to_build_params(&self) -> BlockBuildParams {
+        BlockBuildParams {
+            event_docs: self.event_docs,
+            extrinsic_docs: self.extrinsic_docs,
+            no_fees: self.no_fees,
+            decoded_xcm_msgs: self.decoded_xcm_msgs,
+            para_id: self.para_id,
+        }
+    }
+}
+
 // ================================================================================================
 // Error Types
 // ================================================================================================
@@ -80,15 +82,6 @@ pub enum GetRcBlockError {
     #[error("Invalid block parameter")]
     InvalidBlockParam(#[from] utils::BlockIdParseError),
 
-    #[error("RPC call failed")]
-    RpcCallFailed(#[source] subxt_rpcs::Error),
-
-    #[error("Failed to get block header: {0}")]
-    BlockHeaderFailed(#[source] subxt::error::BlockError),
-
-    #[error("Header field missing: {0}")]
-    HeaderFieldMissing(String),
-
     #[error("Failed to get client at block")]
     ClientAtBlockFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
 
@@ -103,13 +96,6 @@ impl IntoResponse for GetRcBlockError {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             GetRcBlockError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            GetRcBlockError::RpcCallFailed(err) => crate::utils::rpc_error_to_status(err),
-            GetRcBlockError::BlockHeaderFailed(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            GetRcBlockError::HeaderFieldMissing(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
             GetRcBlockError::ClientAtBlockFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
@@ -163,8 +149,6 @@ pub async fn get_rc_block(
         .as_ref()
         .ok_or(GetRcBlockError::RelayChainNotConfigured)?;
 
-    let ss58_prefix = relay_chain_info.ss58_prefix;
-
     let block_id_parsed: utils::BlockId = block_id.parse()?;
     let queried_by_hash = matches!(block_id_parsed, utils::BlockId::Hash(_));
 
@@ -182,162 +166,24 @@ pub async fn get_rc_block(
     let block_hash = format!("{:#x}", client_at_block.block_hash());
     let block_number = client_at_block.block_number();
 
-    let header = client_at_block
-        .block_header()
-        .await
-        .map_err(GetRcBlockError::BlockHeaderFailed)?;
-
-    let parent_hash = format!("{:#x}", header.parent_hash);
-    let state_root = format!("{:#x}", header.state_root);
-    let extrinsics_root = format!("{:#x}", header.extrinsics_root);
-
-    let logs = convert_digest_items_to_logs(&header.digest.logs);
-
-    let (author_id, extrinsics_result, events_result, finalized_result, canonical_hash_result) =
-        tokio::join!(
-            extract_author_with_prefix(&client_at_block, &logs, ss58_prefix, block_number),
-            extract_extrinsics_with_prefix(ss58_prefix, &client_at_block, block_number),
-            fetch_block_events_with_prefix(ss58_prefix, &client_at_block, block_number),
-            get_finalized_block_number_with_rpc(&relay_rpc, &relay_rpc_client),
-            async {
-                if queried_by_hash {
-                    Some(
-                        get_canonical_hash_at_number_with_rpc(&relay_rpc, block_number)
-                            .await,
-                    )
-                } else {
-                    None
-                }
-            },
-        );
-
-    let extrinsics = extrinsics_result?;
-    let block_events = events_result?;
-
-    let finalized = match finalized_result {
-        Ok(finalized_number) => {
-            if block_number <= finalized_number {
-                if queried_by_hash {
-                    if let Some(canonical_result) = canonical_hash_result {
-                        match canonical_result {
-                            Ok(Some(canonical_hash)) => Some(canonical_hash == block_hash),
-                            Ok(None) => Some(false),
-                            Err(_) => Some(false),
-                        }
-                    } else {
-                        Some(true)
-                    }
-                } else {
-                    Some(true)
-                }
-            } else {
-                Some(false)
-            }
-        }
-        Err(_) => None,
+    let ctx = BlockBuildContext {
+        state: &state,
+        rpc_client: Some(&relay_rpc_client),
+        legacy_rpc: &relay_rpc,
+        ss58_prefix: relay_chain_info.ss58_prefix,
+        chain_type: ChainType::Relay,
     };
 
-    let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
-        categorize_events(block_events, extrinsics.len());
-
-    let mut extrinsics_with_events = extrinsics;
-    for (i, (extrinsic_events, outcome)) in per_extrinsic_events
-        .iter()
-        .zip(extrinsic_outcomes.iter())
-        .enumerate()
-    {
-        if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            extrinsic.events = extrinsic_events.clone();
-            extrinsic.success = outcome.success;
-            if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
-                extrinsic.pays_fee = outcome.pays_fee;
-            }
-        }
-    }
-
-    if !params.no_fees {
-        let fee_indices: Vec<usize> = extrinsics_with_events
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| e.signature.is_some() && e.pays_fee == Some(true))
-            .map(|(i, _)| i)
-            .collect();
-
-        if !fee_indices.is_empty() {
-            let spec_version = client_at_block.spec_version();
-
-            let fee_futures: Vec<_> = fee_indices
-                .iter()
-                .map(|&i| {
-                    let extrinsic = &extrinsics_with_events[i];
-                    extract_fee_info_for_extrinsic(
-                        &state,
-                        Some(&relay_rpc_client),
-                        &extrinsic.raw_hex,
-                        &extrinsic.events,
-                        extrinsic_outcomes.get(i),
-                        &parent_hash,
-                        spec_version,
-                    )
-                })
-                .collect();
-
-            let fee_results = futures::future::join_all(fee_futures).await;
-
-            for (idx, fee_info) in fee_indices.into_iter().zip(fee_results.into_iter()) {
-                extrinsics_with_events[idx].info = fee_info;
-            }
-        }
-    }
-
-    let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
-
-    if params.event_docs || params.extrinsic_docs {
-        let metadata = client_at_block.metadata();
-
-        if params.event_docs {
-            add_docs_to_events(&mut on_initialize.events, &metadata);
-            add_docs_to_events(&mut on_finalize.events, &metadata);
-
-            for extrinsic in extrinsics_with_events.iter_mut() {
-                add_docs_to_events(&mut extrinsic.events, &metadata);
-            }
-        }
-
-        if params.extrinsic_docs {
-            for extrinsic in extrinsics_with_events.iter_mut() {
-                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
-                let method_name = extrinsic.method.method.to_snake_case();
-                extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
-                    .map(|d| d.to_string());
-            }
-        }
-    }
-
-    let decoded_xcm_msgs = if params.decoded_xcm_msgs {
-        let decoder = XcmDecoder::new(ChainType::Relay, &extrinsics_with_events, params.para_id);
-        Some(decoder.decode())
-    } else {
-        None
-    };
-
-    let response = BlockResponse {
-        number: block_number.to_string(),
-        hash: block_hash,
-        parent_hash,
-        state_root,
-        extrinsics_root,
-        author_id,
-        logs,
-        on_initialize,
-        extrinsics: extrinsics_with_events,
-        on_finalize,
-        finalized,
-        decoded_xcm_msgs,
-        rc_block_hash: None,
-        rc_block_number: None,
-        ah_timestamp: None,
-    };
+    let response = build_block_response_generic(
+        &ctx,
+        &client_at_block,
+        &block_hash,
+        block_number,
+        queried_by_hash,
+        &params.to_build_params(),
+        true,
+    )
+    .await?;
 
     Ok(Json(response).into_response())
 }
@@ -350,7 +196,7 @@ pub async fn get_rc_block(
 mod tests {
     use super::*;
     use crate::handlers::blocks::types::{
-        DigestLog, ExtrinsicInfo, MethodInfo, OnFinalize, OnInitialize, XcmMessages,
+        BlockResponse, DigestLog, ExtrinsicInfo, MethodInfo, OnFinalize, OnInitialize, XcmMessages,
     };
     use crate::utils::EraInfo;
 
