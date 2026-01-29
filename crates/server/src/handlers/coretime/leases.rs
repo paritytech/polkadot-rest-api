@@ -262,8 +262,9 @@ async fn fetch_workloads(
         let value_bytes = entry.value().bytes();
 
         let core: u32 = if key_bytes.len() >= STORAGE_KEY_MIN_LENGTH {
-            let core_bytes: [u8; 2] =
-                key_bytes[CORE_INDEX_OFFSET..STORAGE_KEY_MIN_LENGTH].try_into().unwrap_or([0, 0]);
+            let core_bytes: [u8; 2] = key_bytes[CORE_INDEX_OFFSET..STORAGE_KEY_MIN_LENGTH]
+                .try_into()
+                .unwrap_or([0, 0]);
             u16::from_le_bytes(core_bytes) as u32
         } else {
             continue;
