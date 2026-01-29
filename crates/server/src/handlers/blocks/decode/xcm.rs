@@ -236,7 +236,9 @@ impl<'a> XcmDecoder<'a> {
     pub fn decode(&self) -> XcmMessages {
         match self.chain_type {
             ChainType::Relay => self.decode_relay_messages(),
-            ChainType::Parachain | ChainType::AssetHub => self.decode_parachain_messages(),
+            ChainType::Parachain | ChainType::AssetHub | ChainType::Coretime => {
+                self.decode_parachain_messages()
+            }
         }
     }
 

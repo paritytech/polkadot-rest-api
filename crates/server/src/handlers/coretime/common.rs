@@ -1,12 +1,68 @@
 //! Common types and utilities for coretime endpoints.
 //!
-//! This module provides shared error types and response types
-//! used by coretime endpoints.
+//! This module provides shared error types, response types, constants,
+//! and utility functions used by coretime endpoints.
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 use serde_json::json;
+use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 use thiserror::Error;
+
+// ============================================================================
+// Constants - Broker Pallet SCALE Encoding
+// ============================================================================
+
+// ScheduleItem structure from the Broker pallet:
+// - CoreMask: 80 bits = 10 bytes (fixed-size array)
+// - CoreAssignment: enum with variants Idle(0), Pool(1), Task(2, u32)
+//
+// See: https://github.com/paritytech/polkadot-sdk/blob/master/substrate/frame/broker/src/types.rs
+
+/// Size of CoreMask in bytes (80 bits = 10 bytes).
+pub const CORE_MASK_SIZE: usize = 10;
+
+/// Size of a u32 task ID in bytes.
+pub const TASK_ID_SIZE: usize = 4;
+
+/// CoreAssignment::Idle variant (core is not assigned).
+pub const ASSIGNMENT_IDLE_VARIANT: u8 = 0;
+
+/// CoreAssignment::Pool variant (core contributes to the instantaneous pool).
+pub const ASSIGNMENT_POOL_VARIANT: u8 = 1;
+
+/// CoreAssignment::Task(u32) variant (core is assigned to a specific task/parachain).
+pub const ASSIGNMENT_TASK_VARIANT: u8 = 2;
+
+// ============================================================================
+// Shared Types
+// ============================================================================
+
+/// CoreAssignment enum representing how a core is assigned.
+/// Matches the Broker pallet's CoreAssignment type.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CoreAssignment {
+    /// Core is idle (not assigned).
+    Idle,
+    /// Core contributes to the instantaneous coretime pool.
+    Pool,
+    /// Core is assigned to a specific task (parachain ID).
+    Task(u32),
+}
+
+impl CoreAssignment {
+    /// Returns the task string representation for JSON serialization.
+    /// - Task(id) -> "id"
+    /// - Pool -> "Pool"
+    /// - Idle -> ""
+    pub fn to_task_string(&self) -> String {
+        match self {
+            CoreAssignment::Idle => String::new(),
+            CoreAssignment::Pool => "Pool".to_string(),
+            CoreAssignment::Task(id) => id.to_string(),
+        }
+    }
+}
 
 // ============================================================================
 // Error Types
@@ -131,6 +187,60 @@ pub struct CoretimeQueryParams {
     /// Block number or 0x-prefixed block hash to query at.
     /// If not provided, queries at the latest finalized block.
     pub at: Option<String>,
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/// Checks if the Broker pallet exists in the runtime metadata.
+pub fn has_broker_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
+    let metadata = client_at_block.metadata();
+    metadata.pallet_by_name("Broker").is_some()
+}
+
+/// Decodes a SCALE compact-encoded u32 and returns (value, bytes_consumed).
+///
+/// Compact encoding uses the two least significant bits to indicate the mode:
+/// - 0b00: single-byte mode (values 0-63)
+/// - 0b01: two-byte mode (values 64-16383)
+/// - 0b10: four-byte mode (values 16384-1073741823)
+/// - 0b11: big-integer mode (not supported here)
+pub fn decode_compact_u32(bytes: &[u8]) -> Option<(usize, usize)> {
+    if bytes.is_empty() {
+        return None;
+    }
+
+    let first = bytes[0];
+    let mode = first & 0b11;
+
+    match mode {
+        0b00 => {
+            // Single byte mode: values 0-63
+            Some(((first >> 2) as usize, 1))
+        }
+        0b01 => {
+            // Two byte mode: values 64-16383
+            if bytes.len() < 2 {
+                return None;
+            }
+            let value = u16::from_le_bytes([first, bytes[1]]) >> 2;
+            Some((value as usize, 2))
+        }
+        0b10 => {
+            // Four byte mode: values 16384-1073741823
+            if bytes.len() < 4 {
+                return None;
+            }
+            let value = u32::from_le_bytes([first, bytes[1], bytes[2], bytes[3]]) >> 2;
+            Some((value as usize, 4))
+        }
+        0b11 => {
+            // Big integer mode (not typically used for vec lengths)
+            None
+        }
+        _ => None,
+    }
 }
 
 // ============================================================================
@@ -318,5 +428,109 @@ mod tests {
         let json = r#"{"at": null}"#;
         let params: CoretimeQueryParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.at, None);
+    }
+
+    // ------------------------------------------------------------------------
+    // CoreAssignment tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_core_assignment_idle_to_string() {
+        let assignment = CoreAssignment::Idle;
+        assert_eq!(assignment.to_task_string(), "");
+    }
+
+    #[test]
+    fn test_core_assignment_pool_to_string() {
+        let assignment = CoreAssignment::Pool;
+        assert_eq!(assignment.to_task_string(), "Pool");
+    }
+
+    #[test]
+    fn test_core_assignment_task_to_string() {
+        let assignment = CoreAssignment::Task(1000);
+        assert_eq!(assignment.to_task_string(), "1000");
+    }
+
+    #[test]
+    fn test_core_assignment_equality() {
+        assert_eq!(CoreAssignment::Idle, CoreAssignment::Idle);
+        assert_eq!(CoreAssignment::Pool, CoreAssignment::Pool);
+        assert_eq!(CoreAssignment::Task(100), CoreAssignment::Task(100));
+        assert_ne!(CoreAssignment::Task(100), CoreAssignment::Task(200));
+        assert_ne!(CoreAssignment::Idle, CoreAssignment::Pool);
+    }
+
+    // ------------------------------------------------------------------------
+    // decode_compact_u32 tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_decode_compact_u32_empty_input() {
+        assert_eq!(decode_compact_u32(&[]), None);
+    }
+
+    #[test]
+    fn test_decode_compact_u32_single_byte_mode() {
+        // Single byte mode: values 0-63
+        // Format: xxxxxx00 where x is the value
+        // Value 0: 0b00000000 = 0x00
+        assert_eq!(decode_compact_u32(&[0x00]), Some((0, 1)));
+
+        // Value 1: 0b00000100 = 0x04
+        assert_eq!(decode_compact_u32(&[0x04]), Some((1, 1)));
+
+        // Value 63: 0b11111100 = 0xFC
+        assert_eq!(decode_compact_u32(&[0xFC]), Some((63, 1)));
+    }
+
+    #[test]
+    fn test_decode_compact_u32_two_byte_mode() {
+        // Two byte mode: values 64-16383
+        // Value 64: encoded as 0x0101
+        assert_eq!(decode_compact_u32(&[0x01, 0x01]), Some((64, 2)));
+
+        // Insufficient bytes
+        assert_eq!(decode_compact_u32(&[0x01]), None);
+    }
+
+    #[test]
+    fn test_decode_compact_u32_four_byte_mode() {
+        // Four byte mode: values 16384-1073741823
+        // Value 16384: (16384 << 2) | 0b10 = 0x00010002
+        let encoded: [u8; 4] = [0x02, 0x00, 0x01, 0x00];
+        assert_eq!(decode_compact_u32(&encoded), Some((16384, 4)));
+
+        // Insufficient bytes
+        assert_eq!(decode_compact_u32(&[0x02, 0x00]), None);
+    }
+
+    #[test]
+    fn test_decode_compact_u32_big_integer_mode_not_supported() {
+        // Big integer mode (0b11) is not supported
+        assert_eq!(decode_compact_u32(&[0x03]), None);
+    }
+
+    // ------------------------------------------------------------------------
+    // Constants tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_core_mask_size_is_10_bytes() {
+        // CoreMask is 80 bits = 10 bytes
+        assert_eq!(CORE_MASK_SIZE, 10);
+    }
+
+    #[test]
+    fn test_task_id_size_is_4_bytes() {
+        // Task ID is u32 = 4 bytes
+        assert_eq!(TASK_ID_SIZE, 4);
+    }
+
+    #[test]
+    fn test_assignment_variants_are_sequential() {
+        assert_eq!(ASSIGNMENT_IDLE_VARIANT, 0);
+        assert_eq!(ASSIGNMENT_POOL_VARIANT, 1);
+        assert_eq!(ASSIGNMENT_TASK_VARIANT, 2);
     }
 }

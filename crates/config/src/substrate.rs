@@ -110,6 +110,7 @@ pub enum ChainType {
     Relay,
     #[serde(rename = "assethub")]
     AssetHub,
+    Coretime,
     #[default]
     Parachain,
 }
@@ -126,6 +127,8 @@ impl ChainType {
             name if KnownRelayChain::from_spec_name(name).is_some() => Self::Relay,
             // Check for asset-hub prefix patterns (future-proofing for unknown Asset Hubs)
             name if name.starts_with("asset-hub-") || name.contains("assethub") => Self::AssetHub,
+            // Check for coretime chains (e.g., coretime-kusama, coretime-polkadot)
+            name if name.starts_with("coretime-") || name.contains("coretime") => Self::Coretime,
             // Default to Parachain for everything else
             _ => Self::Parachain,
         }

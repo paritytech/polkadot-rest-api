@@ -4,7 +4,14 @@
 //! Each lease includes the task ID (parachain ID), the until timeslice, and the
 //! assigned core ID (correlated from workload data).
 
-use crate::handlers::coretime::common::{AtResponse, CoretimeError, CoretimeQueryParams};
+use crate::handlers::coretime::common::{
+    AtResponse, CoretimeError, CoretimeQueryParams,
+    // Shared constants
+    CORE_MASK_SIZE, TASK_ID_SIZE,
+    ASSIGNMENT_IDLE_VARIANT, ASSIGNMENT_POOL_VARIANT, ASSIGNMENT_TASK_VARIANT,
+    // Shared functions
+    has_broker_pallet, decode_compact_u32,
+};
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
 use axum::{
@@ -32,24 +39,6 @@ const STORAGE_KEY_MIN_LENGTH: usize = 42;
 
 /// Offset where the core index (u16) starts in the storage key.
 const CORE_INDEX_OFFSET: usize = 40;
-
-/// Size of CoreMask in bytes (80 bits = 10 bytes).
-const CORE_MASK_SIZE: usize = 10;
-
-/// Size of a u32 task ID in bytes.
-const TASK_ID_SIZE: usize = 4;
-
-// CoreAssignment enum variants from the Broker pallet.
-// See: https://github.com/paritytech/polkadot-sdk/blob/master/substrate/frame/broker/src/types.rs
-
-/// CoreAssignment::Idle variant (core is not assigned).
-const ASSIGNMENT_IDLE_VARIANT: u8 = 0;
-
-/// CoreAssignment::Pool variant (core contributes to the pool).
-const ASSIGNMENT_POOL_VARIANT: u8 = 1;
-
-/// CoreAssignment::Task(u32) variant (core is assigned to a specific task/parachain).
-const ASSIGNMENT_TASK_VARIANT: u8 = 2;
 
 // ============================================================================
 // Response Types
@@ -188,12 +177,6 @@ pub async fn coretime_leases(
 // Helper Functions
 // ============================================================================
 
-/// Checks if the Broker pallet exists in the runtime metadata.
-fn has_broker_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
-    let metadata = client_at_block.metadata();
-    metadata.pallet_by_name("Broker").is_some()
-}
-
 /// Fetches all leases from Broker::Leases storage.
 async fn fetch_leases(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
@@ -330,44 +313,6 @@ fn extract_task_from_workload(bytes: &[u8]) -> Option<u32> {
     }
 }
 
-/// Decodes a SCALE compact-encoded u32 and returns (value, bytes_consumed).
-fn decode_compact_u32(bytes: &[u8]) -> Option<(usize, usize)> {
-    if bytes.is_empty() {
-        return None;
-    }
-
-    let first = bytes[0];
-    let mode = first & 0b11;
-
-    match mode {
-        0b00 => {
-            // Single byte mode
-            Some(((first >> 2) as usize, 1))
-        }
-        0b01 => {
-            // Two byte mode
-            if bytes.len() < 2 {
-                return None;
-            }
-            let value = u16::from_le_bytes([first, bytes[1]]) >> 2;
-            Some((value as usize, 2))
-        }
-        0b10 => {
-            // Four byte mode
-            if bytes.len() < 4 {
-                return None;
-            }
-            let value = u32::from_le_bytes([first, bytes[1], bytes[2], bytes[3]]) >> 2;
-            Some((value as usize, 4))
-        }
-        0b11 => {
-            // Big integer mode (not typically used for vec lengths)
-            None
-        }
-        _ => None,
-    }
-}
-
 // ============================================================================
 // Tests
 // ============================================================================
@@ -377,82 +322,7 @@ mod tests {
     use super::*;
     use parity_scale_codec::Encode;
 
-    // ------------------------------------------------------------------------
-    // decode_compact_u32 tests
-    // ------------------------------------------------------------------------
-
-    #[test]
-    fn test_decode_compact_u32_empty_input() {
-        assert_eq!(decode_compact_u32(&[]), None);
-    }
-
-    #[test]
-    fn test_decode_compact_u32_single_byte_mode() {
-        // Single byte mode: values 0-63
-        // Format: xxxxxx00 where x is the value
-        // Value 0: 0b00000000 = 0x00
-        assert_eq!(decode_compact_u32(&[0x00]), Some((0, 1)));
-
-        // Value 1: 0b00000100 = 0x04
-        assert_eq!(decode_compact_u32(&[0x04]), Some((1, 1)));
-
-        // Value 63: 0b11111100 = 0xFC
-        assert_eq!(decode_compact_u32(&[0xFC]), Some((63, 1)));
-
-        // Value 10: 0b00101000 = 0x28
-        assert_eq!(decode_compact_u32(&[0x28]), Some((10, 1)));
-    }
-
-    #[test]
-    fn test_decode_compact_u32_two_byte_mode() {
-        // Two byte mode: values 64-16383
-        // Format: xxxxxxxx xxxxxx01 (little endian)
-        // Value 64: encoded as [0x01, 0x01] -> (0x0101 >> 2) = 64
-        assert_eq!(decode_compact_u32(&[0x01, 0x01]), Some((64, 2)));
-
-        // Value 100: (100 << 2) | 0b01 = 401 = 0x0191 -> [0x91, 0x01]
-        assert_eq!(decode_compact_u32(&[0x91, 0x01]), Some((100, 2)));
-
-        // Value 16383: max for two-byte mode
-        // (16383 << 2) | 0b01 = 65533 = 0xFFFD -> [0xFD, 0xFF]
-        assert_eq!(decode_compact_u32(&[0xFD, 0xFF]), Some((16383, 2)));
-    }
-
-    #[test]
-    fn test_decode_compact_u32_two_byte_mode_insufficient_bytes() {
-        // Two byte mode marker but only 1 byte provided
-        assert_eq!(decode_compact_u32(&[0x01]), None);
-    }
-
-    #[test]
-    fn test_decode_compact_u32_four_byte_mode() {
-        // Four byte mode: values 16384-1073741823
-        // Format: xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx10 (little endian)
-        // Value 16384: (16384 << 2) | 0b10 = 65538 = 0x00010002 -> [0x02, 0x00, 0x01, 0x00]
-        assert_eq!(
-            decode_compact_u32(&[0x02, 0x00, 0x01, 0x00]),
-            Some((16384, 4))
-        );
-
-        // Value 100000: (100000 << 2) | 0b10 = 400002 = 0x00061A82 -> [0x82, 0x1A, 0x06, 0x00]
-        assert_eq!(
-            decode_compact_u32(&[0x82, 0x1A, 0x06, 0x00]),
-            Some((100000, 4))
-        );
-    }
-
-    #[test]
-    fn test_decode_compact_u32_four_byte_mode_insufficient_bytes() {
-        // Four byte mode marker but only 3 bytes provided
-        assert_eq!(decode_compact_u32(&[0x02, 0x00, 0x01]), None);
-    }
-
-    #[test]
-    fn test_decode_compact_u32_big_integer_mode_not_supported() {
-        // Big integer mode (0b11) is not supported
-        assert_eq!(decode_compact_u32(&[0x03]), None);
-        assert_eq!(decode_compact_u32(&[0x07, 0x00, 0x00, 0x00, 0x01]), None);
-    }
+    // Note: decode_compact_u32 tests are in common.rs
 
     // ------------------------------------------------------------------------
     // extract_task_from_workload tests

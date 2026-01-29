@@ -643,6 +643,16 @@
         },
         "fixture_path": "coretime-kusama/coretime_leases_1000000.json",
         "description": "Test coretime leases endpoint at Coretime Kusama block 1,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/reservations",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "1000000"
+        },
+        "fixture_path": "coretime-kusama/coretime_reservations_1000000.json",
+        "description": "Test coretime reservations endpoint at Coretime Kusama block 1,000,000"
       }
     ],
     "coretime-polkadot": [
@@ -655,6 +665,16 @@
         },
         "fixture_path": "coretime-polkadot/coretime_leases_1000000.json",
         "description": "Test coretime leases endpoint at Coretime Polkadot block 1,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/reservations",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "1000000"
+        },
+        "fixture_path": "coretime-polkadot/coretime_reservations_1000000.json",
+        "description": "Test coretime reservations endpoint at Coretime Polkadot block 1,000,000"
       }
     ]
   }
