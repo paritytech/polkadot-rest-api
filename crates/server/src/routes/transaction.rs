@@ -40,6 +40,13 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
             "/transaction/material",
             "get",
             get(transaction::material),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/transaction/material/:metadataVersion",
+            "get",
+            get(transaction::material_versioned),
         );
 
     // Only register /rc/ routes for parachains, not relay chains
@@ -72,6 +79,13 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
                 "/rc/transaction/material",
                 "get",
                 get(transaction::material_rc),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/transaction/material/:metadataVersion",
+                "get",
+                get(transaction::material_versioned_rc),
             )
     } else {
         router

@@ -2,7 +2,7 @@ use crate::state::AppState;
 use crate::utils::BlockId;
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
 };
@@ -55,6 +55,15 @@ pub enum MaterialError {
     #[error("Invalid metadata query parameter")]
     InvalidMetadataParam { value: String },
 
+    #[error("Invalid metadata version format")]
+    InvalidMetadataVersionFormat { value: String },
+
+    #[error("Metadata version not available")]
+    MetadataVersionNotAvailable { version: u32 },
+
+    #[error("Metadata versions API not available")]
+    MetadataVersionsApiNotAvailable,
+
     #[error("Invalid block parameter")]
     InvalidBlockParam { cause: String },
 
@@ -80,6 +89,41 @@ impl IntoResponse for MaterialError {
                     StatusCode::BAD_REQUEST,
                     400,
                     "Invalid query parameter",
+                    cause.clone(),
+                    format!("Error: {}\n    at material", cause),
+                )
+            }
+            MaterialError::InvalidMetadataVersionFormat { value } => {
+                let cause = format!(
+                    "{} input is not of the expected 'vX' format, where 'X' represents the version number (examples: 'v14', 'v15').",
+                    value
+                );
+                (
+                    StatusCode::BAD_REQUEST,
+                    400,
+                    "Invalid metadata version format",
+                    cause.clone(),
+                    format!("Error: {}\n    at material", cause),
+                )
+            }
+            MaterialError::MetadataVersionNotAvailable { version } => {
+                let cause = format!("Version {} of Metadata is not available.", version);
+                (
+                    StatusCode::BAD_REQUEST,
+                    400,
+                    "Metadata version not available",
+                    cause.clone(),
+                    format!("Error: {}\n    at material", cause),
+                )
+            }
+            MaterialError::MetadataVersionsApiNotAvailable => {
+                let cause =
+                    "Function 'metadata.metadataVersions()' is not available at this block height."
+                        .to_string();
+                (
+                    StatusCode::BAD_REQUEST,
+                    400,
+                    "Metadata versions API not available",
                     cause.clone(),
                     format!("Error: {}\n    at material", cause),
                 )
@@ -187,6 +231,230 @@ pub async fn material_rc(
         .ok_or(MaterialError::RelayChainNotConfigured)?;
 
     material_internal(relay_client, relay_rpc_client, query).await
+}
+
+/// Parse and validate metadata version from path parameter.
+/// Expected format: "vX" where X is a number (e.g., "v14", "v15").
+fn parse_metadata_version(version_str: &str) -> Result<u32, MaterialError> {
+    // Check format with regex-like validation
+    let version_str = version_str.trim();
+    if !version_str.starts_with('v') && !version_str.starts_with('V') {
+        return Err(MaterialError::InvalidMetadataVersionFormat {
+            value: version_str.to_string(),
+        });
+    }
+
+    let num_str = &version_str[1..];
+    num_str
+        .parse::<u32>()
+        .map_err(|_| MaterialError::InvalidMetadataVersionFormat {
+            value: version_str.to_string(),
+        })
+}
+
+pub async fn material_versioned(
+    State(state): State<AppState>,
+    Path(metadata_version): Path<String>,
+    Query(query): Query<MaterialQuery>,
+) -> Result<Json<MaterialResponse>, MaterialError> {
+    material_versioned_internal(&state.client, &state.rpc_client, metadata_version, query).await
+}
+
+pub async fn material_versioned_rc(
+    State(state): State<AppState>,
+    Path(metadata_version): Path<String>,
+    Query(query): Query<MaterialQuery>,
+) -> Result<Json<MaterialResponse>, MaterialError> {
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(MaterialError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(MaterialError::RelayChainNotConfigured)?;
+
+    material_versioned_internal(relay_client, relay_rpc_client, metadata_version, query).await
+}
+
+async fn material_versioned_internal(
+    client: &subxt::OnlineClient<subxt::SubstrateConfig>,
+    rpc_client: &subxt_rpcs::RpcClient,
+    metadata_version_str: String,
+    query: MaterialQuery,
+) -> Result<Json<MaterialResponse>, MaterialError> {
+    let requested_version = parse_metadata_version(&metadata_version_str)?;
+    let metadata_format = parse_metadata_params(&query.metadata, query.no_meta)?;
+
+    // Resolve block
+    let client_at = match &query.at {
+        None => client.at_current_block().await.map_err(|e| {
+            let cause = e.to_string();
+            MaterialError::FetchFailed {
+                cause: cause.clone(),
+                stack: format!("Error: {}\n    at material", cause),
+            }
+        })?,
+        Some(at_str) => {
+            let block_id =
+                at_str
+                    .parse::<BlockId>()
+                    .map_err(|e| MaterialError::InvalidBlockParam {
+                        cause: e.to_string(),
+                    })?;
+
+            match block_id {
+                BlockId::Hash(hash) => {
+                    client
+                        .at_block(hash)
+                        .await
+                        .map_err(|e| MaterialError::BlockNotFound {
+                            cause: e.to_string(),
+                        })?
+                }
+                BlockId::Number(num) => {
+                    client
+                        .at_block(num)
+                        .await
+                        .map_err(|e| MaterialError::BlockNotFound {
+                            cause: e.to_string(),
+                        })?
+                }
+            }
+        }
+    };
+
+    let block_hash = format!("{:#x}", client_at.block_hash());
+    let block_number = client_at.block_number().to_string();
+    let spec_version = client_at.spec_version().to_string();
+    let tx_version = client_at.transaction_version().to_string();
+
+    // Get available metadata versions
+    let versions_method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
+        "Metadata",
+        "metadata_versions",
+        (),
+    );
+    let available_versions_result = client_at.runtime_apis().call(versions_method).await;
+
+    let available_versions: Vec<u32> = match available_versions_result {
+        Ok(versions_value) => {
+            // Convert scale_value to JSON and extract version numbers
+            let versions_json: Value = serde_json::to_value(&versions_value).unwrap_or_default();
+            versions_json
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_u64().map(|n| n as u32))
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
+        Err(_) => {
+            return Err(MaterialError::MetadataVersionsApiNotAvailable);
+        }
+    };
+
+    // Check if requested version is available
+    if !available_versions.contains(&requested_version) {
+        return Err(MaterialError::MetadataVersionNotAvailable {
+            version: requested_version,
+        });
+    }
+
+    // Get runtime version for spec_name
+    let version_method =
+        subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>("Core", "version", ());
+    let runtime_version = client_at.runtime_apis().call(version_method).await?;
+    let runtime_version_json: Value = serde_json::to_value(&runtime_version).unwrap_or_default();
+    let spec_name = runtime_version_json
+        .get("spec_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    // Get genesis hash and chain name
+    let genesis_hash = client.genesis_hash().to_string();
+    let chain_name: String = rpc_client
+        .request("system_chain", subxt_rpcs::rpc_params![])
+        .await
+        .map_err(|e| {
+            let cause = e.to_string();
+            MaterialError::FetchFailed {
+                cause: cause.clone(),
+                stack: format!("Error: {}\n    at material (chain name)", cause),
+            }
+        })?;
+
+    // Get versioned metadata
+    let metadata = if let Some(format) = metadata_format {
+        // Call Metadata.metadata_at_version(version)
+        let metadata_method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
+            "Metadata",
+            "metadata_at_version",
+            (requested_version,),
+        );
+        let metadata_result = client_at.runtime_apis().call(metadata_method).await?;
+
+        // The result is Option<OpaqueMetadata>, extract the bytes
+        let metadata_json: Value = serde_json::to_value(&metadata_result).unwrap_or_default();
+
+        // Handle Option - could be {"Some": [...]} or null
+        let metadata_bytes: Option<Vec<u8>> = if let Some(some_value) = metadata_json.get("Some") {
+            // Extract bytes from the array
+            some_value.as_array().map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_u64().map(|n| n as u8))
+                    .collect()
+            })
+        } else {
+            None
+        };
+
+        match (format, metadata_bytes) {
+            (_, None) => {
+                return Err(MaterialError::MetadataVersionNotAvailable {
+                    version: requested_version,
+                });
+            }
+            (MetadataFormat::Scale, Some(bytes)) => {
+                Some(Value::String(format!("0x{}", hex::encode(&bytes))))
+            }
+            (MetadataFormat::Json, Some(bytes)) => {
+                let metadata = frame_metadata::RuntimeMetadataPrefixed::decode(&mut &bytes[..])
+                    .map_err(|e| {
+                        let cause = format!("Failed to decode metadata: {}", e);
+                        MaterialError::FetchFailed {
+                            cause: cause.clone(),
+                            stack: format!("Error: {}\n    at material (metadata parse)", cause),
+                        }
+                    })?;
+
+                let json = serde_json::to_value(&metadata).map_err(|e| {
+                    let cause = format!("Failed to serialize metadata to JSON: {}", e);
+                    MaterialError::FetchFailed {
+                        cause: cause.clone(),
+                        stack: format!("Error: {}\n    at material (metadata serialize)", cause),
+                    }
+                })?;
+
+                Some(json)
+            }
+        }
+    } else {
+        None
+    };
+
+    Ok(Json(MaterialResponse {
+        at: At {
+            hash: block_hash,
+            height: block_number,
+        },
+        genesis_hash,
+        chain_name,
+        spec_name,
+        spec_version,
+        tx_version,
+        metadata,
+    }))
 }
 
 async fn material_internal(
@@ -475,5 +743,22 @@ mod tests {
         let json = serde_json::to_value(&error).unwrap();
         assert_eq!(json["code"], 400);
         assert_eq!(json["error"], "Invalid query parameter");
+    }
+
+    #[test]
+    fn test_parse_metadata_version_valid() {
+        assert_eq!(parse_metadata_version("v14").unwrap(), 14);
+        assert_eq!(parse_metadata_version("v15").unwrap(), 15);
+        assert_eq!(parse_metadata_version("V14").unwrap(), 14);
+        assert_eq!(parse_metadata_version("v0").unwrap(), 0);
+    }
+
+    #[test]
+    fn test_parse_metadata_version_invalid_format() {
+        assert!(parse_metadata_version("14").is_err());
+        assert!(parse_metadata_version("version14").is_err());
+        assert!(parse_metadata_version("").is_err());
+        assert!(parse_metadata_version("vABC").is_err());
+        assert!(parse_metadata_version("v-1").is_err());
     }
 }
