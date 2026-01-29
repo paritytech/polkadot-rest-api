@@ -83,6 +83,30 @@
     "ahm_info": {
       "endpoint": "/v1/ahm-info",
       "use_standard_scenarios": true
+    },
+    "node_network": {
+      "endpoint": "/v1/node/network",
+      "use_standard_scenarios": true
+    },
+    "rc_node_network": {
+      "endpoint": "/v1/rc/node/network",
+      "use_standard_scenarios": true
+    },
+    "node_version": {
+      "endpoint": "/v1/node/version",
+      "use_standard_scenarios": true
+    },
+    "rc_node_version": {
+      "endpoint": "/v1/rc/node/version",
+      "use_standard_scenarios": true
+    },
+    "node_transaction_pool": {
+      "endpoint": "/v1/node/transaction-pool",
+      "use_standard_scenarios": true
+    },
+    "rc_node_transaction_pool": {
+      "endpoint": "/v1/rc/node/transaction-pool",
+      "use_standard_scenarios": true
     }
   }
 }

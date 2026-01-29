@@ -87,15 +87,12 @@ jobs:
           HARDWARE_PROFILE="ci_runner"
           SCENARIO="medium_load"
           
-          for init_script in benchmarks/*/init.sh; do
-            if [ -f "$init_script" ]; then
-              ENDPOINT_DIR=$(dirname "$init_script")
-              ENDPOINT_NAME=$(basename "$ENDPOINT_DIR")
-              
-              echo "Running benchmark: $ENDPOINT_NAME"
-              cd "$ENDPOINT_DIR"
-              bash init.sh "$SCENARIO" "$HARDWARE_PROFILE" > "../../artifacts/benchmark_${ENDPOINT_NAME}.txt" 2>&1
-              cd - > /dev/null
+          for benchmark_dir in benchmarks/*/; do
+            BENCHMARK_NAME=$(basename "$benchmark_dir")
+            # Skip if no lua file (not a benchmark directory)
+            if [ -f "$benchmark_dir/${BENCHMARK_NAME}.lua" ]; then
+              echo "Running benchmark: $BENCHMARK_NAME"
+              ./benchmarks/run.sh "$BENCHMARK_NAME" "$SCENARIO" "$HARDWARE_PROFILE" > "artifacts/benchmark_${BENCHMARK_NAME}.txt" 2>&1
             fi
           done
 

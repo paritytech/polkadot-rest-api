@@ -1,6 +1,8 @@
 -- AHM Info endpoint benchmark script
 -- Tests the /v1/ahm-info endpoint for latency and throughput
 
+local util = require("util")
+
 -- Setup the request
 request = function()
     return wrk.format("GET", "/v1/ahm-info")
@@ -11,8 +13,5 @@ delay = function()
     -- No delay by default
 end
 
--- Signal completion
-done = function()
-    -- Setup complete
-end
-
+-- Signal completion with statistics
+done = util.done()

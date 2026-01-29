@@ -16,14 +16,13 @@ use parity_scale_codec::Decode;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use std::sync::Arc;
+use subxt::config::substrate::DigestItem;
 use subxt::{OnlineClientAtBlock, SubstrateConfig, error::OnlineClientAtBlockError};
 use subxt_rpcs::{RpcClient, rpc_params};
 use thiserror::Error;
 
 use super::docs::Docs;
-use super::types::{
-    CONSENSUS_ENGINE_ID_LEN, DigestItemDiscriminant, DigestLog, Event, GetBlockError,
-};
+use super::types::{DigestLog, Event, GetBlockError};
 
 /// Type alias for the ClientAtBlock type used throughout the codebase.
 /// This represents a client pinned to a specific block height with access to
@@ -89,80 +88,35 @@ impl IntoResponse for CommonBlockError {
 // Digest Processing
 // ================================================================================================
 
-/// Decode a consensus digest item (PreRuntime, Consensus, or Seal)
-/// The data here is SCALE-encoded as: (ConsensusEngineId, Vec<u8>)
-/// where ConsensusEngineId is 4 raw bytes, and Vec<u8> is compact_length + bytes
-pub fn decode_consensus_digest(data: &[u8]) -> Option<Value> {
-    // First 4 bytes are the consensus engine ID (not length-prefixed)
-    if data.len() < CONSENSUS_ENGINE_ID_LEN {
-        return None;
-    }
-
-    let engine_id = hex_with_prefix(&data[0..CONSENSUS_ENGINE_ID_LEN]);
-
-    // The rest is a SCALE-encoded Vec<u8> (compact length + payload bytes)
-    let mut remaining = &data[CONSENSUS_ENGINE_ID_LEN..];
-    let payload_bytes = Vec::<u8>::decode(&mut remaining).ok()?;
-    let payload = hex_with_prefix(&payload_bytes);
-
-    Some(json!([engine_id, payload]))
-}
-
-/// Decode digest logs from hex-encoded strings in the JSON response
-/// Each hex string is a SCALE-encoded DigestItem
-pub fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
-    let logs = match header_json
-        .get("digest")
-        .and_then(|d| d.get("logs"))
-        .and_then(|l| l.as_array())
-    {
-        Some(logs) => logs,
-        None => return Vec::new(),
-    };
-
-    logs.iter()
-        .filter_map(|log_hex| {
-            let hex_str = log_hex.as_str()?;
-            let hex_data = hex_str.strip_prefix("0x")?;
-            let bytes = hex::decode(hex_data).ok()?;
-
-            if bytes.is_empty() {
-                return None;
-            }
-
-            // The first byte is the digest item type discriminant
-            let discriminant_byte = bytes[0];
-            let data = &bytes[1..];
-
-            // Try to parse the discriminant into a known type
-            let discriminant = DigestItemDiscriminant::try_from(discriminant_byte)
-                .unwrap_or(DigestItemDiscriminant::Other);
-
-            let (log_type, value) = match discriminant {
-                // Consensus-related digests: PreRuntime, Consensus, Seal
-                // All have format: [consensus_engine_id (4 bytes), payload_data]
-                DigestItemDiscriminant::PreRuntime
-                | DigestItemDiscriminant::Consensus
-                | DigestItemDiscriminant::Seal => match decode_consensus_digest(data) {
-                    Some(val) => (discriminant.as_str().to_string(), val),
-                    None => ("Other".to_string(), json!(hex_with_prefix(&bytes))),
-                },
-                // RuntimeEnvironmentUpdated has no associated data
-                DigestItemDiscriminant::RuntimeEnvironmentUpdated => {
-                    (discriminant.as_str().to_string(), Value::Null)
-                }
-                // Other (includes unknown discriminants that were converted to Other)
-                DigestItemDiscriminant::Other => (
-                    discriminant.as_str().to_string(),
-                    json!(hex_with_prefix(data)),
-                ),
-            };
-
-            Some(DigestLog {
-                log_type,
-                index: discriminant_byte.to_string(),
-                value,
-            })
+pub fn convert_digest_items_to_logs(items: &[DigestItem]) -> Vec<DigestLog> {
+    items
+        .iter()
+        .map(|item| match item {
+            DigestItem::PreRuntime(engine_id, data) => DigestLog {
+                log_type: "PreRuntime".to_string(),
+                index: "6".to_string(),
+                value: json!([hex_with_prefix(engine_id), hex_with_prefix(data)]),
+            },
+            DigestItem::Consensus(engine_id, data) => DigestLog {
+                log_type: "Consensus".to_string(),
+                index: "4".to_string(),
+                value: json!([hex_with_prefix(engine_id), hex_with_prefix(data)]),
+            },
+            DigestItem::Seal(engine_id, data) => DigestLog {
+                log_type: "Seal".to_string(),
+                index: "5".to_string(),
+                value: json!([hex_with_prefix(engine_id), hex_with_prefix(data)]),
+            },
+            DigestItem::RuntimeEnvironmentUpdated => DigestLog {
+                log_type: "RuntimeEnvironmentUpdated".to_string(),
+                index: "8".to_string(),
+                value: Value::Null,
+            },
+            DigestItem::Other(data) => DigestLog {
+                log_type: "Other".to_string(),
+                index: "0".to_string(),
+                value: json!(hex_with_prefix(data)),
+            },
         })
         .collect()
 }
@@ -243,19 +197,20 @@ pub async fn extract_author(
     block_number: u64,
 ) -> Option<String> {
     extract_author_with_prefix(
-        state.chain_info.ss58_prefix,
         client_at_block,
         logs,
+        state.chain_info.ss58_prefix,
         block_number,
     )
     .await
 }
 
-/// Extract author ID with explicit ss58 prefix
+/// Extract author ID from block header digest logs by mapping authority index to validator.
+/// This is the core implementation that accepts ss58_prefix directly.
 pub async fn extract_author_with_prefix(
-    ss58_prefix: u16,
     client_at_block: &BlockClient,
     logs: &[DigestLog],
+    ss58_prefix: u16,
     block_number: u64,
 ) -> Option<String> {
     use sp_consensus_babe::digests::PreDigest;

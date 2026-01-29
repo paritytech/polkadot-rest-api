@@ -19,19 +19,21 @@ use super::events::extract_fee_from_transaction_paid_event;
 /// Get query info from RPC, with optional runtime API fallback when using state's client.
 ///
 /// When `rpc_client_override` is provided, uses that client and skips runtime API fallback.
-/// When `None`, uses state's client and includes runtime API fallback for historic blocks.
+/// When `None`, uses state's client (via state.query_fee_info) and includes runtime API fallback for historic blocks.
 async fn get_query_info(
     state: &AppState,
     rpc_client_override: Option<&Arc<RpcClient>>,
     extrinsic_hex: &str,
     parent_hash: &str,
 ) -> Option<(Value, String)> {
-    let rpc_client = rpc_client_override.unwrap_or(&state.rpc_client);
-
-    // Try RPC first
-    let query_info: Result<Value, _> = rpc_client
-        .request("payment_queryInfo", rpc_params![extrinsic_hex, parent_hash])
-        .await;
+    // Try RPC first - use state's method for main chain, direct call for relay chain
+    let query_info: Result<Value, _> = if let Some(rpc_client) = rpc_client_override {
+        rpc_client
+            .request("payment_queryInfo", rpc_params![extrinsic_hex, parent_hash])
+            .await
+    } else {
+        state.query_fee_info(extrinsic_hex, parent_hash).await
+    };
 
     if let Ok(query_info) = query_info
         && let Some(weight) = utils::extract_estimated_weight(&query_info)
@@ -61,14 +63,16 @@ async fn get_fee_details(
     extrinsic_hex: &str,
     parent_hash: &str,
 ) -> Option<Value> {
-    let rpc_client = rpc_client_override.unwrap_or(&state.rpc_client);
-
-    let fee_details: Result<Value, _> = rpc_client
-        .request(
-            "payment_queryFeeDetails",
-            rpc_params![extrinsic_hex, parent_hash],
-        )
-        .await;
+    let fee_details: Result<Value, _> = if let Some(rpc_client) = rpc_client_override {
+        rpc_client
+            .request(
+                "payment_queryFeeDetails",
+                rpc_params![extrinsic_hex, parent_hash],
+            )
+            .await
+    } else {
+        state.query_fee_details(extrinsic_hex, parent_hash).await
+    };
 
     fee_details.ok()
 }
@@ -116,7 +120,15 @@ pub async fn extract_fee_info_for_extrinsic(
 
     if let Some(ref actual_weight_str) = actual_weight_str {
         let use_fee_details = if rpc_client_override.is_some() {
-            true
+            state
+                .relay_chain_info
+                .as_ref()
+                .and_then(|info| {
+                    state
+                        .fee_details_cache
+                        .is_available(&info.spec_name, spec_version)
+                })
+                .unwrap_or(true)
         } else {
             state
                 .fee_details_cache
@@ -150,7 +162,6 @@ pub async fn extract_fee_info_for_extrinsic(
                     return info;
                 }
             } else if rpc_client_override.is_none() {
-                // Only update cache when using state's client
                 state.fee_details_cache.set_available(spec_version, false);
             }
         }
