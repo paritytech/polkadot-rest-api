@@ -17,9 +17,8 @@ use crate::handlers::coretime::common::{
     CoretimeError,
     CoretimeQueryParams,
     TASK_ID_SIZE,
-    decode_compact_u32,
     // Shared functions
-    has_broker_pallet,
+    has_broker_pallet, decode_compact_u32,
 };
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
@@ -153,12 +152,13 @@ async fn fetch_reservations(
     let raw_bytes = reservations_value.into_bytes();
 
     // Decode reservations - it's a Vec<Vec<ScheduleItem>>
-    let reservations =
-        decode_reservations(&raw_bytes).map_err(|e| CoretimeError::StorageDecodeFailed {
+    let reservations = decode_reservations(&raw_bytes).map_err(|e| {
+        CoretimeError::StorageDecodeFailed {
             pallet: "Broker",
             entry: "Reservations",
             details: e,
-        })?;
+        }
+    })?;
 
     // Extract info from each reservation (first schedule item of each)
     let reservation_infos: Vec<ReservationInfo> = reservations
@@ -338,10 +338,7 @@ mod tests {
 
     #[test]
     fn test_decode_reservations_empty() {
-        assert_eq!(
-            decode_reservations(&[]).unwrap(),
-            Vec::<Vec<ScheduleItem>>::new()
-        );
+        assert_eq!(decode_reservations(&[]).unwrap(), Vec::<Vec<ScheduleItem>>::new());
     }
 
     #[test]
@@ -476,10 +473,12 @@ mod tests {
                 hash: "0xabc123".to_string(),
                 height: "12345".to_string(),
             },
-            reservations: vec![ReservationInfo {
-                mask: "0xffffffffffffffffffff".to_string(),
-                task: "1000".to_string(),
-            }],
+            reservations: vec![
+                ReservationInfo {
+                    mask: "0xffffffffffffffffffff".to_string(),
+                    task: "1000".to_string(),
+                },
+            ],
         };
 
         let json = serde_json::to_string(&response).unwrap();

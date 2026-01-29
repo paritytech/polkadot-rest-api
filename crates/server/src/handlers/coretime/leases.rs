@@ -14,9 +14,8 @@ use crate::handlers::coretime::common::{
     CoretimeError,
     CoretimeQueryParams,
     TASK_ID_SIZE,
-    decode_compact_u32,
     // Shared functions
-    has_broker_pallet,
+    has_broker_pallet, decode_compact_u32,
 };
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};

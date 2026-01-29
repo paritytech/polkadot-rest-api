@@ -587,8 +587,14 @@ async fn test_coretime_reservations_item_structure() -> Result<()> {
         "Reservation should have 'task' field"
     );
 
-    assert!(reservation["mask"].is_string(), "'mask' should be a string");
-    assert!(reservation["task"].is_string(), "'task' should be a string");
+    assert!(
+        reservation["mask"].is_string(),
+        "'mask' should be a string"
+    );
+    assert!(
+        reservation["task"].is_string(),
+        "'task' should be a string"
+    );
 
     // Validate mask is a valid hex string (should start with 0x)
     let mask = reservation["mask"].as_str().unwrap();
@@ -770,7 +776,9 @@ async fn test_coretime_reservations_nonexistent_block() -> Result<()> {
     let client = setup_client().await?;
 
     // Use a very high block number that doesn't exist
-    let response = client.get("/v1/coretime/reservations?at=999999999").await?;
+    let response = client
+        .get("/v1/coretime/reservations?at=999999999")
+        .await?;
 
     // Should return 404 for non-existent block
     assert_eq!(
@@ -784,7 +792,8 @@ async fn test_coretime_reservations_nonexistent_block() -> Result<()> {
     assert!(
         json["error"]
             .as_str()
-            .map(|m| m.to_lowercase().contains("block") && m.to_lowercase().contains("not found"))
+            .map(|m| m.to_lowercase().contains("block")
+                && m.to_lowercase().contains("not found"))
             .unwrap_or(false),
         "Error message should indicate block not found: {:?}",
         json
@@ -833,7 +842,9 @@ async fn test_coretime_reservations_invalid_block_hash() -> Result<()> {
     let client = setup_client().await?;
 
     // Invalid hex string (not 32 bytes)
-    let response = client.get("/v1/coretime/reservations?at=0xabc123").await?;
+    let response = client
+        .get("/v1/coretime/reservations?at=0xabc123")
+        .await?;
 
     // Should return 400 or 404 for invalid block hash format
     assert!(
