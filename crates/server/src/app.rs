@@ -21,6 +21,10 @@ pub fn create_app(state: AppState) -> Router {
             registry,
             &state.chain_info.chain_type,
         ))
+        .merge(routes::paras::routes(
+            registry,
+            &state.chain_info.chain_type,
+        ))
         .merge(routes::rc::routes(registry, &state.chain_info.chain_type))
         .merge(routes::runtime::routes(registry))
         .merge(routes::transaction::routes(

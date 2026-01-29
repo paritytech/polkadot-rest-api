@@ -6,6 +6,7 @@ pub mod health;
 pub mod metrics;
 pub mod node;
 pub mod pallets;
+pub mod paras;
 pub mod rc;
 pub mod registry;
 pub mod root;
