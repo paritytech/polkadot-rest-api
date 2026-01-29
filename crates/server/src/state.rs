@@ -13,6 +13,7 @@ use subxt_rpcs::client::reconnecting_rpc_client::{
     ExponentialBackoff, RpcClient as ReconnectingRpcClient,
 };
 use subxt_rpcs::{LegacyRpcMethods, RpcClient, rpc_params};
+use tokio::sync::OnceCell;
 
 /// Type alias for LegacyRpcMethods with correct RpcConfig wrapper
 pub type SubstrateLegacyRpc = LegacyRpcMethods<RpcConfigFor<SubstrateConfig>>;
@@ -38,6 +39,18 @@ pub enum StateError {
 
     #[error("spec_name not found in runtime version")]
     SpecNameNotFound,
+}
+
+/// Error type for relay chain connection operations
+#[derive(Debug, Clone, Error)]
+pub enum RelayChainError {
+    #[error(
+        "Relay chain URL not configured. Add a relay chain URL to SAS_SUBSTRATE_MULTI_CHAIN_URL"
+    )]
+    NotConfigured,
+
+    #[error("Failed to connect to relay chain: {0}")]
+    ConnectionFailed(String),
 }
 
 /// Information about the connected chain
@@ -81,6 +94,8 @@ pub struct AppState {
     pub route_registry: RouteRegistry,
     /// Relay Chain RPC client (only present when multi-chain is configured with a relay chain)
     pub relay_chain_rpc: Option<Arc<SubstrateLegacyRpc>>,
+    /// Lazy-initialized relay chain RPC client for when startup connection failed but URL is configured
+    pub lazy_relay_rpc: Arc<OnceCell<Arc<RpcClient>>>,
 }
 
 impl AppState {
@@ -196,6 +211,7 @@ impl AppState {
             chain_config: full_config,
             route_registry: RouteRegistry::new(),
             relay_chain_rpc,
+            lazy_relay_rpc: Arc::new(OnceCell::new()),
         })
     }
 
@@ -209,6 +225,39 @@ impl AppState {
 
     pub fn get_relay_chain_rpc_client(&self) -> Option<&Arc<RpcClient>> {
         self.relay_rpc_client.as_ref()
+    }
+
+    /// Get or lazily initialize the relay chain RPC client.
+    ///
+    /// This method first checks if a relay chain connection was established at startup.
+    /// If not, it attempts to create one lazily using the configured relay chain URL.
+    /// The connection is cached after the first successful initialization.
+    pub async fn get_or_init_relay_rpc_client(&self) -> Result<Arc<RpcClient>, RelayChainError> {
+        // Return existing connection if available
+        if let Some(client) = &self.relay_rpc_client {
+            return Ok(client.clone());
+        }
+
+        // Try lazy initialization
+        self.lazy_relay_rpc
+            .get_or_try_init(|| async {
+                let relay_url = self
+                    .config
+                    .substrate
+                    .multi_chain_urls
+                    .iter()
+                    .find(|chain_url| chain_url.chain_type == ChainType::Relay)
+                    .map(|chain_url| chain_url.url.clone())
+                    .ok_or(RelayChainError::NotConfigured)?;
+
+                let client = RpcClient::from_insecure_url(&relay_url)
+                    .await
+                    .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
+
+                Ok(Arc::new(client))
+            })
+            .await
+            .cloned()
     }
 
     /// Connect to a relay chain

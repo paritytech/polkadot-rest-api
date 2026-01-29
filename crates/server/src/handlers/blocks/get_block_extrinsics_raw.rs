@@ -12,7 +12,7 @@ use axum::{
 };
 use serde::Serialize;
 
-use super::common::decode_digest_logs;
+use super::common::convert_digest_items_to_logs;
 use super::types::{DigestLog, GetBlockError};
 
 // ================================================================================================
@@ -69,36 +69,30 @@ async fn build_block_raw_response(
     block_id: String,
 ) -> Result<BlockRawResponse, GetBlockError> {
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
-    let resolved_block = utils::resolve_block(state, Some(block_id_parsed)).await?;
 
-    let header_json = state
-        .get_header_json(&resolved_block.hash)
+    let client_at_block = match &block_id_parsed {
+        utils::BlockId::Hash(hash) => state.client.at_block(*hash).await,
+        utils::BlockId::Number(number) => state.client.at_block(*number).await,
+    }
+    .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_number = client_at_block.block_number();
+
+    let header = client_at_block
+        .block_header()
         .await
-        .map_err(GetBlockError::HeaderFetchFailed)?;
+        .map_err(GetBlockError::BlockHeaderFailed)?;
 
-    let parent_hash = header_json
-        .get("parentHash")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("parentHash".to_string()))?
-        .to_string();
+    let parent_hash = format!("{:#x}", header.parent_hash);
+    let state_root = format!("{:#x}", header.state_root);
+    let extrinsic_root = format!("{:#x}", header.extrinsics_root);
 
-    let state_root = header_json
-        .get("stateRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("stateRoot".to_string()))?
-        .to_string();
+    let logs = convert_digest_items_to_logs(&header.digest.logs);
 
-    let extrinsic_root = header_json
-        .get("extrinsicsRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
-        .to_string();
+    let number = format!("0x{:08x}", block_number);
 
-    let logs = decode_digest_logs(&header_json);
-
-    let number = format!("0x{:08x}", resolved_block.number);
-
-    let extrinsics = fetch_raw_extrinsics(state, &resolved_block.hash).await?;
+    let extrinsics = fetch_raw_extrinsics(state, &block_hash).await?;
 
     Ok(BlockRawResponse {
         parent_hash,

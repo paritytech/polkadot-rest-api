@@ -16,13 +16,17 @@ pub fn create_app(state: AppState) -> Router {
         .merge(routes::capabilities::routes(registry))
         .merge(routes::coretime::routes(registry))
         .merge(routes::health::routes(registry))
+        .merge(routes::node::routes(registry))
         .merge(routes::pallets::routes(
             registry,
             &state.chain_info.chain_type,
         ))
         .merge(routes::rc::routes(registry))
         .merge(routes::runtime::routes(registry))
-        .merge(routes::transaction::routes(registry))
+        .merge(routes::transaction::routes(
+            registry,
+            &state.chain_info.chain_type,
+        ))
         .merge(routes::version::routes(registry))
         .with_state(state.clone());
 

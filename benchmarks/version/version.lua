@@ -1,7 +1,7 @@
 -- Version endpoint benchmark script
 -- Tests the /version endpoint for latency and throughput
 
-local util = require("../util")
+local util = require("util")
 
 -- Setup the request
 request = function()

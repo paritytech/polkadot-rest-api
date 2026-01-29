@@ -10,10 +10,20 @@
       "sidecar_endpoint": "/runtime/spec",
       "description": "Runtime specification information"
     },
-    "version": {
-      "local_endpoint": "/v1/version",
+    "node_version": {
+      "local_endpoint": "/v1/node/version",
       "sidecar_endpoint": "/node/version",
-      "description": "Node version information"
+      "description": "Node version information (client version, implementation, chain)"
+    },
+    "node_network": {
+      "local_endpoint": "/v1/node/network",
+      "sidecar_endpoint": "/node/network",
+      "description": "Node network information"
+    },
+    "node_transaction_pool": {
+      "local_endpoint": "/v1/node/transaction-pool",
+      "sidecar_endpoint": "/node/transaction-pool",
+      "description": "Transaction pool information"
     },
     "blocks": {
       "local_endpoint": "/v1/blocks",
@@ -41,8 +51,46 @@
         }
       ]
     },
-    "version": {
+    "node_version": {
       "endpoint": "/node/version",
+      "scenarios": [
+        {
+          "name": "light_load",
+          "threads": 2,
+          "connections": 10,
+          "duration": "30s",
+          "timeout": "60s"
+        },
+        {
+          "name": "medium_load",
+          "threads": 4,
+          "connections": 50,
+          "duration": "60s",
+          "timeout": "120s"
+        }
+      ]
+    },
+    "node_network": {
+      "endpoint": "/node/network",
+      "scenarios": [
+        {
+          "name": "light_load",
+          "threads": 2,
+          "connections": 10,
+          "duration": "30s",
+          "timeout": "60s"
+        },
+        {
+          "name": "medium_load",
+          "threads": 4,
+          "connections": 50,
+          "duration": "60s",
+          "timeout": "120s"
+        }
+      ]
+    },
+    "node_transaction_pool": {
+      "endpoint": "/node/transaction-pool",
       "scenarios": [
         {
           "name": "light_load",
@@ -62,4 +110,3 @@
     }
   }
 }
-
