@@ -21,8 +21,8 @@ pub use fee::{
 pub use format::{decode_address_to_ss58, hex_with_prefix, lowercase_first_char};
 pub use hash::{HashError, compute_block_hash_from_header_json, parse_block_number_from_json};
 pub use rc_block::{
-    AhBlockInfo, RcBlockError, extract_block_number_from_header, extract_bytes_from_json,
-    find_ah_blocks_in_rc_block,
+    AhBlockInfo, RcBlockError, RcClientAtBlock, extract_block_number_from_header,
+    extract_bytes_from_json, find_ah_blocks_in_rc_block, find_ah_blocks_in_rc_block_at,
 };
 
 /// Check if an RPC error indicates the connection was lost and reconnection is in progress.
