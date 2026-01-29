@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod ahm;
 pub mod blocks;
 pub mod capabilities;

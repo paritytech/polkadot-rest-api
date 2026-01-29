@@ -32,6 +32,7 @@ heck = "0.5"
 primitive-types = "0.13"
 rustc-hex = "2.1"
 hex = "0.4"
+ss58-registry = "1.51"
 parity-scale-codec = { version = "3.0", features = ["derive"] }
 sp-core = "34"
 sp-runtime = "39"
