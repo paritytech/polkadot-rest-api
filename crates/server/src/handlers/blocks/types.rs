@@ -15,6 +15,21 @@ use thiserror::Error;
 // Query Parameters
 // ================================================================================================
 
+/// Common block build parameters shared between /blocks/{blockId} and /rc/blocks/{blockId}
+#[derive(Debug, Clone, Default)]
+pub struct BlockBuildParams {
+    /// When true, include documentation for events
+    pub event_docs: bool,
+    /// When true, include documentation for extrinsics
+    pub extrinsic_docs: bool,
+    /// When true, skip fee calculation for extrinsics (info will be empty object)
+    pub no_fees: bool,
+    /// When true, decode and include XCM messages from the block's extrinsics
+    pub decoded_xcm_msgs: bool,
+    /// Filter decoded XCM messages by parachain ID (only used when decodedXcmMsgs=true)
+    pub para_id: Option<u32>,
+}
+
 /// Query parameters for /blocks/{blockId} endpoint
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,6 +85,18 @@ impl Default for BlockQueryParams {
             use_rc_block: false,
             decoded_xcm_msgs: false,
             para_id: None,
+        }
+    }
+}
+
+impl BlockQueryParams {
+    pub fn to_build_params(&self) -> BlockBuildParams {
+        BlockBuildParams {
+            event_docs: self.event_docs,
+            extrinsic_docs: self.extrinsic_docs,
+            no_fees: self.no_fees,
+            decoded_xcm_msgs: self.decoded_xcm_msgs,
+            para_id: self.para_id,
         }
     }
 }

@@ -10,18 +10,9 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use heck::{ToSnakeCase, ToUpperCamelCase};
 use serde_json::json;
 
-use super::common::{
-    add_docs_to_events, convert_digest_items_to_logs, extract_author, get_canonical_hash_at_number,
-    get_finalized_block_number,
-};
-use super::decode::XcmDecoder;
-use super::docs::Docs;
-use super::processing::{
-    categorize_events, extract_extrinsics, extract_fee_info_for_extrinsic, fetch_block_events,
-};
+use super::common::{BlockBuildContext, build_block_response_generic};
 use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
 
 // ================================================================================================
@@ -150,199 +141,24 @@ pub(crate) async fn build_block_response_for_hash(
     client_at_block: &super::common::BlockClient,
     params: &BlockQueryParams,
 ) -> Result<BlockResponse, GetBlockError> {
-    let header = client_at_block
-        .block_header()
-        .await
-        .map_err(GetBlockError::BlockHeaderFailed)?;
-
-    let parent_hash = format!("{:#x}", header.parent_hash);
-    let state_root = format!("{:#x}", header.state_root);
-    let extrinsics_root = format!("{:#x}", header.extrinsics_root);
-
-    let logs = convert_digest_items_to_logs(&header.digest.logs);
-
-    let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
-        extract_author(state, client_at_block, &logs, block_number),
-        extract_extrinsics(state, client_at_block, block_number),
-        fetch_block_events(state, client_at_block, block_number),
-        // Only fetch canonical hash if queried by hash (needed for fork detection)
-        async {
-            if params.finalized_key {
-                Some(get_finalized_block_number(state).await)
-            } else {
-                None
-            }
-        },
-        // Only fetch canonical hash if queried by hash AND finalizedKey=true
-        async {
-            if queried_by_hash && params.finalized_key {
-                Some(get_canonical_hash_at_number(state, block_number).await)
-            } else {
-                None
-            }
-        },
-    );
-
-    let extrinsics = extrinsics_result?;
-    let block_events = events_result?;
-
-    // Determine if the block is finalized (only when finalizedKey=true)
-    let finalized = if let Some(finalized_head_result) = finalized_head_result {
-        let finalized_head_number = finalized_head_result?;
-        // 1. Block number must be <= finalized head number
-        // 2. If queried by hash, the hash must match the canonical chain hash
-        //    (to detect blocks on forked/orphaned chains)
-        let is_finalized = if block_number <= finalized_head_number {
-            if let Some(canonical_result) = canonical_hash_result {
-                // Queried by hash - verify it's on the canonical chain
-                match canonical_result? {
-                    Some(canonical_hash) => canonical_hash == block_hash,
-                    // If canonical hash not found, block is not finalized
-                    None => false,
-                }
-            } else {
-                // Queried by number - assumed to be canonical
-                true
-            }
-        } else {
-            false
-        };
-        Some(is_finalized)
-    } else {
-        // finalizedKey=false, omit finalized field
-        None
+    let ctx = BlockBuildContext {
+        state,
+        client: &state.client,
+        rpc_client: None, // Use state.rpc_client
+        ss58_prefix: state.chain_info.ss58_prefix,
+        chain_type: state.chain_info.chain_type.clone(),
     };
 
-    // Categorize events by phase and extract extrinsic outcomes (success, paysFee)
-    let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
-        categorize_events(block_events, extrinsics.len());
-
-    let mut extrinsics_with_events = extrinsics;
-    for (i, (extrinsic_events, outcome)) in per_extrinsic_events
-        .iter()
-        .zip(extrinsic_outcomes.iter())
-        .enumerate()
-    {
-        if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            extrinsic.events = extrinsic_events.clone();
-            extrinsic.success = outcome.success;
-            // Only update pays_fee from events if the extrinsic is SIGNED.
-            // Unsigned extrinsics (inherents) never pay fees, regardless of what
-            // DispatchInfo.paysFee says in the event. The event's paysFee indicates
-            // whether the call *would* pay a fee if called as a transaction, but
-            // inherents are inserted by block authors and don't actually pay fees.
-            if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
-                extrinsic.pays_fee = outcome.pays_fee;
-            }
-        }
-    }
-
-    // Populate fee info for signed extrinsics that pay fees (unless noFees=true)
-    // Optimization: Only fetch runtime version and process fees if there are extrinsics that need it
-    if !params.no_fees {
-        // Find indices of extrinsics that need fee calculation
-        let fee_indices: Vec<usize> = extrinsics_with_events
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| e.signature.is_some() && e.pays_fee == Some(true))
-            .map(|(i, _)| i)
-            .collect();
-
-        // Only fetch runtime version if there are extrinsics that need fees
-        if !fee_indices.is_empty() {
-            let spec_version = state
-                .get_runtime_version_at_hash(block_hash)
-                .await
-                .map_err(GetBlockError::RuntimeVersionFailed)?
-                .get("specVersion")
-                .and_then(|sv| sv.as_u64())
-                .map(|v| v as u32)
-                .ok_or_else(|| GetBlockError::HeaderFieldMissing("specVersion".to_string()))?;
-
-            // Parallelize fee extraction for all extrinsics that need it
-            let fee_futures: Vec<_> = fee_indices
-                .iter()
-                .map(|&i| {
-                    let extrinsic = &extrinsics_with_events[i];
-                    extract_fee_info_for_extrinsic(
-                        state,
-                        None,
-                        &extrinsic.raw_hex,
-                        &extrinsic.events,
-                        extrinsic_outcomes.get(i),
-                        &parent_hash,
-                        spec_version,
-                    )
-                })
-                .collect();
-
-            let fee_results = futures::future::join_all(fee_futures).await;
-
-            // Apply fee results back to extrinsics
-            for (idx, fee_info) in fee_indices.into_iter().zip(fee_results.into_iter()) {
-                extrinsics_with_events[idx].info = fee_info;
-            }
-        }
-    }
-
-    // Optionally populate documentation for events and extrinsics
-    let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
-
-    if params.event_docs || params.extrinsic_docs {
-        // Reuse the client_at_block we created earlier
-        let metadata = client_at_block.metadata();
-
-        if params.event_docs {
-            add_docs_to_events(&mut on_initialize.events, &metadata);
-            add_docs_to_events(&mut on_finalize.events, &metadata);
-
-            for extrinsic in extrinsics_with_events.iter_mut() {
-                add_docs_to_events(&mut extrinsic.events, &metadata);
-            }
-        }
-
-        if params.extrinsic_docs {
-            for extrinsic in extrinsics_with_events.iter_mut() {
-                // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
-                // We need to convert back: "system" -> "System", "balances" -> "Balances"
-                // Method names in metadata are snake_case, but our method names are lowerCamelCase
-                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
-                let method_name = extrinsic.method.method.to_snake_case();
-                extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
-                    .map(|d| d.to_string());
-            }
-        }
-    }
-
-    // Decode XCM messages if requested
-    let decoded_xcm_msgs = if params.decoded_xcm_msgs {
-        let decoder = XcmDecoder::new(
-            state.chain_info.chain_type.clone(),
-            &extrinsics_with_events,
-            params.para_id,
-        );
-        Some(decoder.decode())
-    } else {
-        None
-    };
-
-    Ok(BlockResponse {
-        number: block_number.to_string(),
-        hash: block_hash.to_string(),
-        parent_hash,
-        state_root,
-        extrinsics_root,
-        author_id,
-        logs,
-        on_initialize,
-        extrinsics: extrinsics_with_events,
-        on_finalize,
-        finalized,
-        decoded_xcm_msgs,
-        rc_block_hash: None,
-        rc_block_number: None,
-        ah_timestamp: None,
-    })
+    build_block_response_generic(
+        &ctx,
+        client_at_block,
+        block_hash,
+        block_number,
+        queried_by_hash,
+        &params.to_build_params(),
+        params.finalized_key,
+    )
+    .await
 }
 
 // ================================================================================================

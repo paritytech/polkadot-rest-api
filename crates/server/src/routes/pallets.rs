@@ -29,6 +29,20 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
             "/pallets/staking/validators",
             "get",
             get(pallets::pallets_staking_validators),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/:pallet_id/consts",
+            "get",
+            get(pallets::pallets_constants),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/:pallet_id/consts/:constant_item_id",
+            "get",
+            get(pallets::pallets_constant_item),
         );
 
     // Only register /rc/ routes for parachains, not relay chains
