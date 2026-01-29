@@ -21,7 +21,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum RcParaInclusionsError {
-    #[error("Relay chain not configured. Set SAS_RELAY_CHAIN_URL to enable relay chain endpoints.")]
+    #[error(
+        "Relay chain not configured. Set SAS_SUBSTRATE_MULTI_CHAIN_URL to enable relay chain endpoints."
+    )]
     RelayChainNotConfigured,
 
     #[error(transparent)]
@@ -33,7 +35,7 @@ impl IntoResponse for RcParaInclusionsError {
         match self {
             RcParaInclusionsError::RelayChainNotConfigured => {
                 let body = Json(json!({
-                    "error": "Relay chain not configured. Set SAS_RELAY_CHAIN_URL to enable relay chain endpoints.",
+                    "error": "Relay chain not configured. Set SAS_SUBSTRATE_MULTI_CHAIN_URL to enable relay chain endpoints.",
                 }));
                 (StatusCode::SERVICE_UNAVAILABLE, body).into_response()
             }
