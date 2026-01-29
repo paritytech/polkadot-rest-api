@@ -255,6 +255,16 @@ async fn test_historical_asset_hub_kusama() -> Result<()> {
     run_historical_test_for_chain("asset-hub-kusama").await
 }
 
+#[tokio::test]
+async fn test_historical_coretime_kusama() -> Result<()> {
+    run_historical_test_for_chain("coretime-kusama").await
+}
+
+#[tokio::test]
+async fn test_historical_coretime_polkadot() -> Result<()> {
+    run_historical_test_for_chain("coretime-polkadot").await
+}
+
 fn init_tracing() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())

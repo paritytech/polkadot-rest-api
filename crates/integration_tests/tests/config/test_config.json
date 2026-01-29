@@ -41,6 +41,22 @@
       "api_url": "http://localhost:8080",
       "test_accounts": [],
       "extra": {}
+    },
+    {
+      "name": "coretime-kusama",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {
+        "rpc_url": "wss://kusama-coretime-rpc.polkadot.io"
+      }
+    },
+    {
+      "name": "coretime-polkadot",
+      "api_url": "http://localhost:8080",
+      "test_accounts": [],
+      "extra": {
+        "rpc_url": "wss://polkadot-coretime-rpc.polkadot.io"
+      }
     }
   ],
   "latest_endpoints": [
@@ -559,6 +575,30 @@
         },
         "fixture_path": "asset-hub-kusama/pallets_assets_1984_asset_info_11152000.json",
         "description": "Test pallets assets asset-info for USDT (asset 1984) at Asset Hub Kusama block 11,152,000"
+      }
+    ],
+    "coretime-kusama": [
+      {
+        "endpoint": "/v1/coretime/leases",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "1000000"
+        },
+        "fixture_path": "coretime-kusama/coretime_leases_1000000.json",
+        "description": "Test coretime leases endpoint at Coretime Kusama block 1,000,000"
+      }
+    ],
+    "coretime-polkadot": [
+      {
+        "endpoint": "/v1/coretime/leases",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "1000000"
+        },
+        "fixture_path": "coretime-polkadot/coretime_leases_1000000.json",
+        "description": "Test coretime leases endpoint at Coretime Polkadot block 1,000,000"
       }
     ]
   }
