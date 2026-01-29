@@ -3,7 +3,7 @@
 //! Returns block information for a specific block by height or hash on the relay chain.
 //! This endpoint is designed for Asset Hub or parachain endpoints that have a relay chain configured.
 
-use crate::handlers::blocks::common::{build_block_response_generic, BlockBuildContext};
+use crate::handlers::blocks::common::{BlockBuildContext, build_block_response_generic};
 use crate::handlers::blocks::types::{BlockBuildParams, GetBlockError};
 use crate::state::AppState;
 use crate::utils;
@@ -23,7 +23,7 @@ use thiserror::Error;
 // ================================================================================================
 
 /// Query parameters for /rc/blocks/{blockId} endpoint
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RcBlockQueryParams {
     /// When true, include documentation for events
@@ -41,18 +41,6 @@ pub struct RcBlockQueryParams {
     /// Filter decoded XCM messages by parachain ID (only used when decodedXcmMsgs=true)
     #[serde(default)]
     pub para_id: Option<u32>,
-}
-
-impl Default for RcBlockQueryParams {
-    fn default() -> Self {
-        Self {
-            event_docs: false,
-            extrinsic_docs: false,
-            no_fees: false,
-            decoded_xcm_msgs: false,
-            para_id: None,
-        }
-    }
 }
 
 impl RcBlockQueryParams {
@@ -92,9 +80,7 @@ pub enum GetRcBlockError {
 impl IntoResponse for GetRcBlockError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            GetRcBlockError::RelayChainNotConfigured => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
+            GetRcBlockError::RelayChainNotConfigured => (StatusCode::BAD_REQUEST, self.to_string()),
             GetRcBlockError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             GetRcBlockError::ClientAtBlockFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
@@ -166,7 +152,7 @@ pub async fn get_rc_block(
     let ctx = BlockBuildContext {
         state: &state,
         client: relay_client,
-        rpc_client: Some(&relay_rpc_client),
+        rpc_client: Some(relay_rpc_client),
         ss58_prefix: relay_chain_info.ss58_prefix,
         chain_type: ChainType::Relay,
     };
@@ -211,7 +197,10 @@ mod tests {
             logs: vec![DigestLog {
                 log_type: "PreRuntime".to_string(),
                 index: "6".to_string(),
-                value: json!(["0x42414245", "0x034f020000d42894110000000016310ed2257a4e5308248da4b45f94b48e9cfdf0a67bb4a8fec187f797632a20df25ae14ab1769d1f7da5135b3e144d86b66b70f8de541ab53fbec0a6a0e120c6f800a30fdf417ff16de739c57c623c621addee6be951037e0d000b2f6eb1b03"]),
+                value: json!([
+                    "0x42414245",
+                    "0x034f020000d42894110000000016310ed2257a4e5308248da4b45f94b48e9cfdf0a67bb4a8fec187f797632a20df25ae14ab1769d1f7da5135b3e144d86b66b70f8de541ab53fbec0a6a0e120c6f800a30fdf417ff16de739c57c623c621addee6be951037e0d000b2f6eb1b03"
+                ]),
             }],
             on_initialize: OnInitialize { events: vec![] },
             extrinsics: vec![ExtrinsicInfo {
@@ -223,7 +212,8 @@ mod tests {
                 nonce: None,
                 args: serde_json::Map::from_iter(vec![("now".to_string(), json!("1769534712000"))]),
                 tip: None,
-                hash: "0x76ccdad5a14aab4061c0fb5331d5da2798695e40b948e28678a0ee2cc08b666a".to_string(),
+                hash: "0x76ccdad5a14aab4061c0fb5331d5da2798695e40b948e28678a0ee2cc08b666a"
+                    .to_string(),
                 info: serde_json::Map::new(),
                 era: EraInfo {
                     immortal_era: Some("0x00".to_string()),

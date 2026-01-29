@@ -438,38 +438,37 @@ pub async fn build_block_response_generic(
 
     let logs = convert_digest_items_to_logs(&header.digest.logs);
 
-    let (author_id, extrinsics_result, events_result, finalized_result, canonical_hash_result) =
-        tokio::join!(
-            extract_author_with_prefix(client_at_block, &logs, ctx.ss58_prefix, block_number),
-            extract_extrinsics_with_prefix(ctx.ss58_prefix, client_at_block, block_number),
-            fetch_block_events_with_prefix(ctx.ss58_prefix, client_at_block, block_number),
-            async {
-                if include_finalized {
-                    Some(
-                        ctx.client
-                            .at_current_block()
-                            .await
-                            .map(|b| b.block_number())
-                            .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e.into()))),
-                    )
-                } else {
-                    None
-                }
-            },
-            async {
-                if queried_by_hash && include_finalized {
-                    let hash = ctx
-                        .client
-                        .at_block(block_number)
+    let (author_id, extrinsics_result, events_result, finalized_result, canonical_hash_result) = tokio::join!(
+        extract_author_with_prefix(client_at_block, &logs, ctx.ss58_prefix, block_number),
+        extract_extrinsics_with_prefix(ctx.ss58_prefix, client_at_block, block_number),
+        fetch_block_events_with_prefix(ctx.ss58_prefix, client_at_block, block_number),
+        async {
+            if include_finalized {
+                Some(
+                    ctx.client
+                        .at_current_block()
                         .await
-                        .ok()
-                        .map(|b| format!("{:#x}", b.block_hash()));
-                    Some(Ok::<_, GetBlockError>(hash))
-                } else {
-                    None
-                }
-            },
-        );
+                        .map(|b| b.block_number())
+                        .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e))),
+                )
+            } else {
+                None
+            }
+        },
+        async {
+            if queried_by_hash && include_finalized {
+                let hash = ctx
+                    .client
+                    .at_block(block_number)
+                    .await
+                    .ok()
+                    .map(|b| format!("{:#x}", b.block_hash()));
+                Some(Ok::<_, GetBlockError>(hash))
+            } else {
+                None
+            }
+        },
+    );
 
     let extrinsics = extrinsics_result?;
     let block_events = events_result?;
@@ -579,7 +578,11 @@ pub async fn build_block_response_generic(
     }
 
     let decoded_xcm_msgs = if params.decoded_xcm_msgs {
-        let decoder = XcmDecoder::new(ctx.chain_type.clone(), &extrinsics_with_events, params.para_id);
+        let decoder = XcmDecoder::new(
+            ctx.chain_type.clone(),
+            &extrinsics_with_events,
+            params.para_id,
+        );
         Some(decoder.decode())
     } else {
         None

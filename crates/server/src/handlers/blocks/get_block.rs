@@ -12,7 +12,7 @@ use axum::{
 use config::ChainType;
 use serde_json::json;
 
-use super::common::{build_block_response_generic, BlockBuildContext};
+use super::common::{BlockBuildContext, build_block_response_generic};
 use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
 
 // ================================================================================================
