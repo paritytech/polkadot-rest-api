@@ -358,7 +358,8 @@
         "block_height": null,
         "account_id": null,
         "query_params": {
-          "at": "21000000"
+          "at": "21000000",
+          "metadata": "true"
         },
         "fixture_path": "polkadot/pallets_balances_errors_InsufficientBalance_21000000.json",
         "description": "Test pallets balances errors InsufficientBalance at Polkadot block 21,000,000"
