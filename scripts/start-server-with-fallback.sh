@@ -68,6 +68,19 @@ case $CHAIN in
             "wss://westend-rpc-tn.dwellir.com"
         )
         ;;
+    coretime-kusama)
+        RPC_URLS=(
+            "wss://coretime-kusama.dotters.network"
+            "wss://coretime-kusama-rpc.n.dwellir.com"
+        )
+        ;;
+    coretime-polkadot)
+        RPC_URLS=(
+            "wss://coretime-polkadot.dotters.network"
+            "wss://sys.ibp.network/coretime-polkadot"
+            "wss://coretime-polkadot-rpc.n.dwellir.com"
+        )
+        ;;
     *)
         echo "Unknown chain: $CHAIN"
         echo "Supported chains: polkadot, kusama, asset-hub-polkadot, asset-hub-kusama, westend"

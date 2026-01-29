@@ -1,5 +1,16 @@
 //! Script to update test fixtures with real blockchain data
-//! This script calls the REST API to fetch block data, ensuring fixtures match exactly what the API returns
+//!
+//! This script reads test cases from test_config.json and uses the `endpoint` field
+//! to determine which API endpoint to call. It supports any endpoint type (blocks,
+//! coretime, runtime, etc.) by using the endpoint path and query_params from each test case.
+//!
+//! Usage:
+//!   cargo run --bin update_fixtures [chain]
+//!
+//! Examples:
+//!   cargo run --bin update_fixtures polkadot
+//!   cargo run --bin update_fixtures coretime-kusama
+//!   cargo run --bin update_fixtures all
 
 use anyhow::{Context, Result};
 use integration_tests::constants::API_READY_TIMEOUT_SECONDS;
@@ -18,7 +29,7 @@ async fn main() -> Result<()> {
     let chain = if args.len() > 1 {
         args[1].to_lowercase()
     } else {
-        // If no argument, update both chains
+        // If no argument, update all chains
         "all".to_string()
     };
 
@@ -69,15 +80,23 @@ async fn main() -> Result<()> {
         "asset-hub-kusama" => {
             update_chain_fixtures(&client, &api_url, "asset-hub-kusama", &config).await?;
         }
+        "coretime-polkadot" => {
+            update_chain_fixtures(&client, &api_url, "coretime-polkadot", &config).await?;
+        }
+        "coretime-kusama" => {
+            update_chain_fixtures(&client, &api_url, "coretime-kusama", &config).await?;
+        }
         "all" => {
             update_chain_fixtures(&client, &api_url, "polkadot", &config).await?;
             update_chain_fixtures(&client, &api_url, "kusama", &config).await?;
             update_chain_fixtures(&client, &api_url, "asset-hub-polkadot", &config).await?;
             update_chain_fixtures(&client, &api_url, "asset-hub-kusama", &config).await?;
+            update_chain_fixtures(&client, &api_url, "coretime-polkadot", &config).await?;
+            update_chain_fixtures(&client, &api_url, "coretime-kusama", &config).await?;
         }
         _ => {
             anyhow::bail!(
-                "Invalid chain argument: {}. Use 'polkadot', 'kusama', 'asset-hub-polkadot', 'asset-hub-kusama', or 'all'",
+                "Invalid chain argument: {}. Use 'polkadot', 'kusama', 'asset-hub-polkadot', 'asset-hub-kusama', 'coretime-polkadot', 'coretime-kusama', or 'all'",
                 chain
             );
         }
@@ -125,20 +144,46 @@ async fn update_chain_fixtures(
     }
 
     for test_case in &test_cases {
-        if let Some(block_height) = test_case.block_height {
-            println!("\nFetching block {} from API...", block_height);
-            let block_data =
-                fetch_block_from_api(client, api_url, &block_height.to_string()).await?;
+        // Build endpoint URL, substituting {blockId} if block_height is provided
+        let endpoint = if let Some(block_height) = test_case.block_height {
+            test_case
+                .endpoint
+                .replace("{blockId}", &block_height.to_string())
+        } else {
+            test_case.endpoint.clone()
+        };
 
-            // Extract filename from fixture_path
-            let filename = test_case
-                .fixture_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .context("Invalid fixture path")?;
+        // Build query string from query_params
+        let query_string: String = test_case
+            .query_params
+            .iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect::<Vec<_>>()
+            .join("&");
 
-            save_fixture(chain_name, filename, &block_data)?;
-        }
+        let url = if query_string.is_empty() {
+            format!("{}{}", api_url.trim_end_matches('/'), endpoint)
+        } else {
+            format!(
+                "{}{}?{}",
+                api_url.trim_end_matches('/'),
+                endpoint,
+                query_string
+            )
+        };
+
+        println!("\nFetching: {}", url);
+
+        let data = fetch_endpoint_from_api(client, &url).await?;
+
+        // Extract filename from fixture_path
+        let filename = test_case
+            .fixture_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .context("Invalid fixture path")?;
+
+        save_fixture(chain_name, filename, &data)?;
     }
 
     println!("\n✓ {} fixtures updated", chain_name);
@@ -146,13 +191,10 @@ async fn update_chain_fixtures(
     Ok(())
 }
 
-async fn fetch_block_from_api(client: &Client, api_url: &str, block_id: &str) -> Result<Value> {
-    let url = format!("{}/v1/blocks/{}", api_url.trim_end_matches('/'), block_id);
-
-    println!("  Requesting: {}", url);
-
+/// Generic function to fetch data from any API endpoint
+async fn fetch_endpoint_from_api(client: &Client, url: &str) -> Result<Value> {
     let response = client
-        .get(&url)
+        .get(url)
         .send()
         .await
         .context(format!("Failed to send request to {}", url))?;
@@ -163,45 +205,18 @@ async fn fetch_block_from_api(client: &Client, api_url: &str, block_id: &str) ->
         anyhow::bail!("API returned status {}: {}", status, text);
     }
 
-    let block_data: Value = response
+    let data: Value = response
         .json()
         .await
         .context(format!("Failed to parse JSON response from {}", url))?;
 
-    // Verify the response has the expected structure
-    if !block_data.is_object() {
+    if !data.is_object() {
         anyhow::bail!("API response is not a JSON object");
     }
 
-    // Check for required fields matching BlockResponse struct
-    // BlockResponse fields: number, hash, parent_hash, state_root, extrinsics_root,
-    //                       author_id (optional), logs, extrinsics
-    let required_fields = [
-        "number",
-        "hash",
-        "parentHash",     // from parent_hash
-        "stateRoot",      // from state_root
-        "extrinsicsRoot", // from extrinsics_root
-        "logs",           // Vec<DigestLog>
-        "extrinsics",     // Vec<ExtrinsicInfo>
-    ];
-    for field in &required_fields {
-        if block_data.get(field).is_none() {
-            anyhow::bail!("API response missing required field: {}", field);
-        }
-    }
+    println!("  ✓ Response received");
 
-    // Verify that logs and extrinsics are arrays
-    if !block_data["logs"].is_array() {
-        anyhow::bail!("API response field 'logs' is not an array");
-    }
-    if !block_data["extrinsics"].is_array() {
-        anyhow::bail!("API response field 'extrinsics' is not an array");
-    }
-
-    println!("  ✓ Block {}", block_data["number"]);
-
-    Ok(block_data)
+    Ok(data)
 }
 
 fn save_fixture(chain: &str, filename: &str, data: &Value) -> Result<()> {
