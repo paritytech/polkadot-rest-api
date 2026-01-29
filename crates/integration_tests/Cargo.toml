@@ -19,6 +19,10 @@ path = "tests/basic.rs"
 name = "use_rc_block"
 path = "tests/use_rc_block.rs"
 
+[[test]]
+name = "accounts"
+path = "tests/accounts/mod.rs"
+
 [[bin]]
 name = "update_fixtures"
 path = "src/bin/update_fixtures.rs"

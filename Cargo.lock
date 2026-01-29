@@ -3973,6 +3973,7 @@ dependencies = [
  "sp-consensus-babe",
  "sp-core",
  "sp-runtime",
+ "ss58-registry",
  "staging-xcm",
  "subxt",
  "subxt-metadata",
