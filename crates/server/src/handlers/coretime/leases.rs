@@ -20,6 +20,37 @@ use serde::Serialize;
 use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
+// Storage key format for Broker::Workload:
+// - 16 bytes: pallet prefix (xxhash128 of "Broker")
+// - 16 bytes: entry prefix (xxhash128 of "Workload")
+// - 8 bytes: twox64 hash of the key
+// - 2 bytes: core index (u16, little-endian)
+// Total: 42 bytes, core index starts at byte 40
+
+/// Minimum length of the storage key to extract core index.
+const STORAGE_KEY_MIN_LENGTH: usize = 42;
+
+/// Offset where the core index (u16) starts in the storage key.
+const CORE_INDEX_OFFSET: usize = 40;
+
+/// Size of CoreMask in bytes (80 bits = 10 bytes).
+const CORE_MASK_SIZE: usize = 10;
+
+/// Size of a u32 task ID in bytes.
+const TASK_ID_SIZE: usize = 4;
+
+// CoreAssignment enum variants from the Broker pallet.
+// See: https://github.com/paritytech/polkadot-sdk/blob/master/substrate/frame/broker/src/types.rs
+
+/// CoreAssignment::Idle variant (core is not assigned).
+const ASSIGNMENT_IDLE_VARIANT: u8 = 0;
+
+/// CoreAssignment::Pool variant (core contributes to the pool).
+const ASSIGNMENT_POOL_VARIANT: u8 = 1;
+
+/// CoreAssignment::Task(u32) variant (core is assigned to a specific task/parachain).
+const ASSIGNMENT_TASK_VARIANT: u8 = 2;
+
 // ============================================================================
 // Response Types
 // ============================================================================
@@ -230,10 +261,9 @@ async fn fetch_workloads(
         let key_bytes = entry.key_bytes();
         let value_bytes = entry.value().bytes();
 
-        // Key format: 16 bytes pallet prefix + 16 bytes entry prefix + 8 bytes twox64 hash + 2 bytes core index
-        // Total: 42 bytes, core index starts at byte 40
-        let core: u32 = if key_bytes.len() >= 42 {
-            let core_bytes: [u8; 2] = key_bytes[40..42].try_into().unwrap_or([0, 0]);
+        let core: u32 = if key_bytes.len() >= STORAGE_KEY_MIN_LENGTH {
+            let core_bytes: [u8; 2] =
+                key_bytes[CORE_INDEX_OFFSET..STORAGE_KEY_MIN_LENGTH].try_into().unwrap_or([0, 0]);
             u16::from_le_bytes(core_bytes) as u32
         } else {
             continue;
@@ -267,31 +297,33 @@ fn extract_task_from_workload(bytes: &[u8]) -> Option<u32> {
 
     // Process the first schedule item (index 0)
     // ScheduleItem = { mask: CoreMask, assignment: CoreAssignment }
-    // CoreMask is [u8; 10] (80 bits)
     let item_start = offset;
 
-    // Skip the mask (10 bytes)
-    let assignment_start = item_start + 10;
+    // Skip the mask to get to the assignment
+    let assignment_start = item_start + CORE_MASK_SIZE;
     if assignment_start >= bytes.len() {
         return None;
     }
 
-    // Decode the assignment
-    // CoreAssignment enum: 0 = Idle, 1 = Pool, 2 = Task(u32)
+    // Decode the assignment (CoreAssignment enum)
     let assignment_byte = bytes[assignment_start];
     match assignment_byte {
-        2 => {
-            // Task variant: followed by u32 task ID
-            if assignment_start + 5 <= bytes.len() {
-                let task_bytes: [u8; 4] = bytes[assignment_start + 1..assignment_start + 5]
-                    .try_into()
-                    .ok()?;
+        ASSIGNMENT_IDLE_VARIANT | ASSIGNMENT_POOL_VARIANT => {
+            // Idle or Pool - no task ID associated
+            None
+        }
+        ASSIGNMENT_TASK_VARIANT => {
+            // Task variant: 1 byte discriminant + u32 task ID
+            let task_id_start = assignment_start + 1;
+            let task_id_end = task_id_start + TASK_ID_SIZE;
+            if task_id_end <= bytes.len() {
+                let task_bytes: [u8; 4] = bytes[task_id_start..task_id_end].try_into().ok()?;
                 Some(u32::from_le_bytes(task_bytes))
             } else {
                 None
             }
         }
-        _ => None, // Idle or Pool - no task ID
+        _ => None, // Unknown variant - treat as no task
     }
 }
 
@@ -436,30 +468,30 @@ mod tests {
 
     #[test]
     fn test_extract_task_from_workload_idle_assignment() {
-        // Vec with 1 item: compact(1) + mask(10 bytes) + assignment(Idle = 0)
+        // Vec with 1 item: compact(1) + mask + assignment(Idle)
         let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0xFF; 10]); // mask (10 bytes)
-        bytes.push(0x00); // Idle assignment
+        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]); // mask
+        bytes.push(ASSIGNMENT_IDLE_VARIANT); // Idle assignment
 
         assert_eq!(extract_task_from_workload(&bytes), None);
     }
 
     #[test]
     fn test_extract_task_from_workload_pool_assignment() {
-        // Vec with 1 item: compact(1) + mask(10 bytes) + assignment(Pool = 1)
+        // Vec with 1 item: compact(1) + mask + assignment(Pool)
         let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0xFF; 10]); // mask (10 bytes)
-        bytes.push(0x01); // Pool assignment
+        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]); // mask
+        bytes.push(ASSIGNMENT_POOL_VARIANT); // Pool assignment
 
         assert_eq!(extract_task_from_workload(&bytes), None);
     }
 
     #[test]
     fn test_extract_task_from_workload_task_assignment() {
-        // Vec with 1 item: compact(1) + mask(10 bytes) + assignment(Task(2000) = 2 + u32)
+        // Vec with 1 item: compact(1) + mask + assignment(Task(2000))
         let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0xFF; 10]); // mask (10 bytes)
-        bytes.push(0x02); // Task assignment variant
+        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]); // mask
+        bytes.push(ASSIGNMENT_TASK_VARIANT); // Task assignment variant
         bytes.extend_from_slice(&2000u32.to_le_bytes()); // task ID = 2000
 
         assert_eq!(extract_task_from_workload(&bytes), Some(2000));
@@ -469,16 +501,16 @@ mod tests {
     fn test_extract_task_from_workload_task_assignment_different_ids() {
         // Test with task ID 1000
         let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0x00; 10]); // mask (10 bytes)
-        bytes.push(0x02); // Task assignment variant
+        bytes.extend_from_slice(&[0x00; CORE_MASK_SIZE]); // mask
+        bytes.push(ASSIGNMENT_TASK_VARIANT); // Task assignment variant
         bytes.extend_from_slice(&1000u32.to_le_bytes());
 
         assert_eq!(extract_task_from_workload(&bytes), Some(1000));
 
         // Test with task ID 3000
         let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0x00; 10]); // mask (10 bytes)
-        bytes.push(0x02); // Task assignment variant
+        bytes.extend_from_slice(&[0x00; CORE_MASK_SIZE]); // mask
+        bytes.push(ASSIGNMENT_TASK_VARIANT); // Task assignment variant
         bytes.extend_from_slice(&3000u32.to_le_bytes());
 
         assert_eq!(extract_task_from_workload(&bytes), Some(3000));
@@ -488,9 +520,9 @@ mod tests {
     fn test_extract_task_from_workload_truncated_task_id() {
         // Task assignment but not enough bytes for task ID
         let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0xFF; 10]); // mask (10 bytes)
-        bytes.push(0x02); // Task assignment variant
-        bytes.extend_from_slice(&[0xD0, 0x07]); // only 2 bytes instead of 4
+        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]); // mask
+        bytes.push(ASSIGNMENT_TASK_VARIANT); // Task assignment variant
+        bytes.extend_from_slice(&[0xD0, 0x07]); // only 2 bytes instead of TASK_ID_SIZE
 
         assert_eq!(extract_task_from_workload(&bytes), None);
     }
@@ -499,7 +531,7 @@ mod tests {
     fn test_extract_task_from_workload_truncated_mask() {
         // Vec length says 1 item but not enough bytes for mask
         let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0xFF; 5]); // only 5 bytes of mask (need 10)
+        bytes.extend_from_slice(&[0xFF; 5]); // only 5 bytes of mask (need CORE_MASK_SIZE)
 
         assert_eq!(extract_task_from_workload(&bytes), None);
     }
