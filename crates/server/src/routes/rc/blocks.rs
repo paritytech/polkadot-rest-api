@@ -3,7 +3,6 @@ use crate::handlers::rc::blocks as rc_blocks;
 use crate::routes::{API_VERSION, RegisterRoute, RouteRegistry};
 use crate::state::AppState;
 use axum::{Router, routing::get};
-use config::ChainType;
 
 pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
     Router::new()
