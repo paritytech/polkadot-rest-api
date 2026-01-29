@@ -14,7 +14,7 @@ use heck::{ToSnakeCase, ToUpperCamelCase};
 use serde_json::json;
 
 use super::common::{
-    add_docs_to_events, decode_digest_logs, extract_author, get_canonical_hash_at_number,
+    add_docs_to_events, convert_digest_items_to_logs, extract_author, get_canonical_hash_at_number,
     get_finalized_block_number,
 };
 use super::decode::XcmDecoder;
@@ -150,30 +150,16 @@ pub(crate) async fn build_block_response_for_hash(
     client_at_block: &super::common::BlockClient,
     params: &BlockQueryParams,
 ) -> Result<BlockResponse, GetBlockError> {
-    let header_json = state
-        .get_header_json(block_hash)
+    let header = client_at_block
+        .block_header()
         .await
-        .map_err(GetBlockError::HeaderFetchFailed)?;
+        .map_err(GetBlockError::BlockHeaderFailed)?;
 
-    let parent_hash = header_json
-        .get("parentHash")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("parentHash".to_string()))?
-        .to_string();
+    let parent_hash = format!("{:#x}", header.parent_hash);
+    let state_root = format!("{:#x}", header.state_root);
+    let extrinsics_root = format!("{:#x}", header.extrinsics_root);
 
-    let state_root = header_json
-        .get("stateRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("stateRoot".to_string()))?
-        .to_string();
-
-    let extrinsics_root = header_json
-        .get("extrinsicsRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
-        .to_string();
-
-    let logs = decode_digest_logs(&header_json);
+    let logs = convert_digest_items_to_logs(&header.digest.logs);
 
     let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
         extract_author(state, client_at_block, &logs, block_number),
@@ -403,6 +389,7 @@ mod tests {
             chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
             route_registry: crate::routes::RouteRegistry::new(),
             relay_chain_rpc: None,
+            lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 
@@ -463,71 +450,5 @@ mod tests {
 
         // We expect an error due to metadata fetching limitations in mock environment
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_decode_digest_logs() {
-        use serde_json::json;
-
-        // Test decoding PreRuntime BABE log
-        let header_json = json!({
-            "digest": {
-                "logs": [
-                    // PreRuntime (6) + BABE engine (42414245) + payload
-                    "0x0642414245340201000000ef55a50f00000000"
-                ]
-            }
-        });
-
-        let logs = decode_digest_logs(&header_json);
-        assert_eq!(logs.len(), 1);
-        assert_eq!(logs[0].log_type, "PreRuntime");
-        assert_eq!(logs[0].index, "6");
-
-        // The value should be [engine_id, payload]
-        let arr = logs[0].value.as_array().unwrap();
-        assert_eq!(arr.len(), 2);
-        assert_eq!(arr[0].as_str().unwrap(), "0x42414245"); // "BABE" in hex
-    }
-
-    #[test]
-    fn test_decode_seal_log() {
-        use serde_json::json;
-
-        // Test decoding Seal log
-        // Format: discriminant (05) + engine_id (42414245 = "BABE") + SCALE compact length (0101 = 64) + 64 bytes of signature data
-        let header_json = json!({
-            "digest": {
-                "logs": [
-                    // Seal (5) + BABE engine (42414245) + compact length (0101 = 64 bytes) + 64 bytes of signature
-                    "0x05424142450101aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-                ]
-            }
-        });
-
-        let logs = decode_digest_logs(&header_json);
-        assert_eq!(logs.len(), 1);
-        assert_eq!(logs[0].log_type, "Seal");
-        assert_eq!(logs[0].index, "5");
-    }
-
-    #[test]
-    fn test_decode_runtime_environment_updated() {
-        use serde_json::json;
-
-        // Test decoding RuntimeEnvironmentUpdated log (discriminant 8, no data)
-        let header_json = json!({
-            "digest": {
-                "logs": [
-                    "0x08"
-                ]
-            }
-        });
-
-        let logs = decode_digest_logs(&header_json);
-        assert_eq!(logs.len(), 1);
-        assert_eq!(logs[0].log_type, "RuntimeEnvironmentUpdated");
-        assert_eq!(logs[0].index, "8");
-        assert!(logs[0].value.is_null());
     }
 }

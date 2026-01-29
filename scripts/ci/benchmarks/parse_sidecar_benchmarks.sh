@@ -24,11 +24,19 @@ endpoint_to_filename() {
     # Explicit mapping for endpoints that have local benchmarks
     case "$endpoint" in
         "/node/version")
-            echo "version"
+            echo "node_version"
             return
             ;;
         "/runtime/spec")
             echo "runtime"
+            return
+            ;;
+        "/node/network")
+            echo "node_network"
+            return
+            ;;
+        "/node/transaction-pool")
+            echo "node_transaction_pool"
             return
             ;;
     esac

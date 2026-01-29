@@ -1,11 +1,11 @@
 -- Health endpoint benchmark script
 -- Tests the /health endpoint for latency and throughput
 
-local util = require("../util")
+local util = require("util")
 
 -- Setup the request
 request = function()
-    return wrk.format("GET", "/health")
+    return wrk.format("GET", "/v1/health")
 end
 
 -- No delay between requests for maximum throughput
