@@ -196,10 +196,7 @@ pub async fn get_pallets_dispatchables(
         None => state.client.at_current_block().await?,
         Some(ref at_str) => {
             let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
+            state.client.at_block(block_id).await?
         }
     };
 
@@ -254,10 +251,7 @@ pub async fn get_pallet_dispatchable_item(
         None => state.client.at_current_block().await?,
         Some(ref at_str) => {
             let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
+            state.client.at_block(block_id).await?
         }
     };
 
