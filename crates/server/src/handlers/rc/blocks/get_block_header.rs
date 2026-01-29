@@ -2,6 +2,8 @@
 //!
 //! Returns the header of a specific relay chain block by block hash or block number.
 
+use crate::handlers::blocks::common::convert_digest_items_to_logs;
+use crate::handlers::blocks::types::convert_digest_logs_to_sidecar_format;
 use crate::state::AppState;
 use crate::utils;
 use axum::{
@@ -12,7 +14,6 @@ use axum::{
 };
 use serde::Serialize;
 use serde_json::json;
-use subxt::config::substrate::{ConsensusEngineId, DigestItem};
 use thiserror::Error;
 
 /// Relay chain block header response
@@ -107,56 +108,20 @@ pub async fn get_rc_block_header(
         .await
         .map_err(|e| GetRcBlockHeaderError::HeaderFetchFailed(e.to_string()))?;
 
+    let digest_logs = convert_digest_items_to_logs(&header.digest.logs);
+    let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
+
     let response = RcBlockHeaderResponse {
-        parent_hash: format!("0x{}", hex::encode(header.parent_hash.0)),
+        parent_hash: format!("{:#x}", header.parent_hash),
         number: header.number.to_string(),
-        state_root: format!("0x{}", hex::encode(header.state_root.0)),
-        extrinsics_root: format!("0x{}", hex::encode(header.extrinsics_root.0)),
+        state_root: format!("{:#x}", header.state_root),
+        extrinsics_root: format!("{:#x}", header.extrinsics_root),
         digest: json!({
-            "logs": convert_digest_logs(&header.digest.logs)
+            "logs": digest_logs_formatted
         }),
     };
 
     Ok(Json(response).into_response())
-}
-
-fn convert_digest_logs(logs: &[DigestItem]) -> Vec<serde_json::Value> {
-    logs.iter()
-        .map(|item| match item {
-            DigestItem::PreRuntime(engine_id, data) => {
-                json!({
-                    "preRuntime": format_consensus_digest(engine_id, data)
-                })
-            }
-            DigestItem::Consensus(engine_id, data) => {
-                json!({
-                    "consensus": format_consensus_digest(engine_id, data)
-                })
-            }
-            DigestItem::Seal(engine_id, data) => {
-                json!({
-                    "seal": format_consensus_digest(engine_id, data)
-                })
-            }
-            DigestItem::Other(data) => {
-                json!({
-                    "other": format!("0x{}", hex::encode(data))
-                })
-            }
-            DigestItem::RuntimeEnvironmentUpdated => {
-                json!({
-                    "runtimeEnvironmentUpdated": null
-                })
-            }
-        })
-        .collect()
-}
-
-fn format_consensus_digest(engine_id: &ConsensusEngineId, data: &[u8]) -> serde_json::Value {
-    json!([
-        format!("0x{}", hex::encode(engine_id)),
-        format!("0x{}", hex::encode(data))
-    ])
 }
 
 #[cfg(test)]
