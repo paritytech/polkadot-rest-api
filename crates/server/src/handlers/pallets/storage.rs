@@ -1,4 +1,4 @@
-//! Handler for `/pallets/{palletId}/storage` endpoint.
+//! Handler for `/pallets/{palletId}/storage` and `/pallets/{palletId}/storage/{storageItemId}` endpoints.
 //!
 //! Returns storage item metadata for a pallet, matching Sidecar's response format.
 //! Supports all metadata versions V9-V16.
@@ -80,7 +80,7 @@ pub struct AtResponse {
 }
 
 /// Metadata for a single storage item (matching Sidecar format)
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageItemMetadata {
     pub name: String,
@@ -93,14 +93,14 @@ pub struct StorageItemMetadata {
 }
 
 /// Storage type information - untagged enum for Sidecar format
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum StorageTypeInfo {
     Plain { plain: String },
     Map { map: MapTypeInfo },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MapTypeInfo {
     pub hashers: Vec<String>,
     pub key: String,
@@ -108,7 +108,7 @@ pub struct MapTypeInfo {
 }
 
 /// Sidecar format: { "notDeprecated": null } or { "deprecated": { note, since } }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DeprecationInfo {
     NotDeprecated(Option<()>),
@@ -118,6 +118,45 @@ pub enum DeprecationInfo {
         #[serde(skip_serializing_if = "Option::is_none")]
         since: Option<String>,
     },
+}
+
+// ============================================================================
+// Storage Item Query Parameters and Response Types
+// ============================================================================
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageItemQueryParams {
+    pub at: Option<String>,
+    /// Storage keys for map types (format: ?keys[]=key1&keys[]=key2)
+    #[serde(default, rename = "keys[]")]
+    pub keys: Vec<String>,
+    /// When true, include storage item metadata in response
+    #[serde(default)]
+    pub metadata: bool,
+    /// When true, treat `at` as a relay chain block and find Asset Hub blocks within it
+    #[serde(default)]
+    pub use_rc_block: bool,
+}
+
+/// Response for /pallets/{palletId}/storage/{storageItemId} endpoint
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PalletsStorageItemResponse {
+    pub at: AtResponse,
+    pub pallet: String,
+    pub pallet_index: String,
+    pub storage_item: String,
+    pub keys: Vec<String>,
+    pub value: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<StorageItemMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
 }
 
 // ============================================================================
@@ -286,6 +325,486 @@ async fn handle_use_rc_block(
     }
 
     Ok(Json(json!(results)).into_response())
+}
+
+// ============================================================================
+// Storage Item Handler
+// ============================================================================
+
+/// Handler for GET /pallets/{palletId}/storage/{storageItemId}
+pub async fn get_pallets_storage_item(
+    State(state): State<AppState>,
+    Path((pallet_id, storage_item_id)): Path<(String, String)>,
+    Query(params): Query<StorageItemQueryParams>,
+) -> Result<Response, PalletError> {
+    if params.use_rc_block {
+        return handle_storage_item_use_rc_block(state, pallet_id, storage_item_id, params).await;
+    }
+
+    // Create client at the specified block
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
+    };
+
+    let resolved_block = utils::ResolvedBlock {
+        hash: format!("{:#x}", client_at_block.block_hash()),
+        number: client_at_block.block_number(),
+    };
+
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let metadata = fetch_runtime_metadata(&state, &block_hash).await?;
+
+    let response = build_storage_item_response(
+        &state,
+        &metadata,
+        &pallet_id,
+        &storage_item_id,
+        &params.keys,
+        &resolved_block,
+        params.metadata,
+        &block_hash,
+    )
+    .await?;
+
+    Ok(Json(response).into_response())
+}
+
+/// Handle useRcBlock for storage item endpoint
+async fn handle_storage_item_use_rc_block(
+    state: AppState,
+    pallet_id: String,
+    storage_item_id: String,
+    params: StorageItemQueryParams,
+) -> Result<Response, PalletError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(PalletError::UseRcBlockNotSupported);
+    }
+
+    if state.get_relay_chain_client().is_none() {
+        return Err(PalletError::RelayChainNotConfigured);
+    }
+
+    let rc_block_id = params
+        .at
+        .as_ref()
+        .ok_or(PalletError::AtParameterRequired)?
+        .parse::<utils::BlockId>()?;
+
+    let rc_resolved_block = utils::resolve_block_with_rpc(
+        state
+            .get_relay_chain_rpc_client()
+            .expect("relay chain client checked above"),
+        state
+            .get_relay_chain_rpc()
+            .expect("relay chain rpc checked above"),
+        Some(rc_block_id),
+    )
+    .await?;
+
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+
+    if ah_blocks.is_empty() {
+        return Ok(Json(json!([])).into_response());
+    }
+
+    let rc_block_number = rc_resolved_block.number.to_string();
+    let rc_block_hash = rc_resolved_block.hash.clone();
+
+    let mut results = Vec::new();
+    for ah_block in ah_blocks {
+        let ah_resolved_block = utils::ResolvedBlock {
+            hash: ah_block.hash.clone(),
+            number: ah_block.number,
+        };
+
+        let metadata = fetch_runtime_metadata(&state, &ah_block.hash).await?;
+
+        let mut response = build_storage_item_response(
+            &state,
+            &metadata,
+            &pallet_id,
+            &storage_item_id,
+            &params.keys,
+            &ah_resolved_block,
+            params.metadata,
+            &ah_block.hash,
+        )
+        .await?;
+
+        response.rc_block_hash = Some(rc_block_hash.clone());
+        response.rc_block_number = Some(rc_block_number.clone());
+
+        // Fetch timestamp via RPC
+        let timestamp_key = "0x0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f";
+        let timestamp_result: Option<String> = state
+            .rpc_client
+            .request(
+                "state_getStorage",
+                rpc_params![timestamp_key, &ah_block.hash],
+            )
+            .await
+            .ok();
+
+        if let Some(timestamp_hex) = timestamp_result {
+            let hex_str = timestamp_hex.strip_prefix("0x").unwrap_or(&timestamp_hex);
+            if let Ok(timestamp_bytes) = hex::decode(hex_str) {
+                let mut cursor = &timestamp_bytes[..];
+                if let Ok(timestamp_value) = u64::decode(&mut cursor) {
+                    response.ah_timestamp = Some(timestamp_value.to_string());
+                }
+            }
+        }
+
+        results.push(response);
+    }
+
+    Ok(Json(json!(results)).into_response())
+}
+
+/// Build storage item response - query actual storage value
+#[allow(clippy::too_many_arguments)]
+async fn build_storage_item_response(
+    state: &AppState,
+    metadata: &RuntimeMetadata,
+    pallet_id: &str,
+    storage_item_id: &str,
+    keys: &[String],
+    resolved_block: &utils::ResolvedBlock,
+    include_metadata: bool,
+    block_hash: &str,
+) -> Result<PalletsStorageItemResponse, PalletError> {
+    // First get the storage metadata to find the item and build the key
+    let storage_response = build_storage_response(metadata, pallet_id, resolved_block, false)?;
+
+    let storage_items = match &storage_response.items {
+        StorageItems::Full(items) => items,
+        StorageItems::OnlyIds(_) => {
+            return Err(PalletError::StorageItemNotFound {
+                pallet: pallet_id.to_string(),
+                item: storage_item_id.to_string(),
+            });
+        }
+    };
+
+    // Find the storage item by name (case-insensitive)
+    let storage_item = storage_items
+        .iter()
+        .find(|item| item.name.eq_ignore_ascii_case(storage_item_id))
+        .ok_or_else(|| PalletError::StorageItemNotFound {
+            pallet: pallet_id.to_string(),
+            item: storage_item_id.to_string(),
+        })?;
+
+    // Get the original pallet name (PascalCase) for storage key building
+    let original_pallet_name = get_original_pallet_name(metadata, pallet_id)?;
+
+    // Build storage key and query value - use original (PascalCase) pallet name
+    let storage_key = build_storage_key(
+        &original_pallet_name,
+        &storage_item.name,
+        keys,
+        &storage_item.ty,
+    )?;
+
+    // Query storage value via RPC
+    let value_hex: Option<String> = state
+        .rpc_client
+        .request("state_getStorage", rpc_params![&storage_key, block_hash])
+        .await
+        .ok();
+
+    // Decode value - for now return as raw hex or decoded number for simple types
+    let value = decode_storage_value(value_hex, &storage_item.ty)?;
+
+    let metadata_field = if include_metadata {
+        Some(storage_item.clone())
+    } else {
+        None
+    };
+
+    Ok(PalletsStorageItemResponse {
+        at: AtResponse {
+            hash: resolved_block.hash.clone(),
+            height: resolved_block.number.to_string(),
+        },
+        pallet: storage_response.pallet,
+        pallet_index: storage_response.pallet_index,
+        storage_item: to_camel_case(&storage_item.name),
+        keys: keys.to_vec(),
+        value,
+        metadata: metadata_field,
+        rc_block_hash: None,
+        rc_block_number: None,
+        ah_timestamp: None,
+    })
+}
+
+/// Convert first character to lowercase (matching Sidecar's camelCase behavior)
+fn to_camel_case(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
+    }
+}
+
+/// Get the original pallet name (PascalCase) from metadata
+fn get_original_pallet_name(
+    metadata: &RuntimeMetadata,
+    pallet_id: &str,
+) -> Result<String, PalletError> {
+    use RuntimeMetadata::*;
+
+    match metadata {
+        V14(meta) => {
+            if let Ok(idx) = pallet_id.parse::<u8>() {
+                meta.pallets
+                    .iter()
+                    .find(|p| p.index == idx)
+                    .map(|p| p.name.clone())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            } else {
+                meta.pallets
+                    .iter()
+                    .find(|p| p.name.eq_ignore_ascii_case(pallet_id))
+                    .map(|p| p.name.clone())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            }
+        }
+        V15(meta) => {
+            if let Ok(idx) = pallet_id.parse::<u8>() {
+                meta.pallets
+                    .iter()
+                    .find(|p| p.index == idx)
+                    .map(|p| p.name.clone())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            } else {
+                meta.pallets
+                    .iter()
+                    .find(|p| p.name.eq_ignore_ascii_case(pallet_id))
+                    .map(|p| p.name.clone())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            }
+        }
+        V16(meta) => {
+            if let Ok(idx) = pallet_id.parse::<u8>() {
+                meta.pallets
+                    .iter()
+                    .find(|p| p.index == idx)
+                    .map(|p| p.name.clone())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            } else {
+                meta.pallets
+                    .iter()
+                    .find(|p| p.name.eq_ignore_ascii_case(pallet_id))
+                    .map(|p| p.name.clone())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            }
+        }
+        // For older versions (V9-V13), pallet name comes from module.name
+        V9(meta) => {
+            let DecodeDifferent::Decoded(modules) = &meta.modules else {
+                return Err(PalletError::PalletNotFound(pallet_id.to_string()));
+            };
+            if let Ok(idx) = pallet_id.parse::<usize>() {
+                modules
+                    .get(idx)
+                    .map(|m| extract_str(&m.name).to_string())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            } else {
+                modules
+                    .iter()
+                    .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
+                    .map(|m| extract_str(&m.name).to_string())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            }
+        }
+        V10(meta) => {
+            let DecodeDifferent::Decoded(modules) = &meta.modules else {
+                return Err(PalletError::PalletNotFound(pallet_id.to_string()));
+            };
+            if let Ok(idx) = pallet_id.parse::<usize>() {
+                modules
+                    .get(idx)
+                    .map(|m| extract_str(&m.name).to_string())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            } else {
+                modules
+                    .iter()
+                    .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
+                    .map(|m| extract_str(&m.name).to_string())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            }
+        }
+        V11(meta) => {
+            let DecodeDifferent::Decoded(modules) = &meta.modules else {
+                return Err(PalletError::PalletNotFound(pallet_id.to_string()));
+            };
+            if let Ok(idx) = pallet_id.parse::<usize>() {
+                modules
+                    .get(idx)
+                    .map(|m| extract_str(&m.name).to_string())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            } else {
+                modules
+                    .iter()
+                    .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
+                    .map(|m| extract_str(&m.name).to_string())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            }
+        }
+        V12(meta) => {
+            let DecodeDifferent::Decoded(modules) = &meta.modules else {
+                return Err(PalletError::PalletNotFound(pallet_id.to_string()));
+            };
+            if let Ok(idx) = pallet_id.parse::<u8>() {
+                modules
+                    .iter()
+                    .find(|m| m.index == idx)
+                    .map(|m| extract_str(&m.name).to_string())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            } else {
+                modules
+                    .iter()
+                    .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
+                    .map(|m| extract_str(&m.name).to_string())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            }
+        }
+        V13(meta) => {
+            let DecodeDifferent::Decoded(modules) = &meta.modules else {
+                return Err(PalletError::PalletNotFound(pallet_id.to_string()));
+            };
+            if let Ok(idx) = pallet_id.parse::<u8>() {
+                modules
+                    .iter()
+                    .find(|m| m.index == idx)
+                    .map(|m| extract_str(&m.name).to_string())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            } else {
+                modules
+                    .iter()
+                    .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
+                    .map(|m| extract_str(&m.name).to_string())
+                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+            }
+        }
+        _ => Err(PalletError::PalletNotFound(
+            "Unsupported metadata version".to_string(),
+        )),
+    }
+}
+
+/// Build storage key from pallet name, storage item name, and optional keys
+fn build_storage_key(
+    pallet_name: &str,
+    storage_name: &str,
+    keys: &[String],
+    _storage_type: &StorageTypeInfo,
+) -> Result<String, PalletError> {
+    use sp_crypto_hashing::twox_128;
+
+    // Storage key prefix: twox128(pallet_name) ++ twox128(storage_name)
+    let pallet_hash = twox_128(pallet_name.as_bytes());
+    let storage_hash = twox_128(storage_name.as_bytes());
+
+    let mut key = Vec::with_capacity(32 + keys.len() * 32);
+    key.extend_from_slice(&pallet_hash);
+    key.extend_from_slice(&storage_hash);
+
+    // For maps, we need to hash the keys based on the hasher type
+    // For now, we only support plain storage (no keys)
+    // TODO: Add support for map key hashing based on hasher type
+    if !keys.is_empty() {
+        return Err(PalletError::PalletNotFound(
+            "Map storage keys not yet supported".to_string(),
+        ));
+    }
+
+    Ok(format!("0x{}", hex::encode(key)))
+}
+
+/// Decode storage value from hex
+fn decode_storage_value(
+    value_hex: Option<String>,
+    storage_type: &StorageTypeInfo,
+) -> Result<serde_json::Value, PalletError> {
+    let Some(hex_str) = value_hex else {
+        return Ok(serde_json::Value::Null);
+    };
+
+    let hex_clean = hex_str.strip_prefix("0x").unwrap_or(&hex_str);
+    let bytes = hex::decode(hex_clean).map_err(|e| {
+        PalletError::PalletNotFound(format!("Failed to decode storage value hex: {}", e))
+    })?;
+
+    // Try to decode based on storage type
+    match storage_type {
+        StorageTypeInfo::Plain { plain } => {
+            // Common type IDs in Polkadot metadata:
+            // 4 = u32 (block number)
+            // 8 = u64 (timestamp)
+            // For now, try common decodings
+            if let Ok(type_id) = plain.parse::<u32>() {
+                match type_id {
+                    4 => {
+                        // u32
+                        if bytes.len() >= 4 {
+                            let value = u32::from_le_bytes(bytes[..4].try_into().unwrap_or([0; 4]));
+                            return Ok(serde_json::Value::String(value.to_string()));
+                        }
+                    }
+                    8 => {
+                        // u64
+                        if bytes.len() >= 8 {
+                            let value = u64::from_le_bytes(bytes[..8].try_into().unwrap_or([0; 8]));
+                            return Ok(serde_json::Value::String(value.to_string()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            // Fallback: try to decode as various types based on byte length
+            match bytes.len() {
+                1 => {
+                    let value = bytes[0];
+                    Ok(serde_json::Value::String(value.to_string()))
+                }
+                2 => {
+                    let value = u16::from_le_bytes(bytes[..2].try_into().unwrap_or([0; 2]));
+                    Ok(serde_json::Value::String(value.to_string()))
+                }
+                4 => {
+                    let value = u32::from_le_bytes(bytes[..4].try_into().unwrap_or([0; 4]));
+                    Ok(serde_json::Value::String(value.to_string()))
+                }
+                8 => {
+                    let value = u64::from_le_bytes(bytes[..8].try_into().unwrap_or([0; 8]));
+                    Ok(serde_json::Value::String(value.to_string()))
+                }
+                16 => {
+                    let value = u128::from_le_bytes(bytes[..16].try_into().unwrap_or([0; 16]));
+                    Ok(serde_json::Value::String(value.to_string()))
+                }
+                _ => {
+                    // Return raw hex for complex types
+                    Ok(serde_json::Value::String(format!("0x{}", hex_clean)))
+                }
+            }
+        }
+        StorageTypeInfo::Map { .. } => {
+            // For maps, return raw hex
+            Ok(serde_json::Value::String(format!("0x{}", hex_clean)))
+        }
+    }
 }
 
 /// Build storage response from RuntimeMetadata for all supported versions

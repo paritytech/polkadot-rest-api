@@ -31,4 +31,4 @@ pub use staking_progress::pallets_staking_progress;
 pub use staking_progress::rc_pallets_staking_progress;
 pub use staking_validators::pallets_staking_validators;
 pub use staking_validators::rc_pallets_staking_validators;
-pub use storage::get_pallets_storage;
+pub use storage::{get_pallets_storage, get_pallets_storage_item};
