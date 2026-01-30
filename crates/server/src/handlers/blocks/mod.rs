@@ -18,7 +18,11 @@ pub use get_block::get_block;
 pub use get_block_extrinsics_raw::get_block_extrinsics_raw;
 pub use get_block_head::get_block_head;
 pub use get_block_header::get_block_header;
-pub use get_block_para_inclusions::get_block_para_inclusions;
+pub use get_block_para_inclusions::{
+    AtBlock, CandidateDescriptor, ParaInclusion, ParaInclusionsError, ParaInclusionsQueryParams,
+    ParaInclusionsResponse, extract_para_inclusions_from_events, fetch_para_inclusions_from_client,
+    get_block_para_inclusions,
+};
 pub use get_blocks::get_blocks;
 pub use get_blocks_head_header::get_blocks_head_header;
 pub use get_extrinsic::get_extrinsic;

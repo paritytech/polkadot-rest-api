@@ -576,6 +576,24 @@
         },
         "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_noFees.json",
         "description": "Test /rc/blocks/{blockId} endpoint with noFees=true at Polkadot Relay Chain block 29,698,001"
+      },
+      {
+        "endpoint": "/v1/rc/blocks/{blockId}/para-inclusions",
+        "block_height": 10293194,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/rc_blocks_10293194_para_inclusions.json",
+        "description": "Test RC para-inclusions endpoint at Polkadot relay chain block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/rc/blocks/{blockId}/para-inclusions",
+        "block_height": 10293194,
+        "account_id": null,
+        "query_params": {
+          "paraId": "1000"
+        },
+        "fixture_path": "asset-hub-polkadot/rc_blocks_10293194_para_inclusions_para_id_1000.json",
+        "description": "Test RC para-inclusions endpoint with paraId filter at Polkadot relay chain block 10,293,194"
       }
     ],
     "asset-hub-kusama": [

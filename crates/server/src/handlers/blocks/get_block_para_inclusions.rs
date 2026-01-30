@@ -20,6 +20,10 @@ use thiserror::Error;
 
 use super::CommonBlockError;
 
+// ============================================================================
+// Types - exported for reuse by /rc/blocks/{blockId}/para-inclusions
+// ============================================================================
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ParaInclusionsQueryParams {
@@ -130,21 +134,26 @@ pub async fn get_block_para_inclusions(
         .await
         .map_err(|e| CommonBlockError::ClientAtBlockFailed(Box::new(e)))?;
 
-    // Use dynamic storage address for System::Events
-    let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
-    let events_value = client_at_block
-        .storage()
-        .fetch(addr, ())
-        .await
-        .map_err(|e| CommonBlockError::StorageFetchFailed(e.to_string()))?;
+    fetch_para_inclusions_from_client(&client_at_block, &resolved_block, params.para_id).await
+}
 
-    let events_decoded: Value<()> = events_value
-        .decode_as()
+/// Shared function to fetch para inclusions from a client at a specific block.
+///
+/// Used by both `/blocks/{blockId}/para-inclusions` and `/rc/blocks/{blockId}/para-inclusions`.
+pub async fn fetch_para_inclusions_from_client(
+    client_at_block: &subxt::client::OnlineClientAtBlock<subxt::SubstrateConfig>,
+    resolved_block: &utils::ResolvedBlock,
+    para_id_filter: Option<u32>,
+) -> Result<Response, ParaInclusionsError> {
+    let events = client_at_block
+        .events()
+        .fetch()
+        .await
         .map_err(|e| CommonBlockError::EventsDecodeFailed(e.to_string()))?;
 
-    let mut inclusions = extract_para_inclusions(&events_decoded)?;
+    let mut inclusions = extract_para_inclusions_from_events(&events)?;
 
-    if let Some(filter_para_id) = params.para_id {
+    if let Some(filter_para_id) = para_id_filter {
         inclusions
             .retain(|inclusion| inclusion.para_id.parse::<u32>().ok() == Some(filter_para_id));
 
@@ -168,87 +177,68 @@ pub async fn get_block_para_inclusions(
     Ok(Json(response).into_response())
 }
 
-fn extract_para_inclusions(
-    events_decoded: &Value<()>,
+// ============================================================================
+// Extraction functions - exported for reuse by /rc/blocks/{blockId}/para-inclusions
+// ============================================================================
+
+/// Extract para inclusions from events using Subxt
+///
+/// Filters for CandidateIncluded events from the ParaInclusion pallet
+/// and extracts the relevant data from each event.
+pub fn extract_para_inclusions_from_events(
+    events: &subxt::events::Events<subxt::SubstrateConfig>,
 ) -> Result<Vec<ParaInclusion>, ParaInclusionsError> {
     let mut inclusions = Vec::new();
 
-    let events_composite = match &events_decoded.value {
-        ValueDef::Composite(composite) => composite,
-        _ => return Ok(inclusions),
-    };
-
-    let events_values = match events_composite {
-        Composite::Unnamed(values) => values,
-        Composite::Named(_) => return Ok(inclusions),
-    };
-
-    for event_record in events_values.iter() {
-        let record_composite = match &event_record.value {
-            ValueDef::Composite(c) => c,
-            _ => continue,
+    for event_result in events.iter() {
+        let event = match event_result {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Failed to decode event: {:?}", e);
+                continue;
+            }
         };
 
-        let event_value = match record_composite {
-            Composite::Named(fields) => fields
-                .iter()
-                .find(|(name, _)| name == "event")
-                .map(|(_, v)| v),
-            Composite::Unnamed(values) => values.get(1),
-        };
+        let pallet_name = event.pallet_name();
+        let event_name = event.event_name();
 
-        let event = match event_value {
-            Some(v) => v,
-            None => continue,
-        };
-
-        let event_variant = match &event.value {
-            ValueDef::Variant(variant) => variant,
-            _ => continue,
-        };
-
-        let pallet_name = &event_variant.name;
         if !pallet_name.to_lowercase().contains("parainclusion") {
             continue;
         }
-
-        let (event_name, event_data) = match &event_variant.values {
-            Composite::Unnamed(values) => {
-                let first_val = match values.first() {
-                    Some(v) => v,
-                    None => continue,
-                };
-                match &first_val.value {
-                    ValueDef::Variant(inner_variant) => {
-                        (inner_variant.name.clone(), &inner_variant.values)
-                    }
-                    _ => continue,
-                }
-            }
-            Composite::Named(fields) => {
-                let (_name, val) = match fields.first() {
-                    Some((n, v)) => (n, v),
-                    None => continue,
-                };
-                match &val.value {
-                    ValueDef::Variant(inner_variant) => {
-                        (inner_variant.name.clone(), &inner_variant.values)
-                    }
-                    _ => continue,
-                }
-            }
-        };
 
         if event_name != "CandidateIncluded" {
             continue;
         }
 
-        if let Some(inclusion) = extract_inclusion_from_event(event_data) {
+        // Decode event fields as scale_value::Value for dynamic processing
+        let event_fields: Value<()> = match event.decode_fields_unchecked_as() {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("Failed to decode CandidateIncluded event fields: {:?}", e);
+                continue;
+            }
+        };
+
+        // Extract inclusion data from the decoded fields
+        if let Some(inclusion) = extract_inclusion_from_value(&event_fields) {
             inclusions.push(inclusion);
         }
     }
 
     Ok(inclusions)
+}
+
+/// Extract inclusion data from decoded event fields (Subxt 0.50 events API)
+///
+/// The event fields are decoded directly from the event, not wrapped in an event record.
+fn extract_inclusion_from_value(event_fields: &Value<()>) -> Option<ParaInclusion> {
+    // Event fields come as a Composite from decode_fields_unchecked_as
+    let fields_composite = match &event_fields.value {
+        ValueDef::Composite(c) => c,
+        _ => return None,
+    };
+
+    extract_inclusion_from_event(fields_composite)
 }
 
 fn extract_inclusion_from_event(event_data: &Composite<()>) -> Option<ParaInclusion> {
