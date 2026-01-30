@@ -1,4 +1,5 @@
 use axum::{Router, routing::get};
+use config::ChainType;
 
 use crate::{
     handlers::coretime,
@@ -10,12 +11,28 @@ use crate::{
 ///
 /// These endpoints query the Broker pallet on coretime chains:
 /// - GET /v1/coretime/leases - Get all registered leases
-pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
-    Router::new().route_registered(
-        registry,
-        API_VERSION,
-        "/coretime/leases",
-        "get",
-        get(coretime::coretime_leases),
-    )
+/// - GET /v1/coretime/reservations - Get all registered reservations
+///
+/// Routes are only registered when connected to a coretime chain.
+pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppState> {
+    let router = Router::new();
+    if *chain_type == ChainType::Coretime {
+        router
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/coretime/leases",
+                "get",
+                get(coretime::coretime_leases),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/coretime/reservations",
+                "get",
+                get(coretime::coretime_reservations),
+            )
+    } else {
+        router
+    }
 }

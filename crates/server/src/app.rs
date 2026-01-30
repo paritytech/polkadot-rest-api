@@ -15,7 +15,10 @@ pub fn create_app(state: AppState) -> Router {
         .merge(routes::ahm::routes(registry))
         .merge(routes::blocks::blocks_routes(registry))
         .merge(routes::capabilities::routes(registry))
-        .merge(routes::coretime::routes(registry))
+        .merge(routes::coretime::routes(
+            registry,
+            &state.chain_info.chain_type,
+        ))
         .merge(routes::health::routes(registry))
         .merge(routes::node::routes(registry))
         .merge(routes::pallets::routes(
