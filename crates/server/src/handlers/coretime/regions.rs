@@ -27,7 +27,6 @@ use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use primitive_types::H256;
 use scale_decode::DecodeAsType;
-use scale_value::At;
 use serde::Serialize;
 use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
@@ -50,13 +49,24 @@ struct RegionId {
 }
 
 /// RegionRecord from the Broker pallet storage value.
-/// Matches the pallet_broker::RegionRecord type.
-#[derive(Debug, Clone, Decode, Encode)]
+/// Matches the pallet_broker::RegionRecord<AccountId, Balance> type.
+/// DecodeAsType allows using `entry.value().decode_as::<RegionRecord>()` for efficient decoding.
+///
+/// On-chain structure (verified via debug logging):
+/// - end: u32
+/// - owner: Option<AccountId32> (the Option wrapper must be in our struct!)
+/// - paid: Option<u128>
+///
+/// Note: DecodeAsType automatically handles:
+/// - Number type conversions (e.g., u8 stored as u128 in scale_value)
+/// - Newtype wrapper unwrapping (e.g., MyAccount(AccountId32) -> [u8; 32])
+/// - Field matching by name or position
+#[derive(Debug, Clone, Decode, Encode, DecodeAsType)]
 struct RegionRecord {
     /// The end timeslice of this region.
     end: u32,
-    /// The owner of this region (AccountId32 = 32 bytes).
-    owner: [u8; 32],
+    /// The owner of this region (Option<AccountId32>).
+    owner: Option<[u8; 32]>,
     /// The amount paid for this region (optional).
     paid: Option<u128>,
 }
@@ -163,14 +173,14 @@ pub async fn coretime_regions(
 /// Fetches all regions from Broker::Regions storage map.
 ///
 /// Broker::Regions is a StorageMap with RegionId as key and RegionRecord as value.
+/// Uses typed DecodeAsType decoding for efficiency - no intermediate scale_value::Value.
 async fn fetch_regions(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
 ) -> Result<Vec<RegionInfo>, CoretimeError> {
-    let regions_addr = subxt::dynamic::storage::<
-        (u32, u16, [u8; CORE_MASK_SIZE]),
-        scale_value::Value,
-    >("Broker", "Regions");
+    let regions_addr = subxt::dynamic::storage::<(u32, u16, [u8; CORE_MASK_SIZE]), RegionRecord>(
+        "Broker", "Regions",
+    );
 
     let mut regions = Vec::new();
 
@@ -210,128 +220,48 @@ async fn fetch_regions(
             }
         };
 
-        // Extract RegionRecord fields from the scale_value::Value
-        // Use decode_as() to get the decoded Value from StorageValue
-        let (end, owner, paid) = match entry.value().decode_as::<scale_value::Value<()>>() {
-            Ok(decoded) => extract_region_record_fields(&decoded),
-            Err(e) => {
-                tracing::warn!("Failed to decode RegionRecord: {:?}", e);
-                (None, None, None)
+        // Decode RegionRecord directly using typed DecodeAsType
+        // This is much more efficient than decoding to scale_value::Value first
+        // DecodeAsType handles: number conversions, newtype unwrapping, field matching
+        let record = match entry.value().decode_as::<RegionRecord>() {
+            Ok(r) => Some(r),
+            Err(e1) => {
+                tracing::warn!("Failed to decode as RegionRecord: {:?}", e1);
+                // Try decoding as Option<RegionRecord> (some runtimes wrap it)
+                match entry.value().decode_as::<Option<RegionRecord>>() {
+                    Ok(opt) => opt,
+                    Err(e2) => {
+                        tracing::warn!("Failed to decode as Option<RegionRecord>: {:?}", e2);
+                        None
+                    }
+                }
             }
         };
 
-        // Convert owner from hex to SS58 format if available
-        let owner_ss58 =
-            owner.and_then(|hex_owner| decode_address_to_ss58(&hex_owner, ss58_prefix));
+        // Extract fields from RegionRecord
+        // Note: owner is already Option<[u8; 32]> in the struct
+        let (end, owner_bytes, paid) = match record {
+            Some(r) => (Some(r.end), r.owner, r.paid),
+            None => (None, None, None),
+        };
+
+        // Convert owner from bytes to SS58 format if available
+        let owner_ss58 = owner_bytes.and_then(|bytes| {
+            let hex_owner = format!("0x{}", hex::encode(bytes));
+            decode_address_to_ss58(&hex_owner, ss58_prefix)
+        });
 
         regions.push(RegionInfo {
             core: region_id.core as u32,
             begin: region_id.begin,
             end,
             owner: owner_ss58,
-            paid,
+            paid: paid.map(|p| p.to_string()),
             mask: format!("0x{}", hex::encode(region_id.mask)),
         });
     }
 
     Ok(regions)
-}
-
-/// Extracts RegionRecord fields from a scale_value::Value using the `At` trait.
-///
-/// The storage value is Option<RegionRecord> where RegionRecord has:
-/// - end: u32
-/// - owner: Option<AccountId32>
-/// - paid: Option<u128>
-///
-/// Uses scale_value::At for cleaner field navigation instead of manual pattern matching.
-fn extract_region_record_fields<T>(
-    value: &scale_value::Value<T>,
-) -> (Option<u32>, Option<String>, Option<String>) {
-    // Handle Option<RegionRecord>:
-    // - If value has "end" field directly, it's the RegionRecord itself
-    // - If not, assume it's Option<RegionRecord> and unwrap with .at(0)
-    //
-    // We can't just do value.at(0).or(Some(value)) because if value is a Composite,
-    // .at(0) returns the first FIELD (not the composite itself), which is wrong.
-    let inner = if value.at("end").is_some() || value.at(0).and_then(|v| v.as_u128()).is_some() {
-        // Value is the record itself (has "end" field or first field is a number)
-        Some(value)
-    } else {
-        // Value is Option<RegionRecord>, unwrap the Some variant
-        value.at(0)
-    };
-
-    // Extract 'end' field - integers are stored as U128 in scale_value
-    let end = inner
-        .at("end")
-        .and_then(|v| v.as_u128())
-        .map(|n| n as u32)
-        // Fallback to positional access for unnamed composites
-        .or_else(|| inner.at(0).and_then(|v| v.as_u128()).map(|n| n as u32));
-
-    // Extract 'owner' field - Option<AccountId32>
-    // First try named access, then positional
-    let owner = inner
-        .at("owner")
-        .and_then(extract_option_account_id)
-        .or_else(|| inner.at(1).and_then(extract_option_account_id));
-
-    // Extract 'paid' field - Option<u128>
-    // The value is Option<u128>, so .at(0) unwraps the Some variant
-    let paid = inner
-        .at("paid")
-        .and_then(|v| v.at(0)) // unwrap Some variant
-        .and_then(|v| v.as_u128())
-        .map(|n| n.to_string())
-        // Fallback to positional access
-        .or_else(|| {
-            inner
-                .at(2)
-                .and_then(|v| v.at(0))
-                .and_then(|v| v.as_u128())
-                .map(|n| n.to_string())
-        });
-
-    (end, owner, paid)
-}
-
-/// Extract Option<AccountId> from a Value (handles Some/None variants).
-/// Returns the AccountId as a hex string (0x-prefixed).
-fn extract_option_account_id<T>(value: &scale_value::Value<T>) -> Option<String> {
-    // If it's a Some variant, get the inner AccountId at index 0
-    // If it's directly the AccountId (not wrapped), try to extract directly
-    let inner = value.at(0).or(Some(value));
-    extract_account_id_bytes(inner).map(|bytes| format!("0x{}", hex::encode(bytes)))
-}
-
-/// Extract AccountId bytes from a Value.
-/// AccountId32 is stored as an array of 32 U128 values (each representing a byte).
-fn extract_account_id_bytes<T>(value: Option<&scale_value::Value<T>>) -> Option<Vec<u8>> {
-    let value = value?;
-
-    // Try to collect 32 bytes from unnamed composite (array of U128s)
-    let bytes: Vec<u8> = (0..32)
-        .filter_map(|i| value.at(i).and_then(|v| v.as_u128()).map(|n| n as u8))
-        .collect();
-
-    if bytes.len() == 32 {
-        return Some(bytes);
-    }
-
-    // Try named field access for wrapped AccountId types (e.g., "Id" field)
-    for field_name in ["Id", "id", "account"] {
-        if let Some(bytes) = extract_account_id_bytes(value.at(field_name)) {
-            return Some(bytes);
-        }
-    }
-
-    // Try positional access (index 0) for single-element wrappers
-    if let Some(bytes) = extract_account_id_bytes(value.at(0)) {
-        return Some(bytes);
-    }
-
-    None
 }
 
 /// Decodes RegionRecord from the storage value bytes using SCALE codec.
@@ -381,14 +311,14 @@ mod tests {
     fn test_decode_region_record_with_paid() {
         let original = RegionRecord {
             end: 307725,
-            owner: [0xAB; 32],
+            owner: Some([0xAB; 32]),
             paid: Some(16168469809),
         };
         let encoded = original.encode();
 
         let decoded = RegionRecord::decode(&mut &encoded[..]).unwrap();
         assert_eq!(decoded.end, 307725);
-        assert_eq!(decoded.owner, [0xAB; 32]);
+        assert_eq!(decoded.owner, Some([0xAB; 32]));
         assert_eq!(decoded.paid, Some(16168469809));
     }
 
@@ -396,14 +326,14 @@ mod tests {
     fn test_decode_region_record_without_paid() {
         let original = RegionRecord {
             end: 302685,
-            owner: [0xCD; 32],
+            owner: Some([0xCD; 32]),
             paid: None,
         };
         let encoded = original.encode();
 
         let decoded = RegionRecord::decode(&mut &encoded[..]).unwrap();
         assert_eq!(decoded.end, 302685);
-        assert_eq!(decoded.owner, [0xCD; 32]);
+        assert_eq!(decoded.owner, Some([0xCD; 32]));
         assert_eq!(decoded.paid, None);
     }
 
