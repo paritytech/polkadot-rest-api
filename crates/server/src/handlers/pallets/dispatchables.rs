@@ -33,13 +33,44 @@ use subxt::Metadata;
 // Helper Functions
 // ============================================================================
 
-/// Convert first character to lowercase (matching Sidecar's camelCase behavior)
-fn to_camel_case(s: &str) -> String {
+/// Convert first character to lowercase (for pallet names like "Balances" -> "balances")
+fn to_lower_first(s: &str) -> String {
     let mut chars = s.chars();
     match chars.next() {
         None => String::new(),
         Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
     }
+}
+
+/// Convert snake_case to camelCase (for dispatchable names like "transfer_allow_death" -> "transferAllowDeath")
+fn snake_to_camel(s: &str) -> String {
+    let mut result = String::new();
+    let mut capitalize_next = false;
+    for c in s.chars() {
+        if c == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(c.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+/// Convert camelCase to snake_case (for looking up dispatchables by user input)
+fn camel_to_snake(s: &str) -> String {
+    let mut result = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if c.is_uppercase() && i > 0 {
+            result.push('_');
+            result.push(c.to_ascii_lowercase());
+        } else {
+            result.push(c.to_ascii_lowercase());
+        }
+    }
+    result
 }
 
 // ============================================================================
@@ -235,7 +266,7 @@ pub async fn get_pallets_dispatchables(
         StatusCode::OK,
         Json(PalletsDispatchablesResponse {
             at,
-            pallet: to_camel_case(&pallet_info.name),
+            pallet: to_lower_first(&pallet_info.name),
             pallet_index: pallet_info.index.to_string(),
             items,
             rc_block_hash: None,
@@ -284,10 +315,12 @@ pub async fn get_pallet_dispatchable_item(
 
     let pallet_info = extract_pallet_dispatchables(&metadata, &pallet_id)?;
 
+    // Convert camelCase input to snake_case for lookup (Sidecar accepts both)
+    let dispatchable_id_snake = camel_to_snake(&dispatchable_id);
     let dispatchable = pallet_info
         .dispatchables
         .iter()
-        .find(|d| d.name.to_lowercase() == dispatchable_id.to_lowercase())
+        .find(|d| d.name.to_lowercase() == dispatchable_id_snake.to_lowercase())
         .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.clone()))?;
 
     let at = AtResponse {
@@ -305,9 +338,9 @@ pub async fn get_pallet_dispatchable_item(
         StatusCode::OK,
         Json(PalletDispatchableItemResponse {
             at,
-            pallet: to_camel_case(&pallet_info.name),
+            pallet: to_lower_first(&pallet_info.name),
             pallet_index: pallet_info.index.to_string(),
-            dispatchable_item: to_camel_case(&dispatchable.name),
+            dispatchable_item: snake_to_camel(&dispatchable.name),
             metadata: metadata_field,
             rc_block_hash: None,
             rc_block_number: None,
@@ -369,7 +402,7 @@ async fn handle_use_rc_block(
             StatusCode::OK,
             Json(PalletsDispatchablesResponse {
                 at,
-                pallet: to_camel_case(&pallet_id),
+                pallet: to_lower_first(&pallet_id),
                 pallet_index: "0".to_string(),
                 items: DispatchablesItems::Full(vec![]),
                 rc_block_hash: Some(rc_resolved_block.hash),
@@ -413,7 +446,7 @@ async fn handle_use_rc_block(
         StatusCode::OK,
         Json(PalletsDispatchablesResponse {
             at,
-            pallet: to_camel_case(&pallet_info.name),
+            pallet: to_lower_first(&pallet_info.name),
             pallet_index: pallet_info.index.to_string(),
             items,
             rc_block_hash: Some(rc_resolved_block.hash),
@@ -477,10 +510,12 @@ async fn handle_dispatchable_item_use_rc_block(
 
     let pallet_info = extract_pallet_dispatchables(&metadata, &pallet_id)?;
 
+    // Convert camelCase input to snake_case for lookup (Sidecar accepts both)
+    let dispatchable_id_snake = camel_to_snake(&dispatchable_id);
     let dispatchable = pallet_info
         .dispatchables
         .iter()
-        .find(|d| d.name.to_lowercase() == dispatchable_id.to_lowercase())
+        .find(|d| d.name.to_lowercase() == dispatchable_id_snake.to_lowercase())
         .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.clone()))?;
 
     let at = AtResponse {
@@ -501,9 +536,9 @@ async fn handle_dispatchable_item_use_rc_block(
         StatusCode::OK,
         Json(PalletDispatchableItemResponse {
             at,
-            pallet: to_camel_case(&pallet_info.name),
+            pallet: to_lower_first(&pallet_info.name),
             pallet_index: pallet_info.index.to_string(),
-            dispatchable_item: to_camel_case(&dispatchable.name),
+            dispatchable_item: snake_to_camel(&dispatchable.name),
             metadata: metadata_field,
             rc_block_hash: Some(rc_resolved_block.hash),
             rc_block_number: Some(rc_resolved_block.number.to_string()),
@@ -570,7 +605,7 @@ fn extract_pallet_dispatchables(
                     .map(|f| {
                         let type_name = f.type_name.clone().unwrap_or_else(|| f.ty.id.to_string());
                         DispatchableArg {
-                            name: to_camel_case(&f.name.clone().unwrap_or_default()),
+                            name: snake_to_camel(&f.name.clone().unwrap_or_default()),
                             ty: resolve_type_name(metadata, f.ty.id),
                             type_name: simplify_type_name(&type_name),
                         }
@@ -685,9 +720,12 @@ fn resolve_type_name(metadata: &Metadata, type_id: u32) -> String {
 }
 
 /// Convert a type path to PascalCase (e.g., ["pallet_balances", "AdjustmentDirection"] -> "PalletBalancesAdjustmentDirection")
+/// Skips "types" segment to match Sidecar behavior
 fn path_to_pascal_case(segments: &[String]) -> String {
     segments
         .iter()
+        // Skip "types" segment to match Sidecar behavior
+        .filter(|segment| segment.as_str() != "types")
         .flat_map(|segment| {
             segment
                 .split('_')
@@ -704,13 +742,20 @@ fn path_to_pascal_case(segments: &[String]) -> String {
         .join("")
 }
 
-/// Simplify a type name by removing generic parameters (for Sidecar compatibility).
+/// Simplify a type name for args[] by removing T:: prefix and stripping <T> suffix only.
+/// Preserves other generic parameters.
+/// e.g., "AccountIdLookupOf<T>" -> "AccountIdLookupOf"
+///       "Vec<T::AccountId>" -> "Vec<AccountId>"
+///       "T::Balance" -> "Balance"
 fn simplify_type_name(type_name: &str) -> String {
-    // Remove everything from first '<' to get simplified name
-    if let Some(idx) = type_name.find('<') {
-        type_name[..idx].trim().to_string()
+    // First remove T:: prefix (including inside generics)
+    let without_prefix = type_name.replace("T::", "");
+
+    // Only strip <T> suffix specifically, not other generic parameters
+    if without_prefix.ends_with("<T>") {
+        without_prefix[..without_prefix.len() - 3].to_string()
     } else {
-        type_name.to_string()
+        without_prefix
     }
 }
 
@@ -723,22 +768,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_to_camel_case() {
-        assert_eq!(to_camel_case("Balances"), "balances");
-        assert_eq!(to_camel_case("System"), "system");
-        assert_eq!(to_camel_case("transferAllowDeath"), "transferAllowDeath");
-        assert_eq!(to_camel_case(""), "");
-        assert_eq!(to_camel_case("A"), "a");
+    fn test_to_lower_first() {
+        assert_eq!(to_lower_first("Balances"), "balances");
+        assert_eq!(to_lower_first("System"), "system");
+        assert_eq!(to_lower_first("transferAllowDeath"), "transferAllowDeath");
+        assert_eq!(to_lower_first(""), "");
+        assert_eq!(to_lower_first("A"), "a");
+    }
+
+    #[test]
+    fn test_snake_to_camel() {
+        assert_eq!(snake_to_camel("transfer_allow_death"), "transferAllowDeath");
+        assert_eq!(snake_to_camel("set_balance"), "setBalance");
+        assert_eq!(snake_to_camel("transfer"), "transfer");
+        assert_eq!(snake_to_camel(""), "");
+    }
+
+    #[test]
+    fn test_camel_to_snake() {
+        assert_eq!(camel_to_snake("transferAllowDeath"), "transfer_allow_death");
+        assert_eq!(camel_to_snake("setBalance"), "set_balance");
+        assert_eq!(camel_to_snake("transfer"), "transfer");
+        assert_eq!(camel_to_snake(""), "");
     }
 
     #[test]
     fn test_simplify_type_name() {
+        // T:: prefix is removed, and only <T> suffix is stripped (not other generics)
         assert_eq!(
             simplify_type_name("MultiAddress<AccountId32, ()>"),
-            "MultiAddress"
+            "MultiAddress<AccountId32, ()>"
         );
         assert_eq!(simplify_type_name("u128"), "u128");
-        assert_eq!(simplify_type_name("Vec<u8>"), "Vec");
+        assert_eq!(simplify_type_name("Vec<u8>"), "Vec<u8>");
+        assert_eq!(simplify_type_name("Vec<T::AccountId>"), "Vec<AccountId>");
+        assert_eq!(simplify_type_name("T::Balance"), "Balance");
+        assert_eq!(
+            simplify_type_name("AccountIdLookupOf<T>"),
+            "AccountIdLookupOf"
+        );
     }
 
     #[test]
