@@ -102,6 +102,24 @@
       "requires_block_height": false,
       "requires_account": false,
       "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
+    },
+    {
+      "path": "/v1/pallets/asset-conversion/next-available-id",
+      "query_params": [
+        {}
+      ],
+      "requires_block_height": false,
+      "requires_account": false,
+      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
+    },
+    {
+      "path": "/v1/pallets/asset-conversion/liquidity-pools",
+      "query_params": [
+        {}
+      ],
+      "requires_block_height": false,
+      "requires_account": false,
+      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
     }
   ],
   "historical_tests": {
@@ -399,6 +417,22 @@
         "description": "Test pallets assets asset-info for USDT (asset 1984) at Asset Hub Polkadot block 10,260,000"
       },
       {
+        "endpoint": "/v1/pallets/asset-conversion/next-available-id",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "10260000" },
+        "fixture_path": "asset-hub-polkadot/pallets_asset_conversion_next_available_id_10260000.json",
+        "description": "Test pallets asset-conversion next-available-id at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/pallets/asset-conversion/liquidity-pools",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "10260000" },
+        "fixture_path": "asset-hub-polkadot/pallets_asset_conversion_liquidity_pools_10260000.json",
+        "description": "Test pallets asset-conversion liquidity-pools at Asset Hub Polkadot block 10,260,000"
+      },
+      {
         "endpoint": "/v1/blocks/{blockId}",
         "block_height": 11308795,
         "account_id": null,
@@ -631,6 +665,22 @@
         },
         "fixture_path": "asset-hub-kusama/pallets_assets_1984_asset_info_11152000.json",
         "description": "Test pallets assets asset-info for USDT (asset 1984) at Asset Hub Kusama block 11,152,000"
+      },
+      {
+        "endpoint": "/v1/pallets/asset-conversion/next-available-id",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "8000000" },
+        "fixture_path": "asset-hub-kusama/pallets_asset_conversion_next_available_id_8000000.json",
+        "description": "Test pallets asset-conversion next-available-id at Asset Hub Kusama block 8,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/asset-conversion/liquidity-pools",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "8000000" },
+        "fixture_path": "asset-hub-kusama/pallets_asset_conversion_liquidity_pools_8000000.json",
+        "description": "Test pallets asset-conversion liquidity-pools at Asset Hub Kusama block 8,000,000"
       }
     ],
     "coretime-kusama": [
