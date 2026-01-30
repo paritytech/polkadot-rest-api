@@ -7,18 +7,18 @@
 //! # Sidecar Compatibility
 //!
 //! This endpoint aims to match the Sidecar `/pallets/{palletId}/dispatchables` response format.
+//! Uses Subxt's metadata API which normalizes all metadata versions internally.
 
 // Allow large error types - PalletError contains subxt::error::OnlineClientAtBlockError
 // which is large by design. Boxing would add indirection without significant benefit.
 #![allow(clippy::result_large_err)]
 
 use crate::handlers::pallets::common::{
-    AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
-    find_pallet_v14, find_pallet_v15, find_pallet_v16,
+    AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams,
 };
 use crate::state::AppState;
-use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
+use crate::utils::{self, fetch_block_timestamp};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -26,10 +26,21 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed, decode_different::DecodeDifferent};
-use parity_scale_codec::Decode;
 use serde::Serialize;
-use subxt_rpcs::rpc_params;
+use subxt::Metadata;
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Convert first character to lowercase (matching Sidecar's camelCase behavior)
+fn to_camel_case(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
+    }
+}
 
 // ============================================================================
 // Response Types
@@ -76,7 +87,7 @@ pub enum DispatchablesItems {
 }
 
 /// Metadata for a single dispatchable.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DispatchableItemMetadata {
     /// The dispatchable name.
@@ -96,7 +107,7 @@ pub struct DispatchableItemMetadata {
 }
 
 /// A field/argument of a dispatchable (with type ID).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DispatchableField {
     /// The field name.
@@ -115,7 +126,7 @@ pub struct DispatchableField {
 }
 
 /// An argument of a dispatchable with resolved type name (Sidecar compatible).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DispatchableArg {
     /// The argument name (camelCase).
@@ -180,7 +191,6 @@ pub struct PalletDispatchableItemResponse {
 ///
 /// - `400 Bad Request`: Invalid block parameter or unsupported `useRcBlock` usage.
 /// - `404 Not Found`: Pallet not found in metadata.
-/// - `500 Internal Server Error`: Unsupported metadata version.
 /// - `503 Service Unavailable`: RPC connection lost.
 pub async fn get_pallets_dispatchables(
     State(state): State<AppState>,
@@ -191,33 +201,49 @@ pub async fn get_pallets_dispatchables(
         return handle_use_rc_block(state, pallet_id, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            state.client.at_block(block_id).await?
-        }
-    };
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
+    let resolved = utils::resolve_block(&state, block_id).await?;
+
+    // Get client at block - Subxt normalizes all metadata versions
+    let client_at_block = state.client.at_block(resolved.number).await?;
+    let metadata = client_at_block.metadata();
+
+    let pallet_info = extract_pallet_dispatchables(&metadata, &pallet_id)?;
 
     let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
+        hash: resolved.hash.clone(),
+        height: resolved.number.to_string(),
     };
 
-    // Fetch raw metadata via RPC to access all metadata versions (V9-V16)
-    let block_hash = format!("{:#x}", client_at_block.block_hash());
-    let metadata = fetch_runtime_metadata(&state, &block_hash).await?;
+    let items = if params.only_ids {
+        DispatchablesItems::OnlyIds(
+            pallet_info
+                .dispatchables
+                .iter()
+                .map(|d| d.name.clone())
+                .collect(),
+        )
+    } else {
+        DispatchablesItems::Full(pallet_info.dispatchables)
+    };
 
-    let response = extract_dispatchables_from_metadata(
-        &metadata,
-        &pallet_id,
-        at,
-        params.only_ids,
-        RcBlockFields::default(),
-    )?;
-
-    Ok((StatusCode::OK, Json(response)).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(PalletsDispatchablesResponse {
+            at,
+            pallet: to_camel_case(&pallet_info.name),
+            pallet_index: pallet_info.index.to_string(),
+            items,
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        }),
+    )
+        .into_response())
 }
 
 /// Handler for `GET /pallets/{palletId}/dispatchables/{dispatchableItemId}`.
@@ -234,7 +260,6 @@ pub async fn get_pallets_dispatchables(
 ///
 /// - `400 Bad Request`: Invalid block parameter or unsupported `useRcBlock` usage.
 /// - `404 Not Found`: Pallet or dispatchable not found in metadata.
-/// - `500 Internal Server Error`: Unsupported metadata version.
 /// - `503 Service Unavailable`: RPC connection lost.
 pub async fn get_pallet_dispatchable_item(
     State(state): State<AppState>,
@@ -246,56 +271,50 @@ pub async fn get_pallet_dispatchable_item(
             .await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            state.client.at_block(block_id).await?
-        }
-    };
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
+    let resolved = utils::resolve_block(&state, block_id).await?;
+
+    // Get client at block - Subxt normalizes all metadata versions
+    let client_at_block = state.client.at_block(resolved.number).await?;
+    let metadata = client_at_block.metadata();
+
+    let pallet_info = extract_pallet_dispatchables(&metadata, &pallet_id)?;
+
+    let dispatchable = pallet_info
+        .dispatchables
+        .iter()
+        .find(|d| d.name.to_lowercase() == dispatchable_id.to_lowercase())
+        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.clone()))?;
 
     let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
+        hash: resolved.hash.clone(),
+        height: resolved.number.to_string(),
     };
 
-    // Fetch raw metadata via RPC to access all metadata versions (V9-V16)
-    let block_hash = format!("{:#x}", client_at_block.block_hash());
-    let metadata = fetch_runtime_metadata(&state, &block_hash).await?;
+    let metadata_field = if params.metadata {
+        Some(dispatchable.clone())
+    } else {
+        None
+    };
 
-    let response = extract_dispatchable_item_from_metadata(
-        &metadata,
-        &pallet_id,
-        &dispatchable_id,
-        at,
-        params.metadata,
-        RcBlockFields::default(),
-    )?;
-
-    Ok((StatusCode::OK, Json(response)).into_response())
-}
-
-/// Fetch raw RuntimeMetadata via RPC and decode it
-async fn fetch_runtime_metadata(
-    state: &AppState,
-    block_hash: &str,
-) -> Result<RuntimeMetadata, PalletError> {
-    let metadata_hex: String = state
-        .rpc_client
-        .request("state_getMetadata", rpc_params![block_hash])
-        .await
-        .map_err(|e| PalletError::PalletNotFound(format!("Failed to fetch metadata: {}", e)))?;
-
-    let hex_str = metadata_hex.strip_prefix("0x").unwrap_or(&metadata_hex);
-    let metadata_bytes = hex::decode(hex_str).map_err(|e| {
-        PalletError::PalletNotFound(format!("Failed to decode metadata hex: {}", e))
-    })?;
-
-    let metadata_prefixed = RuntimeMetadataPrefixed::decode(&mut &metadata_bytes[..])
-        .map_err(|e| PalletError::PalletNotFound(format!("Failed to decode metadata: {}", e)))?;
-
-    Ok(metadata_prefixed.1)
+    Ok((
+        StatusCode::OK,
+        Json(PalletDispatchableItemResponse {
+            at,
+            pallet: to_camel_case(&pallet_info.name),
+            pallet_index: pallet_info.index.to_string(),
+            dispatchable_item: to_camel_case(&dispatchable.name),
+            metadata: metadata_field,
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        }),
+    )
+        .into_response())
 }
 
 // ============================================================================
@@ -350,7 +369,7 @@ async fn handle_use_rc_block(
             StatusCode::OK,
             Json(PalletsDispatchablesResponse {
                 at,
-                pallet: pallet_id.to_lowercase(),
+                pallet: to_camel_case(&pallet_id),
                 pallet_index: "0".to_string(),
                 items: DispatchablesItems::Full(vec![]),
                 rc_block_hash: Some(rc_resolved_block.hash),
@@ -364,46 +383,45 @@ async fn handle_use_rc_block(
     // Use the first Asset Hub block
     let ah_block = &ah_blocks[0];
 
+    // Get client at block - Subxt normalizes all metadata versions
+    let client_at_block = state.client.at_block(ah_block.number).await?;
+    let metadata = client_at_block.metadata();
+
+    let pallet_info = extract_pallet_dispatchables(&metadata, &pallet_id)?;
+
     let at = AtResponse {
         hash: ah_block.hash.clone(),
         height: ah_block.number.to_string(),
     };
 
-    // Fetch raw metadata via RPC for full version support
-    let metadata = fetch_runtime_metadata(&state, &ah_block.hash).await?;
+    // Fetch timestamp using Subxt's dynamic storage API
+    let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
-    // Fetch timestamp via RPC
-    let timestamp_key = "0x0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f";
-    let timestamp_result: Option<String> = state
-        .rpc_client
-        .request(
-            "state_getStorage",
-            rpc_params![timestamp_key, &ah_block.hash],
+    let items = if params.only_ids {
+        DispatchablesItems::OnlyIds(
+            pallet_info
+                .dispatchables
+                .iter()
+                .map(|d| d.name.clone())
+                .collect(),
         )
-        .await
-        .ok();
-
-    let mut ah_timestamp = None;
-    if let Some(timestamp_hex) = timestamp_result {
-        let hex_str = timestamp_hex.strip_prefix("0x").unwrap_or(&timestamp_hex);
-        if let Ok(timestamp_bytes) = hex::decode(hex_str) {
-            let mut cursor = &timestamp_bytes[..];
-            if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                ah_timestamp = Some(timestamp_value.to_string());
-            }
-        }
-    }
-
-    let rc_fields = RcBlockFields {
-        rc_block_hash: Some(rc_resolved_block.hash),
-        rc_block_number: Some(rc_resolved_block.number.to_string()),
-        ah_timestamp,
+    } else {
+        DispatchablesItems::Full(pallet_info.dispatchables)
     };
 
-    let response =
-        extract_dispatchables_from_metadata(&metadata, &pallet_id, at, params.only_ids, rc_fields)?;
-
-    Ok((StatusCode::OK, Json(response)).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(PalletsDispatchablesResponse {
+            at,
+            pallet: to_camel_case(&pallet_info.name),
+            pallet_index: pallet_info.index.to_string(),
+            items,
+            rc_block_hash: Some(rc_resolved_block.hash),
+            rc_block_number: Some(rc_resolved_block.number.to_string()),
+            ah_timestamp,
+        }),
+    )
+        .into_response())
 }
 
 /// Handle requests with `useRcBlock=true` for Asset Hub chains (single dispatchable item).
@@ -453,250 +471,138 @@ async fn handle_dispatchable_item_use_rc_block(
     // Use the first Asset Hub block
     let ah_block = &ah_blocks[0];
 
+    // Get client at block - Subxt normalizes all metadata versions
+    let client_at_block = state.client.at_block(ah_block.number).await?;
+    let metadata = client_at_block.metadata();
+
+    let pallet_info = extract_pallet_dispatchables(&metadata, &pallet_id)?;
+
+    let dispatchable = pallet_info
+        .dispatchables
+        .iter()
+        .find(|d| d.name.to_lowercase() == dispatchable_id.to_lowercase())
+        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.clone()))?;
+
     let at = AtResponse {
         hash: ah_block.hash.clone(),
         height: ah_block.number.to_string(),
     };
 
-    // Fetch raw metadata via RPC for full version support
-    let metadata = fetch_runtime_metadata(&state, &ah_block.hash).await?;
+    // Fetch timestamp using Subxt's dynamic storage API
+    let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
-    // Fetch timestamp via RPC
-    let timestamp_key = "0x0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f";
-    let timestamp_result: Option<String> = state
-        .rpc_client
-        .request(
-            "state_getStorage",
-            rpc_params![timestamp_key, &ah_block.hash],
-        )
-        .await
-        .ok();
-
-    let mut ah_timestamp = None;
-    if let Some(timestamp_hex) = timestamp_result {
-        let hex_str = timestamp_hex.strip_prefix("0x").unwrap_or(&timestamp_hex);
-        if let Ok(timestamp_bytes) = hex::decode(hex_str) {
-            let mut cursor = &timestamp_bytes[..];
-            if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                ah_timestamp = Some(timestamp_value.to_string());
-            }
-        }
-    }
-
-    let rc_fields = RcBlockFields {
-        rc_block_hash: Some(rc_resolved_block.hash),
-        rc_block_number: Some(rc_resolved_block.number.to_string()),
-        ah_timestamp,
+    let metadata_field = if params.metadata {
+        Some(dispatchable.clone())
+    } else {
+        None
     };
 
-    let response = extract_dispatchable_item_from_metadata(
-        &metadata,
-        &pallet_id,
-        &dispatchable_id,
-        at,
-        params.metadata,
-        rc_fields,
-    )?;
-
-    Ok((StatusCode::OK, Json(response)).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(PalletDispatchableItemResponse {
+            at,
+            pallet: to_camel_case(&pallet_info.name),
+            pallet_index: pallet_info.index.to_string(),
+            dispatchable_item: to_camel_case(&dispatchable.name),
+            metadata: metadata_field,
+            rc_block_hash: Some(rc_resolved_block.hash),
+            rc_block_number: Some(rc_resolved_block.number.to_string()),
+            ah_timestamp,
+        }),
+    )
+        .into_response())
 }
 
 // ============================================================================
-// Metadata Extraction
+// Internal Types
 // ============================================================================
 
-/// Extract dispatchables from runtime metadata.
-fn extract_dispatchables_from_metadata(
-    metadata: &RuntimeMetadata,
+struct PalletDispatchablesInfo {
+    name: String,
+    index: u8,
+    dispatchables: Vec<DispatchableItemMetadata>,
+}
+
+// ============================================================================
+// Metadata Extraction - Using Subxt's normalized metadata API
+// ============================================================================
+
+/// Extract pallet dispatchables using Subxt's metadata API.
+/// Subxt normalizes all metadata versions (V9-V16) into a unified format.
+fn extract_pallet_dispatchables(
+    metadata: &Metadata,
     pallet_id: &str,
-    at: AtResponse,
-    only_ids: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletsDispatchablesResponse, PalletError> {
-    use RuntimeMetadata::*;
-    match metadata {
-        V9(meta) => extract_dispatchables_v9(meta, pallet_id, at, only_ids, rc_fields),
-        V10(meta) => extract_dispatchables_v10(meta, pallet_id, at, only_ids, rc_fields),
-        V11(meta) => extract_dispatchables_v11(meta, pallet_id, at, only_ids, rc_fields),
-        V12(meta) => extract_dispatchables_v12(meta, pallet_id, at, only_ids, rc_fields),
-        V13(meta) => extract_dispatchables_v13(meta, pallet_id, at, only_ids, rc_fields),
-        V14(meta) => extract_dispatchables_v14(meta, pallet_id, at, only_ids, rc_fields),
-        V15(meta) => extract_dispatchables_v15(meta, pallet_id, at, only_ids, rc_fields),
-        V16(meta) => extract_dispatchables_v16(meta, pallet_id, at, only_ids, rc_fields),
-        _ => Err(PalletError::UnsupportedMetadataVersion),
-    }
-}
-
-/// Extract a single dispatchable from runtime metadata.
-fn extract_dispatchable_item_from_metadata(
-    metadata: &RuntimeMetadata,
-    pallet_id: &str,
-    dispatchable_id: &str,
-    at: AtResponse,
-    include_metadata: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletDispatchableItemResponse, PalletError> {
-    use RuntimeMetadata::*;
-    match metadata {
-        V9(meta) => extract_dispatchable_item_v9(
-            meta,
-            pallet_id,
-            dispatchable_id,
-            at,
-            include_metadata,
-            rc_fields,
-        ),
-        V10(meta) => extract_dispatchable_item_v10(
-            meta,
-            pallet_id,
-            dispatchable_id,
-            at,
-            include_metadata,
-            rc_fields,
-        ),
-        V11(meta) => extract_dispatchable_item_v11(
-            meta,
-            pallet_id,
-            dispatchable_id,
-            at,
-            include_metadata,
-            rc_fields,
-        ),
-        V12(meta) => extract_dispatchable_item_v12(
-            meta,
-            pallet_id,
-            dispatchable_id,
-            at,
-            include_metadata,
-            rc_fields,
-        ),
-        V13(meta) => extract_dispatchable_item_v13(
-            meta,
-            pallet_id,
-            dispatchable_id,
-            at,
-            include_metadata,
-            rc_fields,
-        ),
-        V14(meta) => extract_dispatchable_item_v14(
-            meta,
-            pallet_id,
-            dispatchable_id,
-            at,
-            include_metadata,
-            rc_fields,
-        ),
-        V15(meta) => extract_dispatchable_item_v15(
-            meta,
-            pallet_id,
-            dispatchable_id,
-            at,
-            include_metadata,
-            rc_fields,
-        ),
-        V16(meta) => extract_dispatchable_item_v16(
-            meta,
-            pallet_id,
-            dispatchable_id,
-            at,
-            include_metadata,
-            rc_fields,
-        ),
-        _ => Err(PalletError::UnsupportedMetadataVersion),
-    }
-}
-
-// ============================================================================
-// Helper Functions for V9-V13 Metadata
-// ============================================================================
-
-/// Helper to extract a string from a DecodeDifferent type used in V9-V13 metadata.
-fn extract_str<'a>(dd: &'a DecodeDifferent<&'static str, String>) -> &'a str {
-    match dd {
-        DecodeDifferent::Decoded(s) => s.as_str(),
-        DecodeDifferent::Encode(s) => s,
-    }
-}
-
-/// Helper to extract docs from DecodeDifferent used in V9-V13 metadata.
-fn extract_docs(docs: &DecodeDifferent<&'static [&'static str], Vec<String>>) -> Vec<String> {
-    match docs {
-        DecodeDifferent::Decoded(v) => v.clone(),
-        DecodeDifferent::Encode(s) => s.iter().map(|x| x.to_string()).collect(),
-    }
-}
-
-/// Convert snake_case to camelCase
-fn to_camel_case(s: &str) -> String {
-    let mut result = String::new();
-    let mut capitalize_next = false;
-    for c in s.chars() {
-        if c == '_' {
-            capitalize_next = true;
-        } else if capitalize_next {
-            result.push(c.to_ascii_uppercase());
-            capitalize_next = false;
-        } else {
-            result.push(c);
-        }
-    }
-    result
-}
-
-/// Simplify type name by removing `T::` prefix from generic parameters
-/// e.g., "Vec<T::AccountId>" -> "Vec<AccountId>"
-/// e.g., "AccountIdLookupOf<T>" -> "AccountIdLookupOf"
-fn simplify_type_name(type_name: &str) -> String {
-    // Replace T:: prefixes inside generic parameters
-    let simplified = type_name.replace("T::", "");
-
-    // Remove trailing <T> (for types like AccountIdLookupOf<T>)
-
-    simplified
-        .trim_end_matches("<T>")
-        .trim_end_matches("Of<T>")
-        .to_string()
-}
-
-/// Resolve a type ID to its display name from the V14 type registry
-fn resolve_type_name_v14(registry: &scale_info::PortableRegistry, type_id: u32) -> String {
-    let Some(ty) = registry.resolve(type_id) else {
-        return format!("Type{}", type_id);
-    };
-
-    format_type_def_v14(registry, ty)
-}
-
-/// Convert path segments to PascalCase joined format (e.g., ["pallet_balances", "AdjustmentDirection"] -> "PalletBalancesAdjustmentDirection")
-/// Skips intermediate module segments like "types", "pallet" to match Sidecar format
-fn path_to_pascal_case(segments: &[String]) -> String {
-    // Segments to skip (intermediate module names)
-    let skip_segments = ["types", "pallet"];
-
-    segments
-        .iter()
-        .filter(|seg| !skip_segments.contains(&seg.as_str()))
-        .map(|seg| {
-            // Convert snake_case to PascalCase
-            seg.split('_')
-                .filter(|s| !s.is_empty())
-                .map(|word| {
-                    let mut chars = word.chars();
-                    match chars.next() {
-                        None => String::new(),
-                        Some(first) => first.to_uppercase().chain(chars).collect(),
-                    }
-                })
-                .collect::<String>()
+) -> Result<PalletDispatchablesInfo, PalletError> {
+    // Try to find pallet by index first, then by name (case-insensitive)
+    let pallet = if let Ok(index) = pallet_id.parse::<u8>() {
+        metadata.pallets().find(|p| p.call_index() == index)
+    } else {
+        // Try exact match first, then case-insensitive match
+        metadata.pallet_by_name(pallet_id).or_else(|| {
+            let pallet_id_lower = pallet_id.to_lowercase();
+            metadata
+                .pallets()
+                .find(|p| p.name().to_lowercase() == pallet_id_lower)
         })
-        .collect()
+    };
+
+    let pallet = pallet.ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+
+    // Get call variants from the pallet (if available)
+    let dispatchables: Vec<DispatchableItemMetadata> = match pallet.call_variants() {
+        Some(variants) => variants
+            .iter()
+            .map(|variant| {
+                let fields: Vec<DispatchableField> = variant
+                    .fields
+                    .iter()
+                    .map(|f| DispatchableField {
+                        name: f.name.clone().unwrap_or_default(),
+                        ty: f.ty.id.to_string(),
+                        type_name: f.type_name.clone(),
+                        docs: f.docs.clone(),
+                    })
+                    .collect();
+
+                let args: Vec<DispatchableArg> = variant
+                    .fields
+                    .iter()
+                    .map(|f| {
+                        let type_name = f.type_name.clone().unwrap_or_else(|| f.ty.id.to_string());
+                        DispatchableArg {
+                            name: to_camel_case(&f.name.clone().unwrap_or_default()),
+                            ty: resolve_type_name(metadata, f.ty.id),
+                            type_name: simplify_type_name(&type_name),
+                        }
+                    })
+                    .collect();
+
+                DispatchableItemMetadata {
+                    name: variant.name.clone(),
+                    fields,
+                    index: variant.index.to_string(),
+                    docs: variant.docs.clone(),
+                    args,
+                }
+            })
+            .collect(),
+        None => vec![],
+    };
+
+    Ok(PalletDispatchablesInfo {
+        name: pallet.name().to_string(),
+        index: pallet.call_index(),
+        dispatchables,
+    })
 }
 
-/// Format a type definition to a human-readable string
-fn format_type_def_v14(
-    registry: &scale_info::PortableRegistry,
-    ty: &scale_info::Type<scale_info::form::PortableForm>,
-) -> String {
+/// Resolve a type ID to its human-readable name using the type registry.
+fn resolve_type_name(metadata: &Metadata, type_id: u32) -> String {
+    let types = metadata.types();
+    let Some(ty) = types.resolve(type_id) else {
+        return type_id.to_string();
+    };
+
     use scale_info::TypeDef;
 
     match &ty.type_def {
@@ -709,8 +615,7 @@ fn format_type_def_v14(
                 .unwrap_or_else(|| "Composite".to_string())
         }
         TypeDef::Variant(_) => {
-            // Use full path for pallet types (e.g., pallet_balances::AdjustmentDirection -> PalletBalancesAdjustmentDirection)
-            // Use short name for non-pallet types (e.g., sp_runtime::multiaddress::MultiAddress -> MultiAddress)
+            // Use full path for pallet types, short name for others
             if ty.path.segments.is_empty() {
                 "Enum".to_string()
             } else if ty
@@ -732,11 +637,11 @@ fn format_type_def_v14(
             }
         }
         TypeDef::Sequence(seq) => {
-            let inner = resolve_type_name_v14(registry, seq.type_param.id);
+            let inner = resolve_type_name(metadata, seq.type_param.id);
             format!("Vec<{}>", inner)
         }
         TypeDef::Array(arr) => {
-            let inner = resolve_type_name_v14(registry, arr.type_param.id);
+            let inner = resolve_type_name(metadata, arr.type_param.id);
             format!("[{}; {}]", inner, arr.len)
         }
         TypeDef::Tuple(tuple) => {
@@ -746,7 +651,7 @@ fn format_type_def_v14(
                 let fields: Vec<String> = tuple
                     .fields
                     .iter()
-                    .map(|f| resolve_type_name_v14(registry, f.id))
+                    .map(|f| resolve_type_name(metadata, f.id))
                     .collect();
                 format!("({})", fields.join(", "))
             }
@@ -772,1828 +677,45 @@ fn format_type_def_v14(
             }
         }
         TypeDef::Compact(compact) => {
-            let inner = resolve_type_name_v14(registry, compact.type_param.id);
+            let inner = resolve_type_name(metadata, compact.type_param.id);
             format!("Compact<{}>", inner)
         }
         TypeDef::BitSequence(_) => "BitSequence".to_string(),
     }
 }
 
-// ============================================================================
-// V9 Metadata Extraction
-// ============================================================================
-
-fn extract_dispatchables_v9(
-    meta: &frame_metadata::v9::RuntimeMetadataV9,
-    pallet_id: &str,
-    at: AtResponse,
-    only_ids: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletsDispatchablesResponse, PalletError> {
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
-        modules
-            .get(idx)
-            .map(|m| (m, idx as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .enumerate()
-            .find(|(_, m)| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|(i, m)| (m, i as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    // V9 calls are in module.calls as Option<DecodeDifferent<FnEncode<&'static [FunctionMetadata]>, Vec<FunctionMetadata>>>
-    let calls = match &module.calls {
-        Some(DecodeDifferent::Decoded(calls)) => calls,
-        _ => {
-            return Ok(PalletsDispatchablesResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: if only_ids {
-                    DispatchablesItems::OnlyIds(vec![])
-                } else {
-                    DispatchablesItems::Full(vec![])
-                },
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        }
-    };
-
-    let items = if only_ids {
-        DispatchablesItems::OnlyIds(
-            calls
-                .iter()
-                .map(|c| extract_str(&c.name).to_string())
-                .collect(),
-        )
-    } else {
-        DispatchablesItems::Full(
-            calls
-                .iter()
-                .enumerate()
-                .map(|(idx, c)| {
-                    let DecodeDifferent::Decoded(call_args) = &c.arguments else {
-                        return DispatchableItemMetadata {
-                            name: extract_str(&c.name).to_string(),
-                            fields: vec![],
-                            index: idx.to_string(),
-                            docs: extract_docs(&c.documentation),
-                            args: vec![],
-                        };
-                    };
-                    let fields: Vec<DispatchableField> = call_args
-                        .iter()
-                        .map(|arg| DispatchableField {
-                            name: extract_str(&arg.name).to_string(),
-                            ty: extract_str(&arg.ty).to_string(),
-                            type_name: None,
-                            docs: vec![],
-                        })
-                        .collect();
-                    let args: Vec<DispatchableArg> = call_args
-                        .iter()
-                        .map(|arg| {
-                            let name = extract_str(&arg.name).to_string();
-                            let ty = extract_str(&arg.ty).to_string();
-                            DispatchableArg {
-                                name: to_camel_case(&name),
-                                ty: ty.clone(),
-                                type_name: ty,
-                            }
-                        })
-                        .collect();
-                    DispatchableItemMetadata {
-                        name: extract_str(&c.name).to_string(),
-                        fields,
-                        index: idx.to_string(),
-                        docs: extract_docs(&c.documentation),
-                        args,
+/// Convert a type path to PascalCase (e.g., ["pallet_balances", "AdjustmentDirection"] -> "PalletBalancesAdjustmentDirection")
+fn path_to_pascal_case(segments: &[String]) -> String {
+    segments
+        .iter()
+        .flat_map(|segment| {
+            segment
+                .split('_')
+                .map(|part| {
+                    let mut chars = part.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
                     }
                 })
-                .collect(),
-        )
-    };
-
-    Ok(PalletsDispatchablesResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        items,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-fn extract_dispatchable_item_v9(
-    meta: &frame_metadata::v9::RuntimeMetadataV9,
-    pallet_id: &str,
-    dispatchable_id: &str,
-    at: AtResponse,
-    include_metadata: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletDispatchableItemResponse, PalletError> {
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
-        modules
-            .get(idx)
-            .map(|m| (m, idx as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .enumerate()
-            .find(|(_, m)| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|(i, m)| (m, i as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    let calls = match &module.calls {
-        Some(DecodeDifferent::Decoded(calls)) => calls,
-        _ => {
-            return Err(PalletError::DispatchableNotFound(
-                dispatchable_id.to_string(),
-            ));
-        }
-    };
-
-    let dispatchable_id_lower = dispatchable_id.to_lowercase();
-    let (idx, call) = calls
-        .iter()
-        .enumerate()
-        .find(|(_, c)| extract_str(&c.name).to_lowercase() == dispatchable_id_lower)
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.to_string()))?;
-
-    let call_name = extract_str(&call.name).to_string();
-
-    let metadata = if include_metadata {
-        let DecodeDifferent::Decoded(call_args) = &call.arguments else {
-            return Ok(PalletDispatchableItemResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                dispatchable_item: to_camel_case(&call_name),
-                metadata: Some(DispatchableItemMetadata {
-                    name: extract_str(&call.name).to_string(),
-                    fields: vec![],
-                    index: idx.to_string(),
-                    docs: extract_docs(&call.documentation),
-                    args: vec![],
-                }),
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        };
-        let fields: Vec<DispatchableField> = call_args
-            .iter()
-            .map(|arg| DispatchableField {
-                name: extract_str(&arg.name).to_string(),
-                ty: extract_str(&arg.ty).to_string(),
-                type_name: None,
-                docs: vec![],
-            })
-            .collect();
-        let args: Vec<DispatchableArg> = call_args
-            .iter()
-            .map(|arg| {
-                let name = extract_str(&arg.name).to_string();
-                let ty = extract_str(&arg.ty).to_string();
-                DispatchableArg {
-                    name: to_camel_case(&name),
-                    ty: ty.clone(),
-                    type_name: ty,
-                }
-            })
-            .collect();
-        Some(DispatchableItemMetadata {
-            name: extract_str(&call.name).to_string(),
-            fields,
-            index: idx.to_string(),
-            docs: extract_docs(&call.documentation),
-            args,
+                .collect::<Vec<_>>()
         })
-    } else {
-        None
-    };
+        .collect::<Vec<_>>()
+        .join("")
+}
 
-    Ok(PalletDispatchableItemResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        dispatchable_item: to_camel_case(&call_name),
-        metadata,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
+/// Simplify a type name by removing generic parameters (for Sidecar compatibility).
+fn simplify_type_name(type_name: &str) -> String {
+    // Remove everything from first '<' to get simplified name
+    if let Some(idx) = type_name.find('<') {
+        type_name[..idx].trim().to_string()
+    } else {
+        type_name.to_string()
+    }
 }
 
 // ============================================================================
-// V10 Metadata Extraction
-// ============================================================================
-
-fn extract_dispatchables_v10(
-    meta: &frame_metadata::v10::RuntimeMetadataV10,
-    pallet_id: &str,
-    at: AtResponse,
-    only_ids: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletsDispatchablesResponse, PalletError> {
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
-        modules
-            .get(idx)
-            .map(|m| (m, idx as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .enumerate()
-            .find(|(_, m)| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|(i, m)| (m, i as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    let calls = match &module.calls {
-        Some(DecodeDifferent::Decoded(calls)) => calls,
-        _ => {
-            return Ok(PalletsDispatchablesResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: if only_ids {
-                    DispatchablesItems::OnlyIds(vec![])
-                } else {
-                    DispatchablesItems::Full(vec![])
-                },
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        }
-    };
-
-    let items = if only_ids {
-        DispatchablesItems::OnlyIds(
-            calls
-                .iter()
-                .map(|c| extract_str(&c.name).to_string())
-                .collect(),
-        )
-    } else {
-        DispatchablesItems::Full(
-            calls
-                .iter()
-                .enumerate()
-                .map(|(idx, c)| {
-                    let DecodeDifferent::Decoded(call_args) = &c.arguments else {
-                        return DispatchableItemMetadata {
-                            name: extract_str(&c.name).to_string(),
-                            fields: vec![],
-                            index: idx.to_string(),
-                            docs: extract_docs(&c.documentation),
-                            args: vec![],
-                        };
-                    };
-                    let fields: Vec<DispatchableField> = call_args
-                        .iter()
-                        .map(|arg| DispatchableField {
-                            name: extract_str(&arg.name).to_string(),
-                            ty: extract_str(&arg.ty).to_string(),
-                            type_name: None,
-                            docs: vec![],
-                        })
-                        .collect();
-                    let args: Vec<DispatchableArg> = call_args
-                        .iter()
-                        .map(|arg| {
-                            let name = extract_str(&arg.name).to_string();
-                            let ty = extract_str(&arg.ty).to_string();
-                            DispatchableArg {
-                                name: to_camel_case(&name),
-                                ty: ty.clone(),
-                                type_name: ty,
-                            }
-                        })
-                        .collect();
-                    DispatchableItemMetadata {
-                        name: extract_str(&c.name).to_string(),
-                        fields,
-                        index: idx.to_string(),
-                        docs: extract_docs(&c.documentation),
-                        args,
-                    }
-                })
-                .collect(),
-        )
-    };
-
-    Ok(PalletsDispatchablesResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        items,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-fn extract_dispatchable_item_v10(
-    meta: &frame_metadata::v10::RuntimeMetadataV10,
-    pallet_id: &str,
-    dispatchable_id: &str,
-    at: AtResponse,
-    include_metadata: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletDispatchableItemResponse, PalletError> {
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
-        modules
-            .get(idx)
-            .map(|m| (m, idx as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .enumerate()
-            .find(|(_, m)| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|(i, m)| (m, i as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    let calls = match &module.calls {
-        Some(DecodeDifferent::Decoded(calls)) => calls,
-        _ => {
-            return Err(PalletError::DispatchableNotFound(
-                dispatchable_id.to_string(),
-            ));
-        }
-    };
-
-    let dispatchable_id_lower = dispatchable_id.to_lowercase();
-    let (idx, call) = calls
-        .iter()
-        .enumerate()
-        .find(|(_, c)| extract_str(&c.name).to_lowercase() == dispatchable_id_lower)
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.to_string()))?;
-
-    let call_name = extract_str(&call.name).to_string();
-
-    let metadata = if include_metadata {
-        let DecodeDifferent::Decoded(call_args) = &call.arguments else {
-            return Ok(PalletDispatchableItemResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                dispatchable_item: to_camel_case(&call_name),
-                metadata: Some(DispatchableItemMetadata {
-                    name: extract_str(&call.name).to_string(),
-                    fields: vec![],
-                    index: idx.to_string(),
-                    docs: extract_docs(&call.documentation),
-                    args: vec![],
-                }),
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        };
-        let fields: Vec<DispatchableField> = call_args
-            .iter()
-            .map(|arg| DispatchableField {
-                name: extract_str(&arg.name).to_string(),
-                ty: extract_str(&arg.ty).to_string(),
-                type_name: None,
-                docs: vec![],
-            })
-            .collect();
-        let args: Vec<DispatchableArg> = call_args
-            .iter()
-            .map(|arg| {
-                let name = extract_str(&arg.name).to_string();
-                let ty = extract_str(&arg.ty).to_string();
-                DispatchableArg {
-                    name: to_camel_case(&name),
-                    ty: ty.clone(),
-                    type_name: ty,
-                }
-            })
-            .collect();
-        Some(DispatchableItemMetadata {
-            name: extract_str(&call.name).to_string(),
-            fields,
-            index: idx.to_string(),
-            docs: extract_docs(&call.documentation),
-            args,
-        })
-    } else {
-        None
-    };
-
-    Ok(PalletDispatchableItemResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        dispatchable_item: to_camel_case(&call_name),
-        metadata,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-// ============================================================================
-// V11 Metadata Extraction
-// ============================================================================
-
-fn extract_dispatchables_v11(
-    meta: &frame_metadata::v11::RuntimeMetadataV11,
-    pallet_id: &str,
-    at: AtResponse,
-    only_ids: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletsDispatchablesResponse, PalletError> {
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
-        modules
-            .get(idx)
-            .map(|m| (m, idx as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .enumerate()
-            .find(|(_, m)| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|(i, m)| (m, i as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    let calls = match &module.calls {
-        Some(DecodeDifferent::Decoded(calls)) => calls,
-        _ => {
-            return Ok(PalletsDispatchablesResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: if only_ids {
-                    DispatchablesItems::OnlyIds(vec![])
-                } else {
-                    DispatchablesItems::Full(vec![])
-                },
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        }
-    };
-
-    let items = if only_ids {
-        DispatchablesItems::OnlyIds(
-            calls
-                .iter()
-                .map(|c| extract_str(&c.name).to_string())
-                .collect(),
-        )
-    } else {
-        DispatchablesItems::Full(
-            calls
-                .iter()
-                .enumerate()
-                .map(|(idx, c)| {
-                    let DecodeDifferent::Decoded(call_args) = &c.arguments else {
-                        return DispatchableItemMetadata {
-                            name: extract_str(&c.name).to_string(),
-                            fields: vec![],
-                            index: idx.to_string(),
-                            docs: extract_docs(&c.documentation),
-                            args: vec![],
-                        };
-                    };
-                    let fields: Vec<DispatchableField> = call_args
-                        .iter()
-                        .map(|arg| DispatchableField {
-                            name: extract_str(&arg.name).to_string(),
-                            ty: extract_str(&arg.ty).to_string(),
-                            type_name: None,
-                            docs: vec![],
-                        })
-                        .collect();
-                    let args: Vec<DispatchableArg> = call_args
-                        .iter()
-                        .map(|arg| {
-                            let name = extract_str(&arg.name).to_string();
-                            let ty = extract_str(&arg.ty).to_string();
-                            DispatchableArg {
-                                name: to_camel_case(&name),
-                                ty: ty.clone(),
-                                type_name: ty,
-                            }
-                        })
-                        .collect();
-                    DispatchableItemMetadata {
-                        name: extract_str(&c.name).to_string(),
-                        fields,
-                        index: idx.to_string(),
-                        docs: extract_docs(&c.documentation),
-                        args,
-                    }
-                })
-                .collect(),
-        )
-    };
-
-    Ok(PalletsDispatchablesResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        items,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-fn extract_dispatchable_item_v11(
-    meta: &frame_metadata::v11::RuntimeMetadataV11,
-    pallet_id: &str,
-    dispatchable_id: &str,
-    at: AtResponse,
-    include_metadata: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletDispatchableItemResponse, PalletError> {
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
-        modules
-            .get(idx)
-            .map(|m| (m, idx as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .enumerate()
-            .find(|(_, m)| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|(i, m)| (m, i as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    let calls = match &module.calls {
-        Some(DecodeDifferent::Decoded(calls)) => calls,
-        _ => {
-            return Err(PalletError::DispatchableNotFound(
-                dispatchable_id.to_string(),
-            ));
-        }
-    };
-
-    let dispatchable_id_lower = dispatchable_id.to_lowercase();
-    let (idx, call) = calls
-        .iter()
-        .enumerate()
-        .find(|(_, c)| extract_str(&c.name).to_lowercase() == dispatchable_id_lower)
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.to_string()))?;
-
-    let call_name = extract_str(&call.name).to_string();
-
-    let metadata = if include_metadata {
-        let DecodeDifferent::Decoded(call_args) = &call.arguments else {
-            return Ok(PalletDispatchableItemResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                dispatchable_item: to_camel_case(&call_name),
-                metadata: Some(DispatchableItemMetadata {
-                    name: extract_str(&call.name).to_string(),
-                    fields: vec![],
-                    index: idx.to_string(),
-                    docs: extract_docs(&call.documentation),
-                    args: vec![],
-                }),
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        };
-        let fields: Vec<DispatchableField> = call_args
-            .iter()
-            .map(|arg| DispatchableField {
-                name: extract_str(&arg.name).to_string(),
-                ty: extract_str(&arg.ty).to_string(),
-                type_name: None,
-                docs: vec![],
-            })
-            .collect();
-        let args: Vec<DispatchableArg> = call_args
-            .iter()
-            .map(|arg| {
-                let name = extract_str(&arg.name).to_string();
-                let ty = extract_str(&arg.ty).to_string();
-                DispatchableArg {
-                    name: to_camel_case(&name),
-                    ty: ty.clone(),
-                    type_name: ty,
-                }
-            })
-            .collect();
-        Some(DispatchableItemMetadata {
-            name: extract_str(&call.name).to_string(),
-            fields,
-            index: idx.to_string(),
-            docs: extract_docs(&call.documentation),
-            args,
-        })
-    } else {
-        None
-    };
-
-    Ok(PalletDispatchableItemResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        dispatchable_item: to_camel_case(&call_name),
-        metadata,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-// ============================================================================
-// V12 Metadata Extraction
-// ============================================================================
-
-fn extract_dispatchables_v12(
-    meta: &frame_metadata::v12::RuntimeMetadataV12,
-    pallet_id: &str,
-    at: AtResponse,
-    only_ids: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletsDispatchablesResponse, PalletError> {
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    // V12 has index field
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<u8>() {
-        modules
-            .iter()
-            .find(|m| m.index == idx)
-            .map(|m| (m, idx))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|m| (m, m.index))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    let calls = match &module.calls {
-        Some(DecodeDifferent::Decoded(calls)) => calls,
-        _ => {
-            return Ok(PalletsDispatchablesResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: if only_ids {
-                    DispatchablesItems::OnlyIds(vec![])
-                } else {
-                    DispatchablesItems::Full(vec![])
-                },
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        }
-    };
-
-    let items = if only_ids {
-        DispatchablesItems::OnlyIds(
-            calls
-                .iter()
-                .map(|c| extract_str(&c.name).to_string())
-                .collect(),
-        )
-    } else {
-        DispatchablesItems::Full(
-            calls
-                .iter()
-                .enumerate()
-                .map(|(idx, c)| {
-                    let DecodeDifferent::Decoded(call_args) = &c.arguments else {
-                        return DispatchableItemMetadata {
-                            name: extract_str(&c.name).to_string(),
-                            fields: vec![],
-                            index: idx.to_string(),
-                            docs: extract_docs(&c.documentation),
-                            args: vec![],
-                        };
-                    };
-                    let fields: Vec<DispatchableField> = call_args
-                        .iter()
-                        .map(|arg| DispatchableField {
-                            name: extract_str(&arg.name).to_string(),
-                            ty: extract_str(&arg.ty).to_string(),
-                            type_name: None,
-                            docs: vec![],
-                        })
-                        .collect();
-                    let args: Vec<DispatchableArg> = call_args
-                        .iter()
-                        .map(|arg| {
-                            let name = extract_str(&arg.name).to_string();
-                            let ty = extract_str(&arg.ty).to_string();
-                            DispatchableArg {
-                                name: to_camel_case(&name),
-                                ty: ty.clone(),
-                                type_name: ty,
-                            }
-                        })
-                        .collect();
-                    DispatchableItemMetadata {
-                        name: extract_str(&c.name).to_string(),
-                        fields,
-                        index: idx.to_string(),
-                        docs: extract_docs(&c.documentation),
-                        args,
-                    }
-                })
-                .collect(),
-        )
-    };
-
-    Ok(PalletsDispatchablesResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        items,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-fn extract_dispatchable_item_v12(
-    meta: &frame_metadata::v12::RuntimeMetadataV12,
-    pallet_id: &str,
-    dispatchable_id: &str,
-    at: AtResponse,
-    include_metadata: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletDispatchableItemResponse, PalletError> {
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<u8>() {
-        modules
-            .iter()
-            .find(|m| m.index == idx)
-            .map(|m| (m, idx))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|m| (m, m.index))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    let calls = match &module.calls {
-        Some(DecodeDifferent::Decoded(calls)) => calls,
-        _ => {
-            return Err(PalletError::DispatchableNotFound(
-                dispatchable_id.to_string(),
-            ));
-        }
-    };
-
-    let dispatchable_id_lower = dispatchable_id.to_lowercase();
-    let (idx, call) = calls
-        .iter()
-        .enumerate()
-        .find(|(_, c)| extract_str(&c.name).to_lowercase() == dispatchable_id_lower)
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.to_string()))?;
-
-    let call_name = extract_str(&call.name).to_string();
-
-    let metadata = if include_metadata {
-        let DecodeDifferent::Decoded(call_args) = &call.arguments else {
-            return Ok(PalletDispatchableItemResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                dispatchable_item: to_camel_case(&call_name),
-                metadata: Some(DispatchableItemMetadata {
-                    name: extract_str(&call.name).to_string(),
-                    fields: vec![],
-                    index: idx.to_string(),
-                    docs: extract_docs(&call.documentation),
-                    args: vec![],
-                }),
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        };
-        let fields: Vec<DispatchableField> = call_args
-            .iter()
-            .map(|arg| DispatchableField {
-                name: extract_str(&arg.name).to_string(),
-                ty: extract_str(&arg.ty).to_string(),
-                type_name: None,
-                docs: vec![],
-            })
-            .collect();
-        let args: Vec<DispatchableArg> = call_args
-            .iter()
-            .map(|arg| {
-                let name = extract_str(&arg.name).to_string();
-                let ty = extract_str(&arg.ty).to_string();
-                DispatchableArg {
-                    name: to_camel_case(&name),
-                    ty: ty.clone(),
-                    type_name: ty,
-                }
-            })
-            .collect();
-        Some(DispatchableItemMetadata {
-            name: extract_str(&call.name).to_string(),
-            fields,
-            index: idx.to_string(),
-            docs: extract_docs(&call.documentation),
-            args,
-        })
-    } else {
-        None
-    };
-
-    Ok(PalletDispatchableItemResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        dispatchable_item: to_camel_case(&call_name),
-        metadata,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-// ============================================================================
-// V13 Metadata Extraction
-// ============================================================================
-
-fn extract_dispatchables_v13(
-    meta: &frame_metadata::v13::RuntimeMetadataV13,
-    pallet_id: &str,
-    at: AtResponse,
-    only_ids: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletsDispatchablesResponse, PalletError> {
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<u8>() {
-        modules
-            .iter()
-            .find(|m| m.index == idx)
-            .map(|m| (m, idx))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|m| (m, m.index))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    let calls = match &module.calls {
-        Some(DecodeDifferent::Decoded(calls)) => calls,
-        _ => {
-            return Ok(PalletsDispatchablesResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: if only_ids {
-                    DispatchablesItems::OnlyIds(vec![])
-                } else {
-                    DispatchablesItems::Full(vec![])
-                },
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        }
-    };
-
-    let items = if only_ids {
-        DispatchablesItems::OnlyIds(
-            calls
-                .iter()
-                .map(|c| extract_str(&c.name).to_string())
-                .collect(),
-        )
-    } else {
-        DispatchablesItems::Full(
-            calls
-                .iter()
-                .enumerate()
-                .map(|(idx, c)| {
-                    let DecodeDifferent::Decoded(call_args) = &c.arguments else {
-                        return DispatchableItemMetadata {
-                            name: extract_str(&c.name).to_string(),
-                            fields: vec![],
-                            index: idx.to_string(),
-                            docs: extract_docs(&c.documentation),
-                            args: vec![],
-                        };
-                    };
-                    let fields: Vec<DispatchableField> = call_args
-                        .iter()
-                        .map(|arg| DispatchableField {
-                            name: extract_str(&arg.name).to_string(),
-                            ty: extract_str(&arg.ty).to_string(),
-                            type_name: None,
-                            docs: vec![],
-                        })
-                        .collect();
-                    let args: Vec<DispatchableArg> = call_args
-                        .iter()
-                        .map(|arg| {
-                            let name = extract_str(&arg.name).to_string();
-                            let ty = extract_str(&arg.ty).to_string();
-                            DispatchableArg {
-                                name: to_camel_case(&name),
-                                ty: ty.clone(),
-                                type_name: ty,
-                            }
-                        })
-                        .collect();
-                    DispatchableItemMetadata {
-                        name: extract_str(&c.name).to_string(),
-                        fields,
-                        index: idx.to_string(),
-                        docs: extract_docs(&c.documentation),
-                        args,
-                    }
-                })
-                .collect(),
-        )
-    };
-
-    Ok(PalletsDispatchablesResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        items,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-fn extract_dispatchable_item_v13(
-    meta: &frame_metadata::v13::RuntimeMetadataV13,
-    pallet_id: &str,
-    dispatchable_id: &str,
-    at: AtResponse,
-    include_metadata: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletDispatchableItemResponse, PalletError> {
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<u8>() {
-        modules
-            .iter()
-            .find(|m| m.index == idx)
-            .map(|m| (m, idx))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|m| (m, m.index))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    let calls = match &module.calls {
-        Some(DecodeDifferent::Decoded(calls)) => calls,
-        _ => {
-            return Err(PalletError::DispatchableNotFound(
-                dispatchable_id.to_string(),
-            ));
-        }
-    };
-
-    let dispatchable_id_lower = dispatchable_id.to_lowercase();
-    let (idx, call) = calls
-        .iter()
-        .enumerate()
-        .find(|(_, c)| extract_str(&c.name).to_lowercase() == dispatchable_id_lower)
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.to_string()))?;
-
-    let call_name = extract_str(&call.name).to_string();
-
-    let metadata = if include_metadata {
-        let DecodeDifferent::Decoded(call_args) = &call.arguments else {
-            return Ok(PalletDispatchableItemResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                dispatchable_item: to_camel_case(&call_name),
-                metadata: Some(DispatchableItemMetadata {
-                    name: extract_str(&call.name).to_string(),
-                    fields: vec![],
-                    index: idx.to_string(),
-                    docs: extract_docs(&call.documentation),
-                    args: vec![],
-                }),
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        };
-        let fields: Vec<DispatchableField> = call_args
-            .iter()
-            .map(|arg| DispatchableField {
-                name: extract_str(&arg.name).to_string(),
-                ty: extract_str(&arg.ty).to_string(),
-                type_name: None,
-                docs: vec![],
-            })
-            .collect();
-        let args: Vec<DispatchableArg> = call_args
-            .iter()
-            .map(|arg| {
-                let name = extract_str(&arg.name).to_string();
-                let ty = extract_str(&arg.ty).to_string();
-                DispatchableArg {
-                    name: to_camel_case(&name),
-                    ty: ty.clone(),
-                    type_name: ty,
-                }
-            })
-            .collect();
-        Some(DispatchableItemMetadata {
-            name: extract_str(&call.name).to_string(),
-            fields,
-            index: idx.to_string(),
-            docs: extract_docs(&call.documentation),
-            args,
-        })
-    } else {
-        None
-    };
-
-    Ok(PalletDispatchableItemResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        dispatchable_item: to_camel_case(&call_name),
-        metadata,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-// ============================================================================
-// V14 Metadata Extraction
-// ============================================================================
-
-fn extract_dispatchables_v14(
-    meta: &frame_metadata::v14::RuntimeMetadataV14,
-    pallet_id: &str,
-    at: AtResponse,
-    only_ids: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletsDispatchablesResponse, PalletError> {
-    let (pallet_name, pallet_index) = find_pallet_v14(&meta.pallets, pallet_id)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let pallet = meta
-        .pallets
-        .iter()
-        .find(|p| p.index == pallet_index)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    // Get the call type from the pallet
-    let calls_type_id = match &pallet.calls {
-        Some(calls) => calls.ty.id,
-        None => {
-            return Ok(PalletsDispatchablesResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: pallet_index.to_string(),
-                items: if only_ids {
-                    DispatchablesItems::OnlyIds(vec![])
-                } else {
-                    DispatchablesItems::Full(vec![])
-                },
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        }
-    };
-
-    // Resolve the type to get variants (dispatchables)
-    let calls_type = meta.types.resolve(calls_type_id).ok_or_else(|| {
-        PalletError::PalletNotFound(format!("Could not resolve calls type for {}", pallet_id))
-    })?;
-
-    let variants = match &calls_type.type_def {
-        scale_info::TypeDef::Variant(v) => &v.variants,
-        _ => {
-            return Ok(PalletsDispatchablesResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: pallet_index.to_string(),
-                items: if only_ids {
-                    DispatchablesItems::OnlyIds(vec![])
-                } else {
-                    DispatchablesItems::Full(vec![])
-                },
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        }
-    };
-
-    let items = if only_ids {
-        DispatchablesItems::OnlyIds(variants.iter().map(|v| v.name.clone()).collect())
-    } else {
-        DispatchablesItems::Full(
-            variants
-                .iter()
-                .map(|v| {
-                    let fields: Vec<DispatchableField> = v
-                        .fields
-                        .iter()
-                        .map(|f| {
-                            let type_name = f.type_name.clone();
-                            DispatchableField {
-                                name: f.name.clone().unwrap_or_default(),
-                                ty: f.ty.id.to_string(),
-                                type_name,
-                                docs: f.docs.clone(),
-                            }
-                        })
-                        .collect();
-
-                    let args: Vec<DispatchableArg> = v
-                        .fields
-                        .iter()
-                        .map(|f| {
-                            let field_name = f.name.clone().unwrap_or_default();
-                            let resolved_type = resolve_type_name_v14(&meta.types, f.ty.id);
-                            let type_name = f
-                                .type_name
-                                .clone()
-                                .map(|tn| simplify_type_name(&tn))
-                                .unwrap_or_else(|| resolved_type.clone());
-                            DispatchableArg {
-                                name: to_camel_case(&field_name),
-                                ty: resolved_type,
-                                type_name,
-                            }
-                        })
-                        .collect();
-
-                    DispatchableItemMetadata {
-                        name: v.name.clone(),
-                        fields,
-                        index: v.index.to_string(),
-                        docs: v.docs.clone(),
-                        args,
-                    }
-                })
-                .collect(),
-        )
-    };
-
-    Ok(PalletsDispatchablesResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: pallet_index.to_string(),
-        items,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-fn extract_dispatchable_item_v14(
-    meta: &frame_metadata::v14::RuntimeMetadataV14,
-    pallet_id: &str,
-    dispatchable_id: &str,
-    at: AtResponse,
-    include_metadata: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletDispatchableItemResponse, PalletError> {
-    let (pallet_name, pallet_index) = find_pallet_v14(&meta.pallets, pallet_id)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let pallet = meta
-        .pallets
-        .iter()
-        .find(|p| p.index == pallet_index)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let calls_type_id = match &pallet.calls {
-        Some(calls) => calls.ty.id,
-        None => {
-            return Err(PalletError::DispatchableNotFound(
-                dispatchable_id.to_string(),
-            ));
-        }
-    };
-
-    let calls_type = meta
-        .types
-        .resolve(calls_type_id)
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.to_string()))?;
-
-    let variants = match &calls_type.type_def {
-        scale_info::TypeDef::Variant(v) => &v.variants,
-        _ => {
-            return Err(PalletError::DispatchableNotFound(
-                dispatchable_id.to_string(),
-            ));
-        }
-    };
-
-    let dispatchable_id_lower = dispatchable_id.to_lowercase();
-    let variant = variants
-        .iter()
-        .find(|v| v.name.to_lowercase() == dispatchable_id_lower)
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.to_string()))?;
-
-    let metadata = if include_metadata {
-        let fields: Vec<DispatchableField> = variant
-            .fields
-            .iter()
-            .map(|f| {
-                let type_name = f.type_name.clone();
-                DispatchableField {
-                    name: f.name.clone().unwrap_or_default(),
-                    ty: f.ty.id.to_string(),
-                    type_name,
-                    docs: f.docs.clone(),
-                }
-            })
-            .collect();
-
-        let args: Vec<DispatchableArg> = variant
-            .fields
-            .iter()
-            .map(|f| {
-                let field_name = f.name.clone().unwrap_or_default();
-                let resolved_type = resolve_type_name_v14(&meta.types, f.ty.id);
-                let type_name = f
-                    .type_name
-                    .clone()
-                    .map(|tn| simplify_type_name(&tn))
-                    .unwrap_or_else(|| resolved_type.clone());
-                DispatchableArg {
-                    name: to_camel_case(&field_name),
-                    ty: resolved_type,
-                    type_name,
-                }
-            })
-            .collect();
-
-        Some(DispatchableItemMetadata {
-            name: variant.name.clone(),
-            fields,
-            index: variant.index.to_string(),
-            docs: variant.docs.clone(),
-            args,
-        })
-    } else {
-        None
-    };
-
-    Ok(PalletDispatchableItemResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: pallet_index.to_string(),
-        dispatchable_item: to_camel_case(&variant.name),
-        metadata,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-// ============================================================================
-// V15 Metadata Extraction
-// ============================================================================
-
-fn extract_dispatchables_v15(
-    meta: &frame_metadata::v15::RuntimeMetadataV15,
-    pallet_id: &str,
-    at: AtResponse,
-    only_ids: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletsDispatchablesResponse, PalletError> {
-    let (pallet_name, pallet_index) = find_pallet_v15(&meta.pallets, pallet_id)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let pallet = meta
-        .pallets
-        .iter()
-        .find(|p| p.index == pallet_index)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let calls_type_id = match &pallet.calls {
-        Some(calls) => calls.ty.id,
-        None => {
-            return Ok(PalletsDispatchablesResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: pallet_index.to_string(),
-                items: if only_ids {
-                    DispatchablesItems::OnlyIds(vec![])
-                } else {
-                    DispatchablesItems::Full(vec![])
-                },
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        }
-    };
-
-    let calls_type = meta.types.resolve(calls_type_id).ok_or_else(|| {
-        PalletError::PalletNotFound(format!("Could not resolve calls type for {}", pallet_id))
-    })?;
-
-    let variants = match &calls_type.type_def {
-        scale_info::TypeDef::Variant(v) => &v.variants,
-        _ => {
-            return Ok(PalletsDispatchablesResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: pallet_index.to_string(),
-                items: if only_ids {
-                    DispatchablesItems::OnlyIds(vec![])
-                } else {
-                    DispatchablesItems::Full(vec![])
-                },
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        }
-    };
-
-    let items = if only_ids {
-        DispatchablesItems::OnlyIds(variants.iter().map(|v| v.name.clone()).collect())
-    } else {
-        DispatchablesItems::Full(
-            variants
-                .iter()
-                .map(|v| {
-                    let fields: Vec<DispatchableField> = v
-                        .fields
-                        .iter()
-                        .map(|f| {
-                            let type_name = f.type_name.clone();
-                            DispatchableField {
-                                name: f.name.clone().unwrap_or_default(),
-                                ty: f.ty.id.to_string(),
-                                type_name,
-                                docs: f.docs.clone(),
-                            }
-                        })
-                        .collect();
-
-                    let args: Vec<DispatchableArg> = v
-                        .fields
-                        .iter()
-                        .map(|f| {
-                            let field_name = f.name.clone().unwrap_or_default();
-                            let resolved_type = resolve_type_name_v14(&meta.types, f.ty.id);
-                            let type_name = f
-                                .type_name
-                                .clone()
-                                .map(|tn| simplify_type_name(&tn))
-                                .unwrap_or_else(|| resolved_type.clone());
-                            DispatchableArg {
-                                name: to_camel_case(&field_name),
-                                ty: resolved_type,
-                                type_name,
-                            }
-                        })
-                        .collect();
-
-                    DispatchableItemMetadata {
-                        name: v.name.clone(),
-                        fields,
-                        index: v.index.to_string(),
-                        docs: v.docs.clone(),
-                        args,
-                    }
-                })
-                .collect(),
-        )
-    };
-
-    Ok(PalletsDispatchablesResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: pallet_index.to_string(),
-        items,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-fn extract_dispatchable_item_v15(
-    meta: &frame_metadata::v15::RuntimeMetadataV15,
-    pallet_id: &str,
-    dispatchable_id: &str,
-    at: AtResponse,
-    include_metadata: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletDispatchableItemResponse, PalletError> {
-    let (pallet_name, pallet_index) = find_pallet_v15(&meta.pallets, pallet_id)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let pallet = meta
-        .pallets
-        .iter()
-        .find(|p| p.index == pallet_index)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let calls_type_id = match &pallet.calls {
-        Some(calls) => calls.ty.id,
-        None => {
-            return Err(PalletError::DispatchableNotFound(
-                dispatchable_id.to_string(),
-            ));
-        }
-    };
-
-    let calls_type = meta
-        .types
-        .resolve(calls_type_id)
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.to_string()))?;
-
-    let variants = match &calls_type.type_def {
-        scale_info::TypeDef::Variant(v) => &v.variants,
-        _ => {
-            return Err(PalletError::DispatchableNotFound(
-                dispatchable_id.to_string(),
-            ));
-        }
-    };
-
-    let dispatchable_id_lower = dispatchable_id.to_lowercase();
-    let variant = variants
-        .iter()
-        .find(|v| v.name.to_lowercase() == dispatchable_id_lower)
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.to_string()))?;
-
-    let metadata = if include_metadata {
-        let fields: Vec<DispatchableField> = variant
-            .fields
-            .iter()
-            .map(|f| {
-                let type_name = f.type_name.clone();
-                DispatchableField {
-                    name: f.name.clone().unwrap_or_default(),
-                    ty: f.ty.id.to_string(),
-                    type_name,
-                    docs: f.docs.clone(),
-                }
-            })
-            .collect();
-
-        let args: Vec<DispatchableArg> = variant
-            .fields
-            .iter()
-            .map(|f| {
-                let field_name = f.name.clone().unwrap_or_default();
-                let resolved_type = resolve_type_name_v14(&meta.types, f.ty.id);
-                let type_name = f
-                    .type_name
-                    .clone()
-                    .map(|tn| simplify_type_name(&tn))
-                    .unwrap_or_else(|| resolved_type.clone());
-                DispatchableArg {
-                    name: to_camel_case(&field_name),
-                    ty: resolved_type,
-                    type_name,
-                }
-            })
-            .collect();
-
-        Some(DispatchableItemMetadata {
-            name: variant.name.clone(),
-            fields,
-            index: variant.index.to_string(),
-            docs: variant.docs.clone(),
-            args,
-        })
-    } else {
-        None
-    };
-
-    Ok(PalletDispatchableItemResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: pallet_index.to_string(),
-        dispatchable_item: to_camel_case(&variant.name),
-        metadata,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-// ============================================================================
-// V16 Metadata Extraction
-// ============================================================================
-
-fn extract_dispatchables_v16(
-    meta: &frame_metadata::v16::RuntimeMetadataV16,
-    pallet_id: &str,
-    at: AtResponse,
-    only_ids: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletsDispatchablesResponse, PalletError> {
-    let (pallet_name, pallet_index) = find_pallet_v16(&meta.pallets, pallet_id)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let pallet = meta
-        .pallets
-        .iter()
-        .find(|p| p.index == pallet_index)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let calls_type_id = match &pallet.calls {
-        Some(calls) => calls.ty.id,
-        None => {
-            return Ok(PalletsDispatchablesResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: pallet_index.to_string(),
-                items: if only_ids {
-                    DispatchablesItems::OnlyIds(vec![])
-                } else {
-                    DispatchablesItems::Full(vec![])
-                },
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        }
-    };
-
-    let calls_type = meta.types.resolve(calls_type_id).ok_or_else(|| {
-        PalletError::PalletNotFound(format!("Could not resolve calls type for {}", pallet_id))
-    })?;
-
-    let variants = match &calls_type.type_def {
-        scale_info::TypeDef::Variant(v) => &v.variants,
-        _ => {
-            return Ok(PalletsDispatchablesResponse {
-                at,
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: pallet_index.to_string(),
-                items: if only_ids {
-                    DispatchablesItems::OnlyIds(vec![])
-                } else {
-                    DispatchablesItems::Full(vec![])
-                },
-                rc_block_hash: rc_fields.rc_block_hash,
-                rc_block_number: rc_fields.rc_block_number,
-                ah_timestamp: rc_fields.ah_timestamp,
-            });
-        }
-    };
-
-    let items = if only_ids {
-        DispatchablesItems::OnlyIds(variants.iter().map(|v| v.name.clone()).collect())
-    } else {
-        DispatchablesItems::Full(
-            variants
-                .iter()
-                .map(|v| {
-                    let fields: Vec<DispatchableField> = v
-                        .fields
-                        .iter()
-                        .map(|f| {
-                            let type_name = f.type_name.clone();
-                            DispatchableField {
-                                name: f.name.clone().unwrap_or_default(),
-                                ty: f.ty.id.to_string(),
-                                type_name,
-                                docs: f.docs.clone(),
-                            }
-                        })
-                        .collect();
-
-                    let args: Vec<DispatchableArg> = v
-                        .fields
-                        .iter()
-                        .map(|f| {
-                            let field_name = f.name.clone().unwrap_or_default();
-                            let resolved_type = resolve_type_name_v14(&meta.types, f.ty.id);
-                            let type_name = f
-                                .type_name
-                                .clone()
-                                .map(|tn| simplify_type_name(&tn))
-                                .unwrap_or_else(|| resolved_type.clone());
-                            DispatchableArg {
-                                name: to_camel_case(&field_name),
-                                ty: resolved_type,
-                                type_name,
-                            }
-                        })
-                        .collect();
-
-                    DispatchableItemMetadata {
-                        name: v.name.clone(),
-                        fields,
-                        index: v.index.to_string(),
-                        docs: v.docs.clone(),
-                        args,
-                    }
-                })
-                .collect(),
-        )
-    };
-
-    Ok(PalletsDispatchablesResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: pallet_index.to_string(),
-        items,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-fn extract_dispatchable_item_v16(
-    meta: &frame_metadata::v16::RuntimeMetadataV16,
-    pallet_id: &str,
-    dispatchable_id: &str,
-    at: AtResponse,
-    include_metadata: bool,
-    rc_fields: RcBlockFields,
-) -> Result<PalletDispatchableItemResponse, PalletError> {
-    let (pallet_name, pallet_index) = find_pallet_v16(&meta.pallets, pallet_id)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let pallet = meta
-        .pallets
-        .iter()
-        .find(|p| p.index == pallet_index)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let calls_type_id = match &pallet.calls {
-        Some(calls) => calls.ty.id,
-        None => {
-            return Err(PalletError::DispatchableNotFound(
-                dispatchable_id.to_string(),
-            ));
-        }
-    };
-
-    let calls_type = meta
-        .types
-        .resolve(calls_type_id)
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.to_string()))?;
-
-    let variants = match &calls_type.type_def {
-        scale_info::TypeDef::Variant(v) => &v.variants,
-        _ => {
-            return Err(PalletError::DispatchableNotFound(
-                dispatchable_id.to_string(),
-            ));
-        }
-    };
-
-    let dispatchable_id_lower = dispatchable_id.to_lowercase();
-    let variant = variants
-        .iter()
-        .find(|v| v.name.to_lowercase() == dispatchable_id_lower)
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.to_string()))?;
-
-    let metadata = if include_metadata {
-        let fields: Vec<DispatchableField> = variant
-            .fields
-            .iter()
-            .map(|f| {
-                let type_name = f.type_name.clone();
-                DispatchableField {
-                    name: f.name.clone().unwrap_or_default(),
-                    ty: f.ty.id.to_string(),
-                    type_name,
-                    docs: f.docs.clone(),
-                }
-            })
-            .collect();
-
-        let args: Vec<DispatchableArg> = variant
-            .fields
-            .iter()
-            .map(|f| {
-                let field_name = f.name.clone().unwrap_or_default();
-                let resolved_type = resolve_type_name_v14(&meta.types, f.ty.id);
-                let type_name = f
-                    .type_name
-                    .clone()
-                    .map(|tn| simplify_type_name(&tn))
-                    .unwrap_or_else(|| resolved_type.clone());
-                DispatchableArg {
-                    name: to_camel_case(&field_name),
-                    ty: resolved_type,
-                    type_name,
-                }
-            })
-            .collect();
-
-        Some(DispatchableItemMetadata {
-            name: variant.name.clone(),
-            fields,
-            index: variant.index.to_string(),
-            docs: variant.docs.clone(),
-            args,
-        })
-    } else {
-        None
-    };
-
-    Ok(PalletDispatchableItemResponse {
-        at,
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: pallet_index.to_string(),
-        dispatchable_item: to_camel_case(&variant.name),
-        metadata,
-        rc_block_hash: rc_fields.rc_block_hash,
-        rc_block_number: rc_fields.rc_block_number,
-        ah_timestamp: rc_fields.ah_timestamp,
-    })
-}
-
-// ============================================================================
-// Unit Tests
+// Tests
 // ============================================================================
 
 #[cfg(test)]
@@ -2601,40 +723,123 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_dispatchables_items_serialization() {
-        let items =
-            DispatchablesItems::OnlyIds(vec!["transfer".to_string(), "approve".to_string()]);
-        let json = serde_json::to_string(&items).expect("Failed to serialize DispatchablesItems");
-        assert!(json.contains("transfer"));
-        assert!(json.contains("approve"));
+    fn test_to_camel_case() {
+        assert_eq!(to_camel_case("Balances"), "balances");
+        assert_eq!(to_camel_case("System"), "system");
+        assert_eq!(to_camel_case("transferAllowDeath"), "transferAllowDeath");
+        assert_eq!(to_camel_case(""), "");
+        assert_eq!(to_camel_case("A"), "a");
     }
 
     #[test]
-    fn test_dispatchable_field_serialization() {
-        let field = DispatchableField {
-            name: "amount".to_string(),
-            ty: "u128".to_string(),
-            type_name: Some("Balance".to_string()),
-            docs: vec![],
-        };
-        let json = serde_json::to_string(&field).expect("Failed to serialize DispatchableField");
-        assert!(json.contains("\"name\":\"amount\""));
-        assert!(json.contains("\"type\":\"u128\""));
-        assert!(json.contains("\"typeName\":\"Balance\""));
+    fn test_simplify_type_name() {
+        assert_eq!(
+            simplify_type_name("MultiAddress<AccountId32, ()>"),
+            "MultiAddress"
+        );
+        assert_eq!(simplify_type_name("u128"), "u128");
+        assert_eq!(simplify_type_name("Vec<u8>"), "Vec");
+    }
+
+    #[test]
+    fn test_path_to_pascal_case() {
+        let segments = vec![
+            "pallet_balances".to_string(),
+            "AdjustmentDirection".to_string(),
+        ];
+        assert_eq!(
+            path_to_pascal_case(&segments),
+            "PalletBalancesAdjustmentDirection"
+        );
     }
 
     #[test]
     fn test_dispatchable_item_metadata_serialization() {
         let metadata = DispatchableItemMetadata {
-            name: "transfer".to_string(),
+            name: "transfer_allow_death".to_string(),
+            fields: vec![DispatchableField {
+                name: "dest".to_string(),
+                ty: "123".to_string(),
+                type_name: Some("MultiAddress".to_string()),
+                docs: vec![],
+            }],
+            index: "0".to_string(),
+            docs: vec!["Transfer some balance".to_string()],
+            args: vec![DispatchableArg {
+                name: "dest".to_string(),
+                ty: "MultiAddress".to_string(),
+                type_name: "MultiAddress".to_string(),
+            }],
+        };
+
+        let json = serde_json::to_string(&metadata).unwrap();
+        assert!(json.contains("\"name\":\"transfer_allow_death\""));
+        assert!(json.contains("\"index\":\"0\""));
+    }
+
+    #[test]
+    fn test_pallets_dispatchables_response_serialization() {
+        let response = PalletsDispatchablesResponse {
+            at: AtResponse {
+                hash: "0xabc".to_string(),
+                height: "100".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "5".to_string(),
+            items: DispatchablesItems::OnlyIds(vec!["transfer_allow_death".to_string()]),
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"pallet\":\"balances\""));
+        assert!(json.contains("\"palletIndex\":\"5\""));
+        assert!(!json.contains("rcBlockHash"));
+    }
+
+    #[test]
+    fn test_pallet_dispatchable_item_response_serialization() {
+        let response = PalletDispatchableItemResponse {
+            at: AtResponse {
+                hash: "0xdef".to_string(),
+                height: "200".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "5".to_string(),
+            dispatchable_item: "transferAllowDeath".to_string(),
+            metadata: None,
+            rc_block_hash: Some("0xrc123".to_string()),
+            rc_block_number: Some("1000".to_string()),
+            ah_timestamp: None,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"dispatchableItem\":\"transferAllowDeath\""));
+        assert!(json.contains("\"rcBlockHash\":\"0xrc123\""));
+        assert!(json.contains("\"rcBlockNumber\":\"1000\""));
+    }
+
+    #[test]
+    fn test_dispatchables_items_full_serialization() {
+        let items = DispatchablesItems::Full(vec![DispatchableItemMetadata {
+            name: "test".to_string(),
             fields: vec![],
             index: "0".to_string(),
-            docs: vec!["Transfer tokens".to_string()],
+            docs: vec![],
             args: vec![],
-        };
-        let json =
-            serde_json::to_string(&metadata).expect("Failed to serialize DispatchableItemMetadata");
-        assert!(json.contains("\"name\":\"transfer\""));
-        assert!(json.contains("\"index\":\"0\""));
+        }]);
+
+        let json = serde_json::to_string(&items).unwrap();
+        assert!(json.contains("\"name\":\"test\""));
+    }
+
+    #[test]
+    fn test_dispatchables_items_only_ids_serialization() {
+        let items =
+            DispatchablesItems::OnlyIds(vec!["transfer".to_string(), "set_balance".to_string()]);
+
+        let json = serde_json::to_string(&items).unwrap();
+        assert_eq!(json, r#"["transfer","set_balance"]"#);
     }
 }
