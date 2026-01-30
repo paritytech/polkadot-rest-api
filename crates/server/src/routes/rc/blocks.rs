@@ -39,7 +39,7 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             API_VERSION,
             "/rc/blocks/:blockId",
             "get",
-            get(blocks::get_rc_block),
+            get(rc_blocks::get_rc_block),
         )
         .route_registered(
             registry,
