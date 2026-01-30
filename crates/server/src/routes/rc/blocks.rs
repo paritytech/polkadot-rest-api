@@ -32,7 +32,7 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             API_VERSION,
             "/rc/blocks/:blockId/header",
             "get",
-            get(blocks::get_rc_block_header),
+            get(rc_blocks::get_rc_block_header),
         )
         .route_registered(
             registry,
