@@ -36,14 +36,8 @@ pub enum GetRcBlockHeaderError {
     #[error("Failed to get block header: {0}")]
     HeaderFetchFailed(String),
 
-    #[error("Service temporarily unavailable: {0}")]
-    ServiceUnavailable(String),
-
     #[error("Relay chain API is not configured. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL")]
     RelayChainNotConfigured,
-
-    #[error("Block not found: {0}")]
-    BlockNotFound(String),
 }
 
 impl IntoResponse for GetRcBlockHeaderError {
@@ -53,10 +47,6 @@ impl IntoResponse for GetRcBlockHeaderError {
             | GetRcBlockHeaderError::InvalidBlockParam(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
-            GetRcBlockHeaderError::ServiceUnavailable(_) => {
-                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-            }
-            GetRcBlockHeaderError::BlockNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             GetRcBlockHeaderError::HeaderFetchFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
@@ -86,22 +76,17 @@ pub async fn get_rc_block_header(
 
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
 
-    let client_at_block = match &block_id_parsed {
-        utils::BlockId::Number(n) => relay_client.at_block(*n).await.map_err(|e| {
-            if e.to_string().contains("not found") {
-                GetRcBlockHeaderError::BlockNotFound(format!("Block at height {} not found", n))
-            } else {
-                GetRcBlockHeaderError::HeaderFetchFailed(e.to_string())
-            }
-        })?,
-        utils::BlockId::Hash(h) => relay_client.at_block(*h).await.map_err(|e| {
-            if e.to_string().contains("not found") {
-                GetRcBlockHeaderError::BlockNotFound(format!("Block with hash {:#x} not found", h))
-            } else {
-                GetRcBlockHeaderError::HeaderFetchFailed(e.to_string())
-            }
-        })?,
+    let block_num_or_ref = match block_id_parsed {
+        utils::BlockId::Number(n) => subxt::client::BlockNumberOrRef::Number(n),
+        utils::BlockId::Hash(h) => {
+            subxt::client::BlockNumberOrRef::BlockRef(subxt::backend::BlockRef::from_hash(h))
+        }
     };
+
+    let client_at_block = relay_client
+        .at_block(block_num_or_ref)
+        .await
+        .map_err(|e| GetRcBlockHeaderError::HeaderFetchFailed(e.to_string()))?;
 
     let header = client_at_block
         .block_header()
