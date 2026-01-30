@@ -16,8 +16,9 @@ use axum::{
 use config::ChainType;
 use futures::StreamExt;
 use parity_scale_codec::Decode;
-use scale_decode::DecodeAsType;
-use scale_info::TypeInfo;
+use scale_info::PortableRegistry;
+use scale_value::scale::decode_as_type;
+use heck::ToLowerCamelCase;
 use serde::{Deserialize, Serialize};
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
@@ -101,173 +102,6 @@ struct AssetMetadataStorage {
     symbol: Vec<u8>,
     decimals: u8,
     is_frozen: bool,
-}
-
-// ============================================================================
-// XCM Types (using scale_decode::DecodeAsType for flexible decoding)
-// ============================================================================
-
-/// XCM MultiLocation structure.
-/// Using DecodeAsType allows flexible decoding that handles variant changes,
-/// numeric type coercion (e.g., u8 -> u64), and other schema evolution.
-#[derive(Debug, Clone, DecodeAsType, Serialize, TypeInfo)]
-pub struct MultiLocation {
-    pub parents: u8,
-    pub interior: Junctions,
-}
-
-/// XCM Junctions enum - represents the path to a location.
-#[derive(Debug, Clone, DecodeAsType, Serialize, TypeInfo)]
-#[serde(rename_all = "PascalCase")]
-pub enum Junctions {
-    Here,
-    X1([Junction; 1]),
-    X2([Junction; 2]),
-    X3([Junction; 3]),
-    X4([Junction; 4]),
-    X5([Junction; 5]),
-    X6([Junction; 6]),
-    X7([Junction; 7]),
-    X8([Junction; 8]),
-}
-
-/// XCM Junction - a single step in a location path.
-#[derive(Debug, Clone, DecodeAsType, Serialize, TypeInfo)]
-#[serde(rename_all = "PascalCase")]
-pub enum Junction {
-    Parachain(#[serde(serialize_with = "serialize_compact_u32")] u32),
-    AccountId32 {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        network: Option<NetworkId>,
-        #[serde(serialize_with = "serialize_bytes_as_hex")]
-        id: [u8; 32],
-    },
-    AccountIndex64 {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        network: Option<NetworkId>,
-        index: u64,
-    },
-    AccountKey20 {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        network: Option<NetworkId>,
-        #[serde(serialize_with = "serialize_bytes_as_hex")]
-        key: [u8; 20],
-    },
-    PalletInstance(u8),
-    GeneralIndex(#[serde(serialize_with = "serialize_u128_as_string")] u128),
-    GeneralKey {
-        length: u8,
-        #[serde(serialize_with = "serialize_bytes_as_hex")]
-        data: [u8; 32],
-    },
-    OnlyChild,
-    Plurality {
-        id: BodyId,
-        part: BodyPart,
-    },
-    GlobalConsensus(NetworkId),
-}
-
-/// XCM NetworkId - identifies a consensus system.
-#[derive(Debug, Clone, DecodeAsType, Serialize, TypeInfo)]
-#[serde(rename_all = "PascalCase")]
-pub enum NetworkId {
-    ByGenesis(#[serde(serialize_with = "serialize_bytes_as_hex")] [u8; 32]),
-    ByFork {
-        block_number: u64,
-        #[serde(serialize_with = "serialize_bytes_as_hex")]
-        block_hash: [u8; 32],
-    },
-    Polkadot,
-    Kusama,
-    Westend,
-    Rococo,
-    Wococo,
-    Ethereum {
-        #[serde(rename = "chainId", serialize_with = "serialize_u64_as_string")]
-        chain_id: u64,
-    },
-    BitcoinCore,
-    BitcoinCash,
-    PolkadotBulletin,
-}
-
-/// XCM BodyId - identifies a body within a Plurality.
-#[derive(Debug, Clone, DecodeAsType, Serialize, TypeInfo)]
-#[serde(rename_all = "PascalCase")]
-pub enum BodyId {
-    Unit,
-    Moniker([u8; 4]),
-    Index(#[serde(serialize_with = "serialize_compact_u32")] u32),
-    Executive,
-    Technical,
-    Legislative,
-    Judicial,
-    Defense,
-    Administration,
-    Treasury,
-}
-
-/// XCM BodyPart - identifies which part of a body.
-#[derive(Debug, Clone, DecodeAsType, Serialize, TypeInfo)]
-#[serde(rename_all = "PascalCase")]
-pub enum BodyPart {
-    Voice,
-    Members {
-        #[serde(serialize_with = "serialize_compact_u32")]
-        count: u32,
-    },
-    Fraction {
-        #[serde(serialize_with = "serialize_compact_u32")]
-        nom: u32,
-        #[serde(serialize_with = "serialize_compact_u32")]
-        denom: u32,
-    },
-    AtLeastProportion {
-        #[serde(serialize_with = "serialize_compact_u32")]
-        nom: u32,
-        #[serde(serialize_with = "serialize_compact_u32")]
-        denom: u32,
-    },
-    MoreThanProportion {
-        #[serde(serialize_with = "serialize_compact_u32")]
-        nom: u32,
-        #[serde(serialize_with = "serialize_compact_u32")]
-        denom: u32,
-    },
-}
-
-// Custom serializers for proper JSON output format
-fn serialize_compact_u32<S>(value: &u32, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    // Format with thousand separators to match Sidecar
-    serializer.serialize_str(&format_with_commas(*value as u64))
-}
-
-fn serialize_u64_as_string<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.serialize_str(&value.to_string())
-}
-
-fn serialize_u128_as_string<S>(value: &u128, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.serialize_str(&value.to_string())
-}
-
-fn serialize_bytes_as_hex<S, const N: usize>(
-    value: &[u8; N],
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.serialize_str(&format!("0x{}", hex::encode(value)))
 }
 
 // ============================================================================
@@ -397,19 +231,6 @@ async fn handle_use_rc_block(
 // Helper Functions
 // ============================================================================
 
-/// Format a number with thousand separators (commas) to match Sidecar format.
-fn format_with_commas(n: u64) -> String {
-    let s = n.to_string();
-    let mut result = String::new();
-    for (i, c) in s.chars().rev().enumerate() {
-        if i > 0 && i % 3 == 0 {
-            result.push(',');
-        }
-        result.push(c);
-    }
-    result.chars().rev().collect()
-}
-
 /// Fetches all foreign assets by iterating over ForeignAssets::Asset storage.
 /// Returns an error if the pallet doesn't exist or storage iteration fails.
 async fn fetch_all_foreign_assets(
@@ -515,14 +336,251 @@ async fn fetch_all_foreign_assets(
     Ok(items)
 }
 
+/// Build a portable registry containing the XCM v4 Location type.
+/// This is used for decoding MultiLocation storage keys.
+fn build_location_registry() -> (PortableRegistry, u32) {
+    let mut registry = scale_info::Registry::new();
+    let type_id = registry.register_type(&scale_info::meta_type::<staging_xcm::v4::Location>());
+    (registry.into(), type_id.id)
+}
+
+/// Format a number with comma separators (e.g., 2001 -> "2,001").
+/// Matches Sidecar's formatting for parachain IDs and other numbers.
+fn format_number_with_commas(n: u128) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
+}
+
+/// Convert scale_value to JSON matching Sidecar's exact format.
+/// 
+/// Key differences from generic scale_value_to_json:
+/// - Uses PascalCase for variant names (X1, X2, GlobalConsensus, Ethereum, etc.)
+/// - Arrays are flat (not double-nested)  
+/// - Numbers formatted with commas for large values
+/// - Field order preserved (parents before interior for Location)
+fn scale_value_to_sidecar_json(value: scale_value::Value<u32>, registry: &PortableRegistry) -> serde_json::Value {
+    use scale_value::{Composite, Primitive, ValueDef};
+    use serde_json::Value;
+
+    match value.value {
+        ValueDef::Composite(composite) => match composite {
+            Composite::Named(fields) => {
+                // Collect fields preserving their order
+                let fields_vec: Vec<_> = fields.into_iter().collect();
+                
+                // For Location type, ensure "parents" comes before "interior"
+                let mut ordered_fields: Vec<(String, Value)> = Vec::new();
+                let mut parents_val = None;
+                let mut interior_val = None;
+                let mut other_fields = Vec::new();
+                
+                for (name, val) in fields_vec {
+                    let key = name.to_lower_camel_case();
+                    let json_val = scale_value_to_sidecar_json(val, registry);
+                    if key == "parents" {
+                        parents_val = Some(json_val);
+                    } else if key == "interior" {
+                        interior_val = Some(json_val);
+                    } else {
+                        other_fields.push((key, json_val));
+                    }
+                }
+                
+                // Build in Sidecar order: parents, interior, then others
+                if let Some(p) = parents_val {
+                    ordered_fields.push(("parents".to_string(), p));
+                }
+                if let Some(i) = interior_val {
+                    ordered_fields.push(("interior".to_string(), i));
+                }
+                ordered_fields.extend(other_fields);
+                
+                // Use indexmap to preserve order, then convert to serde_json::Map
+                let map: serde_json::Map<String, Value> = ordered_fields.into_iter().collect();
+                Value::Object(map)
+            }
+            Composite::Unnamed(fields) => {
+                let fields_vec: Vec<_> = fields.into_iter().collect();
+                // Check for byte array
+                if !fields_vec.is_empty() && is_byte_array(&fields_vec) {
+                    Value::String(bytes_to_hex(&fields_vec))
+                } else if fields_vec.len() == 1 {
+                    // Single field - unwrap
+                    scale_value_to_sidecar_json(fields_vec.into_iter().next().unwrap(), registry)
+                } else {
+                    // Multiple fields - array
+                    Value::Array(
+                        fields_vec
+                            .into_iter()
+                            .map(|v| scale_value_to_sidecar_json(v, registry))
+                            .collect(),
+                    )
+                }
+            }
+        },
+        ValueDef::Variant(variant) => {
+            // Handle Option::None as JSON null
+            if variant.name == "None" {
+                return Value::Null;
+            }
+
+            // Use PascalCase for variant names to match Sidecar
+            let name = variant.name.clone();
+
+            let inner = match variant.values {
+                Composite::Named(fields) if !fields.is_empty() => {
+                    // Collect fields and ensure specific ordering for known types
+                    let fields_vec: Vec<_> = fields.into_iter().collect();
+                    let mut ordered_fields: Vec<(String, Value)> = Vec::new();
+                    
+                    // For AccountKey20, Sidecar order is: network, key
+                    let mut network_val = None;
+                    let mut key_val = None;
+                    let mut other_fields = Vec::new();
+                    
+                    for (n, v) in fields_vec {
+                        let key = n.to_lower_camel_case();
+                        let json_val = scale_value_to_sidecar_json(v, registry);
+                        if key == "network" {
+                            network_val = Some(json_val);
+                        } else if key == "key" {
+                            key_val = Some(json_val);
+                        } else {
+                            other_fields.push((key, json_val));
+                        }
+                    }
+                    
+                    // Build in Sidecar order
+                    if let Some(n) = network_val {
+                        ordered_fields.push(("network".to_string(), n));
+                    }
+                    if let Some(k) = key_val {
+                        ordered_fields.push(("key".to_string(), k));
+                    }
+                    ordered_fields.extend(other_fields);
+                    
+                    let map: serde_json::Map<String, Value> = ordered_fields.into_iter().collect();
+                    Value::Object(map)
+                }
+                Composite::Unnamed(fields) if !fields.is_empty() => {
+                    let fields_vec: Vec<_> = fields.into_iter().collect();
+                    if is_byte_array(&fields_vec) {
+                        Value::String(bytes_to_hex(&fields_vec))
+                    } else if fields_vec.len() == 1 && !is_junction_variant(&name) {
+                        // Single field - unwrap unless it's a junction
+                        scale_value_to_sidecar_json(fields_vec.into_iter().next().unwrap(), registry)
+                    } else {
+                        // For junctions (X1, X2, etc.) - flatten the array
+                        // The interior of Location is a tuple, so X2 contains a single tuple with 2 elements
+                        // We need to flatten: X2: [[a, b]] -> X2: [a, b]
+                        if is_junction_variant(&name) && fields_vec.len() == 1 {
+                            // Single tuple containing the junction items - unwrap it
+                            let inner = scale_value_to_sidecar_json(fields_vec.into_iter().next().unwrap(), registry);
+                            // If the inner is an array, use it directly; otherwise wrap
+                            if inner.is_array() {
+                                inner
+                            } else {
+                                Value::Array(vec![inner])
+                            }
+                        } else {
+                            Value::Array(
+                                fields_vec
+                                    .into_iter()
+                                    .map(|v| scale_value_to_sidecar_json(v, registry))
+                                    .collect(),
+                            )
+                        }
+                    }
+                }
+                _ => Value::Null,
+            };
+            
+            // For unit variants (no data), Sidecar outputs just the string name
+            // e.g., "GlobalConsensus": "Polkadot" instead of "GlobalConsensus": {"Polkadot": null}
+            if inner.is_null() {
+                return Value::String(name);
+            }
+            
+            let mut map = serde_json::Map::new();
+            map.insert(name, inner);
+            Value::Object(map)
+        }
+        ValueDef::Primitive(prim) => match prim {
+            Primitive::Bool(b) => Value::Bool(b),
+            Primitive::Char(c) => Value::String(c.to_string()),
+            Primitive::String(s) => Value::String(s),
+            Primitive::U128(n) => {
+                // Format with commas for numbers >= 1000 to match Sidecar
+                if n >= 1000 {
+                    Value::String(format_number_with_commas(n))
+                } else {
+                    Value::String(n.to_string())
+                }
+            }
+            Primitive::I128(n) => Value::String(n.to_string()),
+            Primitive::U256(n) => Value::String(format!("{:?}", n)),
+            Primitive::I256(n) => Value::String(format!("{:?}", n)),
+        },
+        ValueDef::BitSequence(bits) => {
+            let bytes: Vec<u8> = bits
+                .iter()
+                .collect::<Vec<_>>()
+                .chunks(8)
+                .map(|chunk| {
+                    chunk
+                        .iter()
+                        .enumerate()
+                        .fold(0u8, |acc, (i, &bit)| acc | ((bit as u8) << i))
+                })
+                .collect();
+            Value::String(format!("0x{}", hex::encode(bytes)))
+        }
+    }
+}
+
+/// Check if variant name is an X1-X8 junction.
+fn is_junction_variant(name: &str) -> bool {
+    matches!(name, "X1" | "X2" | "X3" | "X4" | "X5" | "X6" | "X7" | "X8")
+}
+
+/// Check if an array of values looks like a byte array.
+fn is_byte_array(values: &[scale_value::Value<u32>]) -> bool {
+    values.len() >= 2
+        && values.iter().all(|v| {
+            matches!(
+                &v.value,
+                scale_value::ValueDef::Primitive(scale_value::Primitive::U128(n)) if *n <= 255
+            )
+        })
+}
+
+/// Convert a slice of values to a hex string.
+fn bytes_to_hex(values: &[scale_value::Value<u32>]) -> String {
+    let bytes: Vec<u8> = values
+        .iter()
+        .filter_map(|v| match &v.value {
+            scale_value::ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n as u8),
+            _ => None,
+        })
+        .collect();
+    format!("0x{}", hex::encode(bytes))
+}
+
 /// Extract MultiLocation from storage key bytes.
 /// The key format is: twox128(pallet) ++ twox128(storage) ++ blake2_128_concat(multilocation)
 /// We need to skip the first 32 bytes (prefix hashes) and decode the rest.
 ///
-/// Uses scale_decode::DecodeAsType for flexible decoding that handles:
-/// - Variant additions/removals/moves between XCM versions
+/// Uses staging_xcm::v4::Location type with scale_value for decoding that handles:
+/// - Proper variant indices matching the actual XCM types
 /// - Numeric type coercion (e.g., u8 -> u64)
-/// - Better backward compatibility with schema evolution
+/// - Sidecar-compatible JSON format (PascalCase variants, comma-formatted numbers)
 fn extract_multi_location_from_key(key_bytes: &[u8]) -> serde_json::Value {
     // Skip twox128(ForeignAssets) = 16 bytes + twox128(Asset) = 16 bytes = 32 bytes
     // Then skip blake2_128 hash = 16 bytes
@@ -533,38 +591,18 @@ fn extract_multi_location_from_key(key_bytes: &[u8]) -> serde_json::Value {
 
     let multi_location_bytes = &key_bytes[48..];
 
-    // Try to decode using the typed MultiLocation struct with DecodeAsType
-    match decode_multi_location_typed(multi_location_bytes) {
-        Ok(ml) => {
-            // Successfully decoded - serialize to JSON
-            match serde_json::to_value(&ml) {
-                Ok(json) => json,
-                Err(_) => {
-                    serde_json::json!({"raw": format!("0x{}", hex::encode(multi_location_bytes))})
-                }
-            }
-        }
+    // Build registry with XCM v4 Location type
+    let (registry, type_id) = build_location_registry();
+
+    // Decode using scale-value for proper JSON serialization
+    match decode_as_type(&mut &multi_location_bytes[..], type_id, &registry) {
+        Ok(value) => scale_value_to_sidecar_json(value, &registry),
         Err(_) => {
-            // DecodeAsType failed - fall back to raw hex representation
+            // Decoding failed - fall back to raw hex representation
             // This ensures we always return something useful even for unknown XCM versions
             serde_json::json!({"raw": format!("0x{}", hex::encode(multi_location_bytes))})
         }
     }
-}
-
-/// Decode MultiLocation bytes using scale_decode::DecodeAsType.
-/// This provides type-safe decoding with automatic handling of schema evolution.
-fn decode_multi_location_typed(bytes: &[u8]) -> Result<MultiLocation, scale_decode::Error> {
-    use scale_decode::DecodeAsType;
-    use scale_info::PortableRegistry;
-
-    // Build a minimal type registry for MultiLocation
-    let mut registry = scale_info::Registry::new();
-    let type_id = registry.register_type(&scale_info::meta_type::<MultiLocation>());
-    let portable_registry = PortableRegistry::from(registry);
-
-    // Decode using DecodeAsType which handles variant changes gracefully
-    MultiLocation::decode_as_type(&mut &bytes[..], type_id.id, &portable_registry)
 }
 
 /// Decode asset details from raw bytes into JSON.
@@ -749,78 +787,64 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_multi_location_typed_simple() {
-        // Encode a simple MultiLocation: parents=0, interior=Here (variant 0)
-        let bytes = vec![0u8, 0u8]; // parents=0, interior=Here variant
-        let result = decode_multi_location_typed(&bytes);
-
-        assert!(result.is_ok(), "Should decode valid MultiLocation");
-        let multi_location = result.unwrap();
-        assert_eq!(multi_location.parents, 0);
-        matches!(multi_location.interior, Junctions::Here);
-
-        // Also check JSON serialization
-        let json = serde_json::to_value(&multi_location).unwrap();
-        assert_eq!(json["parents"], 0);
-        assert_eq!(json["interior"], "Here");
+    fn test_build_location_registry() {
+        // Test that we can build a location registry
+        let (registry, type_id) = build_location_registry();
+        
+        // The registry should have the Location type
+        assert!(registry.resolve(type_id).is_some());
     }
 
     #[test]
-    fn test_decode_multi_location_typed_invalid() {
-        // Invalid bytes - empty
-        let result = decode_multi_location_typed(&[]);
-        assert!(result.is_err(), "Should return Err for empty bytes");
+    fn test_extract_multi_location_simple() {
+        // Create a proper storage key with 48-byte prefix + SCALE-encoded Location
+        // Location { parents: 0, interior: Here } encodes to: [0, 0]
+        let mut key_bytes = vec![0u8; 48]; // 32-byte prefix + 16-byte blake2 hash
+        key_bytes.push(0); // parents = 0
+        key_bytes.push(0); // interior = Here variant
 
-        // Invalid bytes - too short
-        let result = decode_multi_location_typed(&[0u8]);
-        assert!(result.is_err(), "Should return Err for incomplete data");
+        let result = extract_multi_location_from_key(&key_bytes);
+
+        // Should successfully decode
+        assert!(result.get("raw").is_none(), "Should not fall back to raw hex");
+        assert_eq!(result["parents"], "0");
+        // interior is "Here" string (unit variant in Sidecar format)
+        assert_eq!(result["interior"], "Here");
     }
 
     #[test]
-    fn test_multi_location_serialization() {
-        let location = MultiLocation {
-            parents: 1,
-            interior: Junctions::Here,
-        };
-        let json = serde_json::to_value(&location).unwrap();
-        assert_eq!(json["parents"], 1);
-        assert_eq!(json["interior"], "Here");
+    fn test_extract_multi_location_with_parachain() {
+        // Location { parents: 1, interior: X1([Parachain(1000)]) }
+        // SCALE encoding: [1, 1, 0, <compact 1000>]
+        // parents = 1
+        // interior variant X1 = 1
+        // Junction::Parachain variant = 0
+        // 1000 as compact u32 = [0xa1, 0x0f] (1000 << 2 = 4000 = 0x0fa0, little endian)
+        let mut key_bytes = vec![0u8; 48]; // prefix
+        key_bytes.extend_from_slice(&[
+            1,    // parents = 1
+            1,    // X1 variant
+            0,    // Parachain variant
+            0xa1, 0x0f, // compact encoded 1000
+        ]);
+
+        let result = extract_multi_location_from_key(&key_bytes);
+
+        // Should successfully decode
+        assert!(result.get("raw").is_none(), "Should not fall back to raw hex: {}", result);
+        assert_eq!(result["parents"], "1");
     }
 
     #[test]
-    fn test_junctions_serialization() {
-        // Test Here variant
-        let here = Junctions::Here;
-        let json = serde_json::to_value(&here).unwrap();
-        assert_eq!(json, "Here");
+    fn test_extract_multi_location_invalid() {
+        // Test with invalid bytes that can't be decoded
+        let mut key_bytes = vec![0u8; 48];
+        key_bytes.extend_from_slice(&[255, 255, 255]); // Invalid variant indices
 
-        // Test X1 variant with Parachain
-        let x1 = Junctions::X1([Junction::Parachain(1000)]);
-        let json = serde_json::to_value(&x1).unwrap();
-        assert!(json["X1"].is_array());
-    }
+        let result = extract_multi_location_from_key(&key_bytes);
 
-    #[test]
-    fn test_junction_serialization() {
-        let parachain = Junction::Parachain(2000);
-        let json = serde_json::to_value(&parachain).unwrap();
-        // Parachain uses serialize_compact_u32 which formats with commas
-        assert_eq!(json["Parachain"], "2,000");
-
-        let pallet = Junction::PalletInstance(50);
-        let json = serde_json::to_value(&pallet).unwrap();
-        assert_eq!(json["PalletInstance"], 50);
-    }
-
-    #[test]
-    fn test_network_id_serialization() {
-        let polkadot = NetworkId::Polkadot;
-        let json = serde_json::to_value(&polkadot).unwrap();
-        assert_eq!(json, "Polkadot");
-
-        let kusama = NetworkId::Kusama;
-        let json = serde_json::to_value(&kusama).unwrap();
-        assert_eq!(json, "Kusama");
+        // Should fall back to raw hex
+        assert!(result["raw"].is_string());
     }
 
     #[test]
