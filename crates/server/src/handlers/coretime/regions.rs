@@ -297,7 +297,7 @@ fn extract_region_record_fields<T>(
             (end, owner, paid)
         }
         ValueDef::Composite(scale_value::Composite::Unnamed(fields)) => {
-            let end = fields.get(0).and_then(|v| extract_u32(&v.value));
+            let end = fields.first().and_then(|v| extract_u32(&v.value));
             let owner = fields
                 .get(1)
                 .and_then(|v| extract_option_account_id(&v.value));
@@ -376,10 +376,10 @@ fn extract_account_id_from_value_def<T>(value: &ValueDef<T>) -> Option<String> {
         ValueDef::Composite(scale_value::Composite::Named(fields)) => {
             // Try common field names
             for field_name in ["Id", "id", "account"] {
-                if let Some((_, val)) = fields.iter().find(|(name, _)| name == field_name) {
-                    if let Some(account) = extract_account_id_from_value(val) {
-                        return Some(account);
-                    }
+                if let Some((_, val)) = fields.iter().find(|(name, _)| name == field_name)
+                    && let Some(account) = extract_account_id_from_value(val)
+                {
+                    return Some(account);
                 }
             }
             // If only one field, try to extract from it
