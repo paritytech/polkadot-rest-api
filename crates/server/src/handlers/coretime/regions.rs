@@ -26,25 +26,11 @@ use axum::{
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use primitive_types::H256;
+use scale_decode::DecodeAsType;
 use scale_value::ValueDef;
 use serde::Serialize;
 use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
-
-// ============================================================================
-// Constants - Storage Key Layout
-// ============================================================================
-
-// Storage key format for Broker::Regions (Blake2_128Concat hasher):
-// - 16 bytes: pallet prefix (twox128 of "Broker")
-// - 16 bytes: entry prefix (twox128 of "Regions")
-// - 16 bytes: blake2_128 hash of the key
-// - Key bytes: RegionId (16 bytes)
-//
-// Total prefix before key data: 48 bytes
-
-/// Offset where the RegionId starts in the storage key (after hash prefixes).
-const KEY_PAYLOAD_OFFSET: usize = 48; // 16 + 16 + 16 (Blake2_128Concat)
 
 // ============================================================================
 // SCALE Decode Types
@@ -52,7 +38,8 @@ const KEY_PAYLOAD_OFFSET: usize = 48; // 16 + 16 + 16 (Blake2_128Concat)
 
 /// RegionId from the Broker pallet storage key.
 /// Matches the pallet_broker::RegionId type.
-#[derive(Debug, Clone, Decode, Encode)]
+/// DecodeAsType allows using subxt's `entry.key().part(0).decode_as::<RegionId>()`.
+#[derive(Debug, Clone, Decode, Encode, DecodeAsType)]
 struct RegionId {
     /// The begin timeslice of this region.
     begin: u32,
@@ -207,9 +194,15 @@ async fn fetch_regions(
             }
         };
 
-        // Extract RegionId from key bytes using SCALE decode
-        let key_bytes = entry.key_bytes();
-        let region_id = match decode_region_id(key_bytes) {
+        // Extract RegionId from storage key using subxt's structured key API
+        // This automatically handles hasher-specific offsets (Blake2_128Concat, etc.)
+        // Note: decode_as returns Result<Option<T>, Error>, so .ok().flatten() is needed
+        let region_id = match entry
+            .key()
+            .ok()
+            .and_then(|k| k.part(0))
+            .and_then(|p| p.decode_as::<RegionId>().ok().flatten())
+        {
             Some(id) => id,
             None => {
                 tracing::warn!("Failed to decode RegionId from key");
@@ -242,16 +235,6 @@ async fn fetch_regions(
     }
 
     Ok(regions)
-}
-
-/// Decodes RegionId from the storage key bytes using SCALE codec.
-fn decode_region_id(key_bytes: &[u8]) -> Option<RegionId> {
-    if key_bytes.len() < KEY_PAYLOAD_OFFSET {
-        return None;
-    }
-
-    let region_id_bytes = &key_bytes[KEY_PAYLOAD_OFFSET..];
-    RegionId::decode(&mut &region_id_bytes[..]).ok()
 }
 
 /// Extracts RegionRecord fields from a scale_value::Value.
@@ -470,31 +453,6 @@ mod tests {
         assert_eq!(decoded.begin, 302685);
         assert_eq!(decoded.core, 48);
         assert_eq!(decoded.mask, [0xFF; CORE_MASK_SIZE]);
-    }
-
-    #[test]
-    fn test_decode_region_id_from_key_bytes() {
-        // Simulate full storage key: 48 bytes prefix + RegionId
-        let mut key_bytes = vec![0u8; KEY_PAYLOAD_OFFSET];
-
-        // Append SCALE-encoded RegionId
-        let region_id = RegionId {
-            begin: 1000,
-            core: 5,
-            mask: [0xAA; CORE_MASK_SIZE],
-        };
-        key_bytes.extend_from_slice(&region_id.encode());
-
-        let decoded = decode_region_id(&key_bytes).unwrap();
-        assert_eq!(decoded.begin, 1000);
-        assert_eq!(decoded.core, 5);
-        assert_eq!(decoded.mask, [0xAA; CORE_MASK_SIZE]);
-    }
-
-    #[test]
-    fn test_decode_region_id_insufficient_bytes() {
-        let key_bytes = vec![0u8; KEY_PAYLOAD_OFFSET - 1];
-        assert!(decode_region_id(&key_bytes).is_none());
     }
 
     // ------------------------------------------------------------------------
