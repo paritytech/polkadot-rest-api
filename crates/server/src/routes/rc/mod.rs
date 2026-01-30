@@ -10,7 +10,7 @@ use config::ChainType;
 pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppState> {
     let router = Router::new();
     if chain_type != &ChainType::Relay {
-        return router
+        router
             .merge(blocks::routes(registry))
             .merge(node::routes(registry))
             .merge(accounts::routes(registry))
