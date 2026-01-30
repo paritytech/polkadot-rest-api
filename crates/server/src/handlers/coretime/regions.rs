@@ -27,7 +27,7 @@ use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use primitive_types::H256;
 use scale_decode::DecodeAsType;
-use scale_value::ValueDef;
+use scale_value::At;
 use serde::Serialize;
 use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
@@ -237,183 +237,101 @@ async fn fetch_regions(
     Ok(regions)
 }
 
-/// Extracts RegionRecord fields from a scale_value::Value.
+/// Extracts RegionRecord fields from a scale_value::Value using the `At` trait.
 ///
 /// The storage value is Option<RegionRecord> where RegionRecord has:
 /// - end: u32
 /// - owner: Option<AccountId32>
 /// - paid: Option<u128>
+///
+/// Uses scale_value::At for cleaner field navigation instead of manual pattern matching.
 fn extract_region_record_fields<T>(
     value: &scale_value::Value<T>,
 ) -> (Option<u32>, Option<String>, Option<String>) {
-    // The value is Option<RegionRecord>, so first unwrap the Option
-    let inner_value = match &value.value {
-        // If it's a Some variant, get the inner value
-        ValueDef::Variant(variant) if variant.name == "Some" => match &variant.values {
-            scale_value::Composite::Unnamed(vals) if !vals.is_empty() => &vals[0],
-            _ => return (None, None, None),
-        },
-        // If it's directly a composite (not wrapped in Option), use it directly
-        ValueDef::Composite(_) => value,
-        // None variant or other - no record
-        _ => return (None, None, None),
+    // Handle Option<RegionRecord>:
+    // - If value has "end" field directly, it's the RegionRecord itself
+    // - If not, assume it's Option<RegionRecord> and unwrap with .at(0)
+    //
+    // We can't just do value.at(0).or(Some(value)) because if value is a Composite,
+    // .at(0) returns the first FIELD (not the composite itself), which is wrong.
+    let inner = if value.at("end").is_some() || value.at(0).and_then(|v| v.as_u128()).is_some() {
+        // Value is the record itself (has "end" field or first field is a number)
+        Some(value)
+    } else {
+        // Value is Option<RegionRecord>, unwrap the Some variant
+        value.at(0)
     };
 
-    // Now extract fields from the RegionRecord
-    match &inner_value.value {
-        ValueDef::Composite(scale_value::Composite::Named(fields)) => {
-            let end = fields
-                .iter()
-                .find(|(name, _)| name == "end")
-                .and_then(|(_, val)| extract_u32(&val.value));
+    // Extract 'end' field - integers are stored as U128 in scale_value
+    let end = inner
+        .at("end")
+        .and_then(|v| v.as_u128())
+        .map(|n| n as u32)
+        // Fallback to positional access for unnamed composites
+        .or_else(|| inner.at(0).and_then(|v| v.as_u128()).map(|n| n as u32));
 
-            let owner = fields
-                .iter()
-                .find(|(name, _)| name == "owner")
-                .and_then(|(_, val)| extract_option_account_id(&val.value));
+    // Extract 'owner' field - Option<AccountId32>
+    // First try named access, then positional
+    let owner = inner
+        .at("owner")
+        .and_then(extract_option_account_id)
+        .or_else(|| inner.at(1).and_then(extract_option_account_id));
 
-            let paid = fields
-                .iter()
-                .find(|(name, _)| name == "paid")
-                .and_then(|(_, val)| extract_option_u128(&val.value));
+    // Extract 'paid' field - Option<u128>
+    // The value is Option<u128>, so .at(0) unwraps the Some variant
+    let paid = inner
+        .at("paid")
+        .and_then(|v| v.at(0)) // unwrap Some variant
+        .and_then(|v| v.as_u128())
+        .map(|n| n.to_string())
+        // Fallback to positional access
+        .or_else(|| {
+            inner
+                .at(2)
+                .and_then(|v| v.at(0))
+                .and_then(|v| v.as_u128())
+                .map(|n| n.to_string())
+        });
 
-            (end, owner, paid)
-        }
-        ValueDef::Composite(scale_value::Composite::Unnamed(fields)) => {
-            let end = fields.first().and_then(|v| extract_u32(&v.value));
-            let owner = fields
-                .get(1)
-                .and_then(|v| extract_option_account_id(&v.value));
-            let paid = fields.get(2).and_then(|v| extract_option_u128(&v.value));
-            (end, owner, paid)
-        }
-        _ => (None, None, None),
-    }
+    (end, owner, paid)
 }
 
-/// Extract u32 from ValueDef (all integers are represented as U128)
-fn extract_u32<T>(value: &ValueDef<T>) -> Option<u32> {
-    match value {
-        ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n as u32),
-        _ => None,
-    }
+/// Extract Option<AccountId> from a Value (handles Some/None variants).
+/// Returns the AccountId as a hex string (0x-prefixed).
+fn extract_option_account_id<T>(value: &scale_value::Value<T>) -> Option<String> {
+    // If it's a Some variant, get the inner AccountId at index 0
+    // If it's directly the AccountId (not wrapped), try to extract directly
+    let inner = value.at(0).or(Some(value));
+    extract_account_id_bytes(inner).map(|bytes| format!("0x{}", hex::encode(bytes)))
 }
 
-/// Extract Option<AccountId> from ValueDef (handles Some/None variants)
-fn extract_option_account_id<T>(value: &ValueDef<T>) -> Option<String> {
-    match value {
-        ValueDef::Variant(variant) => {
-            match variant.name.as_str() {
-                "Some" => {
-                    // Get the inner AccountId from Some variant
-                    match &variant.values {
-                        scale_value::Composite::Unnamed(vals) if !vals.is_empty() => {
-                            extract_account_id_from_value(&vals[0])
-                        }
-                        scale_value::Composite::Named(fields) if !fields.is_empty() => {
-                            extract_account_id_from_value(&fields[0].1)
-                        }
-                        _ => None,
-                    }
-                }
-                _ => None, // None variant or other
-            }
+/// Extract AccountId bytes from a Value.
+/// AccountId32 is stored as an array of 32 U128 values (each representing a byte).
+fn extract_account_id_bytes<T>(value: Option<&scale_value::Value<T>>) -> Option<Vec<u8>> {
+    let value = value?;
+
+    // Try to collect 32 bytes from unnamed composite (array of U128s)
+    let bytes: Vec<u8> = (0..32)
+        .filter_map(|i| value.at(i).and_then(|v| v.as_u128()).map(|n| n as u8))
+        .collect();
+
+    if bytes.len() == 32 {
+        return Some(bytes);
+    }
+
+    // Try named field access for wrapped AccountId types (e.g., "Id" field)
+    for field_name in ["Id", "id", "account"] {
+        if let Some(bytes) = extract_account_id_bytes(value.at(field_name)) {
+            return Some(bytes);
         }
-        // If it's directly a composite (not wrapped in Option), try to extract
-        ValueDef::Composite(_) => extract_account_id_from_value_def(value),
-        _ => None,
     }
-}
 
-/// Extract AccountId from a scale_value::Value and format as hex
-/// Handles multiple encoding formats
-fn extract_account_id_from_value<T>(value: &scale_value::Value<T>) -> Option<String> {
-    extract_account_id_from_value_def(&value.value)
-}
-
-/// Extract AccountId from ValueDef and format as hex
-fn extract_account_id_from_value_def<T>(value: &ValueDef<T>) -> Option<String> {
-    match value {
-        // AccountId32 as an array of 32 U128 values (each representing a byte)
-        ValueDef::Composite(scale_value::Composite::Unnamed(bytes)) => {
-            let account_bytes: Vec<u8> = bytes
-                .iter()
-                .filter_map(|v| {
-                    if let ValueDef::Primitive(scale_value::Primitive::U128(b)) = &v.value {
-                        Some(*b as u8)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            if account_bytes.len() == 32 {
-                Some(format!("0x{}", hex::encode(account_bytes)))
-            } else if bytes.len() == 1 {
-                // If single element, might be nested
-                extract_account_id_from_value(&bytes[0])
-            } else {
-                None
-            }
-        }
-        // Named composite with an "Id" or similar field
-        ValueDef::Composite(scale_value::Composite::Named(fields)) => {
-            // Try common field names
-            for field_name in ["Id", "id", "account"] {
-                if let Some((_, val)) = fields.iter().find(|(name, _)| name == field_name)
-                    && let Some(account) = extract_account_id_from_value(val)
-                {
-                    return Some(account);
-                }
-            }
-            // If only one field, try to extract from it
-            if fields.len() == 1 {
-                return extract_account_id_from_value(&fields[0].1);
-            }
-            None
-        }
-        // Handle variants like "Id" wrapping the account
-        ValueDef::Variant(variant) => match variant.name.as_str() {
-            "Some" | "Id" => match &variant.values {
-                scale_value::Composite::Unnamed(vals) if !vals.is_empty() => {
-                    extract_account_id_from_value(&vals[0])
-                }
-                scale_value::Composite::Named(fields) if !fields.is_empty() => {
-                    extract_account_id_from_value(&fields[0].1)
-                }
-                _ => None,
-            },
-            _ => None,
-        },
-        _ => None,
+    // Try positional access (index 0) for single-element wrappers
+    if let Some(bytes) = extract_account_id_bytes(value.at(0)) {
+        return Some(bytes);
     }
-}
 
-/// Extract Option<u128> from ValueDef (handles Some/None variants)
-fn extract_option_u128<T>(value: &ValueDef<T>) -> Option<String> {
-    match value {
-        ValueDef::Variant(variant) => {
-            if variant.name == "Some" {
-                // Get the inner value from Some variant
-                match &variant.values {
-                    scale_value::Composite::Unnamed(vals) if !vals.is_empty() => {
-                        extract_u128(&vals[0].value).map(|n| n.to_string())
-                    }
-                    _ => None,
-                }
-            } else {
-                None // None variant
-            }
-        }
-        _ => None,
-    }
-}
-
-/// Extract u128 from ValueDef (all integers are represented as U128)
-fn extract_u128<T>(value: &ValueDef<T>) -> Option<u128> {
-    match value {
-        ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n),
-        _ => None,
-    }
+    None
 }
 
 /// Decodes RegionRecord from the storage value bytes using SCALE codec.
