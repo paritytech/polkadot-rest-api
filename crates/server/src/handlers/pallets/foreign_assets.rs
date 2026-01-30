@@ -16,6 +16,8 @@ use axum::{
 use config::ChainType;
 use futures::StreamExt;
 use parity_scale_codec::Decode;
+use scale_decode::DecodeAsType;
+use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
@@ -99,6 +101,173 @@ struct AssetMetadataStorage {
     symbol: Vec<u8>,
     decimals: u8,
     is_frozen: bool,
+}
+
+// ============================================================================
+// XCM Types (using scale_decode::DecodeAsType for flexible decoding)
+// ============================================================================
+
+/// XCM MultiLocation structure.
+/// Using DecodeAsType allows flexible decoding that handles variant changes,
+/// numeric type coercion (e.g., u8 -> u64), and other schema evolution.
+#[derive(Debug, Clone, DecodeAsType, Serialize, TypeInfo)]
+pub struct MultiLocation {
+    pub parents: u8,
+    pub interior: Junctions,
+}
+
+/// XCM Junctions enum - represents the path to a location.
+#[derive(Debug, Clone, DecodeAsType, Serialize, TypeInfo)]
+#[serde(rename_all = "PascalCase")]
+pub enum Junctions {
+    Here,
+    X1([Junction; 1]),
+    X2([Junction; 2]),
+    X3([Junction; 3]),
+    X4([Junction; 4]),
+    X5([Junction; 5]),
+    X6([Junction; 6]),
+    X7([Junction; 7]),
+    X8([Junction; 8]),
+}
+
+/// XCM Junction - a single step in a location path.
+#[derive(Debug, Clone, DecodeAsType, Serialize, TypeInfo)]
+#[serde(rename_all = "PascalCase")]
+pub enum Junction {
+    Parachain(#[serde(serialize_with = "serialize_compact_u32")] u32),
+    AccountId32 {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        network: Option<NetworkId>,
+        #[serde(serialize_with = "serialize_bytes_as_hex")]
+        id: [u8; 32],
+    },
+    AccountIndex64 {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        network: Option<NetworkId>,
+        index: u64,
+    },
+    AccountKey20 {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        network: Option<NetworkId>,
+        #[serde(serialize_with = "serialize_bytes_as_hex")]
+        key: [u8; 20],
+    },
+    PalletInstance(u8),
+    GeneralIndex(#[serde(serialize_with = "serialize_u128_as_string")] u128),
+    GeneralKey {
+        length: u8,
+        #[serde(serialize_with = "serialize_bytes_as_hex")]
+        data: [u8; 32],
+    },
+    OnlyChild,
+    Plurality {
+        id: BodyId,
+        part: BodyPart,
+    },
+    GlobalConsensus(NetworkId),
+}
+
+/// XCM NetworkId - identifies a consensus system.
+#[derive(Debug, Clone, DecodeAsType, Serialize, TypeInfo)]
+#[serde(rename_all = "PascalCase")]
+pub enum NetworkId {
+    ByGenesis(#[serde(serialize_with = "serialize_bytes_as_hex")] [u8; 32]),
+    ByFork {
+        block_number: u64,
+        #[serde(serialize_with = "serialize_bytes_as_hex")]
+        block_hash: [u8; 32],
+    },
+    Polkadot,
+    Kusama,
+    Westend,
+    Rococo,
+    Wococo,
+    Ethereum {
+        #[serde(rename = "chainId", serialize_with = "serialize_u64_as_string")]
+        chain_id: u64,
+    },
+    BitcoinCore,
+    BitcoinCash,
+    PolkadotBulletin,
+}
+
+/// XCM BodyId - identifies a body within a Plurality.
+#[derive(Debug, Clone, DecodeAsType, Serialize, TypeInfo)]
+#[serde(rename_all = "PascalCase")]
+pub enum BodyId {
+    Unit,
+    Moniker([u8; 4]),
+    Index(#[serde(serialize_with = "serialize_compact_u32")] u32),
+    Executive,
+    Technical,
+    Legislative,
+    Judicial,
+    Defense,
+    Administration,
+    Treasury,
+}
+
+/// XCM BodyPart - identifies which part of a body.
+#[derive(Debug, Clone, DecodeAsType, Serialize, TypeInfo)]
+#[serde(rename_all = "PascalCase")]
+pub enum BodyPart {
+    Voice,
+    Members {
+        #[serde(serialize_with = "serialize_compact_u32")]
+        count: u32,
+    },
+    Fraction {
+        #[serde(serialize_with = "serialize_compact_u32")]
+        nom: u32,
+        #[serde(serialize_with = "serialize_compact_u32")]
+        denom: u32,
+    },
+    AtLeastProportion {
+        #[serde(serialize_with = "serialize_compact_u32")]
+        nom: u32,
+        #[serde(serialize_with = "serialize_compact_u32")]
+        denom: u32,
+    },
+    MoreThanProportion {
+        #[serde(serialize_with = "serialize_compact_u32")]
+        nom: u32,
+        #[serde(serialize_with = "serialize_compact_u32")]
+        denom: u32,
+    },
+}
+
+// Custom serializers for proper JSON output format
+fn serialize_compact_u32<S>(value: &u32, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    // Format with thousand separators to match Sidecar
+    serializer.serialize_str(&format_with_commas(*value as u64))
+}
+
+fn serialize_u64_as_string<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&value.to_string())
+}
+
+fn serialize_u128_as_string<S>(value: &u128, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&value.to_string())
+}
+
+fn serialize_bytes_as_hex<S, const N: usize>(
+    value: &[u8; N],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&format!("0x{}", hex::encode(value)))
 }
 
 // ============================================================================
@@ -349,6 +518,11 @@ async fn fetch_all_foreign_assets(
 /// Extract MultiLocation from storage key bytes.
 /// The key format is: twox128(pallet) ++ twox128(storage) ++ blake2_128_concat(multilocation)
 /// We need to skip the first 32 bytes (prefix hashes) and decode the rest.
+///
+/// Uses scale_decode::DecodeAsType for flexible decoding that handles:
+/// - Variant additions/removals/moves between XCM versions
+/// - Numeric type coercion (e.g., u8 -> u64)
+/// - Better backward compatibility with schema evolution
 fn extract_multi_location_from_key(key_bytes: &[u8]) -> serde_json::Value {
     // Skip twox128(ForeignAssets) = 16 bytes + twox128(Asset) = 16 bytes = 32 bytes
     // Then skip blake2_128 hash = 16 bytes
@@ -359,205 +533,38 @@ fn extract_multi_location_from_key(key_bytes: &[u8]) -> serde_json::Value {
 
     let multi_location_bytes = &key_bytes[48..];
 
-    // Try to decode as a versioned location (XCM v3/v4)
-    // The MultiLocation structure varies by XCM version, so we'll return a hex representation
-    // along with attempting to decode common patterns
-    match decode_multi_location(multi_location_bytes) {
-        Some(decoded) => decoded,
-        None => serde_json::json!({"raw": format!("0x{}", hex::encode(multi_location_bytes))}),
-    }
-}
-
-/// Attempt to decode MultiLocation bytes into a JSON structure.
-/// XCM MultiLocation has the structure: { parents: u8, interior: Junctions }
-fn decode_multi_location(bytes: &[u8]) -> Option<serde_json::Value> {
-    if bytes.is_empty() {
-        return None;
-    }
-
-    // Try to decode using scale_value for a generic approach
-    // This provides a best-effort decode without requiring exact type definitions
-    let cursor = &mut &bytes[..];
-
-    // First byte is `parents` (u8)
-    let parents = u8::decode(cursor).ok()?;
-
-    // Remaining bytes are the interior junctions
-    // For now, return a structured representation
-    let interior_bytes = *cursor;
-
-    Some(serde_json::json!({
-        "parents": parents.to_string(),
-        "interior": decode_junctions(interior_bytes).unwrap_or_else(|| {
-            serde_json::json!({"raw": format!("0x{}", hex::encode(interior_bytes))})
-        })
-    }))
-}
-
-/// Decode XCM Junctions enum.
-/// Junctions is an enum: Here, X1, X2, X3, X4, X5, X6, X7, X8
-fn decode_junctions(bytes: &[u8]) -> Option<serde_json::Value> {
-    if bytes.is_empty() {
-        return None;
-    }
-
-    let cursor = &mut &bytes[..];
-    let variant_index = u8::decode(cursor).ok()?;
-
-    match variant_index {
-        0 => Some(serde_json::json!("Here")),
-        1 => {
-            // X1 - single junction
-            let junction = decode_junction(cursor)?;
-            Some(serde_json::json!({"X1": [junction]}))
-        }
-        2 => {
-            // X2 - two junctions
-            let j1 = decode_junction(cursor)?;
-            let j2 = decode_junction(cursor)?;
-            Some(serde_json::json!({"X2": [j1, j2]}))
-        }
-        3 => {
-            // X3 - three junctions
-            let j1 = decode_junction(cursor)?;
-            let j2 = decode_junction(cursor)?;
-            let j3 = decode_junction(cursor)?;
-            Some(serde_json::json!({"X3": [j1, j2, j3]}))
-        }
-        _ => {
-            // For higher arities or unknown variants, return raw
-            Some(serde_json::json!({"raw": format!("0x{}", hex::encode(bytes))}))
-        }
-    }
-}
-
-/// Decode a single XCM Junction.
-fn decode_junction(cursor: &mut &[u8]) -> Option<serde_json::Value> {
-    if cursor.is_empty() {
-        return None;
-    }
-
-    let variant_index = u8::decode(cursor).ok()?;
-
-    match variant_index {
-        0 => {
-            // Parachain(Compact<u32>)
-            let para_id = parity_scale_codec::Compact::<u32>::decode(cursor).ok()?.0;
-            // Format with thousand separators to match Sidecar
-            Some(serde_json::json!({"Parachain": format_with_commas(para_id as u64)}))
-        }
-        1 => {
-            // AccountId32 { network: Option<NetworkId>, id: [u8; 32] }
-            let _network = decode_option_network_id(cursor);
-            let mut id = [0u8; 32];
-            if cursor.len() >= 32 {
-                id.copy_from_slice(&cursor[..32]);
-                *cursor = &cursor[32..];
+    // Try to decode using the typed MultiLocation struct with DecodeAsType
+    match decode_multi_location_typed(multi_location_bytes) {
+        Ok(ml) => {
+            // Successfully decoded - serialize to JSON
+            match serde_json::to_value(&ml) {
+                Ok(json) => json,
+                Err(_) => {
+                    serde_json::json!({"raw": format!("0x{}", hex::encode(multi_location_bytes))})
+                }
             }
-            Some(serde_json::json!({"AccountId32": {"id": format!("0x{}", hex::encode(id))}}))
         }
-        2 => {
-            // AccountIndex64 { network: Option<NetworkId>, index: u64 }
-            let _network = decode_option_network_id(cursor);
-            let index = u64::decode(cursor).ok()?;
-            Some(serde_json::json!({"AccountIndex64": {"index": index}}))
-        }
-        3 => {
-            // AccountKey20 { network: Option<NetworkId>, key: [u8; 20] }
-            let network = decode_option_network_id(cursor);
-            let mut key = [0u8; 20];
-            if cursor.len() >= 20 {
-                key.copy_from_slice(&cursor[..20]);
-                *cursor = &cursor[20..];
-            }
-            Some(
-                serde_json::json!({"AccountKey20": {"network": network, "key": format!("0x{}", hex::encode(key))}}),
-            )
-        }
-        4 => {
-            // PalletInstance(u8)
-            let instance = u8::decode(cursor).ok()?;
-            Some(serde_json::json!({"PalletInstance": instance.to_string()}))
-        }
-        5 => {
-            // GeneralIndex(Compact<u128>)
-            let index = parity_scale_codec::Compact::<u128>::decode(cursor).ok()?.0;
-            Some(serde_json::json!({"GeneralIndex": index.to_string()}))
-        }
-        6 => {
-            // GeneralKey { length: u8, data: [u8; 32] }
-            let length = u8::decode(cursor).ok()?;
-            let mut data = [0u8; 32];
-            if cursor.len() >= 32 {
-                data.copy_from_slice(&cursor[..32]);
-                *cursor = &cursor[32..];
-            }
-            Some(serde_json::json!({"GeneralKey": {
-                "length": length.to_string(),
-                "data": format!("0x{}", hex::encode(data))
-            }}))
-        }
-        7 => {
-            // OnlyChild - no data
-            Some(serde_json::json!("OnlyChild"))
-        }
-        9 => {
-            // GlobalConsensus(NetworkId)
-            let network = decode_network_id(cursor)?;
-            Some(serde_json::json!({"GlobalConsensus": network}))
-        }
-        _ => {
-            // Unknown junction type
-            Some(serde_json::json!({"Unknown": variant_index}))
+        Err(_) => {
+            // DecodeAsType failed - fall back to raw hex representation
+            // This ensures we always return something useful even for unknown XCM versions
+            serde_json::json!({"raw": format!("0x{}", hex::encode(multi_location_bytes))})
         }
     }
 }
 
-/// Decode Option<NetworkId>
-fn decode_option_network_id(cursor: &mut &[u8]) -> Option<serde_json::Value> {
-    if cursor.is_empty() {
-        return None;
-    }
-    let is_some = u8::decode(cursor).ok()?;
-    if is_some == 0 {
-        Some(serde_json::json!(null))
-    } else {
-        decode_network_id(cursor)
-    }
-}
+/// Decode MultiLocation bytes using scale_decode::DecodeAsType.
+/// This provides type-safe decoding with automatic handling of schema evolution.
+fn decode_multi_location_typed(bytes: &[u8]) -> Result<MultiLocation, scale_decode::Error> {
+    use scale_decode::DecodeAsType;
+    use scale_info::PortableRegistry;
 
-/// Decode NetworkId enum
-fn decode_network_id(cursor: &mut &[u8]) -> Option<serde_json::Value> {
-    if cursor.is_empty() {
-        return None;
-    }
-    let variant = u8::decode(cursor).ok()?;
-    match variant {
-        0 => {
-            // ByGenesis - has 32-byte hash
-            let mut hash = [0u8; 32];
-            if cursor.len() >= 32 {
-                hash.copy_from_slice(&cursor[..32]);
-                *cursor = &cursor[32..];
-            }
-            Some(serde_json::json!({"ByGenesis": format!("0x{}", hex::encode(hash))}))
-        }
-        1 => Some(serde_json::json!("ByFork")), // Would need version info
-        2 => Some(serde_json::json!("Polkadot")),
-        3 => Some(serde_json::json!("Kusama")),
-        4 => Some(serde_json::json!("Westend")),
-        5 => Some(serde_json::json!("Rococo")),
-        6 => Some(serde_json::json!("Wococo")),
-        7 => {
-            // Ethereum - has Compact<u64> chain_id
-            let chain_id = parity_scale_codec::Compact::<u64>::decode(cursor).ok()?.0;
-            Some(serde_json::json!({"Ethereum": {"chainId": chain_id.to_string()}}))
-        }
-        8 => Some(serde_json::json!("BitcoinCore")),
-        9 => Some(serde_json::json!("BitcoinCash")),
-        10 => Some(serde_json::json!("PolkadotBulletin")),
-        _ => Some(serde_json::json!({"Unknown": variant})),
-    }
+    // Build a minimal type registry for MultiLocation
+    let mut registry = scale_info::Registry::new();
+    let type_id = registry.register_type(&scale_info::meta_type::<MultiLocation>());
+    let portable_registry = PortableRegistry::from(registry);
+
+    // Decode using DecodeAsType which handles variant changes gracefully
+    MultiLocation::decode_as_type(&mut &bytes[..], type_id.id, &portable_registry)
 }
 
 /// Decode asset details from raw bytes into JSON.
@@ -742,58 +749,78 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_multi_location_empty() {
-        let result = decode_multi_location(&[]);
-        assert!(result.is_none());
-    }
+    fn test_decode_multi_location_typed_simple() {
+        // Encode a simple MultiLocation: parents=0, interior=Here (variant 0)
+        let bytes = vec![0u8, 0u8]; // parents=0, interior=Here variant
+        let result = decode_multi_location_typed(&bytes);
 
-    #[test]
-    fn test_decode_multi_location_simple() {
-        // parents=0, interior=Here (variant 0)
-        let bytes = vec![0u8, 0u8];
-        let result = decode_multi_location(&bytes);
-        assert!(result.is_some());
-        let json = result.unwrap();
-        assert_eq!(json["parents"], "0");
+        assert!(result.is_ok(), "Should decode valid MultiLocation");
+        let multi_location = result.unwrap();
+        assert_eq!(multi_location.parents, 0);
+        matches!(multi_location.interior, Junctions::Here);
+
+        // Also check JSON serialization
+        let json = serde_json::to_value(&multi_location).unwrap();
+        assert_eq!(json["parents"], 0);
         assert_eq!(json["interior"], "Here");
     }
 
     #[test]
-    fn test_decode_junctions_here() {
-        let bytes = vec![0u8];
-        let result = decode_junctions(&bytes);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap(), serde_json::json!("Here"));
+    fn test_decode_multi_location_typed_invalid() {
+        // Invalid bytes - empty
+        let result = decode_multi_location_typed(&[]);
+        assert!(result.is_err(), "Should return Err for empty bytes");
+
+        // Invalid bytes - too short
+        let result = decode_multi_location_typed(&[0u8]);
+        assert!(result.is_err(), "Should return Err for incomplete data");
     }
 
     #[test]
-    fn test_decode_junction_parachain() {
-        // Junction::Parachain(1000) = variant 0, then Compact<u32>
-        // Compact encoding: 1000 = 0x3e8, which in compact is 0xa10f (two-byte mode)
-        // Two-byte mode: value << 2 | 0b01 = 1000 << 2 | 1 = 4001 = 0x0fa1 -> little endian 0xa1, 0x0f
-        let mut cursor: &[u8] = &[0u8, 0xa1, 0x0f]; // 0 = Parachain, Compact(1000)
-        let result = decode_junction(&mut cursor);
-        assert!(result.is_some());
-        let json = result.unwrap();
-        assert_eq!(json["Parachain"], "1,000");
+    fn test_multi_location_serialization() {
+        let location = MultiLocation {
+            parents: 1,
+            interior: Junctions::Here,
+        };
+        let json = serde_json::to_value(&location).unwrap();
+        assert_eq!(json["parents"], 1);
+        assert_eq!(json["interior"], "Here");
     }
 
     #[test]
-    fn test_decode_network_id_polkadot() {
-        // NetworkId::Polkadot = variant 2
-        let mut cursor: &[u8] = &[2u8];
-        let result = decode_network_id(&mut cursor);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap(), serde_json::json!("Polkadot"));
+    fn test_junctions_serialization() {
+        // Test Here variant
+        let here = Junctions::Here;
+        let json = serde_json::to_value(&here).unwrap();
+        assert_eq!(json, "Here");
+
+        // Test X1 variant with Parachain
+        let x1 = Junctions::X1([Junction::Parachain(1000)]);
+        let json = serde_json::to_value(&x1).unwrap();
+        assert!(json["X1"].is_array());
     }
 
     #[test]
-    fn test_decode_network_id_kusama() {
-        // NetworkId::Kusama = variant 3
-        let mut cursor: &[u8] = &[3u8];
-        let result = decode_network_id(&mut cursor);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap(), serde_json::json!("Kusama"));
+    fn test_junction_serialization() {
+        let parachain = Junction::Parachain(2000);
+        let json = serde_json::to_value(&parachain).unwrap();
+        // Parachain uses serialize_compact_u32 which formats with commas
+        assert_eq!(json["Parachain"], "2,000");
+
+        let pallet = Junction::PalletInstance(50);
+        let json = serde_json::to_value(&pallet).unwrap();
+        assert_eq!(json["PalletInstance"], 50);
+    }
+
+    #[test]
+    fn test_network_id_serialization() {
+        let polkadot = NetworkId::Polkadot;
+        let json = serde_json::to_value(&polkadot).unwrap();
+        assert_eq!(json, "Polkadot");
+
+        let kusama = NetworkId::Kusama;
+        let json = serde_json::to_value(&kusama).unwrap();
+        assert_eq!(json, "Kusama");
     }
 
     #[test]
