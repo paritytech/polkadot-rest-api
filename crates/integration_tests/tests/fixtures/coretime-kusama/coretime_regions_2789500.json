@@ -1,0 +1,432 @@
+{
+  "at": {
+    "hash": "0x57a3459518cdec757ef4c704a7c293c3d2936b2eea5ebeb685c9c712e1499ffe",
+    "height": "2789500"
+  },
+  "regions": [
+    {
+      "core": 31,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 32,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 33,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 34,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 35,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 36,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 37,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 38,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 39,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 40,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 41,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 42,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 43,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 44,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 45,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 46,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 47,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 48,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 49,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 50,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 51,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 52,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 53,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 54,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 55,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 56,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 57,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 58,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 59,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 60,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 61,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 62,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 63,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 64,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 65,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 66,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 67,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 68,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 69,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 70,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 71,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 72,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 73,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 74,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 75,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 76,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 77,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 78,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 79,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 80,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "HcP1oqteP9k5Y4TQ1SKz1W5n2QUC8jdHM4A4XuonKpsvWno",
+      "paid": "95327852",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 82,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "Cb3ZF5tmeTEDR44MRLAPH3agiv5ntLG6VMZ2U5x8QM3XkGY",
+      "paid": "93799168",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 83,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "Cb3ZF5tmeTEDR44MRLAPH3agiv5ntLG6VMZ2U5x8QM3XkGY",
+      "paid": "93780480",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 84,
+      "begin": 346248,
+      "end": 351288,
+      "owner": "DB8Qb8KQd95WvaV4SFXSF2Jzxc1TeKsBKv7hpdo8C7ZMz1u",
+      "paid": "93720678",
+      "mask": "0xffffffffffffffffffff"
+    }
+  ]
+}

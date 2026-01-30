@@ -1,0 +1,174 @@
+{
+  "at": {
+    "hash": "0x60b0663b69fd7a06b75e486dec60d633fd8c1c2cb72e2b21dce5960e1490dca6",
+    "height": "2289500"
+  },
+  "regions": [
+    {
+      "core": 48,
+      "begin": 302685,
+      "end": 307725,
+      "owner": "145wS9x6ZqohEpHQd4WGu42g9BCZ3L7iXii2VSEevsXs3wvx",
+      "paid": "16168469809",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 55,
+      "begin": 302685,
+      "end": 307725,
+      "owner": "158BPpq5RRYW2LTkCyVwvcryN51JBHmq5Fy4QQ6k9tDqT9P6",
+      "paid": "2557489255",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 55,
+      "begin": 317805,
+      "end": 318007,
+      "owner": "16fUfF5mqL3cGGL3ai1CTL45UyNVTBHcbMkmuh5Va5M2yJ5p",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 55,
+      "begin": 307725,
+      "end": 312765,
+      "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+      "paid": "9634432781",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 55,
+      "begin": 318007,
+      "end": 322845,
+      "owner": "16fUfF5mqL3cGGL3ai1CTL45UyNVTBHcbMkmuh5Va5M2yJ5p",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 56,
+      "begin": 317805,
+      "end": 322845,
+      "owner": "138KPTyfTFEfiYo8Ju6xR4D7ZzV1fYaQuvHAm6anm4umKwah",
+      "paid": "22327444310",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 57,
+      "begin": 302685,
+      "end": 307725,
+      "owner": "145wS9x6ZqohEpHQd4WGu42g9BCZ3L7iXii2VSEevsXs3wvx",
+      "paid": "1511071942",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 57,
+      "begin": 317805,
+      "end": 322845,
+      "owner": "15fTH34bbKGMUjF1bLmTqxPYgpg481imThwhWcQfCyktyBzL",
+      "paid": "22255810854",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 57,
+      "begin": 307725,
+      "end": 312765,
+      "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+      "paid": "9621750565",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 58,
+      "begin": 302685,
+      "end": 307725,
+      "owner": "158BPpq5RRYW2LTkCyVwvcryN51JBHmq5Fy4QQ6k9tDqT9P6",
+      "paid": "1511071942",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 58,
+      "begin": 307725,
+      "end": 312765,
+      "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+      "paid": "9617163404",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 59,
+      "begin": 322634,
+      "end": 322845,
+      "owner": "15Jp11SyTZvqRJ1hzQYFR8GBt7qqwpK7Lz2UFweNTnJMDcj8",
+      "paid": "9235672234",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 59,
+      "begin": 302685,
+      "end": 307725,
+      "owner": "16hVZMikbFaJa5JGpNija63YSB7ShHEChsWW7Ytcj9Trdaxd",
+      "paid": "1511071942",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 59,
+      "begin": 307725,
+      "end": 312765,
+      "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+      "paid": "9615004732",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 59,
+      "begin": 312765,
+      "end": 317805,
+      "owner": "16fUfF5mqL3cGGL3ai1CTL45UyNVTBHcbMkmuh5Va5M2yJ5p",
+      "paid": "5700086034",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 60,
+      "begin": 307725,
+      "end": 312765,
+      "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+      "paid": "9613385721",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 60,
+      "begin": 312765,
+      "end": 317805,
+      "owner": "16fUfF5mqL3cGGL3ai1CTL45UyNVTBHcbMkmuh5Va5M2yJ5p",
+      "paid": "5693048256",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 60,
+      "begin": 302685,
+      "end": 307725,
+      "owner": "16hVZMikbFaJa5JGpNija63YSB7ShHEChsWW7Ytcj9Trdaxd",
+      "paid": "1511071942",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 61,
+      "begin": 322663,
+      "end": 322845,
+      "owner": "15Jp11SyTZvqRJ1hzQYFR8GBt7qqwpK7Lz2UFweNTnJMDcj8",
+      "paid": "9227600764",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 61,
+      "begin": 307725,
+      "end": 312765,
+      "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+      "paid": "9612576216",
+      "mask": "0xffffffffffffffffffff"
+    },
+    {
+      "core": 65,
+      "begin": 327885,
+      "end": 332925,
+      "owner": "16SxtuS6XmYN4Pk8j2i5KoTFeDzBrB2RGwjJBaCHv7yfQf21",
+      "paid": "922710642823",
+      "mask": "0xffffffffffffffffffff"
+    }
+  ]
+}
