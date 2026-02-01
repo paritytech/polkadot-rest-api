@@ -1,0 +1,312 @@
+{
+  "at": {
+    "hash": "0xea0442ef1a0f40fac210f64f8d20431cf576ceac14ad219d35d41e07806881f3",
+    "height": "8000000"
+  },
+  "pools": [
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "2993"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "9"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "1313"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "2"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "756"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "6"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "3328"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "4"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "1984"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "1"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "5797867"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "0"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "131313"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "5"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "1107"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "8"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "3327"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "3"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x1": {
+              "globalConsensus": {
+                "polkadot": null
+              }
+            }
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "11"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x1": {
+              "parachain": "2123"
+            }
+          },
+          "parents": "1"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "7"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "223"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "10"
+      }
+    }
+  ]
+}
