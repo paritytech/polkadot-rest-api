@@ -116,6 +116,18 @@ pub enum CoretimeError {
         entry: &'static str,
         details: String,
     },
+
+    #[error("Failed to fetch constant {pallet}::{constant}")]
+    ConstantFetchFailed {
+        pallet: &'static str,
+        constant: &'static str,
+    },
+
+    #[error("Coretime pallet not found at this block (relay chain endpoint)")]
+    CoretimePalletNotFound,
+
+    #[error("This endpoint is only available on relay chains or coretime chains")]
+    UnsupportedChainType,
 }
 
 impl IntoResponse for CoretimeError {
@@ -155,6 +167,13 @@ impl IntoResponse for CoretimeError {
             CoretimeError::StorageIterationError { .. } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
+
+            // Coretime info errors
+            CoretimeError::ConstantFetchFailed { .. } => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            CoretimeError::CoretimePalletNotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            CoretimeError::UnsupportedChainType => (StatusCode::BAD_REQUEST, self.to_string()),
         };
 
         let body = Json(json!({
@@ -197,6 +216,26 @@ pub struct CoretimeQueryParams {
 pub fn has_broker_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
     let metadata = client_at_block.metadata();
     metadata.pallet_by_name("Broker").is_some()
+}
+
+/// Checks if the Coretime pallet exists in the runtime metadata (relay chain).
+pub fn has_coretime_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
+    let metadata = client_at_block.metadata();
+    metadata.pallet_by_name("Coretime").is_some()
+}
+
+/// Checks if the OnDemandAssignmentProvider pallet exists (relay chain).
+pub fn has_on_demand_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
+    let metadata = client_at_block.metadata();
+    metadata.pallet_by_name("OnDemandAssignmentProvider").is_some()
+}
+
+/// Checks if the CoretimeAssignmentProvider pallet exists (relay chain).
+pub fn has_coretime_assignment_provider(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> bool {
+    let metadata = client_at_block.metadata();
+    metadata.pallet_by_name("CoretimeAssignmentProvider").is_some()
 }
 
 /// Decodes a SCALE compact-encoded u32 and returns (value, bytes_consumed).
