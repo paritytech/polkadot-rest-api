@@ -17,7 +17,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use parity_scale_codec::Decode;
+use parity_scale_codec::DecodeAll;
 use serde::{Deserialize, Serialize};
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
@@ -168,39 +168,45 @@ async fn handle_use_rc_block(
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
+    // Return empty array when no AH blocks found (matching Sidecar behavior)
     if ah_blocks.is_empty() {
-        return Ok(build_empty_rc_response(&rc_resolved_block));
+        return Ok((StatusCode::OK, Json(serde_json::json!([]))).into_response());
     }
 
-    let ah_block = &ah_blocks[0];
-    let client_at_block = state.client.at_block(ah_block.number).await?;
-
-    let at = AtResponse {
-        hash: ah_block.hash.clone(),
-        height: ah_block.number.to_string(),
-    };
-
-    let ah_timestamp = fetch_timestamp(&client_at_block).await;
+    let rc_block_number = rc_resolved_block.number.to_string();
+    let rc_block_hash = rc_resolved_block.hash.clone();
     let ss58_prefix = state.chain_info.ss58_prefix;
-    let pool_asset_info = fetch_pool_asset_info(&client_at_block, asset_id, ss58_prefix).await;
-    let pool_asset_meta_data = fetch_pool_asset_meta_data(&client_at_block, asset_id).await;
 
-    if pool_asset_info.is_none() && pool_asset_meta_data.is_none() {
-        return Err(PalletError::PoolAssetNotFound(asset_id.to_string()));
-    }
+    // Process ALL AH blocks, not just the first one
+    let mut results = Vec::new();
+    for ah_block in ah_blocks {
+        let client_at_block = state.client.at_block(ah_block.number).await?;
 
-    Ok((
-        StatusCode::OK,
-        Json(PalletsPoolAssetsInfoResponse {
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
+
+        let ah_timestamp = fetch_timestamp(&client_at_block).await;
+        let pool_asset_info = fetch_pool_asset_info(&client_at_block, asset_id, ss58_prefix).await;
+        let pool_asset_meta_data = fetch_pool_asset_meta_data(&client_at_block, asset_id).await;
+
+        // Skip blocks where the asset doesn't exist
+        if pool_asset_info.is_none() && pool_asset_meta_data.is_none() {
+            continue;
+        }
+
+        results.push(PalletsPoolAssetsInfoResponse {
             at,
             pool_asset_info,
             pool_asset_meta_data,
-            rc_block_hash: Some(rc_resolved_block.hash),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
+            rc_block_hash: Some(rc_block_hash.clone()),
+            rc_block_number: Some(rc_block_number.clone()),
             ah_timestamp,
-        }),
-    )
-        .into_response())
+        });
+    }
+
+    Ok((StatusCode::OK, Json(results)).into_response())
 }
 
 // ============================================================================
@@ -224,7 +230,8 @@ async fn fetch_pool_asset_info(
         Err(_) => return None,
     };
     let raw_bytes = asset_value.into_bytes();
-    let details = AssetDetails::decode(&mut &raw_bytes[..]).ok()?;
+    // Use decode_all to ensure all bytes are consumed
+    let details = AssetDetails::decode_all(&mut &raw_bytes[..]).ok()?;
 
     Some(PoolAssetInfo {
         owner: format_account_id(&details.owner, ss58_prefix),
@@ -258,7 +265,8 @@ async fn fetch_pool_asset_meta_data(
         Err(_) => return None,
     };
     let raw_bytes = metadata_value.into_bytes();
-    let metadata = AssetMetadataStorage::decode(&mut &raw_bytes[..]).ok()?;
+    // Use decode_all to ensure all bytes are consumed
+    let metadata = AssetMetadataStorage::decode_all(&mut &raw_bytes[..]).ok()?;
 
     Some(PoolAssetMetadata {
         deposit: metadata.deposit.to_string(),
@@ -279,27 +287,6 @@ async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>)
         .ok()?;
     let timestamp_value = timestamp.decode().ok()?;
     Some(timestamp_value.to_string())
-}
-
-/// Builds an empty response when no AH blocks are found in the RC block.
-fn build_empty_rc_response(rc_resolved_block: &utils::ResolvedBlock) -> Response {
-    let at = AtResponse {
-        hash: rc_resolved_block.hash.clone(),
-        height: rc_resolved_block.number.to_string(),
-    };
-
-    (
-        StatusCode::OK,
-        Json(PalletsPoolAssetsInfoResponse {
-            at,
-            pool_asset_info: None,
-            pool_asset_meta_data: None,
-            rc_block_hash: Some(rc_resolved_block.hash.clone()),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
-            ah_timestamp: None,
-        }),
-    )
-        .into_response()
 }
 
 // ============================================================================
