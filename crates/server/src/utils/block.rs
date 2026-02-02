@@ -1,6 +1,7 @@
 use crate::state::{AppState, SubstrateLegacyRpc};
 use primitive_types::H256;
 use std::str::FromStr;
+use subxt::client::BlockNumberOrRef;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 use subxt_rpcs::{RpcClient, rpc_params};
 use thiserror::Error;
@@ -12,6 +13,16 @@ pub enum BlockId {
     Hash(H256),
     /// Block number
     Number(u64),
+}
+
+/// Implement conversion to Subxt's BlockNumberOrRef for use with client.at_block()
+impl From<BlockId> for BlockNumberOrRef<SubstrateConfig> {
+    fn from(block_id: BlockId) -> Self {
+        match block_id {
+            BlockId::Hash(hash) => hash.into(),
+            BlockId::Number(number) => number.into(),
+        }
+    }
 }
 
 /// Error type for parsing BlockId from string

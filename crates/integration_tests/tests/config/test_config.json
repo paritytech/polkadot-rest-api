@@ -256,6 +256,27 @@
         },
         "fixture_path": "polkadot/blocks_range_1000000-1000002.json",
         "description": "Test /blocks endpoint with range 1000000-1000002"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "28500000"
+        },
+        "fixture_path": "polkadot/pallets_balances_dispatchables_28500000.json",
+        "description": "Test pallets balances dispatchables at Polkadot block 28,500,000"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables/transfer_allow_death",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "28500000",
+          "metadata": "true"
+        },
+        "fixture_path": "polkadot/pallets_balances_dispatchables_transfer_allow_death_28500000.json",
+        "description": "Test pallets balances dispatchables transfer_allow_death at Polkadot block 28,500,000"
       }
     ],
     "kusama": [
@@ -326,6 +347,27 @@
         "query_params": {},
         "fixture_path": "kusama/blocks_5000000.json",
         "description": "Test block endpoint at Kusama block 5,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "25000000"
+        },
+        "fixture_path": "kusama/pallets_balances_dispatchables_25000000.json",
+        "description": "Test pallets balances dispatchables at Kusama block 25,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables/transfer_allow_death",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "25000000",
+          "metadata": "true"
+        },
+        "fixture_path": "kusama/pallets_balances_dispatchables_transfer_allow_death_25000000.json",
+        "description": "Test pallets balances dispatchables transfer_allow_death at Kusama block 25,000,000"
       }
     ],
     "asset-hub-polkadot": [
@@ -602,6 +644,27 @@
         "query_params": {},
         "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_header.json",
         "description": "Test RC block header endpoint at Polkadot Relay Chain block 29,698,001"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_10260000.json",
+        "description": "Test pallets balances dispatchables at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables/transfer_allow_death",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "10260000",
+          "metadata": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_transfer_allow_death_10260000.json",
+        "description": "Test pallets balances dispatchables transfer_allow_death at Asset Hub Polkadot block 10,260,000"
       }
     ],
     "asset-hub-kusama": [
@@ -707,6 +770,27 @@
         "query_params": { "at": "8000000" },
         "fixture_path": "asset-hub-kusama/pallets_asset_conversion_liquidity_pools_8000000.json",
         "description": "Test pallets asset-conversion liquidity-pools at Asset Hub Kusama block 8,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "8000000"
+        },
+        "fixture_path": "asset-hub-kusama/pallets_balances_dispatchables_8000000.json",
+        "description": "Test pallets balances dispatchables at Asset Hub Kusama block 8,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables/transfer_allow_death",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "8000000",
+          "metadata": "true"
+        },
+        "fixture_path": "asset-hub-kusama/pallets_balances_dispatchables_transfer_allow_death_8000000.json",
+        "description": "Test pallets balances dispatchables transfer_allow_death at Asset Hub Kusama block 8,000,000"
       }
     ],
     "coretime-kusama": [
