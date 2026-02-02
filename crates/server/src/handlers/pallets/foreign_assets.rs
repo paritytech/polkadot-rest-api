@@ -15,10 +15,10 @@ use axum::{
 };
 use config::ChainType;
 use futures::StreamExt;
+use heck::ToLowerCamelCase;
 use parity_scale_codec::Decode;
 use scale_info::PortableRegistry;
 use scale_value::scale::decode_as_type;
-use heck::ToLowerCamelCase;
 use serde::{Deserialize, Serialize};
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
@@ -239,7 +239,8 @@ async fn fetch_all_foreign_assets(
 ) -> Result<Vec<ForeignAssetItem>, PalletError> {
     let mut items = Vec::new();
 
-    // First, fetch all metadata entries and store them by their blake2_128_concat key portion
+    // First, fetch all metadata entries and store them by their key bytes
+    // We use the key part bytes directly from Subxt's API
     let mut metadata_map: std::collections::HashMap<Vec<u8>, serde_json::Value> =
         std::collections::HashMap::new();
 
@@ -252,15 +253,16 @@ async fn fetch_all_foreign_assets(
     match client_at_block.storage().iter(metadata_addr, ()).await {
         Ok(mut metadata_stream) => {
             while let Some(entry_result) = metadata_stream.next().await {
-                if let Ok(entry) = entry_result {
-                    let key_bytes = entry.key_bytes();
-                    // Extract the blake2_128_concat portion (bytes 32 onwards)
-                    if key_bytes.len() > 32 {
-                        let blake2_concat_portion = key_bytes[32..].to_vec();
-                        let value_bytes = entry.value().bytes();
-                        let metadata = decode_asset_metadata(value_bytes);
-                        metadata_map.insert(blake2_concat_portion, metadata);
-                    }
+                if let Ok(entry) = entry_result
+                    // Use Subxt's key().part(0) to get the MultiLocation key part directly
+                    // This avoids manual byte offset calculations
+                    && let Ok(key) = entry.key()
+                    && let Some(key_part) = key.part(0)
+                {
+                    let key_part_bytes = key_part.bytes().to_vec();
+                    let value_bytes = entry.value().bytes();
+                    let metadata = decode_asset_metadata(value_bytes);
+                    metadata_map.insert(key_part_bytes, metadata);
                 }
             }
         }
@@ -297,34 +299,45 @@ async fn fetch_all_foreign_assets(
             }
         };
 
-        // Extract the MultiLocation key from the storage key
-        let key_bytes = entry.key_bytes();
+        // Use Subxt's key().part(0) to extract the MultiLocation key part directly
+        // This is cleaner than manual byte offset calculations
+        let key = match entry.key() {
+            Ok(k) => k,
+            Err(e) => {
+                tracing::debug!("Failed to decode storage key: {:?}", e);
+                continue;
+            }
+        };
+        let key_part = match key.part(0) {
+            Some(part) => part,
+            None => {
+                tracing::debug!("Storage key has no parts, skipping entry");
+                continue;
+            }
+        };
 
-        // Debug: log the full Asset storage key for first entry
+        // Debug: log the key part bytes for first entry
         if items.is_empty() {
             tracing::debug!(
-                "First Asset storage key (len={}): 0x{}",
-                key_bytes.len(),
-                hex::encode(key_bytes)
+                "First Asset key part (len={}): 0x{}",
+                key_part.bytes().len(),
+                hex::encode(key_part.bytes())
             );
         }
 
-        let multi_location = extract_multi_location_from_key(key_bytes);
+        // Decode the MultiLocation from the key part bytes
+        let multi_location = decode_multi_location_from_bytes(key_part.bytes());
 
-        // Decode the asset details - use bytes() which returns a reference
+        // Decode the asset details
         let value_bytes = entry.value().bytes();
         let foreign_asset_info = decode_asset_details(value_bytes, ss58_prefix);
 
-        // Look up metadata using the blake2_128_concat portion of the key
-        let foreign_asset_metadata = if key_bytes.len() > 32 {
-            let blake2_concat_portion = &key_bytes[32..];
-            metadata_map
-                .get(blake2_concat_portion)
-                .cloned()
-                .unwrap_or_else(|| serde_json::json!({}))
-        } else {
-            serde_json::json!({})
-        };
+        // Look up metadata using the key part bytes
+        let key_part_bytes = key_part.bytes();
+        let foreign_asset_metadata = metadata_map
+            .get(key_part_bytes)
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
 
         items.push(ForeignAssetItem {
             multi_location,
@@ -359,13 +372,17 @@ fn format_number_with_commas(n: u128) -> String {
 }
 
 /// Convert scale_value to JSON matching Sidecar's exact format.
-/// 
+///
 /// Key differences from generic scale_value_to_json:
 /// - Uses PascalCase for variant names (X1, X2, GlobalConsensus, Ethereum, etc.)
 /// - Arrays are flat (not double-nested)  
 /// - Numbers formatted with commas for large values
 /// - Field order preserved (parents before interior for Location)
-fn scale_value_to_sidecar_json(value: scale_value::Value<u32>, registry: &PortableRegistry) -> serde_json::Value {
+#[allow(clippy::only_used_in_recursion)]
+fn scale_value_to_sidecar_json(
+    value: scale_value::Value<u32>,
+    registry: &PortableRegistry,
+) -> serde_json::Value {
     use scale_value::{Composite, Primitive, ValueDef};
     use serde_json::Value;
 
@@ -374,13 +391,13 @@ fn scale_value_to_sidecar_json(value: scale_value::Value<u32>, registry: &Portab
             Composite::Named(fields) => {
                 // Collect fields preserving their order
                 let fields_vec: Vec<_> = fields.into_iter().collect();
-                
+
                 // For Location type, ensure "parents" comes before "interior"
                 let mut ordered_fields: Vec<(String, Value)> = Vec::new();
                 let mut parents_val = None;
                 let mut interior_val = None;
                 let mut other_fields = Vec::new();
-                
+
                 for (name, val) in fields_vec {
                     let key = name.to_lower_camel_case();
                     let json_val = scale_value_to_sidecar_json(val, registry);
@@ -392,7 +409,7 @@ fn scale_value_to_sidecar_json(value: scale_value::Value<u32>, registry: &Portab
                         other_fields.push((key, json_val));
                     }
                 }
-                
+
                 // Build in Sidecar order: parents, interior, then others
                 if let Some(p) = parents_val {
                     ordered_fields.push(("parents".to_string(), p));
@@ -401,7 +418,7 @@ fn scale_value_to_sidecar_json(value: scale_value::Value<u32>, registry: &Portab
                     ordered_fields.push(("interior".to_string(), i));
                 }
                 ordered_fields.extend(other_fields);
-                
+
                 // Use indexmap to preserve order, then convert to serde_json::Map
                 let map: serde_json::Map<String, Value> = ordered_fields.into_iter().collect();
                 Value::Object(map)
@@ -439,12 +456,12 @@ fn scale_value_to_sidecar_json(value: scale_value::Value<u32>, registry: &Portab
                     // Collect fields and ensure specific ordering for known types
                     let fields_vec: Vec<_> = fields.into_iter().collect();
                     let mut ordered_fields: Vec<(String, Value)> = Vec::new();
-                    
+
                     // For AccountKey20, Sidecar order is: network, key
                     let mut network_val = None;
                     let mut key_val = None;
                     let mut other_fields = Vec::new();
-                    
+
                     for (n, v) in fields_vec {
                         let key = n.to_lower_camel_case();
                         let json_val = scale_value_to_sidecar_json(v, registry);
@@ -456,7 +473,7 @@ fn scale_value_to_sidecar_json(value: scale_value::Value<u32>, registry: &Portab
                             other_fields.push((key, json_val));
                         }
                     }
-                    
+
                     // Build in Sidecar order
                     if let Some(n) = network_val {
                         ordered_fields.push(("network".to_string(), n));
@@ -465,7 +482,7 @@ fn scale_value_to_sidecar_json(value: scale_value::Value<u32>, registry: &Portab
                         ordered_fields.push(("key".to_string(), k));
                     }
                     ordered_fields.extend(other_fields);
-                    
+
                     let map: serde_json::Map<String, Value> = ordered_fields.into_iter().collect();
                     Value::Object(map)
                 }
@@ -475,14 +492,20 @@ fn scale_value_to_sidecar_json(value: scale_value::Value<u32>, registry: &Portab
                         Value::String(bytes_to_hex(&fields_vec))
                     } else if fields_vec.len() == 1 && !is_junction_variant(&name) {
                         // Single field - unwrap unless it's a junction
-                        scale_value_to_sidecar_json(fields_vec.into_iter().next().unwrap(), registry)
+                        scale_value_to_sidecar_json(
+                            fields_vec.into_iter().next().unwrap(),
+                            registry,
+                        )
                     } else {
                         // For junctions (X1, X2, etc.) - flatten the array
                         // The interior of Location is a tuple, so X2 contains a single tuple with 2 elements
                         // We need to flatten: X2: [[a, b]] -> X2: [a, b]
                         if is_junction_variant(&name) && fields_vec.len() == 1 {
                             // Single tuple containing the junction items - unwrap it
-                            let inner = scale_value_to_sidecar_json(fields_vec.into_iter().next().unwrap(), registry);
+                            let inner = scale_value_to_sidecar_json(
+                                fields_vec.into_iter().next().unwrap(),
+                                registry,
+                            );
                             // If the inner is an array, use it directly; otherwise wrap
                             if inner.is_array() {
                                 inner
@@ -501,13 +524,13 @@ fn scale_value_to_sidecar_json(value: scale_value::Value<u32>, registry: &Portab
                 }
                 _ => Value::Null,
             };
-            
+
             // For unit variants (no data), Sidecar outputs just the string name
             // e.g., "GlobalConsensus": "Polkadot" instead of "GlobalConsensus": {"Polkadot": null}
             if inner.is_null() {
                 return Value::String(name);
             }
-            
+
             let mut map = serde_json::Map::new();
             map.insert(name, inner);
             Value::Object(map)
@@ -573,23 +596,18 @@ fn bytes_to_hex(values: &[scale_value::Value<u32>]) -> String {
     format!("0x{}", hex::encode(bytes))
 }
 
-/// Extract MultiLocation from storage key bytes.
-/// The key format is: twox128(pallet) ++ twox128(storage) ++ blake2_128_concat(multilocation)
-/// We need to skip the first 32 bytes (prefix hashes) and decode the rest.
+/// Decode MultiLocation from SCALE-encoded bytes.
+/// The bytes are obtained directly from Subxt's key().part(0).bytes() which
+/// already extracts just the MultiLocation portion without prefix hashes.
 ///
 /// Uses staging_xcm::v4::Location type with scale_value for decoding that handles:
 /// - Proper variant indices matching the actual XCM types
 /// - Numeric type coercion (e.g., u8 -> u64)
 /// - Sidecar-compatible JSON format (PascalCase variants, comma-formatted numbers)
-fn extract_multi_location_from_key(key_bytes: &[u8]) -> serde_json::Value {
-    // Skip twox128(ForeignAssets) = 16 bytes + twox128(Asset) = 16 bytes = 32 bytes
-    // Then skip blake2_128 hash = 16 bytes
-    // The remaining bytes are the SCALE-encoded MultiLocation
-    if key_bytes.len() <= 48 {
-        return serde_json::json!({"raw": format!("0x{}", hex::encode(key_bytes))});
+fn decode_multi_location_from_bytes(multi_location_bytes: &[u8]) -> serde_json::Value {
+    if multi_location_bytes.is_empty() {
+        return serde_json::json!({"raw": "0x"});
     }
-
-    let multi_location_bytes = &key_bytes[48..];
 
     // Build registry with XCM v4 Location type
     let (registry, type_id) = build_location_registry();
@@ -790,58 +808,64 @@ mod tests {
     fn test_build_location_registry() {
         // Test that we can build a location registry
         let (registry, type_id) = build_location_registry();
-        
+
         // The registry should have the Location type
         assert!(registry.resolve(type_id).is_some());
     }
 
     #[test]
-    fn test_extract_multi_location_simple() {
-        // Create a proper storage key with 48-byte prefix + SCALE-encoded Location
+    fn test_decode_multi_location_simple() {
         // Location { parents: 0, interior: Here } encodes to: [0, 0]
-        let mut key_bytes = vec![0u8; 48]; // 32-byte prefix + 16-byte blake2 hash
-        key_bytes.push(0); // parents = 0
-        key_bytes.push(0); // interior = Here variant
+        // Now we pass just the SCALE-encoded MultiLocation bytes directly
+        let location_bytes = vec![
+            0, // parents = 0
+            0, // interior = Here variant
+        ];
 
-        let result = extract_multi_location_from_key(&key_bytes);
+        let result = decode_multi_location_from_bytes(&location_bytes);
 
         // Should successfully decode
-        assert!(result.get("raw").is_none(), "Should not fall back to raw hex");
+        assert!(
+            result.get("raw").is_none(),
+            "Should not fall back to raw hex"
+        );
         assert_eq!(result["parents"], "0");
         // interior is "Here" string (unit variant in Sidecar format)
         assert_eq!(result["interior"], "Here");
     }
 
     #[test]
-    fn test_extract_multi_location_with_parachain() {
+    fn test_decode_multi_location_with_parachain() {
         // Location { parents: 1, interior: X1([Parachain(1000)]) }
-        // SCALE encoding: [1, 1, 0, <compact 1000>]
+        // SCALE encoding:
         // parents = 1
         // interior variant X1 = 1
         // Junction::Parachain variant = 0
         // 1000 as compact u32 = [0xa1, 0x0f] (1000 << 2 = 4000 = 0x0fa0, little endian)
-        let mut key_bytes = vec![0u8; 48]; // prefix
-        key_bytes.extend_from_slice(&[
-            1,    // parents = 1
-            1,    // X1 variant
-            0,    // Parachain variant
+        let location_bytes = vec![
+            1, // parents = 1
+            1, // X1 variant
+            0, // Parachain variant
             0xa1, 0x0f, // compact encoded 1000
-        ]);
+        ];
 
-        let result = extract_multi_location_from_key(&key_bytes);
+        let result = decode_multi_location_from_bytes(&location_bytes);
 
         // Should successfully decode
-        assert!(result.get("raw").is_none(), "Should not fall back to raw hex: {}", result);
+        assert!(
+            result.get("raw").is_none(),
+            "Should not fall back to raw hex: {}",
+            result
+        );
         assert_eq!(result["parents"], "1");
     }
 
     #[test]
-    fn test_extract_multi_location_invalid() {
+    fn test_decode_multi_location_invalid() {
         // Test with invalid bytes that can't be decoded
-        let mut key_bytes = vec![0u8; 48];
-        key_bytes.extend_from_slice(&[255, 255, 255]); // Invalid variant indices
+        let invalid_bytes = vec![255, 255, 255]; // Invalid variant indices
 
-        let result = extract_multi_location_from_key(&key_bytes);
+        let result = decode_multi_location_from_bytes(&invalid_bytes);
 
         // Should fall back to raw hex
         assert!(result["raw"].is_string());
@@ -855,10 +879,10 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_multi_location_from_key_short() {
-        // Key shorter than expected prefix length
-        let short_key = vec![0u8; 32];
-        let result = extract_multi_location_from_key(&short_key);
+    fn test_decode_multi_location_empty() {
+        // Empty bytes should return raw hex
+        let empty_bytes: Vec<u8> = vec![];
+        let result = decode_multi_location_from_bytes(&empty_bytes);
         // Should return raw hex representation
         assert!(result["raw"].is_string());
     }
