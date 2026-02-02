@@ -730,7 +730,7 @@
           "at": "2000000"
         },
         "fixture_path": "coretime-kusama/coretime_renewals_2000000.json",
-        "description": "Test coretime renewals endpoint at Coretime Kusama block 1,000,000"
+        "description": "Test coretime renewals endpoint at Coretime Kusama block 2,000,000"
       }
     ],
     "coretime-polkadot": [
