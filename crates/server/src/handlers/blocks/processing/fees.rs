@@ -10,8 +10,8 @@ use crate::state::AppState;
 use crate::utils::{self, decode_runtime_dispatch_info};
 use parity_scale_codec::{Decode, Encode};
 use serde_json::Value;
-use subxt::client::OnlineClientAtBlock;
 use subxt::SubstrateConfig;
+use subxt::client::OnlineClientAtBlock;
 
 use super::super::types::{Event, ExtrinsicOutcome};
 use super::super::utils::{actual_weight_to_json, transform_fee_info};

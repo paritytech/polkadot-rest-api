@@ -75,13 +75,12 @@ fn try_items_to_hex(items: &[Value]) -> Option<String> {
 
     let mut bytes = Vec::with_capacity(items.len());
     for item in items {
-        if let Value::String(s) = item {
-            if let Ok(n) = s.parse::<u64>() {
-                if n <= 255 {
-                    bytes.push(n as u8);
-                    continue;
-                }
-            }
+        if let Value::String(s) = item
+            && let Ok(n) = s.parse::<u64>()
+            && n <= 255
+        {
+            bytes.push(n as u8);
+            continue;
         }
         return None;
     }
@@ -255,10 +254,8 @@ impl<'r, const CAMEL_CASE: bool> scale_decode::Visitor for ScaleVisitor<'r, CAME
             .iter()
             .any(|s| *s == "AccountId32" || *s == "MultiAddress" || *s == "AccountId");
 
-        if is_account_type {
-            if let Some(ss58) = self.try_extract_ss58(value)? {
-                return Ok(Value::String(ss58));
-            }
+        if is_account_type && let Some(ss58) = self.try_extract_ss58(value)? {
+            return Ok(Value::String(ss58));
         }
 
         let fields: Vec<_> = value.collect::<Result<Vec<_>, _>>()?;
@@ -329,10 +326,10 @@ impl<'r, const CAMEL_CASE: bool> scale_decode::Visitor for ScaleVisitor<'r, CAME
 
         if name == "Some" {
             let fields: Vec<_> = value.fields().collect::<Result<Vec<_>, _>>()?;
-            if fields.len() == 1 {
-                if let Some(field) = fields.into_iter().next() {
-                    return field.decode_with_visitor(self.child());
-                }
+            if fields.len() == 1
+                && let Some(field) = fields.into_iter().next()
+            {
+                return field.decode_with_visitor(self.child());
             }
             return Ok(Value::Null);
         }
@@ -533,8 +530,10 @@ impl<'r, const CAMEL_CASE: bool> ScaleVisitor<'r, CAMEL_CASE> {
             for field in fields {
                 if let Some(name) = field.name() {
                     let key = name.to_string();
-                    let val = field
-                        .decode_with_visitor(CallArgsVisitor::new(self.ss58_prefix, self.resolver))?;
+                    let val = field.decode_with_visitor(CallArgsVisitor::new(
+                        self.ss58_prefix,
+                        self.resolver,
+                    ))?;
                     args_map.insert(key, val);
                 }
             }
