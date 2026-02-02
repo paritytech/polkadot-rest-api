@@ -6,8 +6,8 @@
 
 use crate::handlers::coretime::common::{
     ASSIGNMENT_IDLE_VARIANT, ASSIGNMENT_POOL_VARIANT, ASSIGNMENT_TASK_VARIANT, AtResponse,
-    CORE_MASK_SIZE, CoretimeError, CoretimeQueryParams, TASK_ID_SIZE,
-    decode_compact_u32, has_broker_pallet,
+    CORE_MASK_SIZE, CoretimeError, CoretimeQueryParams, TASK_ID_SIZE, decode_compact_u32,
+    has_broker_pallet,
 };
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
