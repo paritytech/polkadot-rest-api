@@ -12,6 +12,20 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
         .route_registered(
             registry,
             API_VERSION,
+            "/pallets/:palletId/dispatchables",
+            "get",
+            get(pallets::get_pallets_dispatchables),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/:palletId/dispatchables/:dispatchableId",
+            "get",
+            get(pallets::get_pallet_dispatchable_item),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
             "/pallets/assets/:asset_id/asset-info",
             "get",
             get(pallets::pallets_assets_asset_info),

@@ -1,0 +1,48 @@
+{
+  "at": {
+    "hash": "0xc81393d2525d811740f3dbea75461babdf60a5c3cf266200eaaa6e3ff3eafe0e",
+    "height": "28500000"
+  },
+  "pallet": "balances",
+  "palletIndex": "5",
+  "dispatchableItem": "transferAllowDeath",
+  "metadata": {
+    "name": "transfer_allow_death",
+    "fields": [
+      {
+        "name": "dest",
+        "type": "126",
+        "typeName": "AccountIdLookupOf<T>",
+        "docs": []
+      },
+      {
+        "name": "value",
+        "type": "67",
+        "typeName": "T::Balance",
+        "docs": []
+      }
+    ],
+    "index": "0",
+    "docs": [
+      "Transfer some liquid free balance to another account.",
+      "",
+      "`transfer_allow_death` will set the `FreeBalance` of the sender and receiver.",
+      "If the sender's account is below the existential deposit as a result",
+      "of the transfer, the account will be reaped.",
+      "",
+      "The dispatch origin for this call must be `Signed` by the transactor."
+    ],
+    "args": [
+      {
+        "name": "dest",
+        "type": "MultiAddress",
+        "typeName": "AccountIdLookupOf"
+      },
+      {
+        "name": "value",
+        "type": "Compact<u128>",
+        "typeName": "Balance"
+      }
+    ]
+  }
+}
