@@ -1075,10 +1075,7 @@ async fn test_coretime_info_phase() -> Result<()> {
                 phase.get("currentPhase").is_some(),
                 "Phase should have 'currentPhase'"
             );
-            assert!(
-                phase.get("config").is_some(),
-                "Phase should have 'config'"
-            );
+            assert!(phase.get("config").is_some(), "Phase should have 'config'");
 
             let current_phase = phase["currentPhase"].as_str().unwrap();
             assert!(
@@ -1088,10 +1085,7 @@ async fn test_coretime_info_phase() -> Result<()> {
             );
 
             // Verify config is an array
-            assert!(
-                phase["config"].is_array(),
-                "'config' should be an array"
-            );
+            assert!(phase["config"].is_array(), "'config' should be an array");
 
             let config_array = phase["config"].as_array().unwrap();
             if !config_array.is_empty() {
@@ -1296,7 +1290,9 @@ async fn test_coretime_info_relay_chain_response() -> Result<()> {
     let client = setup_client().await?;
 
     if !is_relay_chain(&client).await {
-        println!("Skipping test: Not a relay chain (Coretime pallet not found or Broker pallet present)");
+        println!(
+            "Skipping test: Not a relay chain (Coretime pallet not found or Broker pallet present)"
+        );
         return Ok(());
     }
 

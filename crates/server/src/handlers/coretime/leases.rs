@@ -5,18 +5,7 @@
 //! assigned core ID (correlated from workload data).
 
 use crate::handlers::coretime::common::{
-    ASSIGNMENT_IDLE_VARIANT,
-    ASSIGNMENT_POOL_VARIANT,
-    ASSIGNMENT_TASK_VARIANT,
-    AtResponse,
-    // Shared constants
-    CORE_MASK_SIZE,
-    CoretimeError,
-    CoretimeQueryParams,
-    TASK_ID_SIZE,
-    decode_compact_u32,
-    // Shared functions
-    has_broker_pallet,
+    AtResponse, CoretimeError, CoretimeQueryParams, has_broker_pallet,
 };
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
@@ -29,6 +18,7 @@ use axum::{
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use primitive_types::H256;
+use scale_value::{Composite, ValueDef};
 use serde::Serialize;
 use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
@@ -223,12 +213,11 @@ async fn fetch_workloads(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<WorkloadInfo>, CoretimeError> {
     // Broker::Workload is a StorageMap with CoreIndex (u16) as key
-    // Use tuple for the key type
     let workload_addr = subxt::dynamic::storage::<(u16,), scale_value::Value>("Broker", "Workload");
 
     let mut workloads = Vec::new();
 
-    // Iterate over all workload entries using () as partial keys
+    // Iterate over all workload entries
     let mut iter = client_at_block
         .storage()
         .iter(workload_addr, ())
@@ -248,10 +237,8 @@ async fn fetch_workloads(
             }
         };
 
-        // Get key bytes and value bytes
+        // Extract core index from key bytes
         let key_bytes = entry.key_bytes();
-        let value_bytes = entry.value().bytes();
-
         let core: u32 = if key_bytes.len() >= STORAGE_KEY_MIN_LENGTH {
             let core_bytes: [u8; 2] = key_bytes[CORE_INDEX_OFFSET..STORAGE_KEY_MIN_LENGTH]
                 .try_into()
@@ -261,8 +248,17 @@ async fn fetch_workloads(
             continue;
         };
 
-        // Parse the workload value to extract task assignment
-        let task = extract_task_from_workload(value_bytes);
+        // Use decode_as() to get the value as scale_value::Value
+        let decoded: scale_value::Value<()> = match entry.value().decode_as() {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("Error decoding workload value: {:?}", e);
+                continue;
+            }
+        };
+
+        // Extract task from the decoded value
+        let task = extract_task_from_workload_value(&decoded);
 
         workloads.push(WorkloadInfo { core, task });
     }
@@ -270,52 +266,52 @@ async fn fetch_workloads(
     Ok(workloads)
 }
 
-/// Extracts the task ID from workload schedule items.
+/// Extracts the task ID from a decoded workload value.
 /// Workload is a Vec<ScheduleItem> where each ScheduleItem has a mask and assignment.
-fn extract_task_from_workload(bytes: &[u8]) -> Option<u32> {
-    if bytes.is_empty() {
-        return None;
-    }
+fn extract_task_from_workload_value(value: &scale_value::Value<()>) -> Option<u32> {
+    // The workload is a sequence (Vec) of ScheduleItems
+    let items = match &value.value {
+        ValueDef::Composite(Composite::Unnamed(items)) => items,
+        _ => return None,
+    };
 
-    // The workload is encoded as a Vec<ScheduleItem>
-    // Each ScheduleItem contains: mask (CoreMask = [u8; 10]) + assignment (CoreAssignment enum)
-    // The Vec starts with a compact-encoded length
+    // Get the first schedule item
+    let first_item = items.first()?;
 
-    // Decode the vec length (compact encoding)
-    let (vec_len, offset) = decode_compact_u32(bytes)?;
-    if vec_len == 0 {
-        return None;
-    }
-
-    // Process the first schedule item (index 0)
-    // ScheduleItem = { mask: CoreMask, assignment: CoreAssignment }
-    let item_start = offset;
-
-    // Skip the mask to get to the assignment
-    let assignment_start = item_start + CORE_MASK_SIZE;
-    if assignment_start >= bytes.len() {
-        return None;
-    }
-
-    // Decode the assignment (CoreAssignment enum)
-    let assignment_byte = bytes[assignment_start];
-    match assignment_byte {
-        ASSIGNMENT_IDLE_VARIANT | ASSIGNMENT_POOL_VARIANT => {
-            // Idle or Pool - no task ID associated
-            None
+    // Each ScheduleItem has { mask, assignment }
+    // We need to find the assignment field
+    let assignment = match &first_item.value {
+        ValueDef::Composite(Composite::Named(fields)) => fields
+            .iter()
+            .find(|(name, _)| name == "assignment")
+            .map(|(_, v)| v),
+        ValueDef::Composite(Composite::Unnamed(fields)) if fields.len() >= 2 => {
+            // If unnamed, assignment is typically the second field (index 1)
+            Some(&fields[1])
         }
-        ASSIGNMENT_TASK_VARIANT => {
-            // Task variant: 1 byte discriminant + u32 task ID
-            let task_id_start = assignment_start + 1;
-            let task_id_end = task_id_start + TASK_ID_SIZE;
-            if task_id_end <= bytes.len() {
-                let task_bytes: [u8; 4] = bytes[task_id_start..task_id_end].try_into().ok()?;
-                Some(u32::from_le_bytes(task_bytes))
-            } else {
-                None
+        _ => None,
+    }?;
+
+    // Check if assignment is a Task variant with a task ID
+    match &assignment.value {
+        ValueDef::Variant(variant) if variant.name == "Task" => {
+            // Task variant contains the task ID
+            match &variant.values {
+                Composite::Unnamed(vals) if !vals.is_empty() => extract_u32_from_value(&vals[0]),
+                Composite::Named(vals) if !vals.is_empty() => extract_u32_from_value(&vals[0].1),
+                _ => None,
             }
         }
-        _ => None, // Unknown variant - treat as no task
+        // Idle or Pool variants have no task ID
+        _ => None,
+    }
+}
+
+/// Extract u32 from a scale_value::Value
+fn extract_u32_from_value(value: &scale_value::Value<()>) -> Option<u32> {
+    match &value.value {
+        ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n as u32),
+        _ => None,
     }
 }
 
@@ -327,92 +323,101 @@ fn extract_task_from_workload(bytes: &[u8]) -> Option<u32> {
 mod tests {
     use super::*;
     use parity_scale_codec::Encode;
+    use scale_value::Value;
 
-    // Note: decode_compact_u32 tests are in common.rs
+    // Helper to create mask values (10 bytes of zeros)
+    fn make_mask_values() -> Vec<Value<()>> {
+        (0..10).map(|_| Value::u128(0u128)).collect()
+    }
+
+    // Helper to create a scale_value representing a ScheduleItem with Task assignment
+    fn make_task_schedule_item(task_id: u32) -> Value<()> {
+        Value::named_composite([
+            ("mask", Value::unnamed_composite(make_mask_values())),
+            (
+                "assignment",
+                Value::named_variant("Task", [("0", Value::u128(task_id as u128))]),
+            ),
+        ])
+    }
+
+    // Helper to create a scale_value representing a ScheduleItem with Idle assignment
+    fn make_idle_schedule_item() -> Value<()> {
+        Value::named_composite([
+            ("mask", Value::unnamed_composite(make_mask_values())),
+            (
+                "assignment",
+                Value::named_variant("Idle", Vec::<(&str, Value<()>)>::new()),
+            ),
+        ])
+    }
+
+    // Helper to create a scale_value representing a ScheduleItem with Pool assignment
+    fn make_pool_schedule_item() -> Value<()> {
+        Value::named_composite([
+            ("mask", Value::unnamed_composite(make_mask_values())),
+            (
+                "assignment",
+                Value::named_variant("Pool", Vec::<(&str, Value<()>)>::new()),
+            ),
+        ])
+    }
 
     // ------------------------------------------------------------------------
-    // extract_task_from_workload tests
+    // extract_task_from_workload_value tests
     // ------------------------------------------------------------------------
 
     #[test]
     fn test_extract_task_from_workload_empty() {
-        assert_eq!(extract_task_from_workload(&[]), None);
-    }
-
-    #[test]
-    fn test_extract_task_from_workload_zero_length_vec() {
-        // Compact-encoded 0 (empty vec)
-        assert_eq!(extract_task_from_workload(&[0x00]), None);
+        let value = Value::unnamed_composite(Vec::<Value<()>>::new());
+        assert_eq!(extract_task_from_workload_value(&value), None);
     }
 
     #[test]
     fn test_extract_task_from_workload_idle_assignment() {
-        // Vec with 1 item: compact(1) + mask + assignment(Idle)
-        let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]); // mask
-        bytes.push(ASSIGNMENT_IDLE_VARIANT); // Idle assignment
-
-        assert_eq!(extract_task_from_workload(&bytes), None);
+        let value = Value::unnamed_composite(vec![make_idle_schedule_item()]);
+        assert_eq!(extract_task_from_workload_value(&value), None);
     }
 
     #[test]
     fn test_extract_task_from_workload_pool_assignment() {
-        // Vec with 1 item: compact(1) + mask + assignment(Pool)
-        let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]); // mask
-        bytes.push(ASSIGNMENT_POOL_VARIANT); // Pool assignment
-
-        assert_eq!(extract_task_from_workload(&bytes), None);
+        let value = Value::unnamed_composite(vec![make_pool_schedule_item()]);
+        assert_eq!(extract_task_from_workload_value(&value), None);
     }
 
     #[test]
     fn test_extract_task_from_workload_task_assignment() {
-        // Vec with 1 item: compact(1) + mask + assignment(Task(2000))
-        let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]); // mask
-        bytes.push(ASSIGNMENT_TASK_VARIANT); // Task assignment variant
-        bytes.extend_from_slice(&2000u32.to_le_bytes()); // task ID = 2000
-
-        assert_eq!(extract_task_from_workload(&bytes), Some(2000));
+        let value = Value::unnamed_composite(vec![make_task_schedule_item(2000)]);
+        assert_eq!(extract_task_from_workload_value(&value), Some(2000));
     }
 
     #[test]
     fn test_extract_task_from_workload_task_assignment_different_ids() {
-        // Test with task ID 1000
-        let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0x00; CORE_MASK_SIZE]); // mask
-        bytes.push(ASSIGNMENT_TASK_VARIANT); // Task assignment variant
-        bytes.extend_from_slice(&1000u32.to_le_bytes());
+        let value = Value::unnamed_composite(vec![make_task_schedule_item(1000)]);
+        assert_eq!(extract_task_from_workload_value(&value), Some(1000));
 
-        assert_eq!(extract_task_from_workload(&bytes), Some(1000));
-
-        // Test with task ID 3000
-        let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0x00; CORE_MASK_SIZE]); // mask
-        bytes.push(ASSIGNMENT_TASK_VARIANT); // Task assignment variant
-        bytes.extend_from_slice(&3000u32.to_le_bytes());
-
-        assert_eq!(extract_task_from_workload(&bytes), Some(3000));
+        let value = Value::unnamed_composite(vec![make_task_schedule_item(3000)]);
+        assert_eq!(extract_task_from_workload_value(&value), Some(3000));
     }
 
     #[test]
     fn test_extract_task_from_workload_truncated_task_id() {
-        // Task assignment but not enough bytes for task ID
-        let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]); // mask
-        bytes.push(ASSIGNMENT_TASK_VARIANT); // Task assignment variant
-        bytes.extend_from_slice(&[0xD0, 0x07]); // only 2 bytes instead of TASK_ID_SIZE
-
-        assert_eq!(extract_task_from_workload(&bytes), None);
+        // Variant with no values (malformed)
+        let value = Value::unnamed_composite(vec![Value::named_composite([
+            ("mask", Value::unnamed_composite(make_mask_values())),
+            (
+                "assignment",
+                Value::named_variant("Task", Vec::<(&str, Value<()>)>::new()),
+            ),
+        ])]);
+        assert_eq!(extract_task_from_workload_value(&value), None);
     }
 
     #[test]
     fn test_extract_task_from_workload_truncated_mask() {
-        // Vec length says 1 item but not enough bytes for mask
-        let mut bytes = vec![0x04]; // compact(1)
-        bytes.extend_from_slice(&[0xFF; 5]); // only 5 bytes of mask (need CORE_MASK_SIZE)
-
-        assert_eq!(extract_task_from_workload(&bytes), None);
+        // Invalid structure - not a composite
+        let value = Value::u128(42);
+        assert_eq!(extract_task_from_workload_value(&value), None);
     }
 
     // ------------------------------------------------------------------------

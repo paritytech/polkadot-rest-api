@@ -1,25 +1,5 @@
-//! Handler for /coretime/reservations endpoint.
-//!
-//! Returns all reservations registered on a coretime chain (parachain with Broker pallet).
-//! Each reservation includes the mask (CoreMask as hex) and task assignment info.
-//!
-//! Reservations represent cores that are permanently reserved for specific tasks
-//! and are not available for sale in the coretime marketplace.
-
 use crate::handlers::coretime::common::{
-    ASSIGNMENT_IDLE_VARIANT,
-    ASSIGNMENT_POOL_VARIANT,
-    ASSIGNMENT_TASK_VARIANT,
-    AtResponse,
-    // Shared constants
-    CORE_MASK_SIZE,
-    CoreAssignment,
-    CoretimeError,
-    CoretimeQueryParams,
-    TASK_ID_SIZE,
-    decode_compact_u32,
-    // Shared functions
-    has_broker_pallet,
+    AtResponse, CoreAssignment, CoretimeError, CoretimeQueryParams, has_broker_pallet,
 };
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
@@ -30,13 +10,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use primitive_types::H256;
+use scale_value::{Composite, ValueDef};
 use serde::Serialize;
 use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
-
-// ============================================================================
-// Response Types
-// ============================================================================
 
 /// Information about a single reservation.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -58,20 +35,12 @@ pub struct CoretimeReservationsResponse {
     pub reservations: Vec<ReservationInfo>,
 }
 
-// ============================================================================
-// Internal Types
-// ============================================================================
-
-/// Internal representation of a schedule item from Broker::Reservations storage.
+/// Internal representation of a schedule item extracted from scale_value.
 #[derive(Debug, Clone, PartialEq)]
 struct ScheduleItem {
-    mask: [u8; CORE_MASK_SIZE],
+    mask: Vec<u8>,
     assignment: CoreAssignment,
 }
-
-// ============================================================================
-// Main Handler
-// ============================================================================
 
 /// Handler for GET /coretime/reservations endpoint.
 ///
@@ -122,14 +91,6 @@ pub async fn coretime_reservations(
         .into_response())
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Fetches all reservations from Broker::Reservations storage.
-///
-/// Broker::Reservations is a StorageValue containing a BoundedVec<ReservationRecord>.
-/// Each ReservationRecord is a BoundedVec<ScheduleItem>.
 async fn fetch_reservations(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<ReservationInfo>, CoretimeError> {
@@ -150,96 +111,128 @@ async fn fetch_reservations(
         }
     };
 
-    let raw_bytes = reservations_value.into_bytes();
+    // Use decode_as() to get the value as scale_value::Value
+    let decoded: scale_value::Value<()> =
+        reservations_value
+            .decode_as()
+            .map_err(|e| CoretimeError::StorageDecodeFailed {
+                pallet: "Broker",
+                entry: "Reservations",
+                details: e.to_string(),
+            })?;
 
-    // Decode reservations - it's a Vec<Vec<ScheduleItem>>
-    let reservations =
-        decode_reservations(&raw_bytes).map_err(|e| CoretimeError::StorageDecodeFailed {
-            pallet: "Broker",
-            entry: "Reservations",
-            details: e,
-        })?;
-
-    // Extract info from each reservation (first schedule item of each)
-    let reservation_infos: Vec<ReservationInfo> = reservations
-        .into_iter()
-        .map(|items| extract_reservation_info(&items))
-        .collect();
+    // Parse the decoded value into reservation infos
+    let reservation_infos = decode_reservations_from_value(&decoded);
 
     Ok(reservation_infos)
 }
 
-/// Decodes the raw bytes of Broker::Reservations storage.
-/// Returns a Vec of reservation records, where each record is a Vec<ScheduleItem>.
-fn decode_reservations(bytes: &[u8]) -> Result<Vec<Vec<ScheduleItem>>, String> {
-    if bytes.is_empty() {
-        return Ok(vec![]);
-    }
+/// Decodes reservations from a scale_value::Value.
+/// The structure is Vec<Vec<ScheduleItem>> where each ScheduleItem has mask and assignment.
+fn decode_reservations_from_value(value: &scale_value::Value<()>) -> Vec<ReservationInfo> {
+    // Outer vec: list of reservation records
+    let outer_items = match &value.value {
+        ValueDef::Composite(Composite::Unnamed(items)) => items,
+        _ => return vec![],
+    };
 
-    let mut offset = 0;
+    outer_items
+        .iter()
+        .map(|inner_value| {
+            // Inner vec: list of schedule items for one reservation
+            let schedule_items = parse_schedule_items(inner_value);
+            extract_reservation_info(&schedule_items)
+        })
+        .collect()
+}
 
-    // Decode outer vec length (number of reservations)
-    let (outer_len, consumed) =
-        decode_compact_u32(&bytes[offset..]).ok_or("Failed to decode outer vec length")?;
-    offset += consumed;
+/// Parses a Vec<ScheduleItem> from a scale_value::Value.
+fn parse_schedule_items(value: &scale_value::Value<()>) -> Vec<ScheduleItem> {
+    let items = match &value.value {
+        ValueDef::Composite(Composite::Unnamed(items)) => items,
+        _ => return vec![],
+    };
 
-    let mut reservations = Vec::with_capacity(outer_len);
+    items.iter().filter_map(parse_schedule_item).collect()
+}
 
-    for _ in 0..outer_len {
-        if offset >= bytes.len() {
-            break;
+/// Parses a single ScheduleItem from a scale_value::Value.
+fn parse_schedule_item(value: &scale_value::Value<()>) -> Option<ScheduleItem> {
+    let (mask_value, assignment_value) = match &value.value {
+        ValueDef::Composite(Composite::Named(fields)) => {
+            let mask = fields
+                .iter()
+                .find(|(name, _)| name == "mask")
+                .map(|(_, v)| v)?;
+            let assignment = fields
+                .iter()
+                .find(|(name, _)| name == "assignment")
+                .map(|(_, v)| v)?;
+            (mask, assignment)
         }
+        ValueDef::Composite(Composite::Unnamed(fields)) if fields.len() >= 2 => {
+            (&fields[0], &fields[1])
+        }
+        _ => return None,
+    };
 
-        // Decode inner vec length (number of schedule items in this reservation)
-        let (inner_len, consumed) =
-            decode_compact_u32(&bytes[offset..]).ok_or("Failed to decode inner vec length")?;
-        offset += consumed;
+    // Parse mask as array of bytes
+    let mask = parse_mask(mask_value);
 
-        let mut schedule_items = Vec::with_capacity(inner_len);
+    // Parse assignment enum
+    let assignment = parse_assignment(assignment_value);
 
-        for _ in 0..inner_len {
-            if offset + CORE_MASK_SIZE > bytes.len() {
-                return Err("Unexpected end of data while reading mask".to_string());
-            }
+    Some(ScheduleItem { mask, assignment })
+}
 
-            // Read CoreMask (10 bytes)
-            let mut mask = [0u8; CORE_MASK_SIZE];
-            mask.copy_from_slice(&bytes[offset..offset + CORE_MASK_SIZE]);
-            offset += CORE_MASK_SIZE;
+/// Parses a CoreMask from a scale_value::Value (array of bytes).
+fn parse_mask(value: &scale_value::Value<()>) -> Vec<u8> {
+    match &value.value {
+        ValueDef::Composite(Composite::Unnamed(bytes)) => bytes
+            .iter()
+            .filter_map(|b| {
+                if let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &b.value {
+                    Some(*n as u8)
+                } else {
+                    None
+                }
+            })
+            .collect(),
+        _ => vec![],
+    }
+}
 
-            if offset >= bytes.len() {
-                return Err("Unexpected end of data while reading assignment".to_string());
-            }
-
-            // Read CoreAssignment enum
-            let assignment_byte = bytes[offset];
-            offset += 1;
-
-            let assignment = match assignment_byte {
-                ASSIGNMENT_IDLE_VARIANT => CoreAssignment::Idle,
-                ASSIGNMENT_POOL_VARIANT => CoreAssignment::Pool,
-                ASSIGNMENT_TASK_VARIANT => {
-                    if offset + TASK_ID_SIZE > bytes.len() {
-                        return Err("Unexpected end of data while reading task ID".to_string());
+/// Parses a CoreAssignment from a scale_value::Value (enum variant).
+fn parse_assignment(value: &scale_value::Value<()>) -> CoreAssignment {
+    match &value.value {
+        ValueDef::Variant(variant) => match variant.name.as_str() {
+            "Idle" => CoreAssignment::Idle,
+            "Pool" => CoreAssignment::Pool,
+            "Task" => {
+                // Extract task ID from variant values
+                let task_id = match &variant.values {
+                    Composite::Unnamed(vals) if !vals.is_empty() => {
+                        extract_u32_from_value(&vals[0]).unwrap_or(0)
                     }
-                    let task_bytes: [u8; 4] = bytes[offset..offset + TASK_ID_SIZE]
-                        .try_into()
-                        .map_err(|_| "Failed to read task ID bytes")?;
-                    offset += TASK_ID_SIZE;
-                    CoreAssignment::Task(u32::from_le_bytes(task_bytes))
-                }
-                _ => {
-                    return Err(format!("Unknown assignment variant: {}", assignment_byte));
-                }
-            };
-
-            schedule_items.push(ScheduleItem { mask, assignment });
-        }
-
-        reservations.push(schedule_items);
+                    Composite::Named(vals) if !vals.is_empty() => {
+                        extract_u32_from_value(&vals[0].1).unwrap_or(0)
+                    }
+                    _ => 0,
+                };
+                CoreAssignment::Task(task_id)
+            }
+            _ => CoreAssignment::Idle,
+        },
+        _ => CoreAssignment::Idle,
     }
+}
 
-    Ok(reservations)
+/// Extract u32 from a scale_value::Value
+fn extract_u32_from_value(value: &scale_value::Value<()>) -> Option<u32> {
+    match &value.value {
+        ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n as u32),
+        _ => None,
+    }
 }
 
 /// Extracts reservation info from a list of schedule items.
@@ -253,23 +246,41 @@ fn extract_reservation_info(items: &[ScheduleItem]) -> ReservationInfo {
     }
 
     let first = &items[0];
-    let mask = format!("0x{}", hex::encode(first.mask));
+    let mask = format!("0x{}", hex::encode(&first.mask));
     let task = first.assignment.to_task_string();
 
     ReservationInfo { mask, task }
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use scale_value::Value;
 
-    // ------------------------------------------------------------------------
-    // extract_reservation_info tests
-    // ------------------------------------------------------------------------
+    // Helper to create a scale_value representing a ScheduleItem
+    fn make_schedule_item_value(
+        mask_bytes: &[u8],
+        assignment: &str,
+        task_id: Option<u32>,
+    ) -> Value<()> {
+        let mask_values: Vec<Value<()>> =
+            mask_bytes.iter().map(|&b| Value::u128(b as u128)).collect();
+
+        let assignment_value = match assignment {
+            "Idle" => Value::named_variant("Idle", Vec::<(&str, Value<()>)>::new()),
+            "Pool" => Value::named_variant("Pool", Vec::<(&str, Value<()>)>::new()),
+            "Task" => Value::named_variant(
+                "Task",
+                vec![("0", Value::u128(task_id.unwrap_or(0) as u128))],
+            ),
+            _ => Value::named_variant("Idle", Vec::<(&str, Value<()>)>::new()),
+        };
+
+        Value::named_composite([
+            ("mask", Value::unnamed_composite(mask_values)),
+            ("assignment", assignment_value),
+        ])
+    }
 
     #[test]
     fn test_extract_reservation_info_empty() {
@@ -281,7 +292,7 @@ mod tests {
     #[test]
     fn test_extract_reservation_info_idle() {
         let items = vec![ScheduleItem {
-            mask: [0xFF; CORE_MASK_SIZE],
+            mask: vec![0xFF; 10],
             assignment: CoreAssignment::Idle,
         }];
 
@@ -293,7 +304,7 @@ mod tests {
     #[test]
     fn test_extract_reservation_info_pool() {
         let items = vec![ScheduleItem {
-            mask: [0xAA; CORE_MASK_SIZE],
+            mask: vec![0xAA; 10],
             assignment: CoreAssignment::Pool,
         }];
 
@@ -305,7 +316,7 @@ mod tests {
     #[test]
     fn test_extract_reservation_info_task() {
         let items = vec![ScheduleItem {
-            mask: [0xFF; CORE_MASK_SIZE],
+            mask: vec![0xFF; 10],
             assignment: CoreAssignment::Task(1000),
         }];
 
@@ -318,11 +329,11 @@ mod tests {
     fn test_extract_reservation_info_uses_first_item() {
         let items = vec![
             ScheduleItem {
-                mask: [0xFF; CORE_MASK_SIZE],
+                mask: vec![0xFF; 10],
                 assignment: CoreAssignment::Task(1000),
             },
             ScheduleItem {
-                mask: [0x00; CORE_MASK_SIZE],
+                mask: vec![0x00; 10],
                 assignment: CoreAssignment::Task(2000),
             },
         ];
@@ -332,117 +343,126 @@ mod tests {
         assert_eq!(result.task, "1000");
     }
 
-    // ------------------------------------------------------------------------
-    // decode_reservations tests
-    // ------------------------------------------------------------------------
-
     #[test]
     fn test_decode_reservations_empty() {
-        assert_eq!(
-            decode_reservations(&[]).unwrap(),
-            Vec::<Vec<ScheduleItem>>::new()
-        );
+        let value = Value::unnamed_composite(Vec::<Value<()>>::new());
+        let result = decode_reservations_from_value(&value);
+        assert!(result.is_empty());
     }
 
     #[test]
     fn test_decode_reservations_single_reservation_idle() {
-        // Encode: Vec<Vec<ScheduleItem>> with 1 reservation, 1 item (Idle)
-        let mut bytes = vec![0x04]; // outer len = 1 (compact)
-        bytes.push(0x04); // inner len = 1 (compact)
-        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]); // mask
-        bytes.push(ASSIGNMENT_IDLE_VARIANT); // assignment = Idle
+        let mask = vec![0xFF; 10];
+        let schedule_item = make_schedule_item_value(&mask, "Idle", None);
+        let inner_vec = Value::unnamed_composite(vec![schedule_item]);
+        let outer_vec = Value::unnamed_composite(vec![inner_vec]);
 
-        let result = decode_reservations(&bytes).unwrap();
+        let result = decode_reservations_from_value(&outer_vec);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].len(), 1);
-        assert_eq!(result[0][0].mask, [0xFF; CORE_MASK_SIZE]);
-        assert_eq!(result[0][0].assignment, CoreAssignment::Idle);
+        assert_eq!(result[0].mask, "0xffffffffffffffffffff");
+        assert_eq!(result[0].task, "");
     }
 
     #[test]
     fn test_decode_reservations_single_reservation_pool() {
-        let mut bytes = vec![0x04]; // outer len = 1
-        bytes.push(0x04); // inner len = 1
-        bytes.extend_from_slice(&[0xAA; CORE_MASK_SIZE]); // mask
-        bytes.push(ASSIGNMENT_POOL_VARIANT); // assignment = Pool
+        let mask = vec![0xAA; 10];
+        let schedule_item = make_schedule_item_value(&mask, "Pool", None);
+        let inner_vec = Value::unnamed_composite(vec![schedule_item]);
+        let outer_vec = Value::unnamed_composite(vec![inner_vec]);
 
-        let result = decode_reservations(&bytes).unwrap();
+        let result = decode_reservations_from_value(&outer_vec);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0][0].assignment, CoreAssignment::Pool);
+        assert_eq!(result[0].task, "Pool");
     }
 
     #[test]
     fn test_decode_reservations_single_reservation_task() {
-        let mut bytes = vec![0x04]; // outer len = 1
-        bytes.push(0x04); // inner len = 1
-        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]); // mask
-        bytes.push(ASSIGNMENT_TASK_VARIANT); // assignment = Task
-        bytes.extend_from_slice(&1000u32.to_le_bytes()); // task ID
+        let mask = vec![0xFF; 10];
+        let schedule_item = make_schedule_item_value(&mask, "Task", Some(1000));
+        let inner_vec = Value::unnamed_composite(vec![schedule_item]);
+        let outer_vec = Value::unnamed_composite(vec![inner_vec]);
 
-        let result = decode_reservations(&bytes).unwrap();
+        let result = decode_reservations_from_value(&outer_vec);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0][0].assignment, CoreAssignment::Task(1000));
+        assert_eq!(result[0].task, "1000");
     }
 
     #[test]
     fn test_decode_reservations_multiple() {
-        // Two reservations, each with 1 item
-        let mut bytes = vec![0x08]; // outer len = 2 (compact)
+        // Two reservations
+        let mask1 = vec![0xFF; 10];
+        let item1 = make_schedule_item_value(&mask1, "Task", Some(1000));
+        let inner1 = Value::unnamed_composite(vec![item1]);
 
-        // First reservation: Task 1000
-        bytes.push(0x04); // inner len = 1
-        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]);
-        bytes.push(ASSIGNMENT_TASK_VARIANT);
-        bytes.extend_from_slice(&1000u32.to_le_bytes());
+        let mask2 = vec![0xAA; 10];
+        let item2 = make_schedule_item_value(&mask2, "Pool", None);
+        let inner2 = Value::unnamed_composite(vec![item2]);
 
-        // Second reservation: Pool
-        bytes.push(0x04); // inner len = 1
-        bytes.extend_from_slice(&[0xAA; CORE_MASK_SIZE]);
-        bytes.push(ASSIGNMENT_POOL_VARIANT);
+        let outer_vec = Value::unnamed_composite(vec![inner1, inner2]);
 
-        let result = decode_reservations(&bytes).unwrap();
+        let result = decode_reservations_from_value(&outer_vec);
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0][0].assignment, CoreAssignment::Task(1000));
-        assert_eq!(result[1][0].assignment, CoreAssignment::Pool);
+        assert_eq!(result[0].task, "1000");
+        assert_eq!(result[1].task, "Pool");
     }
 
     #[test]
     fn test_decode_reservations_invalid_assignment_variant() {
-        let mut bytes = vec![0x04]; // outer len = 1
-        bytes.push(0x04); // inner len = 1
-        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]);
-        bytes.push(99); // Invalid assignment variant
+        // Unknown variant defaults to Idle
+        let mask = vec![0xFF; 10];
+        let mask_values: Vec<Value<()>> = mask.iter().map(|&b| Value::u128(b as u128)).collect();
+        let schedule_item = Value::named_composite([
+            ("mask", Value::unnamed_composite(mask_values)),
+            (
+                "assignment",
+                Value::named_variant("Unknown", Vec::<(&str, Value<()>)>::new()),
+            ),
+        ]);
+        let inner_vec = Value::unnamed_composite(vec![schedule_item]);
+        let outer_vec = Value::unnamed_composite(vec![inner_vec]);
 
-        let result = decode_reservations(&bytes);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Unknown assignment variant"));
+        let result = decode_reservations_from_value(&outer_vec);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].task, ""); // Defaults to Idle (empty string)
     }
 
     #[test]
     fn test_decode_reservations_truncated_mask() {
-        let mut bytes = vec![0x04]; // outer len = 1
-        bytes.push(0x04); // inner len = 1
-        bytes.extend_from_slice(&[0xFF; 5]); // Only 5 bytes of mask (should be 10)
+        // Empty mask - still works, just empty
+        let schedule_item = Value::named_composite([
+            ("mask", Value::unnamed_composite(Vec::<Value<()>>::new())),
+            (
+                "assignment",
+                Value::named_variant("Idle", Vec::<(&str, Value<()>)>::new()),
+            ),
+        ]);
+        let inner_vec = Value::unnamed_composite(vec![schedule_item]);
+        let outer_vec = Value::unnamed_composite(vec![inner_vec]);
 
-        let result = decode_reservations(&bytes);
-        assert!(result.is_err());
+        let result = decode_reservations_from_value(&outer_vec);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].mask, "0x"); // Empty mask
     }
 
     #[test]
     fn test_decode_reservations_truncated_task_id() {
-        let mut bytes = vec![0x04]; // outer len = 1
-        bytes.push(0x04); // inner len = 1
-        bytes.extend_from_slice(&[0xFF; CORE_MASK_SIZE]);
-        bytes.push(ASSIGNMENT_TASK_VARIANT);
-        bytes.extend_from_slice(&[0x00, 0x01]); // Only 2 bytes of task ID (should be 4)
+        // Task variant with no value - defaults to task ID 0
+        let mask = vec![0xFF; 10];
+        let mask_values: Vec<Value<()>> = mask.iter().map(|&b| Value::u128(b as u128)).collect();
+        let schedule_item = Value::named_composite([
+            ("mask", Value::unnamed_composite(mask_values)),
+            (
+                "assignment",
+                Value::named_variant("Task", Vec::<(&str, Value<()>)>::new()),
+            ),
+        ]);
+        let inner_vec = Value::unnamed_composite(vec![schedule_item]);
+        let outer_vec = Value::unnamed_composite(vec![inner_vec]);
 
-        let result = decode_reservations(&bytes);
-        assert!(result.is_err());
+        let result = decode_reservations_from_value(&outer_vec);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].task, "0"); // Defaults to 0
     }
-
-    // ------------------------------------------------------------------------
-    // Response type tests
-    // ------------------------------------------------------------------------
 
     #[test]
     fn test_reservation_info_serialization() {

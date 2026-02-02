@@ -10,15 +10,13 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::Decode;
 use primitive_types::H256;
+use scale_decode::DecodeAsType;
+use scale_value::{Primitive, ValueDef};
 use serde::Serialize;
 use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
-
-// ============================================================================
-// Response Types - Coretime Chain (Broker Pallet)
-// ============================================================================
 
 /// Response for GET /coretime/info endpoint on coretime chains.
 #[derive(Debug, Serialize)]
@@ -29,6 +27,9 @@ pub struct CoretimeInfoResponse {
     /// Broker configuration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub configuration: Option<ConfigurationInfo>,
+    /// Broker status information.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<StatusInfo>,
     /// Current region timing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_region: Option<CurrentRegionInfo>,
@@ -52,6 +53,27 @@ pub struct ConfigurationInfo {
     pub leadin_length: u32,
     /// Number of relay chain blocks per timeslice.
     pub relay_blocks_per_timeslice: u32,
+}
+
+/// Broker status information.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusInfo {
+    /// Total number of cores.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub core_count: Option<u32>,
+    /// Number of cores in the private pool.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub private_pool_size: Option<u32>,
+    /// Number of cores in the system pool.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_pool_size: Option<u32>,
+    /// Last committed timeslice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_committed_timeslice: Option<u32>,
+    /// Last timeslice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_timeslice: Option<u32>,
 }
 
 /// Current region timing information.
@@ -106,10 +128,6 @@ pub struct PhaseConfig {
     pub last_timeslice: u32,
 }
 
-// ============================================================================
-// Response Types - Relay Chain (Coretime Pallet)
-// ============================================================================
-
 /// Response for GET /coretime/info endpoint on relay chains.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,25 +146,34 @@ pub struct CoretimeRelayInfoResponse {
 }
 
 // ============================================================================
-// Internal SCALE Decode Types
+// Internal Types for Direct SCALE Decoding
 // ============================================================================
+//
+// These structs use parity-scale-codec's Decode to directly deserialize
+// on-chain storage values without manual field extraction.
 
-/// ConfigRecord from Broker pallet.
-/// Note: Uses u32 for block numbers since relay block numbers fit in u32.
-#[derive(Debug, Clone, Decode, Encode)]
+/// ConfigRecord from Broker pallet - decoded directly via SCALE.
+/// Field order must match the on-chain type exactly.
+/// Derives DecodeAsType for subxt dynamic storage compatibility.
+#[allow(dead_code)] // All fields required for correct SCALE decoding order
+#[derive(Debug, Clone, Default, Decode, DecodeAsType)]
+#[decode_as_type(crate_path = "scale_decode")]
 struct ConfigRecord {
     advance_notice: u32,
     interlude_length: u32,
     leadin_length: u32,
     region_length: u32,
-    ideal_bulk_proportion: u32, // Perbill (parts per billion)
+    ideal_bulk_proportion: u32, // Perbill
     limit_cores_offered: Option<u16>,
     renewal_bump: u32, // Perbill
     contribution_timeout: u32,
 }
 
-/// SaleInfoRecord from Broker pallet.
-#[derive(Debug, Clone, Decode, Encode)]
+/// SaleInfoRecord from Broker pallet - decoded directly via SCALE.
+/// Derives DecodeAsType for subxt dynamic storage compatibility.
+#[allow(dead_code)] // All fields required for correct SCALE decoding order
+#[derive(Debug, Clone, Default, Decode, DecodeAsType)]
+#[decode_as_type(crate_path = "scale_decode")]
 struct SaleInfoRecord {
     sale_start: u32,
     leadin_length: u32,
@@ -160,8 +187,10 @@ struct SaleInfoRecord {
     cores_sold: u16,
 }
 
-/// StatusRecord from Broker pallet.
-#[derive(Debug, Clone, Decode, Encode)]
+/// StatusRecord from Broker pallet - decoded directly via SCALE.
+/// Derives DecodeAsType for subxt dynamic storage compatibility.
+#[derive(Debug, Clone, Default, Decode, DecodeAsType)]
+#[decode_as_type(crate_path = "scale_decode")]
 struct StatusRecord {
     core_count: u16,
     private_pool_size: u32,
@@ -170,18 +199,6 @@ struct StatusRecord {
     last_timeslice: u32,
 }
 
-// ============================================================================
-// Main Handler
-// ============================================================================
-
-/// Handler for GET /coretime/info endpoint.
-///
-/// Returns coretime system information. The response structure differs based on chain type:
-/// - Relay chains: broker ID, pallet version, max historical revenue
-/// - Coretime chains: configuration, sale info, core availability, phase info
-///
-/// Query Parameters:
-/// - at: Optional block number or hash to query at (defaults to latest finalized)
 pub async fn coretime_info(
     State(state): State<AppState>,
     Query(params): Query<CoretimeQueryParams>,
@@ -228,10 +245,6 @@ pub async fn coretime_info(
     }
 }
 
-// ============================================================================
-// Coretime Chain Handler (Broker Pallet)
-// ============================================================================
-
 async fn handle_coretime_chain_info(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     at: AtResponse,
@@ -242,7 +255,7 @@ async fn handle_coretime_chain_info(
         return Err(CoretimeError::BrokerPalletNotFound);
     }
 
-    // Fetch all data in parallel
+    // Fetch all data in parallel using subxt's decode_as for type-safe decoding
     let (config_result, sale_result, status_result, timeslice_period_result) = tokio::join!(
         fetch_configuration(client_at_block),
         fetch_sale_info(client_at_block),
@@ -266,25 +279,31 @@ async fn handle_coretime_chain_info(
         relay_blocks_per_timeslice: timeslice_period,
     });
 
-    let current_region = sale_info.as_ref().and_then(|sale| {
-        config.as_ref().map(|cfg| {
-            let (start, end) =
-                calculate_current_region(sale.region_begin, sale.region_end, cfg.region_length);
-            CurrentRegionInfo { start, end }
-        })
+    let current_region = sale_info.as_ref().map(|sale| CurrentRegionInfo {
+        start: Some(sale.region_begin),
+        end: Some(sale.region_end),
     });
 
     let cores = sale_info.as_ref().map(|sale| {
         let current_price =
             calculate_current_core_price(block_number as u32, sale, timeslice_period);
         CoresInfo {
-            available: sale.cores_offered.saturating_sub(sale.cores_sold) as u32,
+            available: (sale.cores_offered as u32).saturating_sub(sale.cores_sold as u32),
             sold: sale.cores_sold as u32,
             total: sale.cores_offered as u32,
             current_core_price: current_price.to_string(),
             sellout_price: sale.sellout_price.map(|p| p.to_string()),
             first_core: Some(sale.first_core as u32),
         }
+    });
+
+    // Build status info
+    let status_info = status.as_ref().map(|st| StatusInfo {
+        core_count: Some(st.core_count as u32),
+        private_pool_size: Some(st.private_pool_size),
+        system_pool_size: Some(st.system_pool_size),
+        last_committed_timeslice: Some(st.last_committed_timeslice),
+        last_timeslice: Some(st.last_timeslice),
     });
 
     let phase = if let (Some(cfg), Some(sale), Some(st)) = (&config, &sale_info, &status) {
@@ -303,6 +322,7 @@ async fn handle_coretime_chain_info(
     let response = CoretimeInfoResponse {
         at,
         configuration,
+        status: status_info,
         current_region,
         cores,
         phase,
@@ -310,10 +330,6 @@ async fn handle_coretime_chain_info(
 
     Ok((StatusCode::OK, Json(response)).into_response())
 }
-
-// ============================================================================
-// Relay Chain Handler (Coretime Pallet)
-// ============================================================================
 
 async fn handle_relay_chain_info(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
@@ -327,7 +343,7 @@ async fn handle_relay_chain_info(
     // Fetch relay chain coretime info
     let (broker_id, pallet_version, max_historical_revenue) = tokio::join!(
         fetch_broker_id(client_at_block),
-        fetch_pallet_version(client_at_block),
+        fetch_pallet_version_decoded(client_at_block),
         fetch_max_historical_revenue(client_at_block)
     );
 
@@ -341,73 +357,72 @@ async fn handle_relay_chain_info(
     Ok((StatusCode::OK, Json(response)).into_response())
 }
 
-// ============================================================================
-// Data Fetching - Coretime Chain (Broker Pallet)
-// ============================================================================
-
-/// Fetches Configuration from Broker pallet.
+/// Fetches and decodes Configuration from Broker pallet directly into ConfigRecord.
+/// Uses subxt dynamic storage with DecodeAsType for type-safe decoding.
 async fn fetch_configuration(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Option<ConfigRecord>, CoretimeError> {
-    let config_addr = subxt::dynamic::storage::<(), scale_value::Value>("Broker", "Configuration");
+    let config_addr = subxt::dynamic::storage::<(), ConfigRecord>("Broker", "Configuration");
 
     match client_at_block.storage().fetch(config_addr, ()).await {
-        Ok(value) => {
-            let raw_bytes = value.into_bytes();
-            let config = ConfigRecord::decode(&mut &raw_bytes[..]).map_err(|e| {
-                CoretimeError::StorageDecodeFailed {
-                    pallet: "Broker",
-                    entry: "Configuration",
-                    details: e.to_string(),
-                }
-            })?;
-            Ok(Some(config))
-        }
-        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => Ok(None),
-        Err(_) => Ok(None), // Return None for other errors to allow partial responses
-    }
-}
-
-/// Fetches SaleInfo from Broker pallet.
-async fn fetch_sale_info(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<Option<SaleInfoRecord>, CoretimeError> {
-    let sale_addr = subxt::dynamic::storage::<(), scale_value::Value>("Broker", "SaleInfo");
-
-    match client_at_block.storage().fetch(sale_addr, ()).await {
-        Ok(value) => {
-            let raw_bytes = value.into_bytes();
-            let sale = SaleInfoRecord::decode(&mut &raw_bytes[..]).map_err(|e| {
-                CoretimeError::StorageDecodeFailed {
-                    pallet: "Broker",
-                    entry: "SaleInfo",
-                    details: e.to_string(),
-                }
-            })?;
-            Ok(Some(sale))
+        Ok(storage_value) => {
+            let decoded: ConfigRecord =
+                storage_value
+                    .decode_as()
+                    .map_err(|e| CoretimeError::StorageDecodeFailed {
+                        pallet: "Broker",
+                        entry: "Configuration",
+                        details: e.to_string(),
+                    })?;
+            Ok(Some(decoded))
         }
         Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => Ok(None),
         Err(_) => Ok(None),
     }
 }
 
-/// Fetches Status from Broker pallet.
+/// Fetches and decodes SaleInfo from Broker pallet directly into SaleInfoRecord.
+/// Uses subxt dynamic storage with DecodeAsType for type-safe decoding.
+async fn fetch_sale_info(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Result<Option<SaleInfoRecord>, CoretimeError> {
+    let sale_addr = subxt::dynamic::storage::<(), SaleInfoRecord>("Broker", "SaleInfo");
+
+    match client_at_block.storage().fetch(sale_addr, ()).await {
+        Ok(storage_value) => {
+            let decoded: SaleInfoRecord =
+                storage_value
+                    .decode_as()
+                    .map_err(|e| CoretimeError::StorageDecodeFailed {
+                        pallet: "Broker",
+                        entry: "SaleInfo",
+                        details: e.to_string(),
+                    })?;
+            Ok(Some(decoded))
+        }
+        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => Ok(None),
+        Err(_) => Ok(None),
+    }
+}
+
+/// Fetches and decodes Status from Broker pallet directly into StatusRecord.
+/// Uses subxt dynamic storage with DecodeAsType for type-safe decoding.
 async fn fetch_status(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Option<StatusRecord>, CoretimeError> {
-    let status_addr = subxt::dynamic::storage::<(), scale_value::Value>("Broker", "Status");
+    let status_addr = subxt::dynamic::storage::<(), StatusRecord>("Broker", "Status");
 
     match client_at_block.storage().fetch(status_addr, ()).await {
-        Ok(value) => {
-            let raw_bytes = value.into_bytes();
-            let status = StatusRecord::decode(&mut &raw_bytes[..]).map_err(|e| {
-                CoretimeError::StorageDecodeFailed {
-                    pallet: "Broker",
-                    entry: "Status",
-                    details: e.to_string(),
-                }
-            })?;
-            Ok(Some(status))
+        Ok(storage_value) => {
+            let decoded: StatusRecord =
+                storage_value
+                    .decode_as()
+                    .map_err(|e| CoretimeError::StorageDecodeFailed {
+                        pallet: "Broker",
+                        entry: "Status",
+                        details: e.to_string(),
+                    })?;
+            Ok(Some(decoded))
         }
         Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => Ok(None),
         Err(_) => Ok(None),
@@ -424,12 +439,13 @@ async fn fetch_timeslice_period(
         .pallet_by_name("Broker")
         .ok_or(CoretimeError::BrokerPalletNotFound)?;
 
-    let constant = pallet.constant_by_name("TimeslicePeriod").ok_or(
-        CoretimeError::ConstantFetchFailed {
-            pallet: "Broker",
-            constant: "TimeslicePeriod",
-        },
-    )?;
+    let constant =
+        pallet
+            .constant_by_name("TimeslicePeriod")
+            .ok_or(CoretimeError::ConstantFetchFailed {
+                pallet: "Broker",
+                constant: "TimeslicePeriod",
+            })?;
 
     // Decode as u32
     let value = u32::decode(&mut &constant.value()[..]).map_err(|e| {
@@ -442,10 +458,6 @@ async fn fetch_timeslice_period(
 
     Ok(value)
 }
-
-// ============================================================================
-// Data Fetching - Relay Chain (Coretime Pallet)
-// ============================================================================
 
 /// Fetches BrokerId constant from Coretime pallet.
 async fn fetch_broker_id(
@@ -467,8 +479,8 @@ async fn fetch_broker_id(
     Ok(value)
 }
 
-/// Fetches pallet version from CoretimeAssignmentProvider.
-async fn fetch_pallet_version(
+/// Fetches pallet version from CoretimeAssignmentProvider using scale_value.
+async fn fetch_pallet_version_decoded(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Option<u32>, CoretimeError> {
     // Try to fetch from CoretimeAssignmentProvider::PalletVersion storage
@@ -479,16 +491,14 @@ async fn fetch_pallet_version(
 
     match client_at_block.storage().fetch(version_addr, ()).await {
         Ok(value) => {
-            let raw_bytes = value.into_bytes();
-            // Pallet version is typically stored as u16
-            if let Ok(version) = u16::decode(&mut &raw_bytes[..]) {
-                return Ok(Some(version as u32));
-            }
-            // Try as u32
-            if let Ok(version) = u32::decode(&mut &raw_bytes[..]) {
-                return Ok(Some(version));
-            }
-            Ok(None)
+            // Use decode_as for proper type resolution
+            let decoded: scale_value::Value<()> = match value.decode_as() {
+                Ok(v) => v,
+                Err(_) => return Ok(None),
+            };
+
+            // Extract numeric value
+            Ok(extract_u32(&decoded))
         }
         Err(_) => Ok(None),
     }
@@ -515,22 +525,18 @@ async fn fetch_max_historical_revenue(
 }
 
 // ============================================================================
-// Calculation Helpers
+// Value Extraction Helpers
 // ============================================================================
 
-/// Calculates the current region start and end timeslices.
-fn calculate_current_region(
-    region_begin: u32,
-    region_end: u32,
-    _region_length: u32,
-) -> (Option<u32>, Option<u32>) {
-    (Some(region_begin), Some(region_end))
+/// Extract u32 from a scale_value::Value.
+/// Used for relay chain pallet version which returns a dynamic value.
+fn extract_u32(value: &scale_value::Value<()>) -> Option<u32> {
+    match &value.value {
+        ValueDef::Primitive(Primitive::U128(n)) => Some(*n as u32),
+        _ => None,
+    }
 }
 
-/// Calculates the current core price based on the lead-in pricing mechanism.
-///
-/// The price starts at 2x the end_price and linearly decreases to end_price
-/// over the leadin_length period.
 fn calculate_current_core_price(
     block_number: u32,
     sale_info: &SaleInfoRecord,
@@ -562,9 +568,12 @@ fn calculate_current_core_price(
 
     // leadin_factor goes from 2.0 (at progress=0) to 1.0 (at progress=10000)
     // factor = 2 - (progress / 10000) = (20000 - progress) / 10000
-    let factor_scaled = SCALE
-        .saturating_mul(2)
-        .saturating_sub(progress.saturating_mul(SCALE).checked_div(10000).unwrap_or(0));
+    let factor_scaled = SCALE.saturating_mul(2).saturating_sub(
+        progress
+            .saturating_mul(SCALE)
+            .checked_div(10000)
+            .unwrap_or(0),
+    );
 
     // price = end_price * factor
     factor_scaled
@@ -589,9 +598,7 @@ fn calculate_phase_config(
     // priceDiscovery: from region_begin to region_begin + leadin_length/timeslice_period
     // fixedPrice: rest of the region
 
-    let interlude_timeslices = interlude_length
-        .checked_div(timeslice_period)
-        .unwrap_or(0);
+    let interlude_timeslices = interlude_length.checked_div(timeslice_period).unwrap_or(0);
     let leadin_timeslices = leadin_length.checked_div(timeslice_period).unwrap_or(0);
 
     let renewals_end = region_begin;
@@ -599,14 +606,14 @@ fn calculate_phase_config(
     let fixed_price_end = region_begin.saturating_add(region_length);
 
     // Determine current phase based on last_committed_timeslice
-    let current_phase = if last_committed_timeslice < renewals_end.saturating_sub(interlude_timeslices)
-    {
-        "renewals"
-    } else if last_committed_timeslice < price_discovery_end {
-        "priceDiscovery"
-    } else {
-        "fixedPrice"
-    };
+    let current_phase =
+        if last_committed_timeslice < renewals_end.saturating_sub(interlude_timeslices) {
+            "renewals"
+        } else if last_committed_timeslice < price_discovery_end {
+            "priceDiscovery"
+        } else {
+            "fixedPrice"
+        };
 
     PhaseInfo {
         current_phase: current_phase.to_string(),
@@ -644,9 +651,9 @@ mod tests {
             region_end: 200,
             ideal_cores_sold: 10,
             cores_offered: 20,
+            cores_sold: 5,
             first_core: 0,
             sellout_price: None,
-            cores_sold: 5,
         };
 
         // Before sale starts, price should be 2x end price
@@ -664,9 +671,9 @@ mod tests {
             region_end: 200,
             ideal_cores_sold: 10,
             cores_offered: 20,
+            cores_sold: 5,
             first_core: 0,
             sellout_price: None,
-            cores_sold: 5,
         };
 
         // At sale start (elapsed=0), price should be 2x
@@ -684,9 +691,9 @@ mod tests {
             region_end: 200,
             ideal_cores_sold: 10,
             cores_offered: 20,
+            cores_sold: 5,
             first_core: 0,
             sellout_price: None,
-            cores_sold: 5,
         };
 
         // After leadin period, price should be end_price
@@ -704,9 +711,9 @@ mod tests {
             region_end: 200,
             ideal_cores_sold: 10,
             cores_offered: 20,
+            cores_sold: 5,
             first_core: 0,
             sellout_price: None,
-            cores_sold: 5,
         };
 
         // Midway (50% through leadin), price should be 1.5x end_price
@@ -786,6 +793,13 @@ mod tests {
                 leadin_length: 100800,
                 relay_blocks_per_timeslice: 80,
             }),
+            status: Some(StatusInfo {
+                core_count: Some(28),
+                private_pool_size: Some(0),
+                system_pool_size: Some(2),
+                last_committed_timeslice: Some(100),
+                last_timeslice: Some(105),
+            }),
             current_region: Some(CurrentRegionInfo {
                 start: Some(100),
                 end: Some(200),
@@ -808,6 +822,8 @@ mod tests {
         assert!(json.contains("\"at\""));
         assert!(json.contains("\"configuration\""));
         assert!(json.contains("\"regionLength\":5040"));
+        assert!(json.contains("\"status\""));
+        assert!(json.contains("\"coreCount\":28"));
         assert!(json.contains("\"cores\""));
         assert!(json.contains("\"available\":15"));
     }
@@ -849,10 +865,9 @@ mod tests {
     }
 
     #[test]
-    fn test_current_region_calculation() {
-        let (start, end) = calculate_current_region(100, 200, 100);
-        assert_eq!(start, Some(100));
-        assert_eq!(end, Some(200));
+    fn test_extract_u32() {
+        let value = scale_value::Value::u128(42);
+        assert_eq!(extract_u32(&value), Some(42));
     }
 
     #[test]
