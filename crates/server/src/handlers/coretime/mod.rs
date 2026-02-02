@@ -5,7 +5,9 @@
 
 pub mod common;
 pub mod leases;
+pub mod renewals;
 pub mod reservations;
 
 pub use leases::coretime_leases;
+pub use renewals::coretime_renewals;
 pub use reservations::coretime_reservations;

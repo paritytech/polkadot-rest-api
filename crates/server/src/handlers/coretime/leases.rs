@@ -5,18 +5,9 @@
 //! assigned core ID (correlated from workload data).
 
 use crate::handlers::coretime::common::{
-    ASSIGNMENT_IDLE_VARIANT,
-    ASSIGNMENT_POOL_VARIANT,
-    ASSIGNMENT_TASK_VARIANT,
-    AtResponse,
-    // Shared constants
-    CORE_MASK_SIZE,
-    CoretimeError,
-    CoretimeQueryParams,
-    TASK_ID_SIZE,
-    decode_compact_u32,
-    // Shared functions
-    has_broker_pallet,
+    ASSIGNMENT_IDLE_VARIANT, ASSIGNMENT_POOL_VARIANT, ASSIGNMENT_TASK_VARIANT, AtResponse,
+    CORE_MASK_SIZE, CoretimeError, CoretimeQueryParams, STORAGE_KEY_DATA_OFFSET, TASK_ID_SIZE,
+    decode_compact_u32, has_broker_pallet,
 };
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
@@ -37,14 +28,10 @@ use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 // - 16 bytes: pallet prefix (xxhash128 of "Broker")
 // - 16 bytes: entry prefix (xxhash128 of "Workload")
 // - 8 bytes: twox64 hash of the key
-// - 2 bytes: core index (u16, little-endian)
-// Total: 42 bytes, core index starts at byte 40
+// - 2 bytes: core index (u16, little-endian SCALE encoded)
 
 /// Minimum length of the storage key to extract core index.
-const STORAGE_KEY_MIN_LENGTH: usize = 42;
-
-/// Offset where the core index (u16) starts in the storage key.
-const CORE_INDEX_OFFSET: usize = 40;
+const STORAGE_KEY_MIN_LENGTH: usize = STORAGE_KEY_DATA_OFFSET + std::mem::size_of::<u16>();
 
 // ============================================================================
 // Response Types
@@ -252,13 +239,14 @@ async fn fetch_workloads(
         let key_bytes = entry.key_bytes();
         let value_bytes = entry.value().bytes();
 
-        let core: u32 = if key_bytes.len() >= STORAGE_KEY_MIN_LENGTH {
-            let core_bytes: [u8; 2] = key_bytes[CORE_INDEX_OFFSET..STORAGE_KEY_MIN_LENGTH]
-                .try_into()
-                .unwrap_or([0, 0]);
-            u16::from_le_bytes(core_bytes) as u32
-        } else {
+        // Extract core index from key bytes using SCALE decoding
+        if key_bytes.len() < STORAGE_KEY_MIN_LENGTH {
             continue;
+        }
+        let cursor = &mut &key_bytes[STORAGE_KEY_DATA_OFFSET..];
+        let core = match u16::decode(cursor) {
+            Ok(c) => c as u32,
+            Err(_) => continue,
         };
 
         // Parse the workload value to extract task assignment
