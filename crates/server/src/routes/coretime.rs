@@ -11,6 +11,7 @@ use crate::{
 ///
 /// These endpoints query the Broker pallet on coretime chains:
 /// - GET /v1/coretime/leases - Get all registered leases
+/// - GET /v1/coretime/renewals - Get all potential renewals
 /// - GET /v1/coretime/reservations - Get all registered reservations
 ///
 /// Routes are only registered when connected to a coretime chain.
@@ -31,6 +32,13 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
                 "/coretime/regions",
                 "get",
                 get(coretime::coretime_regions),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/coretime/renewals",
+                "get",
+                get(coretime::coretime_renewals),
             )
             .route_registered(
                 registry,

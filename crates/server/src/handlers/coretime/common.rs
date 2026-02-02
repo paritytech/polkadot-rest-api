@@ -4,6 +4,7 @@
 //! and utility functions used by coretime endpoints.
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
+use parity_scale_codec::{Compact, Decode, Encode};
 use serde::Serialize;
 use serde_json::json;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
@@ -35,12 +36,53 @@ pub const ASSIGNMENT_POOL_VARIANT: u8 = 1;
 pub const ASSIGNMENT_TASK_VARIANT: u8 = 2;
 
 // ============================================================================
+// Storage Key Constants
+// ============================================================================
+
+// Substrate storage keys consist of:
+// - 16 bytes: pallet prefix (xxhash128 of pallet name)
+// - 16 bytes: entry prefix (xxhash128 of storage entry name)
+// - Variable: key data (depends on hasher type)
+//
+// For Twox64Concat hasher (common for small keys like u16, u32):
+// - 8 bytes: twox64 hash of the key
+// - N bytes: the raw key bytes (concatenated)
+
+/// Size of pallet name hash in storage key (xxhash128 = 16 bytes).
+pub const PALLET_HASH_SIZE: usize = 16;
+
+/// Size of storage entry name hash in storage key (xxhash128 = 16 bytes).
+pub const ENTRY_HASH_SIZE: usize = 16;
+
+/// Base offset where map keys start (pallet hash + entry hash).
+pub const STORAGE_KEY_BASE_OFFSET: usize = PALLET_HASH_SIZE + ENTRY_HASH_SIZE;
+
+/// Size of twox64 hash prefix used in Twox64Concat hasher.
+pub const TWOX64_HASH_SIZE: usize = 8;
+
+/// Offset where the actual key data starts (after base + twox64 hash).
+pub const STORAGE_KEY_DATA_OFFSET: usize = STORAGE_KEY_BASE_OFFSET + TWOX64_HASH_SIZE;
+
+/// Size of u16 in bytes (for core index fields).
+pub const U16_SIZE: usize = 2;
+
+/// Size of u32 in bytes (for timeslice, task ID fields).
+pub const U32_SIZE: usize = 4;
+
+/// Size of u128 in bytes (for price/balance fields).
+pub const U128_SIZE: usize = 16;
+
+/// CoreMask type alias - 80 bits represented as 10 bytes.
+pub type CoreMask = [u8; CORE_MASK_SIZE];
+
+// ============================================================================
 // Shared Types
 // ============================================================================
 
 /// CoreAssignment enum representing how a core is assigned.
 /// Matches the Broker pallet's CoreAssignment type.
-#[derive(Debug, Clone, PartialEq)]
+/// Derives Decode/Encode for SCALE codec support.
+#[derive(Debug, Clone, PartialEq, Decode, Encode)]
 pub enum CoreAssignment {
     /// Core is idle (not assigned).
     Idle,
@@ -62,6 +104,15 @@ impl CoreAssignment {
             CoreAssignment::Task(id) => id.to_string(),
         }
     }
+}
+
+/// ScheduleItem from the Broker pallet.
+/// Contains a CoreMask and CoreAssignment.
+/// Used in Workload and Reservations storage.
+#[derive(Debug, Clone, PartialEq, Decode, Encode)]
+pub struct ScheduleItem {
+    pub mask: CoreMask,
+    pub assignment: CoreAssignment,
 }
 
 // ============================================================================
@@ -116,6 +167,14 @@ pub enum CoretimeError {
         entry: &'static str,
         details: String,
     },
+
+    #[error(
+        "{pallet}::{entry} is not available at this block. This storage item was introduced in a later runtime upgrade."
+    )]
+    StorageItemNotAvailableAtBlock {
+        pallet: &'static str,
+        entry: &'static str,
+    },
 }
 
 impl IntoResponse for CoretimeError {
@@ -154,6 +213,9 @@ impl IntoResponse for CoretimeError {
             }
             CoretimeError::StorageIterationError { .. } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            CoretimeError::StorageItemNotAvailableAtBlock { .. } => {
+                (StatusCode::NOT_FOUND, self.to_string())
             }
         };
 
@@ -199,48 +261,34 @@ pub fn has_broker_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>)
     metadata.pallet_by_name("Broker").is_some()
 }
 
+/// Checks if an error indicates that a storage item was not found in metadata.
+/// This typically happens when querying historical blocks before a runtime upgrade
+/// that introduced the storage item.
+pub fn is_storage_item_not_found_error(error: &subxt::error::StorageError) -> bool {
+    // Check both Display and Debug representations (case-insensitive)
+    let display_str = error.to_string().to_lowercase();
+    let debug_str = format!("{:?}", error).to_lowercase();
+
+    // Look for common patterns indicating storage item not found
+    let patterns = ["storage item not found", "storageitemnotfound", "not found"];
+
+    for pattern in patterns {
+        if display_str.contains(pattern) || debug_str.contains(pattern) {
+            return true;
+        }
+    }
+
+    false
+}
+
 /// Decodes a SCALE compact-encoded u32 and returns (value, bytes_consumed).
 ///
-/// Compact encoding uses the two least significant bits to indicate the mode:
-/// - 0b00: single-byte mode (values 0-63)
-/// - 0b01: two-byte mode (values 64-16383)
-/// - 0b10: four-byte mode (values 16384-1073741823)
-/// - 0b11: big-integer mode (not supported here)
+/// Uses `parity_scale_codec::Compact` for proper SCALE decoding.
 pub fn decode_compact_u32(bytes: &[u8]) -> Option<(usize, usize)> {
-    if bytes.is_empty() {
-        return None;
-    }
-
-    let first = bytes[0];
-    let mode = first & 0b11;
-
-    match mode {
-        0b00 => {
-            // Single byte mode: values 0-63
-            Some(((first >> 2) as usize, 1))
-        }
-        0b01 => {
-            // Two byte mode: values 64-16383
-            if bytes.len() < 2 {
-                return None;
-            }
-            let value = u16::from_le_bytes([first, bytes[1]]) >> 2;
-            Some((value as usize, 2))
-        }
-        0b10 => {
-            // Four byte mode: values 16384-1073741823
-            if bytes.len() < 4 {
-                return None;
-            }
-            let value = u32::from_le_bytes([first, bytes[1], bytes[2], bytes[3]]) >> 2;
-            Some((value as usize, 4))
-        }
-        0b11 => {
-            // Big integer mode (not typically used for vec lengths)
-            None
-        }
-        _ => None,
-    }
+    let cursor = &mut &*bytes;
+    let compact_value = <Compact<u32>>::decode(cursor).ok()?;
+    let bytes_consumed = bytes.len() - cursor.len();
+    Some((compact_value.0 as usize, bytes_consumed))
 }
 
 // ============================================================================
@@ -307,6 +355,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_coretime_error_storage_item_not_available_message() {
+        let err = CoretimeError::StorageItemNotAvailableAtBlock {
+            pallet: "Broker",
+            entry: "PotentialRenewals",
+        };
+        assert_eq!(
+            err.to_string(),
+            "Broker::PotentialRenewals is not available at this block. This storage item was introduced in a later runtime upgrade."
+        );
+    }
+
     // ------------------------------------------------------------------------
     // HTTP Status code tests
     // ------------------------------------------------------------------------
@@ -355,6 +415,16 @@ mod tests {
         };
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_coretime_error_storage_item_not_available_status() {
+        let err = CoretimeError::StorageItemNotAvailableAtBlock {
+            pallet: "Broker",
+            entry: "PotentialRenewals",
+        };
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

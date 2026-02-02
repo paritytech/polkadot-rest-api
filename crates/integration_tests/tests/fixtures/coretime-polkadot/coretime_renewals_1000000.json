@@ -1,0 +1,144 @@
+{
+  "at": {
+    "hash": "0x95d94a0573df805d36591254bddf1ab51262d0eeb2092fe512e0c9095769e6df",
+    "height": "1000000"
+  },
+  "renewals": [
+    {
+      "completion": "Complete",
+      "core": 46,
+      "mask": "0xffffffffffffffffffff",
+      "price": "6690314189",
+      "task": "2101",
+      "when": 312765
+    },
+    {
+      "completion": "Complete",
+      "core": 47,
+      "mask": "0xffffffffffffffffffff",
+      "price": "151107194246",
+      "task": "2040",
+      "when": 302685
+    },
+    {
+      "completion": "Complete",
+      "core": 47,
+      "mask": "0xffffffffffffffffffff",
+      "price": "14801125060",
+      "task": "3403",
+      "when": 312765
+    },
+    {
+      "completion": "Complete",
+      "core": 48,
+      "mask": "0xffffffffffffffffffff",
+      "price": "14799735418",
+      "task": "3404",
+      "when": 312765
+    },
+    {
+      "completion": "Complete",
+      "core": 48,
+      "mask": "0xffffffffffffffffffff",
+      "price": "151107194246",
+      "task": "3333",
+      "when": 302685
+    },
+    {
+      "completion": "Complete",
+      "core": 49,
+      "mask": "0xffffffffffffffffffff",
+      "price": "151107194246",
+      "task": "2106",
+      "when": 302685
+    },
+    {
+      "completion": "Complete",
+      "core": 49,
+      "mask": "0xffffffffffffffffffff",
+      "price": "14798623688",
+      "task": "3405",
+      "when": 312765
+    },
+    {
+      "completion": "Complete",
+      "core": 50,
+      "mask": "0xffffffffffffffffffff",
+      "price": "151107194246",
+      "task": "2093",
+      "when": 302685
+    },
+    {
+      "completion": "Complete",
+      "core": 50,
+      "mask": "0xffffffffffffffffffff",
+      "price": "14796956135",
+      "task": "3406",
+      "when": 312765
+    },
+    {
+      "completion": "Complete",
+      "core": 51,
+      "mask": "0xffffffffffffffffffff",
+      "price": "14795844404",
+      "task": "3407",
+      "when": 312765
+    },
+    {
+      "completion": "Complete",
+      "core": 52,
+      "mask": "0xffffffffffffffffffff",
+      "price": "15110719400",
+      "task": "2094",
+      "when": 312765
+    },
+    {
+      "completion": "Complete",
+      "core": 53,
+      "mask": "0xffffffffffffffffffff",
+      "price": "15110719400",
+      "task": "2056",
+      "when": 312765
+    },
+    {
+      "completion": "Complete",
+      "core": 56,
+      "mask": "0xffffffffffffffffffff",
+      "price": "1511071942",
+      "task": "3395",
+      "when": 307725
+    },
+    {
+      "completion": "Complete",
+      "core": 56,
+      "mask": "0xffffffffffffffffffff",
+      "price": "1000000000000",
+      "task": "2048",
+      "when": 292605
+    },
+    {
+      "completion": "Complete",
+      "core": 57,
+      "mask": "0xffffffffffffffffffff",
+      "price": "1000000000000",
+      "task": "3375",
+      "when": 292605
+    },
+    {
+      "completion": "Complete",
+      "core": 58,
+      "mask": "0xffffffffffffffffffff",
+      "price": "1000000000000",
+      "task": "3358",
+      "when": 292605
+    },
+    {
+      "completion": "Complete",
+      "core": 59,
+      "mask": "0xffffffffffffffffffff",
+      "price": "1000000000000",
+      "task": "2053",
+      "when": 292605
+    }
+  ]
+}
