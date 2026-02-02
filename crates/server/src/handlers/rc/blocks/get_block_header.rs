@@ -12,20 +12,10 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use serde::Serialize;
 use serde_json::json;
 use thiserror::Error;
 
-/// Relay chain block header response
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RcBlockHeaderResponse {
-    pub parent_hash: String,
-    pub number: String,
-    pub state_root: String,
-    pub extrinsics_root: String,
-    pub digest: serde_json::Value,
-}
+use crate::handlers::blocks::common::RcBlockHeaderResponse;
 
 /// Error types for /rc/blocks/{blockId}/header endpoint
 #[derive(Debug, Error)]
