@@ -61,6 +61,20 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
         .route_registered(
             registry,
             API_VERSION,
+            "/pallets/nomination-pools/info",
+            "get",
+            get(pallets::pallets_nomination_pools_info),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/nomination-pools/:pool_id",
+            "get",
+            get(pallets::pallets_nomination_pools_pool),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
             "/pallets/asset-conversion/liquidity-pools",
             "get",
             get(pallets::get_liquidity_pools),

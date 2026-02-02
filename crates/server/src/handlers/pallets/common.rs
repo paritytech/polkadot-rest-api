@@ -72,6 +72,9 @@ pub enum PalletError {
     #[error("Asset not found: {0}")]
     AssetNotFound(String),
 
+    #[error("Nomination pool not found: {0}")]
+    PoolNotFound(String),
+
     // ========================================================================
     // Metadata/Constant Errors
     // ========================================================================
@@ -157,6 +160,7 @@ impl IntoResponse for PalletError {
             }
             PalletError::PalletNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::AssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::PoolNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
 
             // Metadata errors
             PalletError::ConstantNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
