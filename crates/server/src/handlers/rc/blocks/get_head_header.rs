@@ -2,6 +2,8 @@
 //!
 //! Returns the header of the latest relay chain block.
 
+use crate::handlers::blocks::common::convert_digest_items_to_logs;
+use crate::handlers::blocks::types::convert_digest_logs_to_sidecar_format;
 use crate::state::AppState;
 use axum::{
     Json,
@@ -9,10 +11,11 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
-use subxt::config::substrate::{ConsensusEngineId, DigestItem};
 use thiserror::Error;
+
+use crate::handlers::blocks::common::RcBlockHeaderResponse;
 
 /// Query parameters for /rc/blocks/head/header endpoint
 #[derive(Debug, Deserialize)]
@@ -24,17 +27,6 @@ pub struct RcBlockHeadHeaderQueryParams {
 
 fn default_finalized() -> bool {
     true
-}
-
-/// Relay chain block header response
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RcBlockHeaderResponse {
-    pub parent_hash: String,
-    pub number: String,
-    pub state_root: String,
-    pub extrinsics_root: String,
-    pub digest: serde_json::Value,
 }
 
 /// Error types for /rc/blocks/head/header endpoint
@@ -109,56 +101,20 @@ pub async fn get_rc_blocks_head_header(
             })?
     };
 
+    let digest_logs = convert_digest_items_to_logs(&header.digest.logs);
+    let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
+
     let response = RcBlockHeaderResponse {
-        parent_hash: format!("0x{}", hex::encode(header.parent_hash.0)),
+        parent_hash: format!("{:#x}", header.parent_hash),
         number: header.number.to_string(),
-        state_root: format!("0x{}", hex::encode(header.state_root.0)),
-        extrinsics_root: format!("0x{}", hex::encode(header.extrinsics_root.0)),
+        state_root: format!("{:#x}", header.state_root),
+        extrinsics_root: format!("{:#x}", header.extrinsics_root),
         digest: json!({
-            "logs": convert_digest_logs(&header.digest.logs)
+            "logs": digest_logs_formatted
         }),
     };
 
     Ok(Json(response).into_response())
-}
-
-fn convert_digest_logs(logs: &[DigestItem]) -> Vec<serde_json::Value> {
-    logs.iter()
-        .map(|item| match item {
-            DigestItem::PreRuntime(engine_id, data) => {
-                json!({
-                    "preRuntime": format_consensus_digest(engine_id, data)
-                })
-            }
-            DigestItem::Consensus(engine_id, data) => {
-                json!({
-                    "consensus": format_consensus_digest(engine_id, data)
-                })
-            }
-            DigestItem::Seal(engine_id, data) => {
-                json!({
-                    "seal": format_consensus_digest(engine_id, data)
-                })
-            }
-            DigestItem::Other(data) => {
-                json!({
-                    "other": format!("0x{}", hex::encode(data))
-                })
-            }
-            DigestItem::RuntimeEnvironmentUpdated => {
-                json!({
-                    "runtimeEnvironmentUpdated": null
-                })
-            }
-        })
-        .collect()
-}
-
-fn format_consensus_digest(engine_id: &ConsensusEngineId, data: &[u8]) -> serde_json::Value {
-    json!([
-        format!("0x{}", hex::encode(engine_id)),
-        format!("0x{}", hex::encode(data))
-    ])
 }
 
 #[cfg(test)]
@@ -274,87 +230,6 @@ mod tests {
             GetRcBlockHeadHeaderError::HeaderFetchFailed("test error".to_string());
         let response = header_fetch_failed.into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
-    #[test]
-    fn test_convert_digest_logs_preruntime() {
-        let engine_id: ConsensusEngineId = *b"BABE";
-        let data = vec![0x01, 0x02, 0x03];
-        let logs = vec![DigestItem::PreRuntime(engine_id, data.clone())];
-
-        let result = convert_digest_logs(&logs);
-
-        assert_eq!(result.len(), 1);
-        assert!(result[0].get("preRuntime").is_some());
-        let arr = result[0]["preRuntime"].as_array().unwrap();
-        assert_eq!(arr[0], "0x42414245");
-        assert_eq!(arr[1], "0x010203");
-    }
-
-    #[test]
-    fn test_convert_digest_logs_consensus() {
-        let engine_id: ConsensusEngineId = *b"BEEF";
-        let data = vec![0xde, 0xad, 0xbe, 0xef];
-        let logs = vec![DigestItem::Consensus(engine_id, data.clone())];
-
-        let result = convert_digest_logs(&logs);
-
-        assert_eq!(result.len(), 1);
-        assert!(result[0].get("consensus").is_some());
-        let arr = result[0]["consensus"].as_array().unwrap();
-        assert_eq!(arr[0], "0x42454546");
-        assert_eq!(arr[1], "0xdeadbeef");
-    }
-
-    #[test]
-    fn test_convert_digest_logs_seal() {
-        let engine_id: ConsensusEngineId = *b"BABE";
-        let data = vec![0x11, 0x22, 0x33, 0x44];
-        let logs = vec![DigestItem::Seal(engine_id, data.clone())];
-
-        let result = convert_digest_logs(&logs);
-
-        assert_eq!(result.len(), 1);
-        assert!(result[0].get("seal").is_some());
-    }
-
-    #[test]
-    fn test_convert_digest_logs_other() {
-        let data = vec![0xaa, 0xbb, 0xcc];
-        let logs = vec![DigestItem::Other(data.clone())];
-
-        let result = convert_digest_logs(&logs);
-
-        assert_eq!(result.len(), 1);
-        assert!(result[0].get("other").is_some());
-        assert_eq!(result[0]["other"], "0xaabbcc");
-    }
-
-    #[test]
-    fn test_convert_digest_logs_runtime_environment_updated() {
-        let logs = vec![DigestItem::RuntimeEnvironmentUpdated];
-
-        let result = convert_digest_logs(&logs);
-
-        assert_eq!(result.len(), 1);
-        assert!(result[0].get("runtimeEnvironmentUpdated").is_some());
-        assert!(result[0]["runtimeEnvironmentUpdated"].is_null());
-    }
-
-    #[test]
-    fn test_convert_digest_logs_multiple() {
-        let logs = vec![
-            DigestItem::PreRuntime(*b"BABE", vec![0x01]),
-            DigestItem::Consensus(*b"BEEF", vec![0x02]),
-            DigestItem::Seal(*b"BABE", vec![0x03]),
-        ];
-
-        let result = convert_digest_logs(&logs);
-
-        assert_eq!(result.len(), 3);
-        assert!(result[0].get("preRuntime").is_some());
-        assert!(result[1].get("consensus").is_some());
-        assert!(result[2].get("seal").is_some());
     }
 
     #[tokio::test]

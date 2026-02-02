@@ -594,6 +594,14 @@
         },
         "fixture_path": "asset-hub-polkadot/rc_blocks_10293194_para_inclusions_para_id_1000.json",
         "description": "Test RC para-inclusions endpoint with paraId filter at Polkadot relay chain block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/rc/blocks/{blockId}/header",
+        "block_height": 29698001,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_header.json",
+        "description": "Test RC block header endpoint at Polkadot Relay Chain block 29,698,001"
       }
     ],
     "asset-hub-kusama": [
@@ -713,6 +721,16 @@
         "description": "Test coretime leases endpoint at Coretime Kusama block 1,000,000"
       },
       {
+        "endpoint": "/v1/coretime/regions",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "2789500"
+        },
+        "fixture_path": "coretime-kusama/coretime_regions_2789500.json",
+        "description": "Test coretime regions endpoint at Coretime Kusama block 2,789,500"
+      },
+      {
         "endpoint": "/v1/coretime/reservations",
         "block_height": null,
         "account_id": null,
@@ -743,6 +761,16 @@
         },
         "fixture_path": "coretime-polkadot/coretime_leases_1000000.json",
         "description": "Test coretime leases endpoint at Coretime Polkadot block 1,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/regions",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "2289500"
+        },
+        "fixture_path": "coretime-polkadot/coretime_regions_2289500.json",
+        "description": "Test coretime regions endpoint at Coretime Polkadot block 2,289,500"
       },
       {
         "endpoint": "/v1/coretime/reservations",

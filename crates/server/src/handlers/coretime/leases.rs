@@ -24,15 +24,6 @@ use serde::Serialize;
 use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
-// Storage key format for Broker::Workload:
-// - 16 bytes: pallet prefix (xxhash128 of "Broker")
-// - 16 bytes: entry prefix (xxhash128 of "Workload")
-// - 8 bytes: twox64 hash of the key
-// - 2 bytes: core index (u16, little-endian SCALE encoded)
-
-/// Minimum length of the storage key to extract core index.
-const STORAGE_KEY_MIN_LENGTH: usize = STORAGE_KEY_DATA_OFFSET + std::mem::size_of::<u16>();
-
 // ============================================================================
 // Response Types
 // ============================================================================
@@ -235,20 +226,17 @@ async fn fetch_workloads(
             }
         };
 
-        // Get key bytes and value bytes
-        let key_bytes = entry.key_bytes();
-        let value_bytes = entry.value().bytes();
-
-        // Extract core index from key bytes using SCALE decoding
-        if key_bytes.len() < STORAGE_KEY_MIN_LENGTH {
-            continue;
-        }
-        let cursor = &mut &key_bytes[STORAGE_KEY_DATA_OFFSET..];
-        let core = match u16::decode(cursor) {
-            Ok(c) => c as u32,
-            Err(_) => continue,
+        let core: u32 = match entry
+            .key()
+            .ok()
+            .and_then(|k| k.part(0))
+            .and_then(|p| p.decode_as::<u16>().ok().flatten())
+        {
+            Some(c) => c as u32,
+            None => continue,
         };
 
+        let value_bytes = entry.value().bytes();
         // Parse the workload value to extract task assignment
         let task = extract_task_from_workload(value_bytes);
 
