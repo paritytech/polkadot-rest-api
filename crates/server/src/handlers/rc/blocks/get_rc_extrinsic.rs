@@ -44,10 +44,6 @@ pub async fn get_rc_extrinsic(
         .get_relay_chain_client()
         .ok_or(GetBlockError::RelayChainNotConfigured)?
         .clone();
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(GetBlockError::RelayChainNotConfigured)?
-        .clone();
     let relay_chain_info = state
         .relay_chain_info
         .clone()
@@ -68,7 +64,6 @@ pub async fn get_rc_extrinsic(
         .block_header()
         .await
         .map_err(GetBlockError::BlockHeaderFailed)?;
-    let parent_hash = format!("{:#x}", header.parent_hash);
 
     let (extrinsics_result, events_result) = tokio::join!(
         extract_extrinsics_with_prefix(ss58_prefix, &client_at_block, block_number),
@@ -99,15 +94,16 @@ pub async fn get_rc_extrinsic(
 
     if !params.no_fees && extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
         let spec_version = client_at_block.spec_version();
+        let client_at_parent = relay_client.at_block(header.parent_hash).await?;
 
         let fee_info = extract_fee_info_for_extrinsic(
             &state,
-            Some(&relay_rpc_client),
+            &client_at_parent,
             &extrinsic.raw_hex,
             &extrinsic.events,
             extrinsic_outcomes.get(extrinsic_index),
-            &parent_hash,
             spec_version,
+            &relay_chain_info.spec_name,
         )
         .await;
 

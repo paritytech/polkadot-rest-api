@@ -149,9 +149,6 @@ pub async fn get_rc_blocks_head(
     let relay_client = state
         .get_relay_chain_client()
         .ok_or(GetRcBlockHeadError::RelayChainNotConfigured)?;
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(GetRcBlockHeadError::RelayChainNotConfigured)?;
     let relay_rpc = state
         .get_relay_chain_rpc()
         .ok_or(GetRcBlockHeadError::RelayChainNotConfigured)?;
@@ -251,6 +248,10 @@ pub async fn get_rc_blocks_head(
 
         if !fee_indices.is_empty() {
             let spec_version = client_at_block.spec_version();
+            let client_at_parent = relay_client
+                .at_block(header.parent_hash)
+                .await
+                .map_err(|e| GetRcBlockHeadError::ClientAtBlockFailed(Box::new(e)))?;
 
             let fee_futures: Vec<_> = fee_indices
                 .iter()
@@ -258,12 +259,12 @@ pub async fn get_rc_blocks_head(
                     let extrinsic = &extrinsics_with_events[i];
                     extract_fee_info_for_extrinsic(
                         &state,
-                        Some(relay_rpc_client),
+                        &client_at_parent,
                         &extrinsic.raw_hex,
                         &extrinsic.events,
                         extrinsic_outcomes.get(i),
-                        &parent_hash,
                         spec_version,
+                        &relay_chain_info.spec_name,
                     )
                 })
                 .collect();

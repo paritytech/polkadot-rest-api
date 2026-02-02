@@ -546,7 +546,7 @@ pub struct ExtrinsicInfo {
     pub events: Vec<Event>,
     /// Whether the extrinsic executed successfully (determined from System.ExtrinsicSuccess event)
     pub success: bool,
-    /// Whether the extrinsic pays a fee (None for unsigned, Some(bool) for signed)
+    /// Whether the extrinsic pays a fee (false for unsigned, value from DispatchInfo for signed)
     /// Extracted from DispatchInfo in System.ExtrinsicSuccess/ExtrinsicFailed events
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pays_fee: Option<bool>,

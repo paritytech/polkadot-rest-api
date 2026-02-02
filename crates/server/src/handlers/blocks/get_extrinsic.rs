@@ -51,7 +51,6 @@ pub async fn get_extrinsic(
         .block_header()
         .await
         .map_err(GetBlockError::BlockHeaderFailed)?;
-    let parent_hash = format!("{:#x}", header.parent_hash);
 
     let (extrinsics_result, events_result) = tokio::join!(
         extract_extrinsics(&state, &client_at_block, block_number),
@@ -82,15 +81,16 @@ pub async fn get_extrinsic(
 
     if !params.no_fees && extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
         let spec_version = client_at_block.spec_version();
+        let client_at_parent = state.client.at_block(header.parent_hash).await?;
 
         let fee_info = extract_fee_info_for_extrinsic(
             &state,
-            None,
+            &client_at_parent,
             &extrinsic.raw_hex,
             &extrinsic.events,
             extrinsic_outcomes.get(extrinsic_index),
-            &parent_hash,
             spec_version,
+            &state.chain_info.spec_name,
         )
         .await;
 

@@ -846,6 +846,15 @@
         "description": "Test block endpoint at Asset Hub Kusama block 11,152,000 (post-migration, Asset Hub era, after migration ended at 11,151,931)"
       },
       {
+        "endpoint": "/v1/rc/blocks/{blockId}/extrinsics/{extrinsicIndex}",
+        "block_height": 28494701,
+        "account_id": null,
+        "extrinsic_index": 2,
+        "query_params": {},
+        "fixture_path": "asset-hub-kusama/rc_blocks_28494701_extrinsics_2.json",
+        "description": "Test extrinsic endpoint at Asset Hub kusama block 28,494,701, extrinsic index 2"
+      },
+      {
         "endpoint": "/v1/pallets/assets/{assetId}/asset-info",
         "block_height": null,
         "account_id": null,
