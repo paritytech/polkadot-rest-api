@@ -9,7 +9,7 @@ use crate::handlers::blocks::types::{
     convert_digest_logs_to_sidecar_format,
 };
 use crate::state::AppState;
-use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
+use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block_at};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -38,31 +38,26 @@ pub async fn get_block_header(
     }
 
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
-    let resolved_block = utils::resolve_block(&state, Some(block_id_parsed)).await?;
 
-    let client_at_block = state
-        .client
-        .at_block(resolved_block.number)
-        .await
-        .map_err(GetBlockHeaderError::ClientAtBlockFailed)?;
+    let client_at_block = match &block_id_parsed {
+        utils::BlockId::Number(n) => state.client.at_block(*n).await,
+        utils::BlockId::Hash(h) => state.client.at_block(*h).await,
+    }
+    .map_err(GetBlockHeaderError::ClientAtBlockFailed)?;
 
     let header = client_at_block
         .block_header()
         .await
         .map_err(GetBlockHeaderError::BlockHeaderFailed)?;
 
-    let parent_hash = format!("{:#x}", header.parent_hash);
-    let state_root = format!("{:#x}", header.state_root);
-    let extrinsics_root = format!("{:#x}", header.extrinsics_root);
-
     let digest_logs = convert_digest_items_to_logs(&header.digest.logs);
     let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
 
     let response = BlockHeaderResponse {
-        parent_hash,
-        number: resolved_block.number.to_string(),
-        state_root,
-        extrinsics_root,
+        parent_hash: format!("{:#x}", header.parent_hash),
+        number: client_at_block.block_number().to_string(),
+        state_root: format!("{:#x}", header.state_root),
+        extrinsics_root: format!("{:#x}", header.extrinsics_root),
         digest: json!({
             "logs": digest_logs_formatted
         }),
@@ -84,30 +79,25 @@ async fn handle_use_rc_block(
         return Err(GetBlockHeaderError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(GetBlockHeaderError::RelayChainNotConfigured);
-    }
-
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(GetBlockHeaderError::RelayChainNotConfigured)?;
-
-    let relay_rpc = state
-        .get_relay_chain_rpc()
+    let relay_client = state
+        .get_relay_chain_client()
         .ok_or(GetBlockHeaderError::RelayChainNotConfigured)?;
 
     let rc_block_id = block_id.parse::<utils::BlockId>()?;
-    let rc_resolved_block =
-        utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, Some(rc_block_id)).await?;
+    let rc_client_at_block = match &rc_block_id {
+        utils::BlockId::Number(n) => relay_client.at_block(*n).await,
+        utils::BlockId::Hash(h) => relay_client.at_block(*h).await,
+    }
+    .map_err(GetBlockHeaderError::ClientAtBlockFailed)?;
 
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+    let ah_blocks = find_ah_blocks_in_rc_block_at(&rc_client_at_block).await?;
 
     if ah_blocks.is_empty() {
         return Ok(Json(json!([])).into_response());
     }
 
-    let rc_block_number = rc_resolved_block.number.to_string();
-    let rc_block_hash = rc_resolved_block.hash.clone();
+    let rc_block_number = rc_client_at_block.block_number().to_string();
+    let rc_block_hash = format!("{:#x}", rc_client_at_block.block_hash());
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {

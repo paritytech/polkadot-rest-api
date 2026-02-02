@@ -594,6 +594,14 @@
         },
         "fixture_path": "asset-hub-polkadot/rc_blocks_10293194_para_inclusions_para_id_1000.json",
         "description": "Test RC para-inclusions endpoint with paraId filter at Polkadot relay chain block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/rc/blocks/{blockId}/header",
+        "block_height": 29698001,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_header.json",
+        "description": "Test RC block header endpoint at Polkadot Relay Chain block 29,698,001"
       }
     ],
     "asset-hub-kusama": [
