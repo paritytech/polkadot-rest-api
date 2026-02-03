@@ -155,7 +155,10 @@ async fn test_coretime_leases_item_structure() -> Result<()> {
     // Validate until is a positive number (as string)
     let until = lease["until"].as_str().unwrap();
     let until_num: u64 = until.parse().expect("'until' should be a numeric string");
-    assert!(until_num > 0, "'until' should be a positive timeslice value");
+    assert!(
+        until_num > 0,
+        "'until' should be a positive timeslice value"
+    );
 
     println!(
         "ok: Coretime leases item structure test passed ({} leases found)",
@@ -464,7 +467,10 @@ async fn test_coretime_leases_sorting() -> Result<()> {
     let mut seen_none = false;
 
     for lease in leases {
-        let core = lease.get("core").and_then(|c| c.as_str()).and_then(|s| s.parse::<u64>().ok());
+        let core = lease
+            .get("core")
+            .and_then(|c| c.as_str())
+            .and_then(|s| s.parse::<u64>().ok());
 
         match (core, last_core, seen_none) {
             // If we see a Some after a None, that's wrong
