@@ -17,7 +17,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use parity_scale_codec::DecodeAll;
 use serde::{Deserialize, Serialize};
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
@@ -219,19 +218,15 @@ async fn fetch_pool_asset_info(
     asset_id: u32,
     ss58_prefix: u16,
 ) -> Option<PoolAssetInfo> {
-    // Query PoolAssets pallet instead of Assets
-    let asset_addr = subxt::dynamic::storage::<_, scale_value::Value>("PoolAssets", "Asset");
-    let asset_value = match client_at_block
+    // Query PoolAssets pallet with typed return
+    let asset_addr = subxt::dynamic::storage::<_, AssetDetails>("PoolAssets", "Asset");
+    let details = client_at_block
         .storage()
         .fetch(asset_addr, (asset_id,))
         .await
-    {
-        Ok(value) => value,
-        Err(_) => return None,
-    };
-    let raw_bytes = asset_value.into_bytes();
-    // Use decode_all to ensure all bytes are consumed
-    let details = AssetDetails::decode_all(&mut &raw_bytes[..]).ok()?;
+        .ok()?
+        .decode()
+        .ok()?;
 
     Some(PoolAssetInfo {
         owner: format_account_id(&details.owner, ss58_prefix),
@@ -254,19 +249,16 @@ async fn fetch_pool_asset_meta_data(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     asset_id: u32,
 ) -> Option<PoolAssetMetadata> {
-    // Query PoolAssets pallet instead of Assets
-    let metadata_addr = subxt::dynamic::storage::<_, scale_value::Value>("PoolAssets", "Metadata");
-    let metadata_value = match client_at_block
+    // Query PoolAssets pallet with typed return
+    let metadata_addr =
+        subxt::dynamic::storage::<_, AssetMetadataStorage>("PoolAssets", "Metadata");
+    let metadata = client_at_block
         .storage()
         .fetch(metadata_addr, (asset_id,))
         .await
-    {
-        Ok(value) => value,
-        Err(_) => return None,
-    };
-    let raw_bytes = metadata_value.into_bytes();
-    // Use decode_all to ensure all bytes are consumed
-    let metadata = AssetMetadataStorage::decode_all(&mut &raw_bytes[..]).ok()?;
+        .ok()?
+        .decode()
+        .ok()?;
 
     Some(PoolAssetMetadata {
         deposit: metadata.deposit.to_string(),

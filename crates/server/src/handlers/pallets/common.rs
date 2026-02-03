@@ -313,7 +313,8 @@ impl Default for DeprecationInfo {
 // ============================================================================
 
 /// Asset status enum used in both Assets and PoolAssets pallets.
-#[derive(Debug, Clone, Decode)]
+#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
+#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
 pub enum AssetStatus {
     Live,
     Frozen,
@@ -331,7 +332,8 @@ impl AssetStatus {
 }
 
 /// Asset details struct used in both Assets::Asset and PoolAssets::Asset storage.
-#[derive(Debug, Clone, Decode)]
+#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
+#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
 pub struct AssetDetails {
     pub owner: [u8; 32],
     pub issuer: [u8; 32],
@@ -348,7 +350,8 @@ pub struct AssetDetails {
 }
 
 /// Asset metadata struct used in both Assets::Metadata and PoolAssets::Metadata storage.
-#[derive(Debug, Clone, Decode)]
+#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
+#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
 pub struct AssetMetadataStorage {
     pub deposit: u128,
     pub name: Vec<u8>,

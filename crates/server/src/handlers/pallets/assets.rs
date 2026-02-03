@@ -15,7 +15,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
@@ -211,19 +210,15 @@ async fn fetch_asset_info(
     asset_id: u32,
     ss58_prefix: u16,
 ) -> Option<AssetInfo> {
-    // Use dynamic storage with key parts as second argument
-    // Specify scale_value::Value as the decode type to get raw bytes
-    let asset_addr = subxt::dynamic::storage::<_, scale_value::Value>("Assets", "Asset");
-    let asset_value = match client_at_block
+    // Query Assets pallet with typed return
+    let asset_addr = subxt::dynamic::storage::<_, AssetDetails>("Assets", "Asset");
+    let details = client_at_block
         .storage()
         .fetch(asset_addr, (asset_id,))
         .await
-    {
-        Ok(value) => value,
-        Err(_) => return None,
-    };
-    let raw_bytes = asset_value.into_bytes();
-    let details = AssetDetails::decode(&mut &raw_bytes[..]).ok()?;
+        .ok()?
+        .decode()
+        .ok()?;
 
     Some(AssetInfo {
         owner: format_account_id(&details.owner, ss58_prefix),
@@ -246,19 +241,15 @@ async fn fetch_asset_metadata(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     asset_id: u32,
 ) -> Option<AssetMetadata> {
-    // Use dynamic storage with key parts as second argument
-    // Specify scale_value::Value as the decode type to get raw bytes
-    let metadata_addr = subxt::dynamic::storage::<_, scale_value::Value>("Assets", "Metadata");
-    let metadata_value = match client_at_block
+    // Query Assets pallet with typed return
+    let metadata_addr = subxt::dynamic::storage::<_, AssetMetadataStorage>("Assets", "Metadata");
+    let metadata = client_at_block
         .storage()
         .fetch(metadata_addr, (asset_id,))
         .await
-    {
-        Ok(value) => value,
-        Err(_) => return None,
-    };
-    let raw_bytes = metadata_value.into_bytes();
-    let metadata = AssetMetadataStorage::decode(&mut &raw_bytes[..]).ok()?;
+        .ok()?
+        .decode()
+        .ok()?;
 
     Some(AssetMetadata {
         deposit: metadata.deposit.to_string(),
