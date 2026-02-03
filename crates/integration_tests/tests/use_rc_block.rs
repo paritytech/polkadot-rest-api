@@ -441,3 +441,225 @@ fn init_tracing() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init();
 }
+
+#[tokio::test]
+async fn test_use_rc_block_head() -> Result<()> {
+    init_tracing();
+
+    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let local_client = TestClient::new(api_url);
+
+    local_client
+        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
+        .await
+        .context("Local API is not ready")?;
+
+    let endpoint = "/blocks/head?useRcBlock=true";
+
+    println!(
+        "\n{} Testing useRcBlock for /blocks/head",
+        "Testing".cyan().bold()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    println!(
+        "{} Fetching from local API: {}{}",
+        "→".cyan(),
+        local_client.base_url(),
+        endpoint
+    );
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    println!("{} Local API response: {}", "✓".green(), "OK".green());
+
+    println!(
+        "\n{} Validating response structure and types...",
+        "→".cyan().bold()
+    );
+
+    let local_array = local_json
+        .as_array()
+        .expect("Local response is not an array");
+
+    println!(
+        "  {} Local response contains {} block(s)",
+        "✓".green(),
+        local_array.len()
+    );
+
+    assert!(!local_array.is_empty(), "Local response is empty");
+
+    let local_block = &local_array[0];
+    validate_block_head_structure(local_block)?;
+
+    validate_use_rc_block_fields(local_block)?;
+
+    println!("\n{} Structure validation passed!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_use_rc_block_head_finalized_false() -> Result<()> {
+    init_tracing();
+
+    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let local_client = TestClient::new(api_url);
+
+    local_client
+        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
+        .await
+        .context("Local API is not ready")?;
+
+    let endpoint = "/blocks/head?useRcBlock=true&finalized=false";
+
+    println!(
+        "\n{} Testing useRcBlock for /blocks/head with finalized=false",
+        "Testing".cyan().bold()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    println!(
+        "{} Fetching from local API: {}{}",
+        "→".cyan(),
+        local_client.base_url(),
+        endpoint
+    );
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    println!("{} Local API response: {}", "✓".green(), "OK".green());
+
+    let local_array = local_json
+        .as_array()
+        .expect("Local response is not an array");
+
+    println!(
+        "  {} Local response contains {} block(s)",
+        "✓".green(),
+        local_array.len()
+    );
+
+    assert!(!local_array.is_empty(), "Local response is empty");
+
+    println!("\n{} Canonical head test passed!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+fn validate_block_head_structure(block: &Value) -> Result<()> {
+    let block_obj = block.as_object().context("Block is not an object")?;
+
+    let required_fields = vec![
+        ("number", "string"),
+        ("hash", "string"),
+        ("parentHash", "string"),
+        ("stateRoot", "string"),
+        ("extrinsicsRoot", "string"),
+        ("logs", "array"),
+        ("onInitialize", "object"),
+        ("extrinsics", "array"),
+        ("onFinalize", "object"),
+    ];
+
+    let mut errors = Vec::new();
+
+    for (field, expected_type) in required_fields {
+        match block_obj.get(field) {
+            Some(value) => {
+                let actual_type = value_type_name(value);
+                if actual_type != expected_type {
+                    errors.push(format!(
+                        "  {} {}: type mismatch - expected {}, got {}",
+                        "✗".red(),
+                        field,
+                        expected_type,
+                        actual_type
+                    ));
+                } else {
+                    println!("  {} {}: {} ✓", "✓".green(), field, actual_type);
+                }
+            }
+            None => {
+                errors.push(format!("  {} {}: missing required field", "✗".red(), field));
+            }
+        }
+    }
+
+    if !errors.is_empty() {
+        println!("\n{} Structure validation errors:", "✗".red().bold());
+        for error in &errors {
+            println!("{}", error);
+        }
+        anyhow::bail!("Found {} structure error(s)", errors.len());
+    }
+
+    Ok(())
+}
+
+fn validate_use_rc_block_fields(block: &Value) -> Result<()> {
+    let block_obj = block.as_object().context("Block is not an object")?;
+
+    let rc_fields = vec![
+        ("rcBlockHash", "string"),
+        ("rcBlockNumber", "string"),
+        ("ahTimestamp", "string"),
+    ];
+
+    let mut errors = Vec::new();
+
+    println!("\n{} Validating useRcBlock-specific fields...", "→".cyan());
+
+    for (field, expected_type) in rc_fields {
+        match block_obj.get(field) {
+            Some(value) => {
+                let actual_type = value_type_name(value);
+                if actual_type != expected_type {
+                    errors.push(format!(
+                        "  {} {}: type mismatch - expected {}, got {}",
+                        "✗".red(),
+                        field,
+                        expected_type,
+                        actual_type
+                    ));
+                } else {
+                    println!("  {} {}: {} ✓", "✓".green(), field, actual_type);
+                }
+            }
+            None => {
+                errors.push(format!(
+                    "  {} {}: missing required useRcBlock field",
+                    "✗".red(),
+                    field
+                ));
+            }
+        }
+    }
+
+    if !errors.is_empty() {
+        println!("\n{} useRcBlock field validation errors:", "✗".red().bold());
+        for error in &errors {
+            println!("{}", error);
+        }
+        anyhow::bail!("Found {} useRcBlock field error(s)", errors.len());
+    }
+
+    Ok(())
+}
