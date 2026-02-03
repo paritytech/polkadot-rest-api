@@ -871,20 +871,294 @@ fn validate_extrinsics_raw_structure(block: &Value) -> Result<()> {
     }
 
     // Validate digest structure
-    if let Some(digest) = block_obj.get("digest") {
-        if let Some(digest_obj) = digest.as_object() {
-            if let Some(logs) = digest_obj.get("logs") {
-                if logs.as_array().is_some() {
-                    println!("  {} digest.logs: array ✓", "✓".green());
-                } else {
+    if let Some(digest) = block_obj.get("digest")
+        && let Some(digest_obj) = digest.as_object()
+    {
+        if let Some(logs) = digest_obj.get("logs") {
+            if logs.as_array().is_some() {
+                println!("  {} digest.logs: array ✓", "✓".green());
+            } else {
+                errors.push(format!(
+                    "  {} digest.logs: expected array, got {}",
+                    "✗".red(),
+                    value_type_name(logs)
+                ));
+            }
+        } else {
+            errors.push(format!("  {} digest.logs: missing", "✗".red()));
+        }
+    }
+
+    if !errors.is_empty() {
+        println!("\n{} Structure validation errors:", "✗".red().bold());
+        for error in &errors {
+            println!("{}", error);
+        }
+        anyhow::bail!("Found {} structure error(s)", errors.len());
+    }
+
+    Ok(())
+}
+
+// ================================================================================================
+// Tests for /blocks/{blockId}/extrinsics/{extrinsicIndex}?useRcBlock=true
+// ================================================================================================
+
+#[tokio::test]
+async fn test_use_rc_block_extrinsic_structure() -> Result<()> {
+    init_tracing();
+
+    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let local_client = TestClient::new(api_url);
+
+    local_client
+        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
+        .await
+        .context("Local API is not ready")?;
+
+    let rc_block_number = 10554957;
+    let extrinsic_index = 0;
+    let endpoint = format!(
+        "/blocks/{}/extrinsics/{}?useRcBlock=true",
+        rc_block_number, extrinsic_index
+    );
+
+    println!(
+        "\n{} Testing useRcBlock for /blocks/{}/extrinsics/{} - Structure validation",
+        "Testing".cyan().bold(),
+        rc_block_number,
+        extrinsic_index
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    println!(
+        "{} Fetching from local API: {}{}",
+        "→".cyan(),
+        local_client.base_url(),
+        endpoint
+    );
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    println!("{} Local API response: {}", "✓".green(), "OK".green());
+
+    println!("\n{} Validating response structure...", "→".cyan().bold());
+
+    let local_array = local_json
+        .as_array()
+        .expect("Local response is not an array");
+
+    println!(
+        "  {} Local response contains {} item(s)",
+        "✓".green(),
+        local_array.len()
+    );
+
+    assert!(!local_array.is_empty(), "Local response is empty");
+
+    // Validate first extrinsic structure
+    let local_extrinsic = &local_array[0];
+    validate_extrinsic_structure(local_extrinsic)?;
+    validate_use_rc_block_fields(local_extrinsic)?;
+
+    println!("\n{} Structure validation passed!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_use_rc_block_extrinsic_comparison() -> Result<()> {
+    init_tracing();
+
+    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let local_client = TestClient::new(api_url);
+
+    local_client
+        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
+        .await
+        .context("Local API is not ready")?;
+
+    let rc_block_number = 10554957;
+    let extrinsic_index = 0;
+    let endpoint = format!(
+        "/blocks/{}/extrinsics/{}?useRcBlock=true",
+        rc_block_number, extrinsic_index
+    );
+
+    println!(
+        "\n{} Testing useRcBlock for /blocks/{}/extrinsics/{} - Fixture comparison",
+        "Testing".cyan().bold(),
+        rc_block_number,
+        extrinsic_index
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    println!(
+        "{} Fetching from local API: {}{}",
+        "→".cyan(),
+        local_client.base_url(),
+        endpoint
+    );
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    println!("{} Local API response: {}", "✓".green(), "OK".green());
+
+    println!(
+        "{} Loading expected response from sidecar fixture",
+        "→".cyan()
+    );
+    let fixture_path = get_fixture_path("use_rc_block_extrinsic_10554957_0.json")?;
+    let fixture_content = fs::read_to_string(&fixture_path)
+        .with_context(|| format!("Failed to read fixture file: {:?}", fixture_path))?;
+    let sidecar_json: Value = serde_json::from_str(&fixture_content)
+        .context("Failed to parse expected sidecar response from fixture")?;
+    println!("{} Expected response loaded from fixture", "✓".green());
+
+    println!("\n{} Validating responses...", "→".cyan().bold());
+
+    let local_array = local_json
+        .as_array()
+        .expect("Local response is not an array");
+    let sidecar_array = sidecar_json
+        .as_array()
+        .expect("Sidecar response is not an array");
+
+    println!(
+        "  {} Local response contains {} item(s)",
+        "✓".green(),
+        local_array.len()
+    );
+    println!(
+        "  {} Sidecar response contains {} item(s)",
+        "✓".green(),
+        sidecar_array.len()
+    );
+
+    assert_eq!(
+        local_array.len(),
+        sidecar_array.len(),
+        "Item count mismatch: local={}, sidecar={}",
+        local_array.len(),
+        sidecar_array.len()
+    );
+
+    println!("\n{} Comparing JSON responses...", "→".cyan().bold());
+    let comparison_result = compare_json(&local_json, &sidecar_json, &[])?;
+
+    if !comparison_result.is_match() {
+        println!("{} JSON responses differ:", "✗".red().bold());
+        let diff_output = comparison_result.format_diff(&sidecar_json, &local_json);
+        println!("{}", diff_output);
+        println!("{}", "═".repeat(80).bright_white());
+    }
+
+    assert!(
+        comparison_result.is_match(),
+        "Found {} difference(s) between local and expected responses",
+        comparison_result.differences().len()
+    );
+
+    println!("{} All JSON responses match!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+fn validate_extrinsic_structure(extrinsic_response: &Value) -> Result<()> {
+    let response_obj = extrinsic_response
+        .as_object()
+        .context("Extrinsic response is not an object")?;
+
+    // Validate top-level structure
+    let top_level_fields = vec![("at", "object"), ("extrinsics", "object")];
+
+    let mut errors = Vec::new();
+
+    for (field, expected_type) in top_level_fields {
+        match response_obj.get(field) {
+            Some(value) => {
+                let actual_type = value_type_name(value);
+                if actual_type != expected_type {
                     errors.push(format!(
-                        "  {} digest.logs: expected array, got {}",
+                        "  {} {}: type mismatch - expected {}, got {}",
                         "✗".red(),
-                        value_type_name(logs)
+                        field,
+                        expected_type,
+                        actual_type
+                    ));
+                } else {
+                    println!("  {} {}: {} ✓", "✓".green(), field, actual_type);
+                }
+            }
+            None => {
+                errors.push(format!("  {} {}: missing required field", "✗".red(), field));
+            }
+        }
+    }
+
+    // Validate 'at' structure
+    if let Some(at) = response_obj.get("at")
+        && let Some(at_obj) = at.as_object()
+    {
+        for field in &["height", "hash"] {
+            match at_obj.get(*field) {
+                Some(value) if value.is_string() => {
+                    println!("  {} at.{}: string ✓", "✓".green(), field);
+                }
+                Some(value) => {
+                    errors.push(format!(
+                        "  {} at.{}: expected string, got {}",
+                        "✗".red(),
+                        field,
+                        value_type_name(value)
                     ));
                 }
+                None => {
+                    errors.push(format!("  {} at.{}: missing", "✗".red(), field));
+                }
+            }
+        }
+    }
+
+    // Validate 'extrinsics' structure
+    if let Some(extrinsics) = response_obj.get("extrinsics")
+        && let Some(ext_obj) = extrinsics.as_object()
+    {
+        let extrinsic_fields = vec![
+            ("method", "object"),
+            ("signature", "null"),
+            ("nonce", "null"),
+            ("args", "object"),
+            ("tip", "null"),
+            ("hash", "string"),
+            ("info", "object"),
+            ("era", "object"),
+            ("events", "array"),
+            ("success", "boolean"),
+            ("paysFee", "boolean"),
+        ];
+
+        for (field, _expected_type) in extrinsic_fields {
+            if ext_obj.contains_key(field) {
+                println!("  {} extrinsics.{}: present ✓", "✓".green(), field);
             } else {
-                errors.push(format!("  {} digest.logs: missing", "✗".red()));
+                errors.push(format!("  {} extrinsics.{}: missing", "✗".red(), field));
             }
         }
     }
