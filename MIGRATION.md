@@ -15,6 +15,7 @@ This project is a Rust-based alternative to substrate-api-sidecar, designed to p
   - `/v1/pallets/assets/{assetId}/asset-info`
   - `/v1/pallets/asset-conversion/liquidity-pools`
   - `/v1/pallets/asset-conversion/next-available-id`
+  - `/v1/pallets/pool-assets/{assetId}/asset-info`
 
 ### API Changes
 

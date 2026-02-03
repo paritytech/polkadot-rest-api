@@ -1,0 +1,27 @@
+{
+  "at": {
+    "hash": "0xec77b29816dec211e0565fdbdee1e29a7fc482f6f19e6e44ecdebc37545a155e",
+    "height": "10260000"
+  },
+  "poolAssetInfo": {
+    "owner": "12dvmstTqsjrPrPdouMpbsgaaQjPGYFh7gMaiNgZ7Rzaacok",
+    "issuer": "12dvmstTqsjrPrPdouMpbsgaaQjPGYFh7gMaiNgZ7Rzaacok",
+    "admin": "12dvmstTqsjrPrPdouMpbsgaaQjPGYFh7gMaiNgZ7Rzaacok",
+    "freezer": "12dvmstTqsjrPrPdouMpbsgaaQjPGYFh7gMaiNgZ7Rzaacok",
+    "supply": "55402670174",
+    "deposit": "0",
+    "minBalance": "1",
+    "isSufficient": false,
+    "accounts": "14",
+    "sufficients": "0",
+    "approvals": "0",
+    "status": "Live"
+  },
+  "poolAssetMetaData": {
+    "deposit": "0",
+    "name": "0x",
+    "symbol": "0x",
+    "decimals": "0",
+    "isFrozen": false
+  }
+}
