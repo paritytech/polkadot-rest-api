@@ -80,28 +80,53 @@
       "path": "/v1/rc/blocks/head/header",
       "query_params": [
         {},
-        {"finalized": "true"},
-        {"finalized": "false"}
+        {
+          "finalized": "true"
+        },
+        {
+          "finalized": "false"
+        }
       ],
       "requires_block_height": false,
       "requires_account": false,
-      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
+      "only_chains": [
+        "asset-hub-polkadot",
+        "asset-hub-kusama"
+      ]
     },
     {
       "path": "/v1/rc/blocks/head",
       "query_params": [
         {},
-        {"finalized": "true"},
-        {"finalized": "false"},
-        {"eventDocs": "true"},
-        {"extrinsicDocs": "true"},
-        {"noFees": "true"},
-        {"decodedXcmMsgs": "true"},
-        {"decodedXcmMsgs": "true", "paraId": "1000"}
+        {
+          "finalized": "true"
+        },
+        {
+          "finalized": "false"
+        },
+        {
+          "eventDocs": "true"
+        },
+        {
+          "extrinsicDocs": "true"
+        },
+        {
+          "noFees": "true"
+        },
+        {
+          "decodedXcmMsgs": "true"
+        },
+        {
+          "decodedXcmMsgs": "true",
+          "paraId": "1000"
+        }
       ],
       "requires_block_height": false,
       "requires_account": false,
-      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
+      "only_chains": [
+        "asset-hub-polkadot",
+        "asset-hub-kusama"
+      ]
     },
     {
       "path": "/v1/pallets/asset-conversion/next-available-id",
@@ -110,7 +135,10 @@
       ],
       "requires_block_height": false,
       "requires_account": false,
-      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
+      "only_chains": [
+        "asset-hub-polkadot",
+        "asset-hub-kusama"
+      ]
     },
     {
       "path": "/v1/pallets/asset-conversion/liquidity-pools",
@@ -119,7 +147,10 @@
       ],
       "requires_block_height": false,
       "requires_account": false,
-      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
+      "only_chains": [
+        "asset-hub-polkadot",
+        "asset-hub-kusama"
+      ]
     },
     {
       "path": "/v1/pallets/nomination-pools/info",
@@ -711,7 +742,9 @@
         "endpoint": "/v1/pallets/asset-conversion/next-available-id",
         "block_height": null,
         "account_id": null,
-        "query_params": { "at": "10260000" },
+        "query_params": {
+          "at": "10260000"
+        },
         "fixture_path": "asset-hub-polkadot/pallets_asset_conversion_next_available_id_10260000.json",
         "description": "Test pallets asset-conversion next-available-id at Asset Hub Polkadot block 10,260,000"
       },
@@ -719,7 +752,9 @@
         "endpoint": "/v1/pallets/asset-conversion/liquidity-pools",
         "block_height": null,
         "account_id": null,
-        "query_params": { "at": "10260000" },
+        "query_params": {
+          "at": "10260000"
+        },
         "fixture_path": "asset-hub-polkadot/pallets_asset_conversion_liquidity_pools_10260000.json",
         "description": "Test pallets asset-conversion liquidity-pools at Asset Hub Polkadot block 10,260,000"
       },
@@ -1227,7 +1262,9 @@
         "endpoint": "/v1/pallets/asset-conversion/next-available-id",
         "block_height": null,
         "account_id": null,
-        "query_params": { "at": "8000000" },
+        "query_params": {
+          "at": "8000000"
+        },
         "fixture_path": "asset-hub-kusama/pallets_asset_conversion_next_available_id_8000000.json",
         "description": "Test pallets asset-conversion next-available-id at Asset Hub Kusama block 8,000,000"
       },
@@ -1235,7 +1272,9 @@
         "endpoint": "/v1/pallets/asset-conversion/liquidity-pools",
         "block_height": null,
         "account_id": null,
-        "query_params": { "at": "8000000" },
+        "query_params": {
+          "at": "8000000"
+        },
         "fixture_path": "asset-hub-kusama/pallets_asset_conversion_liquidity_pools_8000000.json",
         "description": "Test pallets asset-conversion liquidity-pools at Asset Hub Kusama block 8,000,000"
       },
@@ -1363,6 +1402,17 @@
         },
         "fixture_path": "asset-hub-kusama/extrinsic_12949861_1_use_evm_format.json",
         "description": "Test extrinsic endpoint with useEvmFormat parameter at Asset Hub Kusama block 12,949,861, extrinsic index 1"
+      },
+      {
+        "endpoint": "/v1/blocks",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "range": "12949861-12949863",
+          "useEvmFormat": "true"
+        },
+        "fixture_path": "asset-hub-kusama/blocks_range_12949861-12949863_use_evm_format.json",
+        "description": "Test blocks range endpoint with useEvmFormat parameter at Asset Hub Kusama blocks 12,949,861-12,949,863"
       }
     ],
     "coretime-kusama": [
