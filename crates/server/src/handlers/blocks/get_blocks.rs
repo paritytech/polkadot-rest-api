@@ -25,7 +25,7 @@ pub struct BlocksRangeQueryParams {
     pub no_fees: bool,
     #[serde(default)]
     pub use_rc_block: bool,
-    // TODO: Implement EVM format support for block responses
+    /// When true, convert AccountId32 addresses to EVM format for revive pallet events
     #[serde(default)]
     pub use_evm_format: bool,
 }
@@ -49,6 +49,7 @@ pub async fn get_blocks(
         event_docs: params.event_docs,
         extrinsic_docs: params.extrinsic_docs,
         no_fees: params.no_fees,
+        use_evm_format: params.use_evm_format,
         ..BlockQueryParams::default()
     };
 

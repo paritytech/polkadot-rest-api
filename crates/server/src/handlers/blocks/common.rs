@@ -637,6 +637,11 @@ pub async fn build_block_response_generic(
         }
     }
 
+    if params.use_evm_format {
+        let metadata = client_at_block.metadata();
+        super::evm_format::apply_evm_format(&mut extrinsics_with_events, &metadata);
+    }
+
     let decoded_xcm_msgs = if params.decoded_xcm_msgs {
         let decoder = XcmDecoder::new(
             ctx.chain_type.clone(),

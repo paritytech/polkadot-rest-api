@@ -1340,6 +1340,29 @@
         "query_params": {},
         "fixture_path": "asset-hub-kusama/pallets_system_errors.json",
         "description": "Test pallets system errors at Asset Hub Kusama"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 12949861,
+        "account_id": null,
+        "query_params": {
+          "useEvmFormat": "true"
+        },
+        "fixture_path": "asset-hub-kusama/blocks_12949861_use_evm_format.json",
+        "description": "Test block endpoint with useEvmFormat parameter at Asset Hub Kusama block 12,949,861"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}/extrinsics/{extrinsicIndex}",
+        "block_height": 12949861,
+        "account_id": null,
+        "extrinsic_index": 1,
+        "query_params": {
+          "eventDocs": "true",
+          "extrinsicDocs": "true",
+          "useEvmFormat": "true"
+        },
+        "fixture_path": "asset-hub-kusama/extrinsic_12949861_1_use_evm_format.json",
+        "description": "Test extrinsic endpoint with useEvmFormat parameter at Asset Hub Kusama block 12,949,861, extrinsic index 1"
       }
     ],
     "coretime-kusama": [
