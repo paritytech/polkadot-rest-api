@@ -9,7 +9,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use parity_scale_codec::Decode;
 use primitive_types::H256;
 use scale_value::{Composite, ValueDef};
 use serde::Serialize;

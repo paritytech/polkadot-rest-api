@@ -4,11 +4,76 @@
 //! and utility functions used by coretime endpoints.
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
-use parity_scale_codec::{Compact, Decode, Encode};
+use parity_scale_codec::{Decode, Encode};
 use serde::Serialize;
 use serde_json::json;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 use thiserror::Error;
+
+// ============================================================================
+// Constants - Broker Pallet SCALE Encoding
+// ============================================================================
+
+// ScheduleItem structure from the Broker pallet:
+// - CoreMask: 80 bits = 10 bytes (fixed-size array)
+// - CoreAssignment: enum with variants Idle(0), Pool(1), Task(2, u32)
+//
+// See: https://github.com/paritytech/polkadot-sdk/blob/master/substrate/frame/broker/src/types.rs
+
+/// Size of CoreMask in bytes (80 bits = 10 bytes).
+pub const CORE_MASK_SIZE: usize = 10;
+
+/// Size of a u32 task ID in bytes.
+pub const TASK_ID_SIZE: usize = 4;
+
+/// CoreAssignment::Idle variant (core is not assigned).
+pub const ASSIGNMENT_IDLE_VARIANT: u8 = 0;
+
+/// CoreAssignment::Pool variant (core contributes to the instantaneous pool).
+pub const ASSIGNMENT_POOL_VARIANT: u8 = 1;
+
+/// CoreAssignment::Task(u32) variant (core is assigned to a specific task/parachain).
+pub const ASSIGNMENT_TASK_VARIANT: u8 = 2;
+
+// ============================================================================
+// Storage Key Constants
+// ============================================================================
+
+// Substrate storage keys consist of:
+// - 16 bytes: pallet prefix (xxhash128 of pallet name)
+// - 16 bytes: entry prefix (xxhash128 of storage entry name)
+// - Variable: key data (depends on hasher type)
+//
+// For Twox64Concat hasher (common for small keys like u16, u32):
+// - 8 bytes: twox64 hash of the key
+// - N bytes: the raw key bytes (concatenated)
+
+/// Size of pallet name hash in storage key (xxhash128 = 16 bytes).
+pub const PALLET_HASH_SIZE: usize = 16;
+
+/// Size of storage entry name hash in storage key (xxhash128 = 16 bytes).
+pub const ENTRY_HASH_SIZE: usize = 16;
+
+/// Base offset where map keys start (pallet hash + entry hash).
+pub const STORAGE_KEY_BASE_OFFSET: usize = PALLET_HASH_SIZE + ENTRY_HASH_SIZE;
+
+/// Size of twox64 hash prefix used in Twox64Concat hasher.
+pub const TWOX64_HASH_SIZE: usize = 8;
+
+/// Offset where the actual key data starts (after base + twox64 hash).
+pub const STORAGE_KEY_DATA_OFFSET: usize = STORAGE_KEY_BASE_OFFSET + TWOX64_HASH_SIZE;
+
+/// Size of u16 in bytes (for core index fields).
+pub const U16_SIZE: usize = 2;
+
+/// Size of u32 in bytes (for timeslice, task ID fields).
+pub const U32_SIZE: usize = 4;
+
+/// Size of u128 in bytes (for price/balance fields).
+pub const U128_SIZE: usize = 16;
+
+/// CoreMask type alias - 80 bits represented as 10 bytes.
+pub type CoreMask = [u8; CORE_MASK_SIZE];
 
 // ============================================================================
 // Shared Types
@@ -114,6 +179,14 @@ pub enum CoretimeError {
 
     #[error("This endpoint is only available on relay chains or coretime chains")]
     UnsupportedChainType,
+
+    #[error(
+        "{pallet}::{entry} is not available at this block. This storage item was introduced in a later runtime upgrade."
+    )]
+    StorageItemNotAvailableAtBlock {
+        pallet: &'static str,
+        entry: &'static str,
+    },
 }
 
 impl IntoResponse for CoretimeError {
@@ -179,6 +252,9 @@ impl IntoResponse for CoretimeError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Unsupported network type.".to_string(),
             ),
+            CoretimeError::StorageItemNotAvailableAtBlock { .. } => {
+                (StatusCode::NOT_FOUND, self.to_string())
+            }
         };
 
         // Match Sidecar's response format: { code: number, message: string }

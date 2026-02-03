@@ -41,7 +41,7 @@ use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 const KEY_DATA_SIZE: usize = std::mem::size_of::<u16>() + std::mem::size_of::<u32>();
 
 /// Minimum length of the storage key to extract renewal ID fields.
-const STORAGE_KEY_MIN_LENGTH: usize = STORAGE_KEY_DATA_OFFSET + KEY_DATA_SIZE;
+pub const STORAGE_KEY_MIN_LENGTH: usize = STORAGE_KEY_DATA_OFFSET + KEY_DATA_SIZE;
 
 // ============================================================================
 // SCALE Decode Types (matching Broker pallet types)
