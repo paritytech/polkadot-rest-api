@@ -27,11 +27,7 @@ pub fn apply_evm_format(extrinsics: &mut [ExtrinsicInfo], metadata: &subxt::Meta
     for extrinsic in extrinsics.iter_mut() {
         if extrinsic.method.pallet.to_lowercase() == "revive" {
             for event in extrinsic.events.iter_mut() {
-                event.data = event
-                    .data
-                    .iter()
-                    .map(|value| convert_data_to_evm_address(value))
-                    .collect();
+                event.data = event.data.iter().map(convert_data_to_evm_address).collect();
             }
         }
     }
@@ -40,9 +36,7 @@ pub fn apply_evm_format(extrinsics: &mut [ExtrinsicInfo], metadata: &subxt::Meta
 /// Recursively converts AccountId32 addresses to EVM format in JSON data.
 fn convert_data_to_evm_address(data: &Value) -> Value {
     match data {
-        Value::Array(arr) => {
-            Value::Array(arr.iter().map(convert_data_to_evm_address).collect())
-        }
+        Value::Array(arr) => Value::Array(arr.iter().map(convert_data_to_evm_address).collect()),
         Value::String(s) => {
             if let Some(evm_address) = try_convert_to_evm_address(s) {
                 Value::String(evm_address)
@@ -68,13 +62,12 @@ fn try_convert_to_evm_address(s: &str) -> Option<String> {
     }
 
     let hex_str = s.strip_prefix("0x").unwrap_or(s);
-    if hex_str.len() == 64 {
-        if let Ok(bytes) = hex::decode(hex_str) {
-            if bytes.len() == 32 {
-                let account_id = AccountId32::from(<[u8; 32]>::try_from(bytes).unwrap());
-                return Some(account_id_to_evm_hex(&account_id));
-            }
-        }
+    if hex_str.len() == 64
+        && let Ok(bytes) = hex::decode(hex_str)
+        && bytes.len() == 32
+    {
+        let account_id = AccountId32::from(<[u8; 32]>::try_from(bytes).unwrap());
+        return Some(account_id_to_evm_hex(&account_id));
     }
 
     None
@@ -148,10 +141,12 @@ mod tests {
         // Nested value should be unchanged
         assert_eq!(obj["nested"]["value"].as_str().unwrap(), "unchanged");
         // Nested address should be converted
-        assert!(obj["nested"]["another_address"]
-            .as_str()
-            .unwrap()
-            .starts_with("0x"));
+        assert!(
+            obj["nested"]["another_address"]
+                .as_str()
+                .unwrap()
+                .starts_with("0x")
+        );
         assert_eq!(obj["nested"]["another_address"].as_str().unwrap().len(), 42);
     }
 

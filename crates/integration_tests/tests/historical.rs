@@ -154,7 +154,7 @@ impl HistoricalTestRunner {
 
         // Compare responses
         // Ignore fields that may vary (timestamps, etc.)
-        let ignore_fields = vec!["timestamp", "at", "authorId"]; //TODO remove authorId when stable
+        let ignore_fields = vec!["timestamp", "authorId"];
         let comparison = compare_json(&actual_json, &expected_json, &ignore_fields)
             .context("Failed to compare JSON responses")?;
 
