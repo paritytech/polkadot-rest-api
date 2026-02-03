@@ -13,10 +13,11 @@ use config::ChainType;
 use parity_scale_codec::Decode;
 use primitive_types::H256;
 use scale_decode::DecodeAsType;
-use scale_value::{Primitive, ValueDef};
 use serde::Serialize;
 use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
+
+const SCALE: u32 = 10000;
 
 /// Response for GET /coretime/info endpoint on coretime chains.
 #[derive(Debug, Serialize)]
@@ -27,9 +28,6 @@ pub struct CoretimeInfoResponse {
     /// Broker configuration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub configuration: Option<ConfigurationInfo>,
-    /// Broker status information.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<StatusInfo>,
     /// Current region timing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_region: Option<CurrentRegionInfo>,
@@ -139,7 +137,7 @@ pub struct CoretimeRelayInfoResponse {
     pub broker_id: Option<u32>,
     /// Pallet version.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pallet_version: Option<u32>,
+    pub pallet_version: Option<u16>,
     /// Maximum historical revenue blocks.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_historical_revenue: Option<u32>,
@@ -157,7 +155,6 @@ pub struct CoretimeRelayInfoResponse {
 /// Derives DecodeAsType for subxt dynamic storage compatibility.
 #[allow(dead_code)] // All fields required for correct SCALE decoding order
 #[derive(Debug, Clone, Default, Decode, DecodeAsType)]
-#[decode_as_type(crate_path = "scale_decode")]
 struct ConfigRecord {
     advance_notice: u32,
     interlude_length: u32,
@@ -173,7 +170,6 @@ struct ConfigRecord {
 /// Derives DecodeAsType for subxt dynamic storage compatibility.
 #[allow(dead_code)] // All fields required for correct SCALE decoding order
 #[derive(Debug, Clone, Default, Decode, DecodeAsType)]
-#[decode_as_type(crate_path = "scale_decode")]
 struct SaleInfoRecord {
     sale_start: u32,
     leadin_length: u32,
@@ -190,12 +186,15 @@ struct SaleInfoRecord {
 /// StatusRecord from Broker pallet - decoded directly via SCALE.
 /// Derives DecodeAsType for subxt dynamic storage compatibility.
 #[derive(Debug, Clone, Default, Decode, DecodeAsType)]
-#[decode_as_type(crate_path = "scale_decode")]
 struct StatusRecord {
+    #[allow(dead_code)]
     core_count: u16,
+    #[allow(dead_code)]
     private_pool_size: u32,
+    #[allow(dead_code)]
     system_pool_size: u32,
     last_committed_timeslice: u32,
+    #[allow(dead_code)]
     last_timeslice: u32,
 }
 
@@ -256,17 +255,23 @@ async fn handle_coretime_chain_info(
     }
 
     // Fetch all data in parallel using subxt's decode_as for type-safe decoding
-    let (config_result, sale_result, status_result, timeslice_period_result) = tokio::join!(
+    let (config_result, sale_result, status_result, timeslice_period_result, relay_block_result) = tokio::join!(
         fetch_configuration(client_at_block),
         fetch_sale_info(client_at_block),
         fetch_status(client_at_block),
-        fetch_timeslice_period(client_at_block)
+        fetch_timeslice_period(client_at_block),
+        fetch_relay_block_number(client_at_block)
     );
 
     let config = config_result?;
     let sale_info = sale_result?;
     let status = status_result?;
     let timeslice_period = timeslice_period_result.unwrap_or(80); // Default to 80 if not found
+    // Use relay chain block number for price calculation since sale_start/leadin_length
+    // are stored as relay block numbers. Fall back to parachain block number if unavailable.
+    let price_block_number = relay_block_result
+        .unwrap_or(None)
+        .unwrap_or(block_number as u32);
 
     // Build response based on available data
     let configuration = config.as_ref().map(|c| ConfigurationInfo {
@@ -285,8 +290,7 @@ async fn handle_coretime_chain_info(
     });
 
     let cores = sale_info.as_ref().map(|sale| {
-        let current_price =
-            calculate_current_core_price(block_number as u32, sale, timeslice_period);
+        let current_price = calculate_current_core_price(price_block_number, sale);
         CoresInfo {
             available: (sale.cores_offered as u32).saturating_sub(sale.cores_sold as u32),
             sold: sale.cores_sold as u32,
@@ -295,15 +299,6 @@ async fn handle_coretime_chain_info(
             sellout_price: sale.sellout_price.map(|p| p.to_string()),
             first_core: Some(sale.first_core as u32),
         }
-    });
-
-    // Build status info
-    let status_info = status.as_ref().map(|st| StatusInfo {
-        core_count: Some(st.core_count as u32),
-        private_pool_size: Some(st.private_pool_size),
-        system_pool_size: Some(st.system_pool_size),
-        last_committed_timeslice: Some(st.last_committed_timeslice),
-        last_timeslice: Some(st.last_timeslice),
     });
 
     let phase = if let (Some(cfg), Some(sale), Some(st)) = (&config, &sale_info, &status) {
@@ -322,7 +317,6 @@ async fn handle_coretime_chain_info(
     let response = CoretimeInfoResponse {
         at,
         configuration,
-        status: status_info,
         current_region,
         cores,
         phase,
@@ -366,9 +360,9 @@ async fn fetch_configuration(
 
     match client_at_block.storage().fetch(config_addr, ()).await {
         Ok(storage_value) => {
-            let decoded: ConfigRecord =
+            let decoded =
                 storage_value
-                    .decode_as()
+                    .decode()
                     .map_err(|e| CoretimeError::StorageDecodeFailed {
                         pallet: "Broker",
                         entry: "Configuration",
@@ -390,9 +384,9 @@ async fn fetch_sale_info(
 
     match client_at_block.storage().fetch(sale_addr, ()).await {
         Ok(storage_value) => {
-            let decoded: SaleInfoRecord =
+            let decoded =
                 storage_value
-                    .decode_as()
+                    .decode()
                     .map_err(|e| CoretimeError::StorageDecodeFailed {
                         pallet: "Broker",
                         entry: "SaleInfo",
@@ -414,9 +408,9 @@ async fn fetch_status(
 
     match client_at_block.storage().fetch(status_addr, ()).await {
         Ok(storage_value) => {
-            let decoded: StatusRecord =
+            let decoded =
                 storage_value
-                    .decode_as()
+                    .decode()
                     .map_err(|e| CoretimeError::StorageDecodeFailed {
                         pallet: "Broker",
                         entry: "Status",
@@ -429,30 +423,39 @@ async fn fetch_status(
     }
 }
 
+/// Fetches the relay chain block number from ParachainSystem pallet.
+/// On coretime parachains, sale_start and leadin_length are stored as relay chain
+/// block numbers, so we need the relay block number for accurate price calculation.
+async fn fetch_relay_block_number(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Result<Option<u32>, CoretimeError> {
+    let addr = subxt::dynamic::storage::<(), u32>("ParachainSystem", "LastRelayChainBlockNumber");
+
+    match client_at_block.storage().fetch(addr, ()).await {
+        Ok(storage_value) => {
+            let decoded =
+                storage_value
+                    .decode()
+                    .map_err(|e| CoretimeError::StorageDecodeFailed {
+                        pallet: "ParachainSystem",
+                        entry: "LastRelayChainBlockNumber",
+                        details: e.to_string(),
+                    })?;
+            Ok(Some(decoded))
+        }
+        Err(_) => Ok(None),
+    }
+}
+
 /// Fetches TimeslicePeriod constant from Broker pallet.
 async fn fetch_timeslice_period(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u32, CoretimeError> {
-    let metadata = client_at_block.metadata();
-
-    let pallet = metadata
-        .pallet_by_name("Broker")
-        .ok_or(CoretimeError::BrokerPalletNotFound)?;
-
-    let constant =
-        pallet
-            .constant_by_name("TimeslicePeriod")
-            .ok_or(CoretimeError::ConstantFetchFailed {
-                pallet: "Broker",
-                constant: "TimeslicePeriod",
-            })?;
-
-    // Decode as u32
-    let value = u32::decode(&mut &constant.value()[..]).map_err(|e| {
-        CoretimeError::StorageDecodeFailed {
+    let addr = subxt::dynamic::constant::<u32>("Broker", "TimeslicePeriod");
+    let value = client_at_block.constants().entry(addr).map_err(|_| {
+        CoretimeError::ConstantFetchFailed {
             pallet: "Broker",
-            entry: "TimeslicePeriod",
-            details: e.to_string(),
+            constant: "TimeslicePeriod",
         }
     })?;
 
@@ -463,123 +466,101 @@ async fn fetch_timeslice_period(
 async fn fetch_broker_id(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Option<u32>, CoretimeError> {
-    let metadata = client_at_block.metadata();
-
-    let pallet = match metadata.pallet_by_name("Coretime") {
-        Some(p) => p,
-        None => return Ok(None),
-    };
-
-    let constant = match pallet.constant_by_name("BrokerId") {
-        Some(c) => c,
-        None => return Ok(None),
-    };
-
-    let value = u32::decode(&mut &constant.value()[..]).ok();
-    Ok(value)
+    let addr = subxt::dynamic::constant::<u32>("Coretime", "BrokerId");
+    let value = client_at_block.constants().entry(addr).map_err(|_| {
+        CoretimeError::ConstantFetchFailed {
+            pallet: "Coretime",
+            constant: "BrokerId",
+        }
+    })?;
+    Ok(Some(value))
 }
 
 /// Fetches pallet version from CoretimeAssignmentProvider using scale_value.
 async fn fetch_pallet_version_decoded(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<Option<u32>, CoretimeError> {
+) -> Result<Option<u16>, CoretimeError> {
     // Try to fetch from CoretimeAssignmentProvider::PalletVersion storage
-    let version_addr = subxt::dynamic::storage::<(), scale_value::Value>(
-        "CoretimeAssignmentProvider",
-        "PalletVersion",
-    );
+    let version_addr =
+        subxt::dynamic::storage::<(), u16>("CoretimeAssignmentProvider", "PalletVersion");
+    let version = client_at_block
+        .storage()
+        .fetch(version_addr, ())
+        .await
+        .map_err(|_| CoretimeError::StorageFetchFailed {
+            pallet: "CoretimeAssignmentProvider",
+            entry: "PalletVersion",
+        })?;
 
-    match client_at_block.storage().fetch(version_addr, ()).await {
-        Ok(value) => {
-            // Use decode_as for proper type resolution
-            let decoded: scale_value::Value<()> = match value.decode_as() {
-                Ok(v) => v,
-                Err(_) => return Ok(None),
-            };
+    let decoded = version
+        .decode()
+        .map_err(|e| CoretimeError::StorageDecodeFailed {
+            pallet: "CoretimeAssignmentProvider",
+            entry: "PalletVersion",
+            details: e.to_string(),
+        })?;
 
-            // Extract numeric value
-            Ok(extract_u32(&decoded))
-        }
-        Err(_) => Ok(None),
-    }
+    Ok(Some(decoded))
 }
 
 /// Fetches MaxHistoricalRevenue constant from OnDemandAssignmentProvider.
 async fn fetch_max_historical_revenue(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Option<u32>, CoretimeError> {
-    let metadata = client_at_block.metadata();
+    let addr = subxt::dynamic::constant::<u32>("OnDemand", "MaxHistoricalRevenue");
+    if let Ok(value) = client_at_block.constants().entry(addr) {
+        Ok(Some(value))
+    } else {
+        let legacy_addr =
+            subxt::dynamic::constant::<u32>("OnDemandAssignmentProvider", "MaxHistoricalRevenue");
+        let value = client_at_block
+            .constants()
+            .entry(legacy_addr)
+            .map_err(|_| CoretimeError::ConstantFetchFailed {
+                pallet: "OnDemmandAssignmentProvider",
+                constant: "MaxHistoricalRevenue",
+            })?;
 
-    let pallet = match metadata.pallet_by_name("OnDemandAssignmentProvider") {
-        Some(p) => p,
-        None => return Ok(None),
-    };
-
-    let constant = match pallet.constant_by_name("MaxHistoricalRevenue") {
-        Some(c) => c,
-        None => return Ok(None),
-    };
-
-    let value = u32::decode(&mut &constant.value()[..]).ok();
-    Ok(value)
+        Ok(Some(value))
+    }
 }
 
 // ============================================================================
 // Value Extraction Helpers
 // ============================================================================
+fn calculate_leading_at(scaled_when: u32) -> u32 {
+    let scaled_half = SCALE.saturating_div(2);
 
-/// Extract u32 from a scale_value::Value.
-/// Used for relay chain pallet version which returns a dynamic value.
-fn extract_u32(value: &scale_value::Value<()>) -> Option<u32> {
-    match &value.value {
-        ValueDef::Primitive(Primitive::U128(n)) => Some(*n as u32),
-        _ => None,
+    if scaled_when.lt(&scaled_half) || scaled_when.eq(&scaled_half) {
+        SCALE
+            .saturating_mul(100)
+            .saturating_sub(scaled_when.saturating_mul(180))
+    } else {
+        SCALE
+            .saturating_mul(19)
+            .saturating_sub(scaled_when.saturating_mul(18))
     }
 }
-
-fn calculate_current_core_price(
-    block_number: u32,
-    sale_info: &SaleInfoRecord,
-    _timeslice_period: u32,
-) -> u128 {
-    const SCALE: u128 = 1_000_000_000; // 10^9 for precision
-
+fn calculate_current_core_price(block_number: u32, sale_info: &SaleInfoRecord) -> u128 {
     let sale_start = sale_info.sale_start;
     let leadin_length = sale_info.leadin_length;
     let end_price = sale_info.end_price;
 
-    // Before sale starts, price is 2x end price
-    if block_number < sale_start {
-        return end_price.saturating_mul(2);
-    }
+    let elapsed_time_since_sale_start = block_number.saturating_sub(sale_start);
+    let capped_elapsed_time = match elapsed_time_since_sale_start.lt(&leadin_length) {
+        true => elapsed_time_since_sale_start,
+        false => leadin_length,
+    };
 
-    // After leadin period, price is end_price
-    let elapsed = block_number.saturating_sub(sale_start);
-    if elapsed >= leadin_length || leadin_length == 0 {
-        return end_price;
-    }
+    let scaled_progress: u32 = capped_elapsed_time
+        .saturating_mul(SCALE)
+        .saturating_div(leadin_length);
 
-    // During leadin: linear interpolation from 2x to 1x
-    // progress goes from 0 to 10000 (representing 0% to 100%)
-    let progress = (elapsed as u128)
-        .saturating_mul(10000)
-        .checked_div(leadin_length as u128)
-        .unwrap_or(10000);
+    let leadin_factor: u128 = calculate_leading_at(scaled_progress).into();
 
-    // leadin_factor goes from 2.0 (at progress=0) to 1.0 (at progress=10000)
-    // factor = 2 - (progress / 10000) = (20000 - progress) / 10000
-    let factor_scaled = SCALE.saturating_mul(2).saturating_sub(
-        progress
-            .saturating_mul(SCALE)
-            .checked_div(10000)
-            .unwrap_or(0),
-    );
-
-    // price = end_price * factor
-    factor_scaled
+    leadin_factor
         .saturating_mul(end_price)
-        .checked_div(SCALE)
-        .unwrap_or(end_price)
+        .saturating_div(u128::from(SCALE))
 }
 
 /// Calculates the phase configuration for the current sale.
@@ -656,9 +637,9 @@ mod tests {
             sellout_price: None,
         };
 
-        // Before sale starts, price should be 2x end price
-        let price = calculate_current_core_price(500, &sale_info, 80);
-        assert_eq!(price, 2_000_000_000_000);
+        // Before sale starts (elapsed=0), price should be 100x end price (max leadin factor)
+        let price = calculate_current_core_price(500, &sale_info);
+        assert_eq!(price, 100_000_000_000_000);
     }
 
     #[test]
@@ -676,9 +657,9 @@ mod tests {
             sellout_price: None,
         };
 
-        // At sale start (elapsed=0), price should be 2x
-        let price = calculate_current_core_price(1000, &sale_info, 80);
-        assert_eq!(price, 2_000_000_000_000);
+        // At sale start (elapsed=0), price should be 100x end price (max leadin factor)
+        let price = calculate_current_core_price(1000, &sale_info);
+        assert_eq!(price, 100_000_000_000_000);
     }
 
     #[test]
@@ -697,7 +678,7 @@ mod tests {
         };
 
         // After leadin period, price should be end_price
-        let price = calculate_current_core_price(1600, &sale_info, 80);
+        let price = calculate_current_core_price(1600, &sale_info);
         assert_eq!(price, 1_000_000_000_000);
     }
 
@@ -716,9 +697,9 @@ mod tests {
             sellout_price: None,
         };
 
-        // Midway (50% through leadin), price should be 1.5x end_price
-        let price = calculate_current_core_price(1500, &sale_info, 80);
-        assert_eq!(price, 1_500_000_000_000);
+        // At 50% through leadin, CenterTargetPrice factor is 10x end_price
+        let price = calculate_current_core_price(1500, &sale_info);
+        assert_eq!(price, 10_000_000_000_000);
     }
 
     #[test]
@@ -793,13 +774,6 @@ mod tests {
                 leadin_length: 100800,
                 relay_blocks_per_timeslice: 80,
             }),
-            status: Some(StatusInfo {
-                core_count: Some(28),
-                private_pool_size: Some(0),
-                system_pool_size: Some(2),
-                last_committed_timeslice: Some(100),
-                last_timeslice: Some(105),
-            }),
             current_region: Some(CurrentRegionInfo {
                 start: Some(100),
                 end: Some(200),
@@ -862,12 +836,6 @@ mod tests {
         assert!(!json.contains("brokerId"));
         assert!(!json.contains("palletVersion"));
         assert!(!json.contains("maxHistoricalRevenue"));
-    }
-
-    #[test]
-    fn test_extract_u32() {
-        let value = scale_value::Value::u128(42);
-        assert_eq!(extract_u32(&value), Some(42));
     }
 
     #[test]
