@@ -1,0 +1,27 @@
+{
+    "at": {
+        "hash": "0xea0442ef1a0f40fac210f64f8d20431cf576ceac14ad219d35d41e07806881f3",
+        "height": "8000000"
+    },
+    "poolAssetInfo": {
+        "owner": "HGtLp5K6i9bEJWmdF2e4kBLMjzW3iFz6VdMK7Bbwej1hoEG",
+        "issuer": "HGtLp5K6i9bEJWmdF2e4kBLMjzW3iFz6VdMK7Bbwej1hoEG",
+        "admin": "HGtLp5K6i9bEJWmdF2e4kBLMjzW3iFz6VdMK7Bbwej1hoEG",
+        "freezer": "HGtLp5K6i9bEJWmdF2e4kBLMjzW3iFz6VdMK7Bbwej1hoEG",
+        "supply": "100000",
+        "deposit": "0",
+        "minBalance": "1",
+        "isSufficient": false,
+        "accounts": "2",
+        "sufficients": "0",
+        "approvals": "0",
+        "status": "Live"
+    },
+    "poolAssetMetaData": {
+        "deposit": "0",
+        "name": "0x",
+        "symbol": "0x",
+        "decimals": "0",
+        "isFrozen": false
+    }
+}

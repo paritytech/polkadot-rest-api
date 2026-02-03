@@ -10,6 +10,7 @@ pub mod constants;
 pub mod consts;
 pub mod dispatchables;
 pub mod nomination_pools;
+pub mod pool_assets;
 pub mod staking_progress;
 pub mod staking_validators;
 
@@ -18,6 +19,7 @@ pub use assets::pallets_assets_asset_info;
 pub use consts::{pallets_constant_item, pallets_constants};
 pub use dispatchables::{get_pallet_dispatchable_item, get_pallets_dispatchables};
 pub use nomination_pools::{pallets_nomination_pools_info, pallets_nomination_pools_pool};
+pub use pool_assets::pallets_pool_assets_asset_info;
 pub use staking_progress::pallets_staking_progress;
 pub use staking_progress::rc_pallets_staking_progress;
 pub use staking_validators::pallets_staking_validators;
