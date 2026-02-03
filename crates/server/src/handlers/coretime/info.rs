@@ -10,7 +10,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use parity_scale_codec::Decode;
 use primitive_types::H256;
 use scale_decode::DecodeAsType;
 use serde::Serialize;
@@ -44,13 +43,13 @@ pub struct CoretimeInfoResponse {
 #[serde(rename_all = "camelCase")]
 pub struct ConfigurationInfo {
     /// Length of a region in timeslices.
-    pub region_length: u32,
+    pub region_length: String,
     /// Length of the interlude period in relay blocks.
-    pub interlude_length: u32,
+    pub interlude_length: String,
     /// Length of the leadin period in relay blocks.
-    pub leadin_length: u32,
+    pub leadin_length: String,
     /// Number of relay chain blocks per timeslice.
-    pub relay_blocks_per_timeslice: u32,
+    pub relay_blocks_per_timeslice: String,
 }
 
 /// Broker status information.
@@ -79,9 +78,9 @@ pub struct StatusInfo {
 #[serde(rename_all = "camelCase")]
 pub struct CurrentRegionInfo {
     /// Start timeslice of the current region.
-    pub start: Option<u32>,
+    pub start: Option<String>,
     /// End timeslice of the current region.
-    pub end: Option<u32>,
+    pub end: Option<String>,
 }
 
 /// Core availability and pricing information.
@@ -89,19 +88,19 @@ pub struct CurrentRegionInfo {
 #[serde(rename_all = "camelCase")]
 pub struct CoresInfo {
     /// Number of cores available for purchase.
-    pub available: u32,
+    pub available: String,
     /// Number of cores already sold.
-    pub sold: u32,
+    pub sold: String,
     /// Total cores offered for sale.
-    pub total: u32,
-    /// Current price per core (as string for large numbers).
+    pub total: String,
+    /// Current price per core.
     pub current_core_price: String,
     /// Price at which cores sold out (if applicable).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sellout_price: Option<String>,
     /// First core index in the sale.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub first_core: Option<u32>,
+    pub first_core: Option<String>,
 }
 
 /// Sale phase information.
@@ -121,9 +120,9 @@ pub struct PhaseConfig {
     /// Name of the phase.
     pub phase_name: String,
     /// Last relay block of this phase.
-    pub last_relay_block: u32,
+    pub last_relay_block: String,
     /// Last timeslice of this phase.
-    pub last_timeslice: u32,
+    pub last_timeslice: String,
 }
 
 /// Response for GET /coretime/info endpoint on relay chains.
@@ -134,49 +133,31 @@ pub struct CoretimeRelayInfoResponse {
     pub at: AtResponse,
     /// Parachain ID of the coretime broker chain.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub broker_id: Option<u32>,
+    pub broker_id: Option<String>,
     /// Pallet version.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pallet_version: Option<u16>,
+    pub pallet_version: Option<String>,
     /// Maximum historical revenue blocks.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_historical_revenue: Option<u32>,
+    pub max_historical_revenue: Option<String>,
 }
 
-// ============================================================================
-// Internal Types for Direct SCALE Decoding
-// ============================================================================
-//
-// These structs use parity-scale-codec's Decode to directly deserialize
-// on-chain storage values without manual field extraction.
-
-/// ConfigRecord from Broker pallet - decoded directly via SCALE.
-/// Field order must match the on-chain type exactly.
 /// Derives DecodeAsType for subxt dynamic storage compatibility.
-#[allow(dead_code)] // All fields required for correct SCALE decoding order
-#[derive(Debug, Clone, Default, Decode, DecodeAsType)]
+#[derive(Debug, Clone, Default, DecodeAsType)]
 struct ConfigRecord {
-    advance_notice: u32,
     interlude_length: u32,
     leadin_length: u32,
     region_length: u32,
-    ideal_bulk_proportion: u32, // Perbill
-    limit_cores_offered: Option<u16>,
-    renewal_bump: u32, // Perbill
-    contribution_timeout: u32,
 }
 
-/// SaleInfoRecord from Broker pallet - decoded directly via SCALE.
 /// Derives DecodeAsType for subxt dynamic storage compatibility.
-#[allow(dead_code)] // All fields required for correct SCALE decoding order
-#[derive(Debug, Clone, Default, Decode, DecodeAsType)]
+#[derive(Debug, Clone, Default, DecodeAsType)]
 struct SaleInfoRecord {
     sale_start: u32,
     leadin_length: u32,
     end_price: u128,
     region_begin: u32,
     region_end: u32,
-    ideal_cores_sold: u16,
     cores_offered: u16,
     first_core: u16,
     sellout_price: Option<u128>,
@@ -185,17 +166,9 @@ struct SaleInfoRecord {
 
 /// StatusRecord from Broker pallet - decoded directly via SCALE.
 /// Derives DecodeAsType for subxt dynamic storage compatibility.
-#[derive(Debug, Clone, Default, Decode, DecodeAsType)]
+#[derive(Debug, Clone, Default, DecodeAsType)]
 struct StatusRecord {
-    #[allow(dead_code)]
-    core_count: u16,
-    #[allow(dead_code)]
-    private_pool_size: u32,
-    #[allow(dead_code)]
-    system_pool_size: u32,
     last_committed_timeslice: u32,
-    #[allow(dead_code)]
-    last_timeslice: u32,
 }
 
 pub async fn coretime_info(
@@ -275,29 +248,32 @@ async fn handle_coretime_chain_info(
 
     // Build response based on available data
     let configuration = config.as_ref().map(|c| ConfigurationInfo {
-        region_length: c.region_length,
-        interlude_length: c.interlude_length,
+        region_length: c.region_length.to_string(),
+        interlude_length: c.interlude_length.to_string(),
         leadin_length: sale_info
             .as_ref()
             .map(|s| s.leadin_length)
-            .unwrap_or(c.leadin_length),
-        relay_blocks_per_timeslice: timeslice_period,
+            .unwrap_or(c.leadin_length)
+            .to_string(),
+        relay_blocks_per_timeslice: timeslice_period.to_string(),
     });
 
     let current_region = sale_info.as_ref().map(|sale| CurrentRegionInfo {
-        start: Some(sale.region_begin),
-        end: Some(sale.region_end),
+        start: Some(sale.region_begin.to_string()),
+        end: Some(sale.region_end.to_string()),
     });
 
     let cores = sale_info.as_ref().map(|sale| {
         let current_price = calculate_current_core_price(price_block_number, sale);
         CoresInfo {
-            available: (sale.cores_offered as u32).saturating_sub(sale.cores_sold as u32),
-            sold: sale.cores_sold as u32,
-            total: sale.cores_offered as u32,
+            available: (sale.cores_offered as u32)
+                .saturating_sub(sale.cores_sold as u32)
+                .to_string(),
+            sold: (sale.cores_sold as u32).to_string(),
+            total: (sale.cores_offered as u32).to_string(),
             current_core_price: current_price.to_string(),
             sellout_price: sale.sellout_price.map(|p| p.to_string()),
-            first_core: Some(sale.first_core as u32),
+            first_core: Some((sale.first_core as u32).to_string()),
         }
     });
 
@@ -343,9 +319,9 @@ async fn handle_relay_chain_info(
 
     let response = CoretimeRelayInfoResponse {
         at,
-        broker_id: broker_id.ok().flatten(),
-        pallet_version: pallet_version.ok().flatten(),
-        max_historical_revenue: max_historical_revenue.ok().flatten(),
+        broker_id: broker_id.ok().flatten().map(|v| v.to_string()),
+        pallet_version: pallet_version.ok().flatten().map(|v| v.to_string()),
+        max_historical_revenue: max_historical_revenue.ok().flatten().map(|v| v.to_string()),
     };
 
     Ok((StatusCode::OK, Json(response)).into_response())
@@ -601,18 +577,20 @@ fn calculate_phase_config(
         config: vec![
             PhaseConfig {
                 phase_name: "renewals".to_string(),
-                last_relay_block: renewals_end.saturating_mul(timeslice_period),
-                last_timeslice: renewals_end,
+                last_relay_block: renewals_end.saturating_mul(timeslice_period).to_string(),
+                last_timeslice: renewals_end.to_string(),
             },
             PhaseConfig {
                 phase_name: "priceDiscovery".to_string(),
-                last_relay_block: price_discovery_end.saturating_mul(timeslice_period),
-                last_timeslice: price_discovery_end,
+                last_relay_block: price_discovery_end
+                    .saturating_mul(timeslice_period)
+                    .to_string(),
+                last_timeslice: price_discovery_end.to_string(),
             },
             PhaseConfig {
                 phase_name: "fixedPrice".to_string(),
-                last_relay_block: fixed_price_end.saturating_mul(timeslice_period),
-                last_timeslice: fixed_price_end,
+                last_relay_block: fixed_price_end.saturating_mul(timeslice_period).to_string(),
+                last_timeslice: fixed_price_end.to_string(),
             },
         ],
     }
@@ -630,7 +608,6 @@ mod tests {
             end_price: 1_000_000_000_000, // 1 DOT
             region_begin: 100,
             region_end: 200,
-            ideal_cores_sold: 10,
             cores_offered: 20,
             cores_sold: 5,
             first_core: 0,
@@ -650,7 +627,6 @@ mod tests {
             end_price: 1_000_000_000_000,
             region_begin: 100,
             region_end: 200,
-            ideal_cores_sold: 10,
             cores_offered: 20,
             cores_sold: 5,
             first_core: 0,
@@ -670,7 +646,6 @@ mod tests {
             end_price: 1_000_000_000_000,
             region_begin: 100,
             region_end: 200,
-            ideal_cores_sold: 10,
             cores_offered: 20,
             cores_sold: 5,
             first_core: 0,
@@ -690,7 +665,6 @@ mod tests {
             end_price: 1_000_000_000_000,
             region_begin: 100,
             region_end: 200,
-            ideal_cores_sold: 10,
             cores_offered: 20,
             cores_sold: 5,
             first_core: 0,
@@ -769,22 +743,22 @@ mod tests {
                 height: "12345".to_string(),
             },
             configuration: Some(ConfigurationInfo {
-                region_length: 5040,
-                interlude_length: 50400,
-                leadin_length: 100800,
-                relay_blocks_per_timeslice: 80,
+                region_length: "5040".to_string(),
+                interlude_length: "50400".to_string(),
+                leadin_length: "100800".to_string(),
+                relay_blocks_per_timeslice: "80".to_string(),
             }),
             current_region: Some(CurrentRegionInfo {
-                start: Some(100),
-                end: Some(200),
+                start: Some("100".to_string()),
+                end: Some("200".to_string()),
             }),
             cores: Some(CoresInfo {
-                available: 15,
-                sold: 5,
-                total: 20,
+                available: "15".to_string(),
+                sold: "5".to_string(),
+                total: "20".to_string(),
                 current_core_price: "1000000000000".to_string(),
                 sellout_price: None,
-                first_core: Some(43),
+                first_core: Some("43".to_string()),
             }),
             phase: Some(PhaseInfo {
                 current_phase: "priceDiscovery".to_string(),
@@ -795,9 +769,9 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"at\""));
         assert!(json.contains("\"configuration\""));
-        assert!(json.contains("\"regionLength\":5040"));
+        assert!(json.contains("\"regionLength\":\"5040\""));
         assert!(json.contains("\"cores\""));
-        assert!(json.contains("\"available\":15"));
+        assert!(json.contains("\"available\":\"15\""));
         assert!(json.contains("\"currentCorePrice\":\"1000000000000\""));
         assert!(json.contains("\"phase\""));
         assert!(json.contains("\"currentPhase\":\"priceDiscovery\""));
@@ -810,15 +784,15 @@ mod tests {
                 hash: "0xabc123".to_string(),
                 height: "12345".to_string(),
             },
-            broker_id: Some(1005),
-            pallet_version: Some(1),
-            max_historical_revenue: Some(28800),
+            broker_id: Some("1005".to_string()),
+            pallet_version: Some("1".to_string()),
+            max_historical_revenue: Some("28800".to_string()),
         };
 
         let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("\"brokerId\":1005"));
-        assert!(json.contains("\"palletVersion\":1"));
-        assert!(json.contains("\"maxHistoricalRevenue\":28800"));
+        assert!(json.contains("\"brokerId\":\"1005\""));
+        assert!(json.contains("\"palletVersion\":\"1\""));
+        assert!(json.contains("\"maxHistoricalRevenue\":\"28800\""));
     }
 
     #[test]
@@ -842,29 +816,29 @@ mod tests {
     #[test]
     fn test_cores_info_serialization() {
         let cores = CoresInfo {
-            available: 10,
-            sold: 5,
-            total: 15,
+            available: "10".to_string(),
+            sold: "5".to_string(),
+            total: "15".to_string(),
             current_core_price: "1000000000000".to_string(),
             sellout_price: Some("500000000000".to_string()),
-            first_core: Some(43),
+            first_core: Some("43".to_string()),
         };
 
         let json = serde_json::to_string(&cores).unwrap();
-        assert!(json.contains("\"available\":10"));
-        assert!(json.contains("\"sold\":5"));
-        assert!(json.contains("\"total\":15"));
+        assert!(json.contains("\"available\":\"10\""));
+        assert!(json.contains("\"sold\":\"5\""));
+        assert!(json.contains("\"total\":\"15\""));
         assert!(json.contains("\"currentCorePrice\":\"1000000000000\""));
         assert!(json.contains("\"selloutPrice\":\"500000000000\""));
-        assert!(json.contains("\"firstCore\":43"));
+        assert!(json.contains("\"firstCore\":\"43\""));
     }
 
     #[test]
     fn test_cores_info_serialization_without_optional_fields() {
         let cores = CoresInfo {
-            available: 10,
-            sold: 5,
-            total: 15,
+            available: "10".to_string(),
+            sold: "5".to_string(),
+            total: "15".to_string(),
             current_core_price: "1000000000000".to_string(),
             sellout_price: None,
             first_core: None,

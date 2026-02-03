@@ -980,14 +980,14 @@ async fn test_coretime_info_configuration() -> Result<()> {
                 "Configuration should have 'relayBlocksPerTimeslice'"
             );
 
-            // Verify values are numbers
+            // Verify values are strings
             assert!(
-                config["regionLength"].is_number(),
-                "'regionLength' should be a number"
+                config["regionLength"].is_string(),
+                "'regionLength' should be a string"
             );
             assert!(
-                config["relayBlocksPerTimeslice"].is_number(),
-                "'relayBlocksPerTimeslice' should be a number"
+                config["relayBlocksPerTimeslice"].is_string(),
+                "'relayBlocksPerTimeslice' should be a string"
             );
 
             println!(
@@ -1029,22 +1029,22 @@ async fn test_coretime_info_cores() -> Result<()> {
                 "Cores should have 'currentCorePrice'"
             );
 
-            // Verify types
+            // Verify types - all values are strings per sidecar schema
             assert!(
-                cores["available"].is_number(),
-                "'available' should be a number"
+                cores["available"].is_string(),
+                "'available' should be a string"
             );
-            assert!(cores["sold"].is_number(), "'sold' should be a number");
-            assert!(cores["total"].is_number(), "'total' should be a number");
+            assert!(cores["sold"].is_string(), "'sold' should be a string");
+            assert!(cores["total"].is_string(), "'total' should be a string");
             assert!(
                 cores["currentCorePrice"].is_string(),
-                "'currentCorePrice' should be a string (for large numbers)"
+                "'currentCorePrice' should be a string"
             );
 
             // Verify logical constraints
-            let available = cores["available"].as_u64().unwrap();
-            let sold = cores["sold"].as_u64().unwrap();
-            let total = cores["total"].as_u64().unwrap();
+            let available: u64 = cores["available"].as_str().unwrap().parse().unwrap();
+            let sold: u64 = cores["sold"].as_str().unwrap().parse().unwrap();
+            let total: u64 = cores["total"].as_str().unwrap().parse().unwrap();
             assert!(
                 available + sold <= total,
                 "available + sold should be <= total"
@@ -1326,32 +1326,32 @@ async fn test_coretime_info_relay_chain_response() -> Result<()> {
         || json.get("maxHistoricalRevenue").is_some();
 
     if has_relay_fields {
-        // If brokerId is present, verify it's a number
+        // If brokerId is present, verify it's a string
         if let Some(broker_id) = json.get("brokerId") {
             if !broker_id.is_null() {
                 assert!(
-                    broker_id.is_number(),
-                    "'brokerId' should be a number when present"
+                    broker_id.is_string(),
+                    "'brokerId' should be a string when present"
                 );
             }
         }
 
-        // If palletVersion is present, verify it's a number
+        // If palletVersion is present, verify it's a string
         if let Some(version) = json.get("palletVersion") {
             if !version.is_null() {
                 assert!(
-                    version.is_number(),
-                    "'palletVersion' should be a number when present"
+                    version.is_string(),
+                    "'palletVersion' should be a string when present"
                 );
             }
         }
 
-        // If maxHistoricalRevenue is present, verify it's a number
+        // If maxHistoricalRevenue is present, verify it's a string
         if let Some(revenue) = json.get("maxHistoricalRevenue") {
             if !revenue.is_null() {
                 assert!(
-                    revenue.is_number(),
-                    "'maxHistoricalRevenue' should be a number when present"
+                    revenue.is_string(),
+                    "'maxHistoricalRevenue' should be a string when present"
                 );
             }
         }
