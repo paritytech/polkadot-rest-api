@@ -12,6 +12,20 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
         .route_registered(
             registry,
             API_VERSION,
+            "/pallets/:palletId/dispatchables",
+            "get",
+            get(pallets::get_pallets_dispatchables),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/:palletId/dispatchables/:dispatchableId",
+            "get",
+            get(pallets::get_pallet_dispatchable_item),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
             "/pallets/assets/:asset_id/asset-info",
             "get",
             get(pallets::pallets_assets_asset_info),
@@ -43,6 +57,20 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
             "/pallets/:pallet_id/consts/:constant_item_id",
             "get",
             get(pallets::pallets_constant_item),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/nomination-pools/info",
+            "get",
+            get(pallets::pallets_nomination_pools_info),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/pallets/nomination-pools/:pool_id",
+            "get",
+            get(pallets::pallets_nomination_pools_pool),
         )
         .route_registered(
             registry,

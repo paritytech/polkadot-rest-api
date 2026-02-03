@@ -4,6 +4,7 @@
 //! and utility functions used by coretime endpoints.
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
+use parity_scale_codec::{Compact, Decode, Encode};
 use serde::Serialize;
 use serde_json::json;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
@@ -15,7 +16,8 @@ use thiserror::Error;
 
 /// CoreAssignment enum representing how a core is assigned.
 /// Matches the Broker pallet's CoreAssignment type.
-#[derive(Debug, Clone, PartialEq)]
+/// Derives Decode/Encode for SCALE codec support.
+#[derive(Debug, Clone, PartialEq, Decode, Encode)]
 pub enum CoreAssignment {
     /// Core is idle (not assigned).
     Idle,
@@ -37,6 +39,15 @@ impl CoreAssignment {
             CoreAssignment::Task(id) => id.to_string(),
         }
     }
+}
+
+/// ScheduleItem from the Broker pallet.
+/// Contains a CoreMask and CoreAssignment.
+/// Used in Workload and Reservations storage.
+#[derive(Debug, Clone, PartialEq, Decode, Encode)]
+pub struct ScheduleItem {
+    pub mask: CoreMask,
+    pub assignment: CoreAssignment,
 }
 
 // ============================================================================
@@ -214,6 +225,26 @@ pub fn has_broker_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>)
     metadata.pallet_by_name("Broker").is_some()
 }
 
+/// Checks if an error indicates that a storage item was not found in metadata.
+/// This typically happens when querying historical blocks before a runtime upgrade
+/// that introduced the storage item.
+pub fn is_storage_item_not_found_error(error: &subxt::error::StorageError) -> bool {
+    // Check both Display and Debug representations (case-insensitive)
+    let display_str = error.to_string().to_lowercase();
+    let debug_str = format!("{:?}", error).to_lowercase();
+
+    // Look for common patterns indicating storage item not found
+    let patterns = ["storage item not found", "storageitemnotfound", "not found"];
+
+    for pattern in patterns {
+        if display_str.contains(pattern) || debug_str.contains(pattern) {
+            return true;
+        }
+    }
+
+    false
+}
+
 /// Checks if the Coretime pallet exists in the runtime metadata (relay chain).
 pub fn has_coretime_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
     let metadata = client_at_block.metadata();
@@ -302,6 +333,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_coretime_error_storage_item_not_available_message() {
+        let err = CoretimeError::StorageItemNotAvailableAtBlock {
+            pallet: "Broker",
+            entry: "PotentialRenewals",
+        };
+        assert_eq!(
+            err.to_string(),
+            "Broker::PotentialRenewals is not available at this block. This storage item was introduced in a later runtime upgrade."
+        );
+    }
+
     // ------------------------------------------------------------------------
     // HTTP Status code tests (matching Sidecar behavior)
     // ------------------------------------------------------------------------
@@ -352,6 +395,16 @@ mod tests {
         };
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_coretime_error_storage_item_not_available_status() {
+        let err = CoretimeError::StorageItemNotAvailableAtBlock {
+            pallet: "Broker",
+            entry: "PotentialRenewals",
+        };
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

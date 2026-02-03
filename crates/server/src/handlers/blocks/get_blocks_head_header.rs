@@ -1,7 +1,7 @@
 use crate::handlers::blocks::common::convert_digest_items_to_logs;
 use crate::handlers::blocks::types::{BlockHeaderResponse, convert_digest_logs_to_sidecar_format};
 use crate::state::AppState;
-use crate::utils::{self, RcBlockError, fetch_block_timestamp, find_ah_blocks_in_rc_block};
+use crate::utils::{self, RcBlockError, fetch_block_timestamp, find_ah_blocks_in_rc_block_at};
 use axum::{
     Json,
     extract::{Query, State},
@@ -192,12 +192,7 @@ async fn handle_use_rc_block(
             .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?
     };
 
-    let rc_resolved_block = crate::utils::ResolvedBlock {
-        hash: format!("{:#x}", rc_client_at_block.block_hash()),
-        number: rc_client_at_block.block_number(),
-    };
-
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
+    let ah_blocks = find_ah_blocks_in_rc_block_at(&rc_client_at_block)
         .await
         .map_err(|e| GetBlockHeadHeaderError::RcBlockError(Box::new(e)))?;
 
@@ -205,8 +200,8 @@ async fn handle_use_rc_block(
         return Ok(Json(json!([])).into_response());
     }
 
-    let rc_block_number = rc_resolved_block.number.to_string();
-    let rc_block_hash = rc_resolved_block.hash.clone();
+    let rc_block_number = rc_client_at_block.block_number().to_string();
+    let rc_block_hash = format!("{:#x}", rc_client_at_block.block_hash());
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {

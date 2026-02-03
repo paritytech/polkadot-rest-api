@@ -44,7 +44,7 @@ async fn is_coretime_chain(client: &TestClient) -> bool {
 }
 
 // ============================================================================
-// Response Structure Tests
+// Leases Response Structure Tests
 // ============================================================================
 
 /// Test that the coretime/leases endpoint returns valid JSON with correct structure

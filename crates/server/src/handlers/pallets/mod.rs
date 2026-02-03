@@ -1,16 +1,23 @@
-//! Handlers for pallet-related endpoints.
+//! Handlers for pallets-related endpoints.
+//!
+//! These endpoints provide access to pallet metadata including
+//! storage items, constants, dispatchables, errors, and events.
 
 pub mod asset_conversion;
 pub mod assets;
 pub mod common;
 pub mod constants;
 pub mod consts;
+pub mod dispatchables;
+pub mod nomination_pools;
 pub mod staking_progress;
 pub mod staking_validators;
 
 pub use asset_conversion::{get_liquidity_pools, get_next_available_id};
 pub use assets::pallets_assets_asset_info;
 pub use consts::{pallets_constant_item, pallets_constants};
+pub use dispatchables::{get_pallet_dispatchable_item, get_pallets_dispatchables};
+pub use nomination_pools::{pallets_nomination_pools_info, pallets_nomination_pools_pool};
 pub use staking_progress::pallets_staking_progress;
 pub use staking_progress::rc_pallets_staking_progress;
 pub use staking_validators::pallets_staking_validators;

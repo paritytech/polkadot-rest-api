@@ -14,6 +14,7 @@ use crate::{
 /// For coretime chains (with Broker pallet):
 /// - GET /v1/coretime/info - Get coretime system information (config, sales, phases)
 /// - GET /v1/coretime/leases - Get all registered leases
+/// - GET /v1/coretime/renewals - Get all potential renewals
 /// - GET /v1/coretime/reservations - Get all registered reservations
 ///
 /// For relay chains (with Coretime pallet):

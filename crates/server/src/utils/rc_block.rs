@@ -1,10 +1,10 @@
 use crate::state::AppState;
 use crate::utils::ResolvedBlock;
+use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
 
-// Note: RcBlockClient type alias removed - the new subxt API doesn't expose OnlineClientAtBlock the same way
-
 const ASSET_HUB_PARA_ID: u32 = 1000;
+pub type RcClientAtBlock = OnlineClientAtBlock<SubstrateConfig>;
 
 #[derive(Debug, Clone)]
 pub struct AhBlockInfo {
@@ -51,6 +51,18 @@ pub async fn find_ah_blocks_in_rc_block(
         .at_block(rc_block.number)
         .await
         .map_err(|e| RcBlockError::ClientAtBlockFailed(Box::new(e)))?;
+
+    find_ah_blocks_in_rc_block_at(&rc_client_at_block).await
+}
+
+/// Find Asset Hub blocks included in a Relay Chain block.
+///
+/// Uses Subxt ClientAtBlock directly - callers should use `at_block()` to get
+/// the client at the desired RC block, then pass it to this function.
+/// This avoids an extra RPC call when you already have the ClientAtBlock.
+pub async fn find_ah_blocks_in_rc_block_at(
+    rc_client_at_block: &RcClientAtBlock,
+) -> Result<Vec<AhBlockInfo>, RcBlockError> {
     // Use dynamic storage address for System::Events
     let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
     let events_value = rc_client_at_block.storage().fetch(addr, ()).await?;

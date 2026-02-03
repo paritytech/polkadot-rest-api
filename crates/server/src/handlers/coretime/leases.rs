@@ -23,19 +23,6 @@ use serde::Serialize;
 use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
-// Storage key format for Broker::Workload:
-// - 16 bytes: pallet prefix (xxhash128 of "Broker")
-// - 16 bytes: entry prefix (xxhash128 of "Workload")
-// - 8 bytes: twox64 hash of the key
-// - 2 bytes: core index (u16, little-endian)
-// Total: 42 bytes, core index starts at byte 40
-
-/// Minimum length of the storage key to extract core index.
-const STORAGE_KEY_MIN_LENGTH: usize = 42;
-
-/// Offset where the core index (u16) starts in the storage key.
-const CORE_INDEX_OFFSET: usize = 40;
-
 // ============================================================================
 // Response Types
 // ============================================================================

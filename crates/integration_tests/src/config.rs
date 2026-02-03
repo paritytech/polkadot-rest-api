@@ -40,6 +40,9 @@ pub struct EndpointConfig {
     /// If None or empty, the endpoint is tested on all chains.
     #[serde(default)]
     pub only_chains: Option<Vec<String>>,
+    /// Whether this endpoint is only available on relay chains (not asset hubs)
+    #[serde(default)]
+    pub relay_chain_only: bool,
 }
 
 /// Historical test case configuration
@@ -55,6 +58,8 @@ pub struct HistoricalTestCase {
     pub asset_id: Option<String>,
     /// Extrinsic index to test
     pub extrinsic_index: Option<u64>,
+    /// Pool identifier for nomination pools
+    pub pool_id: Option<String>,
     /// Query parameters (if any)
     #[serde(default)]
     pub query_params: HashMap<String, String>,

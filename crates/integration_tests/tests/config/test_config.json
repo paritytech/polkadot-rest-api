@@ -120,6 +120,24 @@
       "requires_block_height": false,
       "requires_account": false,
       "only_chains": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend"]
+    },
+    {
+      "path": "/v1/pallets/nomination-pools/info",
+      "query_params": [
+        {}
+      ],
+      "requires_block_height": false,
+      "requires_account": false,
+      "relay_chain_only": true
+    },
+    {
+      "path": "/v1/pallets/nomination-pools/1",
+      "query_params": [
+        {}
+      ],
+      "requires_block_height": false,
+      "requires_account": false,
+      "relay_chain_only": true
     }
   ],
   "historical_tests": {
@@ -256,6 +274,48 @@
         },
         "fixture_path": "polkadot/blocks_range_1000000-1000002.json",
         "description": "Test /blocks endpoint with range 1000000-1000002"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "28500000"
+        },
+        "fixture_path": "polkadot/pallets_balances_dispatchables_28500000.json",
+        "description": "Test pallets balances dispatchables at Polkadot block 28,500,000"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables/transfer_allow_death",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "28500000",
+          "metadata": "true"
+        },
+        "fixture_path": "polkadot/pallets_balances_dispatchables_transfer_allow_death_28500000.json",
+        "description": "Test pallets balances dispatchables transfer_allow_death at Polkadot block 28,500,000"
+      },
+      {
+        "endpoint": "/v1/pallets/nomination-pools/info",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "28500000"
+        },
+        "fixture_path": "polkadot/pallets_nomination_pools_info_28500000.json",
+        "description": "Test nomination pools info at Polkadot block 28,500,000"
+      },
+      {
+        "endpoint": "/v1/pallets/nomination-pools/{poolId}",
+        "block_height": null,
+        "account_id": null,
+        "pool_id": "1",
+        "query_params": {
+          "at": "28500000"
+        },
+        "fixture_path": "polkadot/pallets_nomination_pools_1_28500000.json",
+        "description": "Test nomination pool 1 at Polkadot block 28,500,000"
       }
     ],
     "kusama": [
@@ -326,6 +386,48 @@
         "query_params": {},
         "fixture_path": "kusama/blocks_5000000.json",
         "description": "Test block endpoint at Kusama block 5,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "25000000"
+        },
+        "fixture_path": "kusama/pallets_balances_dispatchables_25000000.json",
+        "description": "Test pallets balances dispatchables at Kusama block 25,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables/transfer_allow_death",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "25000000",
+          "metadata": "true"
+        },
+        "fixture_path": "kusama/pallets_balances_dispatchables_transfer_allow_death_25000000.json",
+        "description": "Test pallets balances dispatchables transfer_allow_death at Kusama block 25,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/nomination-pools/info",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "24000000"
+        },
+        "fixture_path": "kusama/pallets_nomination_pools_info_24000000.json",
+        "description": "Test nomination pools info at Kusama block 24,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/nomination-pools/{poolId}",
+        "block_height": null,
+        "account_id": null,
+        "pool_id": "1",
+        "query_params": {
+          "at": "24000000"
+        },
+        "fixture_path": "kusama/pallets_nomination_pools_1_24000000.json",
+        "description": "Test nomination pool 1 at Kusama block 24,000,000"
       }
     ],
     "asset-hub-polkadot": [
@@ -594,6 +696,35 @@
         },
         "fixture_path": "asset-hub-polkadot/rc_blocks_10293194_para_inclusions_para_id_1000.json",
         "description": "Test RC para-inclusions endpoint with paraId filter at Polkadot relay chain block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/rc/blocks/{blockId}/header",
+        "block_height": 29698001,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_header.json",
+        "description": "Test RC block header endpoint at Polkadot Relay Chain block 29,698,001"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_10260000.json",
+        "description": "Test pallets balances dispatchables at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables/transfer_allow_death",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "10260000",
+          "metadata": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_transfer_allow_death_10260000.json",
+        "description": "Test pallets balances dispatchables transfer_allow_death at Asset Hub Polkadot block 10,260,000"
       }
     ],
     "asset-hub-kusama": [
@@ -699,6 +830,27 @@
         "query_params": { "at": "8000000" },
         "fixture_path": "asset-hub-kusama/pallets_asset_conversion_liquidity_pools_8000000.json",
         "description": "Test pallets asset-conversion liquidity-pools at Asset Hub Kusama block 8,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "8000000"
+        },
+        "fixture_path": "asset-hub-kusama/pallets_balances_dispatchables_8000000.json",
+        "description": "Test pallets balances dispatchables at Asset Hub Kusama block 8,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables/transfer_allow_death",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "8000000",
+          "metadata": "true"
+        },
+        "fixture_path": "asset-hub-kusama/pallets_balances_dispatchables_transfer_allow_death_8000000.json",
+        "description": "Test pallets balances dispatchables transfer_allow_death at Asset Hub Kusama block 8,000,000"
       }
     ],
     "coretime-kusama": [
@@ -713,6 +865,16 @@
         "description": "Test coretime leases endpoint at Coretime Kusama block 1,000,000"
       },
       {
+        "endpoint": "/v1/coretime/regions",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "2789500"
+        },
+        "fixture_path": "coretime-kusama/coretime_regions_2789500.json",
+        "description": "Test coretime regions endpoint at Coretime Kusama block 2,789,500"
+      },
+      {
         "endpoint": "/v1/coretime/reservations",
         "block_height": null,
         "account_id": null,
@@ -721,6 +883,16 @@
         },
         "fixture_path": "coretime-kusama/coretime_reservations_1000000.json",
         "description": "Test coretime reservations endpoint at Coretime Kusama block 1,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/renewals",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "2000000"
+        },
+        "fixture_path": "coretime-kusama/coretime_renewals_2000000.json",
+        "description": "Test coretime renewals endpoint at Coretime Kusama block 2,000,000"
       }
     ],
     "coretime-polkadot": [
@@ -735,6 +907,16 @@
         "description": "Test coretime leases endpoint at Coretime Polkadot block 1,000,000"
       },
       {
+        "endpoint": "/v1/coretime/regions",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "2289500"
+        },
+        "fixture_path": "coretime-polkadot/coretime_regions_2289500.json",
+        "description": "Test coretime regions endpoint at Coretime Polkadot block 2,289,500"
+      },
+      {
         "endpoint": "/v1/coretime/reservations",
         "block_height": null,
         "account_id": null,
@@ -743,6 +925,16 @@
         },
         "fixture_path": "coretime-polkadot/coretime_reservations_1000000.json",
         "description": "Test coretime reservations endpoint at Coretime Polkadot block 1,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/renewals",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "1000000"
+        },
+        "fixture_path": "coretime-polkadot/coretime_renewals_1000000.json",
+        "description": "Test coretime renewals endpoint at Coretime Polkadot block 1,000,000"
       }
     ]
   }

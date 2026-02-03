@@ -72,6 +72,9 @@ pub enum PalletError {
     #[error("Asset not found: {0}")]
     AssetNotFound(String),
 
+    #[error("Nomination pool not found: {0}")]
+    PoolNotFound(String),
+
     // ========================================================================
     // Metadata/Constant Errors
     // ========================================================================
@@ -89,6 +92,14 @@ pub enum PalletError {
 
     #[error("Failed to decode metadata")]
     MetadataDecodeFailed,
+
+    #[error(
+        "Could not find dispatchable item (\"{0}\") in metadata. dispatchable item names are expected to be in camel case, e.g. 'transfer'"
+    )]
+    DispatchableNotFound(String),
+
+    #[error("Unsupported metadata version")]
+    UnsupportedMetadataVersion,
 
     // ========================================================================
     // Staking-Specific Errors
@@ -149,6 +160,7 @@ impl IntoResponse for PalletError {
             }
             PalletError::PalletNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::AssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::PoolNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
 
             // Metadata errors
             PalletError::ConstantNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
@@ -157,6 +169,10 @@ impl IntoResponse for PalletError {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
             PalletError::MetadataDecodeFailed => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            PalletError::DispatchableNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::UnsupportedMetadataVersion => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
 
@@ -199,4 +215,90 @@ pub struct AtResponse {
 pub fn format_account_id(account: &[u8; 32], ss58_prefix: u16) -> String {
     use sp_core::crypto::Ss58Codec;
     sp_core::sr25519::Public::from_raw(*account).to_ss58check_with_version(ss58_prefix.into())
+}
+
+// ============================================================================
+// Query Parameters
+// ============================================================================
+
+/// Query parameters for pallet metadata endpoints.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PalletQueryParams {
+    /// Block hash or number to query at. If not provided, uses the latest block.
+    pub at: Option<String>,
+
+    /// If `true`, only return the names of items without full metadata.
+    #[serde(default)]
+    pub only_ids: bool,
+
+    /// If `true`, resolve the block from the relay chain (Asset Hub only).
+    #[serde(default)]
+    pub use_rc_block: bool,
+}
+
+/// Query parameters for single item endpoints (e.g., `/pallets/{palletId}/consts/{constantId}`).
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PalletItemQueryParams {
+    /// Block hash or number to query at. If not provided, uses the latest block.
+    pub at: Option<String>,
+
+    /// If `true`, include full metadata for the item.
+    #[serde(default)]
+    pub metadata: bool,
+
+    /// If `true`, resolve the block from the relay chain (Asset Hub only).
+    #[serde(default)]
+    pub use_rc_block: bool,
+}
+
+// ============================================================================
+// RC Block Fields
+// ============================================================================
+
+/// Fields to include in responses when `useRcBlock=true`.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcBlockFields {
+    /// Relay chain block hash (when `useRcBlock=true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+
+    /// Relay chain block number (when `useRcBlock=true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+
+    /// Asset Hub timestamp (when `useRcBlock=true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+// ============================================================================
+// Deprecation Info
+// ============================================================================
+
+/// Deprecation information for an item.
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum DeprecationInfo {
+    /// Item is not deprecated.
+    NotDeprecated(Option<()>),
+    /// Item is deprecated without any additional info.
+    Deprecated(serde_json::Value),
+    /// Item is deprecated with additional info (since, note).
+    DeprecatedWithInfo {
+        /// The version since which this item is deprecated.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        since: Option<String>,
+        /// A note about the deprecation.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+    },
+}
+
+impl Default for DeprecationInfo {
+    fn default() -> Self {
+        DeprecationInfo::NotDeprecated(None)
+    }
 }
