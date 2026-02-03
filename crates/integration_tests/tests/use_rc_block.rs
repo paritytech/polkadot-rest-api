@@ -663,3 +663,239 @@ fn validate_use_rc_block_fields(block: &Value) -> Result<()> {
 
     Ok(())
 }
+
+// ================================================================================================
+// Tests for /blocks/{blockId}/extrinsics-raw?useRcBlock=true
+// ================================================================================================
+
+#[tokio::test]
+async fn test_use_rc_block_extrinsics_raw_structure() -> Result<()> {
+    init_tracing();
+
+    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let local_client = TestClient::new(api_url);
+
+    local_client
+        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
+        .await
+        .context("Local API is not ready")?;
+
+    let rc_block_number = 10554957;
+    let endpoint = format!("/blocks/{}/extrinsics-raw?useRcBlock=true", rc_block_number);
+
+    println!(
+        "\n{} Testing useRcBlock for /blocks/{}/extrinsics-raw - Structure validation",
+        "Testing".cyan().bold(),
+        rc_block_number
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    println!(
+        "{} Fetching from local API: {}{}",
+        "→".cyan(),
+        local_client.base_url(),
+        endpoint
+    );
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    println!("{} Local API response: {}", "✓".green(), "OK".green());
+
+    println!("\n{} Validating response structure...", "→".cyan().bold());
+
+    let local_array = local_json
+        .as_array()
+        .expect("Local response is not an array");
+
+    println!(
+        "  {} Local response contains {} block(s)",
+        "✓".green(),
+        local_array.len()
+    );
+
+    assert!(!local_array.is_empty(), "Local response is empty");
+
+    // Validate first block structure
+    let local_block = &local_array[0];
+    validate_extrinsics_raw_structure(local_block)?;
+    validate_use_rc_block_fields(local_block)?;
+
+    println!("\n{} Structure validation passed!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_use_rc_block_extrinsics_raw_comparison() -> Result<()> {
+    init_tracing();
+
+    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let local_client = TestClient::new(api_url);
+
+    local_client
+        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
+        .await
+        .context("Local API is not ready")?;
+
+    let rc_block_number = 10554957;
+    let endpoint = format!("/blocks/{}/extrinsics-raw?useRcBlock=true", rc_block_number);
+
+    println!(
+        "\n{} Testing useRcBlock for /blocks/{}/extrinsics-raw - Fixture comparison",
+        "Testing".cyan().bold(),
+        rc_block_number
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    println!(
+        "{} Fetching from local API: {}{}",
+        "→".cyan(),
+        local_client.base_url(),
+        endpoint
+    );
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    println!("{} Local API response: {}", "✓".green(), "OK".green());
+
+    println!(
+        "{} Loading expected response from sidecar fixture",
+        "→".cyan()
+    );
+    let fixture_path = get_fixture_path("use_rc_block_extrinsics_raw_10554957.json")?;
+    let fixture_content = fs::read_to_string(&fixture_path)
+        .with_context(|| format!("Failed to read fixture file: {:?}", fixture_path))?;
+    let sidecar_json: Value = serde_json::from_str(&fixture_content)
+        .context("Failed to parse expected sidecar response from fixture")?;
+    println!("{} Expected response loaded from fixture", "✓".green());
+
+    println!("\n{} Validating responses...", "→".cyan().bold());
+
+    let local_array = local_json
+        .as_array()
+        .expect("Local response is not an array");
+    let sidecar_array = sidecar_json
+        .as_array()
+        .expect("Sidecar response is not an array");
+
+    println!(
+        "  {} Local response contains {} block(s)",
+        "✓".green(),
+        local_array.len()
+    );
+    println!(
+        "  {} Sidecar response contains {} block(s)",
+        "✓".green(),
+        sidecar_array.len()
+    );
+
+    assert_eq!(
+        local_array.len(),
+        sidecar_array.len(),
+        "Block count mismatch: local={}, sidecar={}",
+        local_array.len(),
+        sidecar_array.len()
+    );
+
+    println!("\n{} Comparing JSON responses...", "→".cyan().bold());
+    let comparison_result = compare_json(&local_json, &sidecar_json, &[])?;
+
+    if !comparison_result.is_match() {
+        println!("{} JSON responses differ:", "✗".red().bold());
+        let diff_output = comparison_result.format_diff(&sidecar_json, &local_json);
+        println!("{}", diff_output);
+        println!("{}", "═".repeat(80).bright_white());
+    }
+
+    assert!(
+        comparison_result.is_match(),
+        "Found {} difference(s) between local and expected responses",
+        comparison_result.differences().len()
+    );
+
+    println!("{} All JSON responses match!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+fn validate_extrinsics_raw_structure(block: &Value) -> Result<()> {
+    let block_obj = block.as_object().context("Block is not an object")?;
+
+    let required_fields = vec![
+        ("parentHash", "string"),
+        ("number", "string"),
+        ("stateRoot", "string"),
+        ("extrinsicRoot", "string"),
+        ("digest", "object"),
+        ("extrinsics", "array"),
+    ];
+
+    let mut errors = Vec::new();
+
+    for (field, expected_type) in required_fields {
+        match block_obj.get(field) {
+            Some(value) => {
+                let actual_type = value_type_name(value);
+                if actual_type != expected_type {
+                    errors.push(format!(
+                        "  {} {}: type mismatch - expected {}, got {}",
+                        "✗".red(),
+                        field,
+                        expected_type,
+                        actual_type
+                    ));
+                } else {
+                    println!("  {} {}: {} ✓", "✓".green(), field, actual_type);
+                }
+            }
+            None => {
+                errors.push(format!("  {} {}: missing required field", "✗".red(), field));
+            }
+        }
+    }
+
+    // Validate digest structure
+    if let Some(digest) = block_obj.get("digest") {
+        if let Some(digest_obj) = digest.as_object() {
+            if let Some(logs) = digest_obj.get("logs") {
+                if logs.as_array().is_some() {
+                    println!("  {} digest.logs: array ✓", "✓".green());
+                } else {
+                    errors.push(format!(
+                        "  {} digest.logs: expected array, got {}",
+                        "✗".red(),
+                        value_type_name(logs)
+                    ));
+                }
+            } else {
+                errors.push(format!("  {} digest.logs: missing", "✗".red()));
+            }
+        }
+    }
+
+    if !errors.is_empty() {
+        println!("\n{} Structure validation errors:", "✗".red().bold());
+        for error in &errors {
+            println!("{}", error);
+        }
+        anyhow::bail!("Found {} structure error(s)", errors.len());
+    }
+
+    Ok(())
+}
