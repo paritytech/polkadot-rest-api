@@ -796,10 +796,11 @@ mod tests {
         assert!(json.contains("\"at\""));
         assert!(json.contains("\"configuration\""));
         assert!(json.contains("\"regionLength\":5040"));
-        assert!(json.contains("\"status\""));
-        assert!(json.contains("\"coreCount\":28"));
         assert!(json.contains("\"cores\""));
         assert!(json.contains("\"available\":15"));
+        assert!(json.contains("\"currentCorePrice\":\"1000000000000\""));
+        assert!(json.contains("\"phase\""));
+        assert!(json.contains("\"currentPhase\":\"priceDiscovery\""));
     }
 
     #[test]
