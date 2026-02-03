@@ -135,13 +135,13 @@ async fn test_coretime_leases_item_structure() -> Result<()> {
     );
 
     assert!(lease["task"].is_string(), "'task' should be a string");
-    assert!(lease["until"].is_number(), "'until' should be a number");
+    assert!(lease["until"].is_string(), "'until' should be a string");
 
-    // 'core' is optional but if present should be a number
+    // 'core' is optional but if present should be a string
     if lease.get("core").is_some() && !lease["core"].is_null() {
         assert!(
-            lease["core"].is_number(),
-            "'core' should be a number when present"
+            lease["core"].is_string(),
+            "'core' should be a string when present"
         );
     }
 
@@ -152,9 +152,10 @@ async fn test_coretime_leases_item_structure() -> Result<()> {
         "'task' should be a numeric string (parachain ID)"
     );
 
-    // Validate until is a positive number
-    let until = lease["until"].as_u64().unwrap();
-    assert!(until > 0, "'until' should be a positive timeslice value");
+    // Validate until is a positive number (as string)
+    let until = lease["until"].as_str().unwrap();
+    let until_num: u64 = until.parse().expect("'until' should be a numeric string");
+    assert!(until_num > 0, "'until' should be a positive timeslice value");
 
     println!(
         "ok: Coretime leases item structure test passed ({} leases found)",
@@ -463,7 +464,7 @@ async fn test_coretime_leases_sorting() -> Result<()> {
     let mut seen_none = false;
 
     for lease in leases {
-        let core = lease.get("core").and_then(|c| c.as_u64());
+        let core = lease.get("core").and_then(|c| c.as_str()).and_then(|s| s.parse::<u64>().ok());
 
         match (core, last_core, seen_none) {
             // If we see a Some after a None, that's wrong

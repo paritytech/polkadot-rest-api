@@ -32,10 +32,10 @@ pub struct LeaseWithCore {
     /// The task ID (parachain ID) that holds this lease.
     pub task: String,
     /// The timeslice until which the lease is valid.
-    pub until: u32,
+    pub until: String,
     /// The core ID assigned to this lease (correlated from workload data).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub core: Option<u32>,
+    pub core: Option<String>,
 }
 
 /// Response for GET /coretime/leases endpoint.
@@ -146,16 +146,20 @@ pub async fn coretime_leases(
 
             LeaseWithCore {
                 task: lease.task.to_string(),
-                until: lease.until,
-                core,
+                until: lease.until.to_string(),
+                core: core.map(|c| c.to_string()),
             }
         })
         .collect();
 
     // Sort by core ID (leases with no core come last)
     let mut sorted_leases = leases_with_cores;
-    sorted_leases.sort_by(|a, b| match (a.core, b.core) {
-        (Some(a_core), Some(b_core)) => a_core.cmp(&b_core),
+    sorted_leases.sort_by(|a, b| match (&a.core, &b.core) {
+        (Some(a_core), Some(b_core)) => {
+            let a_num: u32 = a_core.parse().unwrap_or(0);
+            let b_num: u32 = b_core.parse().unwrap_or(0);
+            a_num.cmp(&b_num)
+        }
         (Some(_), None) => std::cmp::Ordering::Less,
         (None, Some(_)) => std::cmp::Ordering::Greater,
         (None, None) => std::cmp::Ordering::Equal,
@@ -376,27 +380,27 @@ mod tests {
     fn test_lease_with_core_serialization_with_core() {
         let lease = LeaseWithCore {
             task: "2000".to_string(),
-            until: 1234567,
-            core: Some(5),
+            until: "1234567".to_string(),
+            core: Some("5".to_string()),
         };
 
         let json = serde_json::to_string(&lease).unwrap();
         assert!(json.contains("\"task\":\"2000\""));
-        assert!(json.contains("\"until\":1234567"));
-        assert!(json.contains("\"core\":5"));
+        assert!(json.contains("\"until\":\"1234567\""));
+        assert!(json.contains("\"core\":\"5\""));
     }
 
     #[test]
     fn test_lease_with_core_serialization_without_core() {
         let lease = LeaseWithCore {
             task: "2000".to_string(),
-            until: 1234567,
+            until: "1234567".to_string(),
             core: None,
         };
 
         let json = serde_json::to_string(&lease).unwrap();
         assert!(json.contains("\"task\":\"2000\""));
-        assert!(json.contains("\"until\":1234567"));
+        assert!(json.contains("\"until\":\"1234567\""));
         // core should be skipped when None
         assert!(!json.contains("\"core\""));
     }
@@ -411,13 +415,13 @@ mod tests {
             leases: vec![
                 LeaseWithCore {
                     task: "2000".to_string(),
-                    until: 100,
-                    core: Some(0),
+                    until: "100".to_string(),
+                    core: Some("0".to_string()),
                 },
                 LeaseWithCore {
                     task: "2001".to_string(),
-                    until: 200,
-                    core: Some(1),
+                    until: "200".to_string(),
+                    core: Some("1".to_string()),
                 },
             ],
         };
@@ -439,34 +443,38 @@ mod tests {
         let mut leases = vec![
             LeaseWithCore {
                 task: "2002".to_string(),
-                until: 100,
-                core: Some(2),
+                until: "100".to_string(),
+                core: Some("2".to_string()),
             },
             LeaseWithCore {
                 task: "2000".to_string(),
-                until: 100,
-                core: Some(0),
+                until: "100".to_string(),
+                core: Some("0".to_string()),
             },
             LeaseWithCore {
                 task: "2001".to_string(),
-                until: 100,
-                core: Some(1),
+                until: "100".to_string(),
+                core: Some("1".to_string()),
             },
         ];
 
-        leases.sort_by(|a, b| match (a.core, b.core) {
-            (Some(a_core), Some(b_core)) => a_core.cmp(&b_core),
+        leases.sort_by(|a, b| match (&a.core, &b.core) {
+            (Some(a_core), Some(b_core)) => {
+                let a_num: u32 = a_core.parse().unwrap_or(0);
+                let b_num: u32 = b_core.parse().unwrap_or(0);
+                a_num.cmp(&b_num)
+            }
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
             (None, None) => std::cmp::Ordering::Equal,
         });
 
         assert_eq!(leases[0].task, "2000");
-        assert_eq!(leases[0].core, Some(0));
+        assert_eq!(leases[0].core, Some("0".to_string()));
         assert_eq!(leases[1].task, "2001");
-        assert_eq!(leases[1].core, Some(1));
+        assert_eq!(leases[1].core, Some("1".to_string()));
         assert_eq!(leases[2].task, "2002");
-        assert_eq!(leases[2].core, Some(2));
+        assert_eq!(leases[2].core, Some("2".to_string()));
     }
 
     #[test]
@@ -474,36 +482,40 @@ mod tests {
         let mut leases = vec![
             LeaseWithCore {
                 task: "2003".to_string(),
-                until: 100,
+                until: "100".to_string(),
                 core: None,
             },
             LeaseWithCore {
                 task: "2000".to_string(),
-                until: 100,
-                core: Some(0),
+                until: "100".to_string(),
+                core: Some("0".to_string()),
             },
             LeaseWithCore {
                 task: "2002".to_string(),
-                until: 100,
+                until: "100".to_string(),
                 core: None,
             },
             LeaseWithCore {
                 task: "2001".to_string(),
-                until: 100,
-                core: Some(1),
+                until: "100".to_string(),
+                core: Some("1".to_string()),
             },
         ];
 
-        leases.sort_by(|a, b| match (a.core, b.core) {
-            (Some(a_core), Some(b_core)) => a_core.cmp(&b_core),
+        leases.sort_by(|a, b| match (&a.core, &b.core) {
+            (Some(a_core), Some(b_core)) => {
+                let a_num: u32 = a_core.parse().unwrap_or(0);
+                let b_num: u32 = b_core.parse().unwrap_or(0);
+                a_num.cmp(&b_num)
+            }
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
             (None, None) => std::cmp::Ordering::Equal,
         });
 
         // Cores with Some values should come first, sorted by core ID
-        assert_eq!(leases[0].core, Some(0));
-        assert_eq!(leases[1].core, Some(1));
+        assert_eq!(leases[0].core, Some("0".to_string()));
+        assert_eq!(leases[1].core, Some("1".to_string()));
         // None cores should come last
         assert_eq!(leases[2].core, None);
         assert_eq!(leases[3].core, None);
@@ -578,8 +590,8 @@ mod tests {
 
                 LeaseWithCore {
                     task: lease.task.to_string(),
-                    until: lease.until,
-                    core,
+                    until: lease.until.to_string(),
+                    core: core.map(|c| c.to_string()),
                 }
             })
             .collect();
@@ -587,10 +599,10 @@ mod tests {
         assert_eq!(leases_with_cores.len(), 3);
 
         assert_eq!(leases_with_cores[0].task, "2000");
-        assert_eq!(leases_with_cores[0].core, Some(0));
+        assert_eq!(leases_with_cores[0].core, Some("0".to_string()));
 
         assert_eq!(leases_with_cores[1].task, "2001");
-        assert_eq!(leases_with_cores[1].core, Some(1));
+        assert_eq!(leases_with_cores[1].core, Some("1".to_string()));
 
         assert_eq!(leases_with_cores[2].task, "2002");
         assert_eq!(leases_with_cores[2].core, None); // No matching workload
