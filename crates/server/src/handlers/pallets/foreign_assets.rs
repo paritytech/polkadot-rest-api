@@ -62,7 +62,8 @@ pub struct PalletsForeignAssetsResponse {
 // Internal SCALE Decode Types
 // ============================================================================
 
-#[derive(Debug, Clone, Decode)]
+#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
+#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
 enum AssetStatus {
     Live,
     Frozen,
@@ -79,7 +80,8 @@ impl AssetStatus {
     }
 }
 
-#[derive(Debug, Clone, Decode)]
+#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
+#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
 struct AssetDetails {
     owner: [u8; 32],
     issuer: [u8; 32],
@@ -95,7 +97,8 @@ struct AssetDetails {
     status: AssetStatus,
 }
 
-#[derive(Debug, Clone, Decode)]
+#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
+#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
 struct AssetMetadataStorage {
     deposit: u128,
     name: Vec<u8>,
@@ -244,7 +247,7 @@ async fn fetch_all_foreign_assets(
     let mut metadata_map: std::collections::HashMap<Vec<u8>, serde_json::Value> =
         std::collections::HashMap::new();
 
-    let metadata_addr = subxt::dynamic::storage::<(scale_value::Value,), scale_value::Value>(
+    let metadata_addr = subxt::dynamic::storage::<(scale_value::Value,), AssetMetadataStorage>(
         "ForeignAssets",
         "Metadata",
     );
@@ -260,9 +263,17 @@ async fn fetch_all_foreign_assets(
                     && let Some(key_part) = key.part(0)
                 {
                     let key_part_bytes = key_part.bytes().to_vec();
-                    let value_bytes = entry.value().bytes();
-                    let metadata = decode_asset_metadata(value_bytes);
-                    metadata_map.insert(key_part_bytes, metadata);
+                    // Use typed decode instead of manual byte decoding
+                    if let Ok(metadata) = entry.value().decode() {
+                        let metadata_json = serde_json::json!({
+                            "deposit": metadata.deposit.to_string(),
+                            "name": format!("0x{}", hex::encode(&metadata.name)),
+                            "symbol": format!("0x{}", hex::encode(&metadata.symbol)),
+                            "decimals": metadata.decimals.to_string(),
+                            "isFrozen": metadata.is_frozen,
+                        });
+                        metadata_map.insert(key_part_bytes, metadata_json);
+                    }
                 }
             }
         }
@@ -276,10 +287,8 @@ async fn fetch_all_foreign_assets(
 
     // Use dynamic storage iteration to get all foreign assets
     // ForeignAssets::Asset is a map with MultiLocation as key
-    let storage_addr = subxt::dynamic::storage::<(scale_value::Value,), scale_value::Value>(
-        "ForeignAssets",
-        "Asset",
-    );
+    let storage_addr =
+        subxt::dynamic::storage::<(scale_value::Value,), AssetDetails>("ForeignAssets", "Asset");
 
     let mut stream = client_at_block
         .storage()
@@ -328,9 +337,14 @@ async fn fetch_all_foreign_assets(
         // Decode the MultiLocation from the key part bytes
         let multi_location = decode_multi_location_from_bytes(key_part.bytes());
 
-        // Decode the asset details
-        let value_bytes = entry.value().bytes();
-        let foreign_asset_info = decode_asset_details(value_bytes, ss58_prefix);
+        // Decode the asset details using typed decode
+        let foreign_asset_info = match entry.value().decode() {
+            Ok(details) => format_asset_details(&details, ss58_prefix),
+            Err(e) => {
+                tracing::debug!("Failed to decode asset details: {:?}", e);
+                serde_json::json!({})
+            }
+        };
 
         // Look up metadata using the key part bytes
         let key_part_bytes = key_part.bytes();
@@ -623,14 +637,8 @@ fn decode_multi_location_from_bytes(multi_location_bytes: &[u8]) -> serde_json::
     }
 }
 
-/// Decode asset details from raw bytes into JSON.
-/// Returns an empty object `{}` if decoding fails.
-fn decode_asset_details(bytes: &[u8], ss58_prefix: u16) -> serde_json::Value {
-    let details = match AssetDetails::decode(&mut &bytes[..]) {
-        Ok(d) => d,
-        Err(_) => return serde_json::json!({}),
-    };
-
+/// Format asset details into JSON.
+fn format_asset_details(details: &AssetDetails, ss58_prefix: u16) -> serde_json::Value {
     serde_json::json!({
         "owner": format_account_id(&details.owner, ss58_prefix),
         "issuer": format_account_id(&details.issuer, ss58_prefix),
@@ -644,23 +652,6 @@ fn decode_asset_details(bytes: &[u8], ss58_prefix: u16) -> serde_json::Value {
         "sufficients": details.sufficients.to_string(),
         "approvals": details.approvals.to_string(),
         "status": details.status.as_str().to_string(),
-    })
-}
-
-/// Decode asset metadata from raw bytes into JSON.
-/// Returns an empty object `{}` if decoding fails.
-fn decode_asset_metadata(bytes: &[u8]) -> serde_json::Value {
-    let metadata = match AssetMetadataStorage::decode(&mut &bytes[..]) {
-        Ok(m) => m,
-        Err(_) => return serde_json::json!({}),
-    };
-
-    serde_json::json!({
-        "deposit": metadata.deposit.to_string(),
-        "name": format!("0x{}", hex::encode(&metadata.name)),
-        "symbol": format!("0x{}", hex::encode(&metadata.symbol)),
-        "decimals": metadata.decimals.to_string(),
-        "isFrozen": metadata.is_frozen,
     })
 }
 
@@ -797,11 +788,30 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_asset_details() {
-        // Test that decode_asset_details returns empty JSON on invalid data
-        let invalid_bytes = vec![0u8; 10];
-        let result = decode_asset_details(&invalid_bytes, 0);
-        assert_eq!(result, serde_json::json!({}));
+    fn test_format_asset_details() {
+        // Test that format_asset_details returns correctly formatted JSON
+        let details = AssetDetails {
+            owner: [1u8; 32],
+            issuer: [2u8; 32],
+            admin: [3u8; 32],
+            freezer: [4u8; 32],
+            supply: 1000,
+            deposit: 100,
+            min_balance: 1,
+            is_sufficient: true,
+            accounts: 10,
+            sufficients: 5,
+            approvals: 2,
+            status: AssetStatus::Live,
+        };
+        let result = format_asset_details(&details, 0);
+
+        // Check that the result has the expected structure
+        assert!(result.get("owner").is_some());
+        assert!(result.get("supply").is_some());
+        assert_eq!(result["supply"], "1000");
+        assert_eq!(result["isSufficient"], true);
+        assert_eq!(result["status"], "Live");
     }
 
     #[test]
