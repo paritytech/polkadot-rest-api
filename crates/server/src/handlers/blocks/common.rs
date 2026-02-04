@@ -27,6 +27,25 @@ use super::docs::Docs;
 use super::types::{DigestLog, Event, ExtrinsicInfo, ExtrinsicOutcome, GetBlockError};
 use heck::ToSnakeCase;
 
+// ================================================================================================
+// Digest Log Index Constants
+// ================================================================================================
+
+/// DigestItem::PreRuntime discriminant in SCALE encoding
+const DIGEST_INDEX_PRERUNTIME: &str = "6";
+
+/// DigestItem::Consensus discriminant in SCALE encoding
+const DIGEST_INDEX_CONSENSUS: &str = "4";
+
+/// DigestItem::Seal discriminant in SCALE encoding
+const DIGEST_INDEX_SEAL: &str = "5";
+
+/// DigestItem::RuntimeEnvironmentUpdated discriminant in SCALE encoding
+const DIGEST_INDEX_RUNTIME_ENV_UPDATED: &str = "8";
+
+/// DigestItem::Other discriminant in SCALE encoding
+const DIGEST_INDEX_OTHER: &str = "0";
+
 /// Relay chain block header response
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,27 +127,27 @@ pub fn convert_digest_items_to_logs(items: &[DigestItem]) -> Vec<DigestLog> {
         .map(|item| match item {
             DigestItem::PreRuntime(engine_id, data) => DigestLog {
                 log_type: "PreRuntime".to_string(),
-                index: "6".to_string(),
+                index: DIGEST_INDEX_PRERUNTIME.to_string(),
                 value: json!([hex_with_prefix(engine_id), hex_with_prefix(data)]),
             },
             DigestItem::Consensus(engine_id, data) => DigestLog {
                 log_type: "Consensus".to_string(),
-                index: "4".to_string(),
+                index: DIGEST_INDEX_CONSENSUS.to_string(),
                 value: json!([hex_with_prefix(engine_id), hex_with_prefix(data)]),
             },
             DigestItem::Seal(engine_id, data) => DigestLog {
                 log_type: "Seal".to_string(),
-                index: "5".to_string(),
+                index: DIGEST_INDEX_SEAL.to_string(),
                 value: json!([hex_with_prefix(engine_id), hex_with_prefix(data)]),
             },
             DigestItem::RuntimeEnvironmentUpdated => DigestLog {
                 log_type: "RuntimeEnvironmentUpdated".to_string(),
-                index: "8".to_string(),
+                index: DIGEST_INDEX_RUNTIME_ENV_UPDATED.to_string(),
                 value: Value::Null,
             },
             DigestItem::Other(data) => DigestLog {
                 log_type: "Other".to_string(),
-                index: "0".to_string(),
+                index: DIGEST_INDEX_OTHER.to_string(),
                 value: json!(hex_with_prefix(data)),
             },
         })

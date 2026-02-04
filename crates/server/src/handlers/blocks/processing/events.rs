@@ -5,18 +5,13 @@
 //! - Categorizing events by phase (onInitialize, per-extrinsic, onFinalize)
 //! - Extracting extrinsic outcomes (success/failure, fees, weights) from events
 
-// TODO: Consider using `client_at_block.events()` API from subxt 0.50 for fetching and working
-// with events. This would handle decoding automatically without needing custom visitors/handlers,
-// and could potentially simplify most of the code in this module.
-// See: https://github.com/polkadot-api/polkadot-rest-api/pull/XXX#discussion_rXXXXXXXXX
-
 use crate::state::AppState;
 use serde_json::Value;
+use sp_core::crypto::{AccountId32, Ss58Codec};
 
 use super::super::common::BlockClient;
 use super::super::decode::{
-    EventPhase as VisitorEventPhase, EventsVisitor, convert_bytes_to_hex, transform_json_unified,
-    try_convert_accountid_to_ss58,
+    convert_bytes_to_hex, transform_json_unified, try_convert_accountid_to_ss58,
 };
 use super::super::types::{
     ActualWeight, Event, EventPhase, ExtrinsicOutcome, GetBlockError, MethodInfo, OnFinalize,
@@ -221,120 +216,115 @@ async fn fetch_block_events_impl(
     client_at_block: &BlockClient,
     block_number: u64,
 ) -> Result<Vec<ParsedEvent>, GetBlockError> {
-    // Get the type resolver from metadata for type-aware enum serialization
+    let events = client_at_block.events().fetch().await.map_err(|e| {
+        tracing::warn!("Failed to fetch events for block {}: {:?}", block_number, e);
+        GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
+            "Failed to fetch events",
+        ))
+    })?;
+
     let metadata = client_at_block.metadata();
-    let resolver = metadata.types().clone();
-
-    // Use dynamic storage address for System::Events
-    // Note: For dynamic storage, we need to specify the value type
-    let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
-    let events_value = client_at_block.storage().fetch(addr, ()).await?;
-
-    // Use the visitor pattern to get type information for each field
-    let events_with_types = events_value
-        .visit(EventsVisitor::new(&resolver))
-        .map_err(|e| {
-            tracing::warn!(
-                "Failed to decode events for block {}: {:?}",
-                block_number,
-                e
-            );
-            GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
-                "Failed to decode events",
-            ))
-        })?;
-
-    // Also decode with scale_value to preserve structure
-    let events_vec = events_value
-        .decode_as::<Vec<scale_value::Value<()>>>()
-        .map_err(|e| {
-            tracing::warn!(
-                "Failed to decode events for block {}: {:?}",
-                block_number,
-                e
-            );
-            GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
-                "Failed to decode events",
-            ))
-        })?;
-
     let mut parsed_events = Vec::new();
 
-    // Process each event, combining type info from visitor with structure from scale_value
-    for (event_info, event_record) in events_with_types.iter().zip(events_vec.iter()) {
-        let phase = match event_info.phase {
-            VisitorEventPhase::Initialization => EventPhase::Initialization,
-            VisitorEventPhase::ApplyExtrinsic(idx) => EventPhase::ApplyExtrinsic(idx),
-            VisitorEventPhase::Finalization => EventPhase::Finalization,
-        };
-
-        // Get the event variant from scale_value (to preserve structure)
-        let event_composite = match &event_record.value {
-            scale_value::ValueDef::Composite(comp) => comp,
-            _ => continue,
-        };
-
-        let fields: Vec<&scale_value::Value<()>> = event_composite.values().collect();
-        if fields.len() < 2 {
-            continue;
-        }
-
-        if let scale_value::ValueDef::Variant(pallet_variant) = &fields[1].value {
-            let inner_values: Vec<&scale_value::Value<()>> =
-                pallet_variant.values.values().collect();
-
-            if let Some(inner_value) = inner_values.first()
-                && let scale_value::ValueDef::Variant(event_variant) = &inner_value.value
-            {
-                let _field_values: Vec<&scale_value::Value<()>> =
-                    event_variant.values.values().collect();
-
-                // Use the visitor's field values which have proper type-level enum serialization
-                // (basic enums as strings, non-basic enums as objects)
-                let event_data: Vec<Value> = event_info
-                    .fields
-                    .iter()
-                    .map(|event_field| {
-                        let json_value = event_field.value.clone();
-                        let type_name = event_field.type_name.as_ref();
-
-                        if let Some(tn) = type_name {
-                            if tn == "AccountId32" || tn == "MultiAddress" || tn == "AccountId" {
-                                let with_hex = convert_bytes_to_hex(json_value.clone());
-                                if let Some(ss58_value) =
-                                    try_convert_accountid_to_ss58(&with_hex, ss58_prefix)
-                                {
-                                    return ss58_value;
-                                }
-                            } else if tn == "RewardDestination"
-                                && let Some(account_value) = json_value.get("account")
-                            {
-                                let with_hex = convert_bytes_to_hex(account_value.clone());
-                                if let Some(ss58_value) =
-                                    try_convert_accountid_to_ss58(&with_hex, ss58_prefix)
-                                {
-                                    return serde_json::json!({
-                                        "account": ss58_value
-                                    });
-                                }
-                            }
-                        }
-                        // Apply remaining transformations (bytes to hex, numbers to strings, camelCase keys)
-                        transform_json_unified(json_value.clone(), None)
-                    })
-                    .collect();
-
-                parsed_events.push(ParsedEvent {
-                    phase,
-                    pallet_name: event_info.pallet_name.clone(),
-                    event_name: event_info.event_name.clone(),
-                    event_data,
-                });
+    for event_result in events.iter() {
+        let event = match event_result {
+            Ok(e) => e,
+            Err(_e) => {
+                continue;
             }
-        }
+        };
+
+        let phase = match event.phase() {
+            subxt::events::Phase::Initialization => EventPhase::Initialization,
+            subxt::events::Phase::ApplyExtrinsic(idx) => EventPhase::ApplyExtrinsic(idx),
+            subxt::events::Phase::Finalization => EventPhase::Finalization,
+        };
+
+        let pallet_name = event.pallet_name().to_lowercase();
+        let event_name = event.event_name().to_string();
+
+        let event_fields: scale_value::Value = match event.decode_fields_unchecked_as() {
+            Ok(fields) => fields,
+            Err(_) => {
+                continue;
+            }
+        };
+
+        let event_data = convert_event_fields_to_json(&event_fields, ss58_prefix, &metadata);
+
+        parsed_events.push(ParsedEvent {
+            phase,
+            pallet_name,
+            event_name,
+            event_data,
+        });
     }
 
     Ok(parsed_events)
+}
+
+/// Convert scale_value event fields to JSON with appropriate transformations
+fn convert_event_fields_to_json(
+    fields: &scale_value::Value,
+    ss58_prefix: u16,
+    _metadata: &subxt::Metadata,
+) -> Vec<Value> {
+    let field_values: Vec<&scale_value::Value> = match &fields.value {
+        scale_value::ValueDef::Composite(comp) => comp.values().collect(),
+        _ => return Vec::new(),
+    };
+
+    field_values
+        .iter()
+        .map(|field_value| {
+            let json_value = match serde_json::to_value(field_value) {
+                Ok(v) => v,
+                Err(_) => return Value::Null,
+            };
+
+            let with_ss58 = convert_accountid_to_ss58_if_applicable(&json_value, ss58_prefix);
+
+            transform_json_unified(with_ss58, None)
+        })
+        .collect()
+}
+
+/// Helper to convert AccountId values to SS58 addresses
+/// Uses scale-decode to properly detect and convert AccountId32 types
+fn convert_accountid_to_ss58_if_applicable(json_value: &Value, ss58_prefix: u16) -> Value {
+    if let Some(bytes_array) = json_value.as_array()
+        && bytes_array.len() == 32
+        && bytes_array
+            .iter()
+            .all(|v| v.as_u64().is_some_and(|n| n <= 255))
+    {
+        let bytes: Option<Vec<u8>> = bytes_array
+            .iter()
+            .map(|v| v.as_u64().map(|n| n as u8))
+            .collect();
+
+        if let Some(bytes_vec) = bytes {
+            let mut bytes_array = [0u8; 32];
+            bytes_array.copy_from_slice(&bytes_vec);
+
+            let account_id = AccountId32::from(bytes_array);
+            let ss58 = account_id.to_ss58check_with_version(ss58_prefix.into());
+            return Value::String(ss58);
+        }
+    }
+
+    if let Some(obj) = json_value.as_object()
+        && let Some(account_value) = obj.get("account")
+    {
+        let with_hex = convert_bytes_to_hex(account_value.clone());
+        if let Some(ss58_value) = try_convert_accountid_to_ss58(&with_hex, ss58_prefix) {
+            return serde_json::json!({
+                "account": ss58_value
+            });
+        }
+    }
+
+    json_value.clone()
 }
 
 /// Categorize parsed events into onInitialize, per-extrinsic, and onFinalize arrays

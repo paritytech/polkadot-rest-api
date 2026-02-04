@@ -21,6 +21,29 @@ use thiserror::Error;
 use super::CommonBlockError;
 
 // ============================================================================
+// Field Index Constants
+// ============================================================================
+
+// CandidateIncluded event field indices
+const CANDIDATE_RECEIPT_IDX: usize = 0;
+const HEAD_DATA_IDX: usize = 1;
+const CORE_INDEX_IDX: usize = 2;
+const GROUP_INDEX_IDX: usize = 3;
+
+// CandidateDescriptor field indices
+const DESCRIPTOR_PARA_ID_IDX: usize = 0;
+const DESCRIPTOR_RELAY_PARENT_IDX: usize = 1;
+const DESCRIPTOR_PERSISTED_VALIDATION_DATA_HASH_IDX: usize = 2;
+const DESCRIPTOR_POV_HASH_IDX: usize = 3;
+const DESCRIPTOR_ERASURE_ROOT_IDX: usize = 4;
+const DESCRIPTOR_PARA_HEAD_IDX: usize = 5;
+const DESCRIPTOR_VALIDATION_CODE_HASH_IDX: usize = 6;
+
+// CandidateReceipt field indices
+const RECEIPT_DESCRIPTOR_IDX: usize = 0;
+const RECEIPT_COMMITMENTS_HASH_IDX: usize = 1;
+
+// ============================================================================
 // Types - exported for reuse by /rc/blocks/{blockId}/para-inclusions
 // ============================================================================
 
@@ -251,13 +274,13 @@ fn extract_inclusion_from_event(event_data: &Composite<()>) -> Option<ParaInclus
         return None;
     }
 
-    let candidate_receipt = values.first()?;
+    let candidate_receipt = values.get(CANDIDATE_RECEIPT_IDX)?;
 
-    let head_data = values.get(1)?;
+    let head_data = values.get(HEAD_DATA_IDX)?;
 
-    let core_index = values.get(2)?;
+    let core_index = values.get(CORE_INDEX_IDX)?;
 
-    let group_index = values.get(3)?;
+    let group_index = values.get(GROUP_INDEX_IDX)?;
 
     let (descriptor, commitments_hash, para_id) =
         extract_candidate_receipt_data(candidate_receipt)?;
@@ -286,20 +309,27 @@ fn extract_candidate_receipt_data(
         _ => return None,
     };
 
-    let descriptor_value = get_field_from_composite(receipt_composite, &["descriptor"], Some(0))?;
+    let descriptor_value = get_field_from_composite(
+        receipt_composite,
+        &["descriptor"],
+        Some(RECEIPT_DESCRIPTOR_IDX),
+    )?;
     let descriptor_composite = match &descriptor_value.value {
         ValueDef::Composite(c) => c,
         _ => return None,
     };
 
-    let para_id_value =
-        get_field_from_composite(descriptor_composite, &["para_id", "paraId"], Some(0))?;
+    let para_id_value = get_field_from_composite(
+        descriptor_composite,
+        &["para_id", "paraId"],
+        Some(DESCRIPTOR_PARA_ID_IDX),
+    )?;
     let para_id = extract_u32_from_value(para_id_value)?;
 
     let relay_parent = get_field_from_composite(
         descriptor_composite,
         &["relay_parent", "relayParent"],
-        Some(1),
+        Some(DESCRIPTOR_RELAY_PARENT_IDX),
     )
     .and_then(value_to_hex_string)?;
 
@@ -309,29 +339,35 @@ fn extract_candidate_receipt_data(
             "persisted_validation_data_hash",
             "persistedValidationDataHash",
         ],
-        Some(2),
+        Some(DESCRIPTOR_PERSISTED_VALIDATION_DATA_HASH_IDX),
     )
     .and_then(value_to_hex_string)?;
 
-    let pov_hash =
-        get_field_from_composite(descriptor_composite, &["pov_hash", "povHash"], Some(3))
-            .and_then(value_to_hex_string)?;
+    let pov_hash = get_field_from_composite(
+        descriptor_composite,
+        &["pov_hash", "povHash"],
+        Some(DESCRIPTOR_POV_HASH_IDX),
+    )
+    .and_then(value_to_hex_string)?;
 
     let erasure_root = get_field_from_composite(
         descriptor_composite,
         &["erasure_root", "erasureRoot"],
-        Some(4),
+        Some(DESCRIPTOR_ERASURE_ROOT_IDX),
     )
     .and_then(value_to_hex_string)?;
 
-    let para_head =
-        get_field_from_composite(descriptor_composite, &["para_head", "paraHead"], Some(5))
-            .and_then(value_to_hex_string)?;
+    let para_head = get_field_from_composite(
+        descriptor_composite,
+        &["para_head", "paraHead"],
+        Some(DESCRIPTOR_PARA_HEAD_IDX),
+    )
+    .and_then(value_to_hex_string)?;
 
     let validation_code_hash = get_field_from_composite(
         descriptor_composite,
         &["validation_code_hash", "validationCodeHash"],
-        Some(6),
+        Some(DESCRIPTOR_VALIDATION_CODE_HASH_IDX),
     )
     .and_then(value_to_hex_string)?;
 
@@ -347,7 +383,7 @@ fn extract_candidate_receipt_data(
     let commitments_hash = get_field_from_composite(
         receipt_composite,
         &["commitments_hash", "commitmentsHash"],
-        Some(1),
+        Some(RECEIPT_COMMITMENTS_HASH_IDX),
     )
     .and_then(value_to_hex_string)?;
 

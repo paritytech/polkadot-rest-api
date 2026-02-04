@@ -18,7 +18,6 @@ use super::super::decode::{GetTypeName, JsonVisitor};
 use super::super::types::{
     ExtrinsicInfo, GetBlockError, MethodInfo, MultiAddress, SignatureInfo, SignerId,
 };
-use super::super::utils::extract_numeric_string;
 
 /// Extract extrinsics from a block using subxt with explicit ss58_prefix
 ///
@@ -224,97 +223,54 @@ async fn extract_extrinsics_impl(
             (None, None)
         };
 
-        // Extract nonce, tip, and era from transaction extensions (if present)
         let (nonce, tip, era_info) = if let Some(extensions) = extrinsic.transaction_extensions() {
-            let mut nonce_value = None;
-            let mut tip_value = None;
+            let nonce_value = extensions.nonce().map(|n| n.to_string());
+            let tip_value = extensions.tip().map(|t| t.to_string());
+
             let mut era_value = None;
-
-            tracing::trace!(
-                "Extrinsic {} has {} extensions",
-                extrinsic.index(),
-                extensions.iter().count()
-            );
-
             for ext in extensions.iter() {
                 let ext_name = ext.name();
-                tracing::trace!("Extension name: {}", ext_name);
+                if ext_name == "CheckMortality" || ext_name == "CheckEra" {
+                    let era_bytes = ext.bytes();
+                    tracing::debug!(
+                        "Found {} extension, raw bytes: {}",
+                        ext_name,
+                        hex::encode(era_bytes)
+                    );
 
-                match ext_name {
-                    "CheckNonce" => {
-                        // Decode using decode_unchecked_as which takes any DecodeAsType
-                        if let Ok(n) = ext.decode_unchecked_as::<scale_value::Value>()
-                            && let Ok(json_val) = serde_json::to_value(&n)
-                        {
-                            // The value might be nested in an object, so we need to extract it
-                            // If extraction fails, nonce_value remains None (serialized as null)
-                            nonce_value = extract_numeric_string(&json_val);
+                    let mut offset = 0;
+                    if let Some(decoded_era) = utils::decode_era_from_bytes(era_bytes, &mut offset)
+                    {
+                        tracing::debug!("Decoded era: {:?}", decoded_era);
+
+                        // Create a JSON representation that parse_era_info can understand
+                        if let Some(ref mortal) = decoded_era.mortal_era {
+                            let mut map = serde_json::Map::new();
+                            map.insert("name".to_string(), Value::String("Mortal".to_string()));
+
+                            let values = vec![
+                                Value::Array(vec![Value::Number(
+                                    mortal[0].parse::<u64>().unwrap().into(),
+                                )]),
+                                Value::Array(vec![Value::Number(
+                                    mortal[1].parse::<u64>().unwrap().into(),
+                                )]),
+                            ];
+                            map.insert("values".to_string(), Value::Array(values));
+                            era_value = Some(Value::Object(map));
+                        } else if decoded_era.immortal_era.is_some() {
+                            let mut map = serde_json::Map::new();
+                            map.insert("name".to_string(), Value::String("Immortal".to_string()));
+                            era_value = Some(Value::Object(map));
                         }
                     }
-                    "ChargeTransactionPayment" | "ChargeAssetTxPayment" => {
-                        // Decode using decode_unchecked_as which takes any DecodeAsType
-                        if let Ok(t) = ext.decode_unchecked_as::<scale_value::Value>()
-                            && let Ok(json_val) = serde_json::to_value(&t)
-                        {
-                            tip_value =
-                                Some(extract_numeric_string(&json_val).unwrap_or("0".to_string()));
-                        } else {
-                            tip_value = Some("0".to_string());
-                        }
-                    }
-                    "CheckMortality" | "CheckEra" => {
-                        // Era information - decode directly from raw bytes
-                        // The JSON representation is complex (e.g., "Mortal230") and harder to parse
-                        let era_bytes = ext.bytes();
-                        tracing::debug!(
-                            "Found CheckMortality extension, raw bytes: {}",
-                            hex::encode(era_bytes)
-                        );
-
-                        let mut offset = 0;
-                        if let Some(decoded_era) =
-                            utils::decode_era_from_bytes(era_bytes, &mut offset)
-                        {
-                            tracing::debug!("Decoded era: {:?}", decoded_era);
-
-                            // Create a JSON representation that parse_era_info can understand
-                            if let Some(ref mortal) = decoded_era.mortal_era {
-                                // Format: {"name": "Mortal", "values": [[period], [phase]]}
-                                let mut map = serde_json::Map::new();
-                                map.insert("name".to_string(), Value::String("Mortal".to_string()));
-
-                                let values = vec![
-                                    Value::Array(vec![Value::Number(
-                                        mortal[0].parse::<u64>().unwrap().into(),
-                                    )]),
-                                    Value::Array(vec![Value::Number(
-                                        mortal[1].parse::<u64>().unwrap().into(),
-                                    )]),
-                                ];
-                                map.insert("values".to_string(), Value::Array(values));
-
-                                era_value = Some(Value::Object(map));
-                            } else if decoded_era.immortal_era.is_some() {
-                                let mut map = serde_json::Map::new();
-                                map.insert(
-                                    "name".to_string(),
-                                    Value::String("Immortal".to_string()),
-                                );
-                                era_value = Some(Value::Object(map));
-                            }
-                        }
-                    }
-                    _ => {
-                        // Silently skip other extensions
-                    }
+                    break;
                 }
             }
 
             let era = if let Some(era_json) = era_value {
-                // Try to parse era information from extension
                 utils::parse_era_info(&era_json)
             } else if let Some(era_parsed) = era_from_bytes {
-                // Use era extracted from raw bytes
                 era_parsed
             } else {
                 // Default to immortal era for signed transactions without explicit era
