@@ -276,10 +276,8 @@ async fn search_for_inclusion_block(
         let results = join_all(futures).await;
 
         // Return the earliest match within this batch
-        for result in results {
-            if let Some(found) = result {
-                return Some(found);
-            }
+        if let Some(found) = results.into_iter().flatten().next() {
+            return Some(found);
         }
     }
 
