@@ -6,7 +6,24 @@
   "items": [
     {
       "multiLocation": {
-        "raw": "0x14a55f48ec1b9f14990bbc8756ed6ea7020209070403009d39a5de30e57443bff2a8307a4256c8797a3497"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x9d39a5de30e57443bff2a8307a4256c8797a3497"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -32,7 +49,14 @@
     },
     {
       "multiLocation": {
-        "raw": "0x16d6d5f41d97d8ad3ec48f161e4322fa0101006d1f"
+        "parents": "1",
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "2,011"
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB",
@@ -58,7 +82,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x1bb4b49f9a32f31e068e193911c066e102020907040300c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -84,7 +125,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x1d6c435d3e5250c329b2f7fa21d0d2bc020209070403006982508145454ce325ddbe47a25d4ec3d2311933"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x6982508145454ce325ddbe47a25d4ec3d2311933"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -110,7 +168,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x1edcaf771cd01b2ffdfc5d45694f21ed020209070403005a98fcbea516cf06857215779fd812ca3bef1b32"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x5a98fcbea516cf06857215779fd812ca3bef1b32"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -136,7 +211,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x2e81a8305b7dd35822c1332ce6ed9c270202090704030045804880de22913dafe09f4980848ece6ecbaf78"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x45804880de22913dafe09f4980848ece6ecbaf78"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -156,7 +248,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x347553a9bf290029593acbaf2624cff802020907040300cccccccccc33d538dbc2ee4feab0a7a1ff4e8a94"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0xcccccccccc33d538dbc2ee4feab0a7a1ff4e8a94"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -176,7 +285,14 @@
     },
     {
       "multiLocation": {
-        "raw": "0x37dad70f1b76fdc2d43b5d905c319bd502010903"
+        "parents": "2",
+        "interior": {
+          "X1": [
+            {
+              "GlobalConsensus": "Kusama"
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "14zcUAhP5XypiFQWA3b1AnGKrhZqR4XWUo4deWkwuN5y983G",
@@ -202,7 +318,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x3f1dae4cdbf162f6452583339312238d02020907040300a3931d71877c0e7a3148cb7eb4463524fec27fbd"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0xa3931d71877c0e7a3148cb7eb4463524fec27fbd"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -228,7 +361,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x3f21a23bad4a738f26793ec8d85606fc02020907040300163f8c2467924be0ae7b5347228cabf260318753"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x163f8c2467924be0ae7b5347228cabf260318753"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -248,7 +398,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x4f9ab93e15a1a776484f6459e92710950202090704030057e114b691db790c35207b2e685d4a43181e6061"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x57e114b691db790c35207b2e685d4a43181e6061"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -268,7 +435,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x4fb40759165e2a6d9a71de3f47ecefc1020209070403008236a87084f8b84306f72007f36f2618a5634494"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x8236a87084f8b84306f72007f36f2618a5634494"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -294,7 +478,14 @@
     },
     {
       "multiLocation": {
-        "raw": "0x515d8049ccf8e24d68c04f86e94e4f70010100dd1f"
+        "parents": "1",
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "2,039"
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp89Vh9FRH3u4ESYeNA7jxX3K78KMLJqPUgyonot6TFbF",
@@ -320,7 +511,14 @@
     },
     {
       "multiLocation": {
-        "raw": "0x5970bfd042f4755525d392c87ffcf2e70101004134"
+        "parents": "1",
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "3,344"
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp88hQpNpLAYJsQ7LxJBAfnkqLmFY36ZkX5BzcRidJ1p5",
@@ -346,7 +544,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x5c83a3e559290c7434c335b32bdafd02020209070403001abaea1f7c830bd89acc67ec4af516284b1bc33c"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -372,7 +587,14 @@
     },
     {
       "multiLocation": {
-        "raw": "0x6868c54f2b49268895e32f053645c253010100a934"
+        "parents": "1",
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "3,370"
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp88ncyoXqGfJDkYFy4o1CDyf69WibaK6vqUbz4bqBUwY",
@@ -398,7 +620,20 @@
     },
     {
       "multiLocation": {
-        "raw": "0x6eb9762471796875e8978766dc693c99010200b91f06020001000000000000000000000000000000000000000000000000000000000000"
+        "parents": "1",
+        "interior": {
+          "X2": [
+            {
+              "Parachain": "2,030"
+            },
+            {
+              "GeneralKey": {
+                "length": "2",
+                "data": "0x0001000000000000000000000000000000000000000000000000000000000000"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A",
@@ -424,7 +659,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x7561805875fed055ab78195171ffbdd60202090704030056072c95faa701256059aa122697b133aded9279"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x56072c95faa701256059aa122697b133aded9279"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -450,7 +702,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x76f8016e6b37c8f0ca04f7781cbc4cf802020907040300a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -476,7 +745,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x7b32c18a452bdf78c8b90395faf8ae4402020907040300ba41ddf06b7ffd89d1267b5a93bfef2424eb2003"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0xba41ddf06b7ffd89d1267b5a93bfef2424eb2003"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -502,7 +788,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x7c3c66934e1a4b80891a0a79e7f5326a020209070403000e186357c323c806c1efdad36d217f7a54b63d18"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x0e186357c323c806c1efdad36d217f7a54b63d18"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -528,7 +831,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x8863b255666d671c625b6e21865cc45c02020907040300aa7a9ca87d3694b5755f213b5d04094b8d0f0a6f"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0xaa7a9ca87d3694b5755f213b5d04094b8d0f0a6f"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -554,7 +874,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x8975286e55332940453c347a574d032b0202090704030018084fba666a33d37592fa2633fd49a74dd93a88"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x18084fba666a33d37592fa2633fd49a74dd93a88"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -580,7 +917,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x8d7d4af3773418f0f2e8732e73f060f1020209070403007f39c581f595b53c5cb19bd0b3f8da6c935e2ca0"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -606,7 +960,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x9088e7e84c39bdca9677f7d6a7dbc7d402020907040300e9f6d9898f9269b519e1435e6ebaff766c7f46bf"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0xe9f6d9898f9269b519e1435e6ebaff766c7f46bf"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -626,7 +997,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x92391da2a976aa5dfe7608f1bc04071a02020907040300582d872a1b094fc48f5de31d3b73f2d9be47def1"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x582d872a1b094fc48f5de31d3b73f2d9be47def1"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -652,7 +1040,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x9457996929bcec4c12e910025ee4060e020209070403006b175474e89094c44da98b954eedeac495271d0f"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x6b175474e89094c44da98b954eedeac495271d0f"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -678,7 +1083,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0x9b5125282b4327a4b5fa6b708fbb5a010202090704030095ad61b0a150d79219dcf64e1e6cc01f0b64c4ce"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -704,7 +1126,20 @@
     },
     {
       "multiLocation": {
-        "raw": "0xa1fd2bcd7ff8bdad74e3cc08e84179ff0102006d1f06036571640000000000000000000000000000000000000000000000000000000000"
+        "parents": "1",
+        "interior": {
+          "X2": [
+            {
+              "Parachain": "2,011"
+            },
+            {
+              "GeneralKey": {
+                "length": "3",
+                "data": "0x6571640000000000000000000000000000000000000000000000000000000000"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp89Q5jiLjhvTEqAGy2DmEpVf52BvaQePoiN5Eavx7oKB",
@@ -730,7 +1165,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0xa9a0fbc4603079ee849796aed5a49dfc020209070403007de91b204c1c737bcee6f000aaa6569cf7061cb7"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x7de91b204c1c737bcee6f000aaa6569cf7061cb7"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -756,7 +1208,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0xb6906f8257202b258a58221d604950e2020209070403002260fac5e5542a773aa44fbcfedf7c193bc2c599"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -782,7 +1251,17 @@
     },
     {
       "multiLocation": {
-        "raw": "0xcc4b97fe881ceab70248a7ebfb1dbad7010200511f040a"
+        "parents": "1",
+        "interior": {
+          "X2": [
+            {
+              "Parachain": "2,004"
+            },
+            {
+              "PalletInstance": "10"
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp89NgPL56sRoVRpBcjkGZPrk4Vf4tS6ePUD96XhAXozG",
@@ -808,7 +1287,14 @@
     },
     {
       "multiLocation": {
-        "raw": "0xdd5a6c84d53bd633f5d702557c11b198010100a534"
+        "parents": "1",
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "3,369"
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp88nRMkMK9jVQ84Xmt9w6bKEwnabVs6HJEK3PmZrxTCY",
@@ -834,7 +1320,20 @@
     },
     {
       "multiLocation": {
-        "raw": "0xe1dc8b21729d781027e9d3da9ced5050010200b91f06020900000000000000000000000000000000000000000000000000000000000000"
+        "parents": "1",
+        "interior": {
+          "X2": [
+            {
+              "Parachain": "2,030"
+            },
+            {
+              "GeneralKey": {
+                "length": "2",
+                "data": "0x0900000000000000000000000000000000000000000000000000000000000000"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp89TtYknbyYnqnF6dWN75q5ZosvFSuqzoEVkUAaNR47A",
@@ -860,7 +1359,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0xe22dbf2811bbe690fcafaa77bc1b6e64020209070403008daebade922df735c38c80c7ebd708af50815faa"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x8daebade922df735c38c80c7ebd708af50815faa"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -886,7 +1402,17 @@
     },
     {
       "multiLocation": {
-        "raw": "0xe4ecb8f31d5197c617e73c288f238c32010200c91f0500"
+        "parents": "1",
+        "interior": {
+          "X2": [
+            {
+              "Parachain": "2,034"
+            },
+            {
+              "GeneralIndex": "0"
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp89Uh2yWgTG28JA1QEvPUMjEPKejqkjHKf9zqLiFKjH6",
@@ -912,7 +1438,18 @@
     },
     {
       "multiLocation": {
-        "raw": "0xebadc79f8d931a3b5b3e69a257ca50fa0201090704"
+        "parents": "2",
+        "interior": {
+          "X1": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -938,7 +1475,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0xf0fff0de92b046f6084a09daccd25507020209070403005d3d01fd6d2ad1169b17918eb4f153c6616288eb"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x5d3d01fd6d2ad1169b17918eb4f153c6616288eb"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -964,7 +1518,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0xf98b2c21c977e93731f9318bb4aab6a002020907040300dac17f958d2ee523a2206206994597c13d831ec7"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0xdac17f958d2ee523a2206206994597c13d831ec7"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -990,7 +1561,17 @@
     },
     {
       "multiLocation": {
-        "raw": "0xfa4d67c74e7bc4a4dc30df4890252b52010200ed1f040a"
+        "parents": "1",
+        "interior": {
+          "X2": [
+            {
+              "Parachain": "2,043"
+            },
+            {
+              "PalletInstance": "10"
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4",
@@ -1016,7 +1597,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0xfbc8b46d80d638ce521888a2e313779502020907040300514910771af9ca656af840dff83e8264ecf986ca"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x514910771af9ca656af840dff83e8264ecf986ca"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -1042,7 +1640,14 @@
     },
     {
       "multiLocation": {
-        "raw": "0xfdba3c646a3156298c7b6e53db497fd8010100ed1f"
+        "parents": "1",
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "2,043"
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp89WVdU9MXcHWxTZ8tg2M3gyga3qj9ig17e49z1yMzH4",
@@ -1068,7 +1673,24 @@
     },
     {
       "multiLocation": {
-        "raw": "0xfed3b1db61f0f38b562532d74af5b9ee020209070403007fc66500c84a76ad7e9c93437bfc5ac33e2ddae9"
+        "parents": "2",
+        "interior": {
+          "X2": [
+            {
+              "GlobalConsensus": {
+                "Ethereum": {
+                  "chainId": "1"
+                }
+              }
+            },
+            {
+              "AccountKey20": {
+                "network": null,
+                "key": "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9"
+              }
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "1jMhfSJv5MkSQmEq97UmXCmMV63SHoQ3ednwkRSKETrCREU",
@@ -1094,7 +1716,14 @@
     },
     {
       "multiLocation": {
-        "raw": "0xfef0bbce7fce63083020e353cba03f750101000d20"
+        "parents": "1",
+        "interior": {
+          "X1": [
+            {
+              "Parachain": "2,051"
+            }
+          ]
+        }
       },
       "foreignAssetInfo": {
         "owner": "13cKp88eoWVt52MsarZmWKSxnfYgrZiEPDs27pyCRPi8jLAg",

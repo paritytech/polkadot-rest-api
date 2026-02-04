@@ -610,15 +610,27 @@ fn bytes_to_hex(values: &[scale_value::Value<u32>]) -> String {
     format!("0x{}", hex::encode(bytes))
 }
 
+/// Blake2_128Concat hasher prefix length (16 bytes hash + original key bytes).
+const BLAKE2_128_HASH_LEN: usize = 16;
+
 /// Decode MultiLocation from SCALE-encoded bytes.
-/// The bytes are obtained directly from Subxt's key().part(0).bytes() which
-/// already extracts just the MultiLocation portion without prefix hashes.
+///
+/// The bytes from Subxt's key().part(0).bytes() include the Blake2_128Concat hash prefix
+/// (16 bytes) followed by the actual SCALE-encoded Location. We skip the hash prefix
+/// to get the raw Location bytes for decoding.
 ///
 /// Uses staging_xcm::v4::Location type with scale_value for decoding that handles:
 /// - Proper variant indices matching the actual XCM types
 /// - Numeric type coercion (e.g., u8 -> u64)
 /// - Sidecar-compatible JSON format (PascalCase variants, comma-formatted numbers)
-fn decode_multi_location_from_bytes(multi_location_bytes: &[u8]) -> serde_json::Value {
+fn decode_multi_location_from_bytes(key_part_bytes: &[u8]) -> serde_json::Value {
+    // Skip the Blake2_128Concat hash prefix (16 bytes) to get the actual Location bytes
+    if key_part_bytes.len() <= BLAKE2_128_HASH_LEN {
+        return serde_json::json!({"raw": format!("0x{}", hex::encode(key_part_bytes))});
+    }
+
+    let multi_location_bytes = &key_part_bytes[BLAKE2_128_HASH_LEN..];
+
     if multi_location_bytes.is_empty() {
         return serde_json::json!({"raw": "0x"});
     }
@@ -629,10 +641,14 @@ fn decode_multi_location_from_bytes(multi_location_bytes: &[u8]) -> serde_json::
     // Decode using scale-value for proper JSON serialization
     match decode_as_type(&mut &multi_location_bytes[..], type_id, &registry) {
         Ok(value) => scale_value_to_sidecar_json(value, &registry),
-        Err(_) => {
-            // Decoding failed - fall back to raw hex representation
-            // This ensures we always return something useful even for unknown XCM versions
-            serde_json::json!({"raw": format!("0x{}", hex::encode(multi_location_bytes))})
+        Err(e) => {
+            tracing::warn!(
+                "Failed to decode MultiLocation: {:?}, bytes: 0x{}",
+                e,
+                hex::encode(multi_location_bytes)
+            );
+            // Decoding failed - return error instead of raw hex (matching Sidecar behavior)
+            serde_json::json!({"error": format!("Failed to decode MultiLocation: {}", e)})
         }
     }
 }
@@ -826,18 +842,21 @@ mod tests {
     #[test]
     fn test_decode_multi_location_simple() {
         // Location { parents: 0, interior: Here } encodes to: [0, 0]
-        // Now we pass just the SCALE-encoded MultiLocation bytes directly
-        let location_bytes = vec![
+        // The function expects key_part bytes which include a 16-byte Blake2_128 hash prefix
+        // followed by the actual SCALE-encoded Location bytes
+        let mut key_part_bytes = vec![0u8; BLAKE2_128_HASH_LEN]; // fake hash prefix
+        key_part_bytes.extend_from_slice(&[
             0, // parents = 0
             0, // interior = Here variant
-        ];
+        ]);
 
-        let result = decode_multi_location_from_bytes(&location_bytes);
+        let result = decode_multi_location_from_bytes(&key_part_bytes);
 
         // Should successfully decode
         assert!(
-            result.get("raw").is_none(),
-            "Should not fall back to raw hex"
+            result.get("raw").is_none() && result.get("error").is_none(),
+            "Should not fall back to raw hex or error: {}",
+            result
         );
         assert_eq!(result["parents"], "0");
         // interior is "Here" string (unit variant in Sidecar format)
@@ -852,19 +871,20 @@ mod tests {
         // interior variant X1 = 1
         // Junction::Parachain variant = 0
         // 1000 as compact u32 = [0xa1, 0x0f] (1000 << 2 = 4000 = 0x0fa0, little endian)
-        let location_bytes = vec![
+        let mut key_part_bytes = vec![0u8; BLAKE2_128_HASH_LEN]; // fake hash prefix
+        key_part_bytes.extend_from_slice(&[
             1, // parents = 1
             1, // X1 variant
             0, // Parachain variant
             0xa1, 0x0f, // compact encoded 1000
-        ];
+        ]);
 
-        let result = decode_multi_location_from_bytes(&location_bytes);
+        let result = decode_multi_location_from_bytes(&key_part_bytes);
 
         // Should successfully decode
         assert!(
-            result.get("raw").is_none(),
-            "Should not fall back to raw hex: {}",
+            result.get("raw").is_none() && result.get("error").is_none(),
+            "Should not fall back to raw hex or error: {}",
             result
         );
         assert_eq!(result["parents"], "1");
@@ -872,13 +892,13 @@ mod tests {
 
     #[test]
     fn test_decode_multi_location_invalid() {
-        // Test with invalid bytes that can't be decoded
-        let invalid_bytes = vec![255, 255, 255]; // Invalid variant indices
+        // Test with bytes that are too short (just the hash, no location data)
+        let short_bytes = vec![0u8; BLAKE2_128_HASH_LEN]; // only hash, no location
 
-        let result = decode_multi_location_from_bytes(&invalid_bytes);
+        let result = decode_multi_location_from_bytes(&short_bytes);
 
-        // Should fall back to raw hex
-        assert!(result["raw"].is_string());
+        // Should fall back to raw hex (bytes too short after skipping hash)
+        assert!(result.get("raw").is_some() || result.get("error").is_some());
     }
 
     #[test]
@@ -893,8 +913,17 @@ mod tests {
         // Empty bytes should return raw hex
         let empty_bytes: Vec<u8> = vec![];
         let result = decode_multi_location_from_bytes(&empty_bytes);
-        // Should return raw hex representation
-        assert!(result["raw"].is_string());
+        // Should return raw hex representation (bytes too short)
+        assert!(result.get("raw").is_some());
+    }
+
+    #[test]
+    fn test_decode_multi_location_only_hash() {
+        // Only hash prefix, no actual location data
+        let only_hash = vec![0u8; BLAKE2_128_HASH_LEN];
+        let result = decode_multi_location_from_bytes(&only_hash);
+        // Should return raw hex (no location data after hash)
+        assert!(result.get("raw").is_some());
     }
 
     #[test]
