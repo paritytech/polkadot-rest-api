@@ -1,6 +1,8 @@
 //! Handler for /pallets/assets/{assetId}/asset-info endpoint.
 
-use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::common::{
+    AssetDetails, AssetMetadataStorage, AtResponse, PalletError, format_account_id,
+};
 use crate::state::AppState;
 use crate::utils::{
     BlockId, ResolvedBlock, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
@@ -13,7 +15,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
@@ -70,52 +71,6 @@ pub struct PalletsAssetsInfoResponse {
     pub rc_block_number: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ah_timestamp: Option<String>,
-}
-
-// ============================================================================
-// Internal SCALE Decode Types
-// ============================================================================
-
-#[derive(Debug, Clone, Decode)]
-enum AssetStatus {
-    Live,
-    Frozen,
-    Destroying,
-}
-
-impl AssetStatus {
-    fn as_str(&self) -> &'static str {
-        match self {
-            AssetStatus::Live => "Live",
-            AssetStatus::Frozen => "Frozen",
-            AssetStatus::Destroying => "Destroying",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Decode)]
-struct AssetDetails {
-    owner: [u8; 32],
-    issuer: [u8; 32],
-    admin: [u8; 32],
-    freezer: [u8; 32],
-    supply: u128,
-    deposit: u128,
-    min_balance: u128,
-    is_sufficient: bool,
-    accounts: u32,
-    sufficients: u32,
-    approvals: u32,
-    status: AssetStatus,
-}
-
-#[derive(Debug, Clone, Decode)]
-struct AssetMetadataStorage {
-    deposit: u128,
-    name: Vec<u8>,
-    symbol: Vec<u8>,
-    decimals: u8,
-    is_frozen: bool,
 }
 
 // ============================================================================
@@ -255,19 +210,15 @@ async fn fetch_asset_info(
     asset_id: u32,
     ss58_prefix: u16,
 ) -> Option<AssetInfo> {
-    // Use dynamic storage with key parts as second argument
-    // Specify scale_value::Value as the decode type to get raw bytes
-    let asset_addr = subxt::dynamic::storage::<_, scale_value::Value>("Assets", "Asset");
-    let asset_value = match client_at_block
+    // Query Assets pallet with typed return
+    let asset_addr = subxt::dynamic::storage::<_, AssetDetails>("Assets", "Asset");
+    let details = client_at_block
         .storage()
         .fetch(asset_addr, (asset_id,))
         .await
-    {
-        Ok(value) => value,
-        Err(_) => return None,
-    };
-    let raw_bytes = asset_value.into_bytes();
-    let details = AssetDetails::decode(&mut &raw_bytes[..]).ok()?;
+        .ok()?
+        .decode()
+        .ok()?;
 
     Some(AssetInfo {
         owner: format_account_id(&details.owner, ss58_prefix),
@@ -290,19 +241,15 @@ async fn fetch_asset_metadata(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     asset_id: u32,
 ) -> Option<AssetMetadata> {
-    // Use dynamic storage with key parts as second argument
-    // Specify scale_value::Value as the decode type to get raw bytes
-    let metadata_addr = subxt::dynamic::storage::<_, scale_value::Value>("Assets", "Metadata");
-    let metadata_value = match client_at_block
+    // Query Assets pallet with typed return
+    let metadata_addr = subxt::dynamic::storage::<_, AssetMetadataStorage>("Assets", "Metadata");
+    let metadata = client_at_block
         .storage()
         .fetch(metadata_addr, (asset_id,))
         .await
-    {
-        Ok(value) => value,
-        Err(_) => return None,
-    };
-    let raw_bytes = metadata_value.into_bytes();
-    let metadata = AssetMetadataStorage::decode(&mut &raw_bytes[..]).ok()?;
+        .ok()?
+        .decode()
+        .ok()?;
 
     Some(AssetMetadata {
         deposit: metadata.deposit.to_string(),

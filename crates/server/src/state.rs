@@ -545,6 +545,17 @@ fn get_ss58_prefix(chain_type: &ChainType, spec_name: &str) -> u16 {
                 None => 42,
             }
         }
+        ChainType::Coretime => {
+            // Coretime chains inherit SS58 prefix from their parent relay chain
+            let name_lower = spec_name.to_lowercase();
+            if name_lower.contains("polkadot") {
+                0 // Polkadot prefix
+            } else if name_lower.contains("kusama") {
+                2 // Kusama prefix
+            } else {
+                42 // Default to generic substrate
+            }
+        }
         ChainType::Parachain => 42, // Generic substrate for unknown parachains
     }
 }

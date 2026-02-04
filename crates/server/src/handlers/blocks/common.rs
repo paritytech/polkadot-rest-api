@@ -21,8 +21,21 @@ use subxt::{OnlineClient, OnlineClientAtBlock, SubstrateConfig, error::OnlineCli
 use subxt_rpcs::{RpcClient, rpc_params};
 use thiserror::Error;
 
+use serde::Serialize;
+
 use super::docs::Docs;
 use super::types::{DigestLog, Event, GetBlockError};
+
+/// Relay chain block header response
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcBlockHeaderResponse {
+    pub parent_hash: String,
+    pub number: String,
+    pub state_root: String,
+    pub extrinsics_root: String,
+    pub digest: serde_json::Value,
+}
 
 /// Type alias for the ClientAtBlock type used throughout the codebase.
 /// This represents a client pinned to a specific block height with access to

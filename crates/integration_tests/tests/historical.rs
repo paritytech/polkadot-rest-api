@@ -118,6 +118,10 @@ impl HistoricalTestRunner {
             replacements.insert("assetId".to_string(), asset_id.clone());
         }
 
+        if let Some(ref pool_id) = test_case.pool_id {
+            replacements.insert("poolId".to_string(), pool_id.clone());
+        }
+
         let endpoint_path =
             integration_tests::utils::replace_placeholders(&test_case.endpoint, &replacements);
         let query_string = integration_tests::utils::build_query_string(&test_case.query_params);

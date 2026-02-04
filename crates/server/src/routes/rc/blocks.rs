@@ -1,5 +1,5 @@
 use crate::handlers::rc;
-use crate::handlers::rc::blocks;
+use crate::handlers::rc::blocks as rc_blocks;
 use crate::routes::{API_VERSION, RegisterRoute, RouteRegistry};
 use crate::state::AppState;
 use axum::{Router, routing::get};
@@ -25,7 +25,14 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             API_VERSION,
             "/rc/blocks/head/header",
             "get",
-            get(blocks::get_rc_blocks_head_header),
+            get(rc_blocks::get_rc_blocks_head_header),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/rc/blocks/:blockId/header",
+            "get",
+            get(rc_blocks::get_rc_block_header),
         )
         .route_registered(
             registry,
@@ -39,6 +46,13 @@ pub fn routes(registry: &RouteRegistry) -> Router<AppState> {
             API_VERSION,
             "/rc/blocks/:blockId",
             "get",
-            get(blocks::get_rc_block),
+            get(rc_blocks::get_rc_block),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/rc/blocks/:blockId/para-inclusions",
+            "get",
+            get(rc_blocks::get_rc_block_para_inclusions),
         )
 }
