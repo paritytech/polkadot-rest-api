@@ -15,7 +15,7 @@ use axum::{
 };
 use config::ChainType;
 use futures::StreamExt;
-use parity_scale_codec::Decode;
+use parity_scale_codec::{Decode, Encode};
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
@@ -105,14 +105,22 @@ struct AssetMetadataStorage {
 }
 
 // ============================================================================
-// XCM Location Types (DecodeAsType for typed decoding)
+// XCM Location Types (DecodeAsType + EncodeAsType for typed encoding/decoding)
 // ============================================================================
 
 /// XCM v4 Location type for foreign asset keys.
-/// Uses DecodeAsType for efficient typed decoding from Subxt.
+/// Uses DecodeAsType/EncodeAsType for efficient typed encoding/decoding from Subxt.
 /// Custom Serialize produces Sidecar-compatible JSON format.
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
+#[derive(
+    Debug,
+    Clone,
+    Decode,
+    Encode,
+    subxt::ext::scale_decode::DecodeAsType,
+    subxt::ext::scale_encode::EncodeAsType,
+)]
 #[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+#[encode_as_type(crate_path = "subxt::ext::scale_encode")]
 struct Location {
     parents: u8,
     interior: Junctions,
@@ -128,8 +136,16 @@ impl Serialize for Location {
 }
 
 /// XCM v4 Junctions enum - represents the interior path of a Location.
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
+#[derive(
+    Debug,
+    Clone,
+    Decode,
+    Encode,
+    subxt::ext::scale_decode::DecodeAsType,
+    subxt::ext::scale_encode::EncodeAsType,
+)]
 #[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+#[encode_as_type(crate_path = "subxt::ext::scale_encode")]
 enum Junctions {
     Here,
     X1([Junction; 1]),
@@ -161,8 +177,16 @@ impl Serialize for Junctions {
 }
 
 /// XCM v4 Junction enum - individual path components.
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
+#[derive(
+    Debug,
+    Clone,
+    Decode,
+    Encode,
+    subxt::ext::scale_decode::DecodeAsType,
+    subxt::ext::scale_encode::EncodeAsType,
+)]
 #[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+#[encode_as_type(crate_path = "subxt::ext::scale_encode")]
 enum Junction {
     Parachain(#[codec(compact)] u32),
     AccountId32 {
@@ -305,8 +329,16 @@ struct PluralityInner<'a> {
 }
 
 /// XCM v4 NetworkId enum.
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
+#[derive(
+    Debug,
+    Clone,
+    Decode,
+    Encode,
+    subxt::ext::scale_decode::DecodeAsType,
+    subxt::ext::scale_encode::EncodeAsType,
+)]
 #[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+#[encode_as_type(crate_path = "subxt::ext::scale_encode")]
 enum NetworkId {
     ByGenesis([u8; 32]),
     ByFork {
@@ -397,8 +429,17 @@ impl Serialize for EthereumInner {
 }
 
 /// XCM v3 BodyId enum (used by Plurality junction).
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType, Serialize)]
+#[derive(
+    Debug,
+    Clone,
+    Decode,
+    Encode,
+    subxt::ext::scale_decode::DecodeAsType,
+    subxt::ext::scale_encode::EncodeAsType,
+    Serialize,
+)]
 #[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+#[encode_as_type(crate_path = "subxt::ext::scale_encode")]
 enum BodyId {
     Unit,
     Moniker([u8; 4]),
@@ -413,8 +454,17 @@ enum BodyId {
 }
 
 /// XCM v3 BodyPart enum (used by Plurality junction).
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType, Serialize)]
+#[derive(
+    Debug,
+    Clone,
+    Decode,
+    Encode,
+    subxt::ext::scale_decode::DecodeAsType,
+    subxt::ext::scale_encode::EncodeAsType,
+    Serialize,
+)]
 #[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+#[encode_as_type(crate_path = "subxt::ext::scale_encode")]
 enum BodyPart {
     Voice,
     Members {
@@ -581,10 +631,9 @@ async fn fetch_all_foreign_assets(
     let mut metadata_map: std::collections::HashMap<Vec<u8>, serde_json::Value> =
         std::collections::HashMap::new();
 
-    let metadata_addr = subxt::dynamic::storage::<(scale_value::Value,), AssetMetadataStorage>(
-        "ForeignAssets",
-        "Metadata",
-    );
+    // Using typed Location for the storage key - all XCM types implement EncodeAsType/DecodeAsType
+    let metadata_addr =
+        subxt::dynamic::storage::<(Location,), AssetMetadataStorage>("ForeignAssets", "Metadata");
 
     // Try to iterate metadata - if this fails, the pallet might not exist
     match client_at_block.storage().iter(metadata_addr, ()).await {
@@ -622,7 +671,7 @@ async fn fetch_all_foreign_assets(
     // Use dynamic storage iteration to get all foreign assets
     // ForeignAssets::Asset is a map with MultiLocation as key
     let storage_addr =
-        subxt::dynamic::storage::<(scale_value::Value,), AssetDetails>("ForeignAssets", "Asset");
+        subxt::dynamic::storage::<(Location,), AssetDetails>("ForeignAssets", "Asset");
 
     let mut stream = client_at_block
         .storage()
