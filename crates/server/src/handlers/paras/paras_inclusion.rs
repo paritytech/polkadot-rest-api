@@ -306,10 +306,10 @@ async fn check_block_for_inclusion(
             Err(_) => continue,
         };
 
-        if let Some(block_num) =
+        if let Some(inclusion_block_num) =
             extract_inclusion_info(&event_data, para_id, parachain_block_number)
         {
-            return Some(block_num);
+            return Some(inclusion_block_num);
         }
     }
 
