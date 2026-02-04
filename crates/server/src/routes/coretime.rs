@@ -47,6 +47,20 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
                     "get",
                     get(coretime::coretime_reservations),
                 )
+                .route_registered(
+                    registry,
+                    API_VERSION,
+                    "/coretime/regions",
+                    "get",
+                    get(coretime::coretime_regions),
+                )
+                .route_registered(
+                    registry,
+                    API_VERSION,
+                    "/coretime/renewals",
+                    "get",
+                    get(coretime::coretime_renewals),
+                )
         }
         ChainType::Relay => {
             // Relay chain: minimal coretime info endpoint
