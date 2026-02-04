@@ -6,6 +6,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use futures::future::join_all;
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -131,6 +132,7 @@ impl IntoResponse for ParasInclusionError {
 
 const DEFAULT_SEARCH_DEPTH: &str = "10";
 const MAX_DEPTH: u32 = 100;
+const BATCH_SIZE: u32 = 5;
 
 fn default_depth() -> String {
     DEFAULT_SEARCH_DEPTH.to_string()
@@ -252,7 +254,8 @@ async fn extract_relay_parent_number(
     Err(ParasInclusionError::NoValidationData)
 }
 
-/// Search relay chain blocks for inclusion of a parachain block
+/// Search relay chain blocks for inclusion of a parachain block.
+/// Checks blocks in parallel batches of 5 for faster lookups.
 async fn search_for_inclusion_block(
     relay_client: &OnlineClient<SubstrateConfig>,
     para_id: u32,
@@ -261,15 +264,22 @@ async fn search_for_inclusion_block(
     max_depth: u32,
 ) -> Option<u64> {
     // Search blocks starting from relay_parent_number + 1
-    // Most inclusions happen within 2-4 blocks
-    for offset in 0..max_depth {
-        let block_num = relay_parent_number + offset as u64 + 1;
+    // Process in batches of BATCH_SIZE concurrently, returning the earliest match
+    for batch_start in (0..max_depth).step_by(BATCH_SIZE as usize) {
+        let futures: Vec<_> = (0..BATCH_SIZE)
+            .map(|i| {
+                let block_num = relay_parent_number + (batch_start + i) as u64 + 1;
+                check_block_for_inclusion(relay_client, block_num, para_id, parachain_block_number)
+            })
+            .collect();
 
-        if let Some(found) =
-            check_block_for_inclusion(relay_client, block_num, para_id, parachain_block_number)
-                .await
-        {
-            return Some(found);
+        let results = join_all(futures).await;
+
+        // Return the earliest match within this batch
+        for result in results {
+            if let Some(found) = result {
+                return Some(found);
+            }
         }
     }
 
