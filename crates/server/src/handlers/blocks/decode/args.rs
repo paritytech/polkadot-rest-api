@@ -253,9 +253,16 @@ impl<'r, const CAMEL_CASE: bool> scale_decode::Visitor for ScaleVisitor<'r, CAME
         let is_account_type = path_segments
             .iter()
             .any(|s| *s == "AccountId32" || *s == "MultiAddress" || *s == "AccountId");
+        let is_vote_type = path_segments.iter().any(|s| *s == "Vote");
 
         if is_account_type && let Some(ss58) = self.try_extract_ss58(value)? {
             return Ok(Value::String(ss58));
+        }
+
+        if is_vote_type {
+            if let Some(byte) = self.try_extract_single_byte(value)? {
+                return Ok(Value::String(format!("0x{:02x}", byte)));
+            }
         }
 
         let fields: Vec<_> = value.collect::<Result<Vec<_>, _>>()?;
@@ -447,6 +454,21 @@ impl<'r, const CAMEL_CASE: bool> scale_decode::Visitor for ScaleVisitor<'r, CAME
 }
 
 impl<'r, const CAMEL_CASE: bool> ScaleVisitor<'r, CAMEL_CASE> {
+    fn try_extract_single_byte(
+        &self,
+        value: &mut visitor::types::Composite<'_, '_, PortableRegistry>,
+    ) -> Result<Option<u8>, scale_decode::Error> {
+        if value.remaining() == 1 {
+            for field in value.by_ref() {
+                let field = field?;
+                if let Ok(Some(byte)) = field.decode_with_visitor(ByteValueVisitor) {
+                    return Ok(Some(byte));
+                }
+            }
+        }
+        Ok(None)
+    }
+
     fn try_extract_ss58(
         &self,
         value: &mut visitor::types::Composite<'_, '_, PortableRegistry>,
