@@ -19,7 +19,7 @@ use futures::stream::{self, StreamExt, TryStreamExt};
 use heck::{ToSnakeCase, ToUpperCamelCase};
 use serde::Deserialize;
 use std::sync::Arc;
-use subxt_rpcs::{RpcClient, rpc_params};
+use subxt::{OnlineClient, SubstrateConfig};
 
 /// Query parameters for GET /rc/blocks endpoint
 #[derive(Debug, Deserialize)]
@@ -99,7 +99,6 @@ pub async fn get_rc_blocks(
     let blocks: Vec<BlockResponse> = stream::iter(start..=end)
         .map(|number| {
             let relay_client = relay_client.clone();
-            let relay_rpc_client = relay_rpc_client.clone();
             let relay_chain_rpc = relay_chain_rpc.clone();
             let relay_chain_info = relay_chain_info.clone();
             let params = base_params.clone();
@@ -123,7 +122,7 @@ pub async fn get_rc_blocks(
 
                 build_rc_block_response(
                     &state,
-                    &relay_rpc_client,
+                    &relay_client,
                     &relay_chain_info,
                     &block_hash,
                     number,
@@ -145,7 +144,7 @@ pub async fn get_rc_blocks(
 #[allow(clippy::too_many_arguments)]
 async fn build_rc_block_response(
     state: &AppState,
-    relay_rpc_client: &Arc<RpcClient>,
+    relay_client: &Arc<OnlineClient<SubstrateConfig>>,
     relay_chain_info: &crate::state::ChainInfo,
     block_hash: &str,
     block_number: u64,
@@ -204,16 +203,11 @@ async fn build_rc_block_response(
             .collect();
 
         if !fee_indices.is_empty() {
-            let spec_version: serde_json::Value = relay_rpc_client
-                .request("state_getRuntimeVersion", rpc_params![block_hash])
+            let spec_version = client_at_block.spec_version();
+            let client_at_parent = relay_client
+                .at_block(header.parent_hash)
                 .await
-                .map_err(GetBlockError::RuntimeVersionFailed)?;
-
-            let spec_version = spec_version
-                .get("specVersion")
-                .and_then(|sv| sv.as_u64())
-                .map(|v| v as u32)
-                .ok_or_else(|| GetBlockError::HeaderFieldMissing("specVersion".to_string()))?;
+                .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
 
             let fee_futures: Vec<_> = fee_indices
                 .iter()
@@ -221,12 +215,12 @@ async fn build_rc_block_response(
                     let extrinsic = &extrinsics_with_events[i];
                     extract_fee_info_for_extrinsic(
                         state,
-                        Some(relay_rpc_client),
+                        &client_at_parent,
                         &extrinsic.raw_hex,
                         &extrinsic.events,
                         extrinsic_outcomes.get(i),
-                        &parent_hash,
                         spec_version,
+                        &relay_chain_info.spec_name,
                     )
                 })
                 .collect();
