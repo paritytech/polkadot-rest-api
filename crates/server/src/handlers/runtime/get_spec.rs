@@ -200,7 +200,9 @@ pub async fn runtime_spec(
     // TODO: Once subxt-rpcs v0.50.0 is released, replace the direct RPC request
     // with `state.legacy_rpc.system_chain_type()` for type-safe access.
     let (runtime_version_result, properties_result, chain_type_result) = tokio::join!(
-        state.get_runtime_version_at_hash(&block_hash_str),
+        state
+            .legacy_rpc
+            .state_get_runtime_version(Some(client_at_block.block_hash())),
         state.legacy_rpc.system_properties(),
         state
             .rpc_client
@@ -211,35 +213,30 @@ pub async fn runtime_spec(
     let properties = properties_result.map_err(GetSpecError::SystemPropertiesFailed)?;
     let chain_type = chain_type_result.map_err(GetSpecError::SystemChainTypeFailed)?;
 
+    // Extract fields from RuntimeVersion struct
     let spec_name = runtime_version
+        .other
         .get("specName")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown")
         .to_string();
 
     let authoring_version = runtime_version
+        .other
         .get("authoringVersion")
         .and_then(|v| v.as_u64())
         .unwrap_or(0)
         .to_string();
 
     let impl_version = runtime_version
+        .other
         .get("implVersion")
         .and_then(|v| v.as_u64())
         .unwrap_or(0)
         .to_string();
 
-    let spec_version = runtime_version
-        .get("specVersion")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0)
-        .to_string();
-
-    let transaction_version = runtime_version
-        .get("transactionVersion")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0)
-        .to_string();
+    let spec_version = runtime_version.spec_version.to_string();
+    let transaction_version = runtime_version.transaction_version.to_string();
 
     let response = RuntimeSpecResponse {
         at: BlockInfo {

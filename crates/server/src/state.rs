@@ -328,44 +328,6 @@ impl AppState {
         ))
     }
 
-    /// Make a raw JSON-RPC call to get a header and return the result as a Value
-    /// This is needed because subxt-historic's RpcConfig has Header = ()
-    pub async fn get_header_json(&self, hash: &str) -> Result<Value, subxt_rpcs::Error> {
-        self.rpc_client
-            .request("chain_getHeader", rpc_params![hash])
-            .await
-    }
-
-    /// Make a raw JSON-RPC call to get a full block (header + extrinsics) and return the result as a Value
-    /// This is used by the /blocks/{blockId}/extrinsics-raw endpoint to get raw extrinsic data
-    pub async fn get_block_json(&self, hash: &str) -> Result<Value, subxt_rpcs::Error> {
-        self.rpc_client
-            .request("chain_getBlock", rpc_params![hash])
-            .await
-    }
-
-    /// Make a raw JSON-RPC call to get a block hash at a specific block number
-    pub async fn get_block_hash_at_number(
-        &self,
-        number: u64,
-    ) -> Result<Option<String>, subxt_rpcs::Error> {
-        let result: Option<String> = self
-            .rpc_client
-            .request("chain_getBlockHash", rpc_params![number])
-            .await?;
-        Ok(result)
-    }
-
-    /// Make a raw JSON-RPC call to get runtime version at a specific block hash
-    pub async fn get_runtime_version_at_hash(
-        &self,
-        hash: &str,
-    ) -> Result<Value, subxt_rpcs::Error> {
-        self.rpc_client
-            .request("state_getRuntimeVersion", rpc_params![hash])
-            .await
-    }
-
     /// Query fee information for an extrinsic at a specific block hash
     ///
     /// Uses the `payment_queryInfo` RPC method to get weight, class, and partial fee
@@ -427,12 +389,31 @@ impl AppState {
         call_parameters: &str,
         block_hash: &str,
     ) -> Result<String, subxt_rpcs::Error> {
-        self.rpc_client
-            .request(
-                "state_call",
-                rpc_params![method, call_parameters, block_hash],
-            )
-            .await
+        let params_bytes = if let Some(stripped) = call_parameters.strip_prefix("0x") {
+            hex::decode(stripped)
+        } else {
+            hex::decode(call_parameters)
+        }
+        .map_err(|e| {
+            subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid hex in call_parameters: {}", e),
+            )))
+        })?;
+
+        let hash = block_hash.parse().map_err(|_| {
+            subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid block hash: {}", block_hash),
+            )))
+        })?;
+
+        let result_bytes = self
+            .legacy_rpc
+            .state_call(method, Some(&params_bytes), Some(hash))
+            .await?;
+
+        Ok(format!("0x{}", hex::encode(result_bytes)))
     }
 }
 

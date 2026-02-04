@@ -106,33 +106,23 @@ async fn get_block_number_from_hash(
     state: &AppState,
     hash: &str,
 ) -> Result<u64, BlockResolveError> {
-    // Make raw RPC call to get the header data as JSON
-    // We need to use raw JSON because subxt-historic's RpcConfig has Header = ()
-    let header_json = state
-        .get_header_json(hash)
+    let hash_parsed = hash
+        .parse()
+        .map_err(|_| BlockResolveError::NotFound(format!("Invalid block hash: {}", hash)))?;
+
+    let header_opt = state
+        .legacy_rpc
+        .chain_get_header(Some(hash_parsed))
         .await
         .map_err(BlockResolveError::RpcError)?;
 
     // Check if the response is null (block doesn't exist)
-    if header_json.is_null() {
-        return Err(BlockResolveError::NotFound(format!(
-            "Block with hash {} not found",
-            hash
-        )));
-    }
+    let header = header_opt.ok_or_else(|| {
+        BlockResolveError::NotFound(format!("Block with hash {} not found", hash))
+    })?;
 
-    // Extract block number from the header JSON
-    // The response structure is: { "number": "0x..." }
-    let number_hex = header_json
-        .get("number")
-        .and_then(|v| v.as_str())
-        .ok_or(BlockResolveError::BlockNumberNotFound)?;
-
-    // Parse hex string to u64 (remove 0x prefix)
-    let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
-        .map_err(BlockResolveError::BlockNumberParseFailed)?;
-
-    Ok(number)
+    // Extract block number from the header
+    Ok(header.number)
 }
 
 async fn get_header_json_with_rpc(
@@ -256,13 +246,19 @@ pub async fn resolve_block(
         }
         Some(BlockId::Number(number)) => {
             // Fetch block hash by number
-            let hash = state
-                .get_block_hash_at_number(number)
+            use subxt_rpcs::methods::legacy::NumberOrHex;
+
+            let hash_opt = state
+                .legacy_rpc
+                .chain_get_block_hash(Some(NumberOrHex::Number(number)))
                 .await
-                .map_err(BlockResolveError::BlockHashFailed)?
-                .ok_or_else(|| {
-                    BlockResolveError::NotFound(format!("Block at height {} not found", number))
-                })?;
+                .map_err(BlockResolveError::BlockHashFailed)?;
+
+            let hash_value = hash_opt.ok_or_else(|| {
+                BlockResolveError::NotFound(format!("Block at height {} not found", number))
+            })?;
+
+            let hash = format!("{:#x}", hash_value);
 
             Ok(ResolvedBlock { hash, number })
         }

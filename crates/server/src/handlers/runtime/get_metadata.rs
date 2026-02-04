@@ -108,17 +108,22 @@ async fn resolve_block_hash(
                 }
                 crate::utils::BlockId::Number(number) => {
                     // Need to fetch hash from number
-                    let hash = state
-                        .get_block_hash_at_number(number)
+                    use subxt_rpcs::methods::legacy::NumberOrHex;
+
+                    let hash_opt = state
+                        .legacy_rpc
+                        .chain_get_block_hash(Some(NumberOrHex::Number(number)))
                         .await
-                        .map_err(GetMetadataError::RpcFailed)?
-                        .ok_or_else(|| {
-                            GetMetadataError::BlockNotFound(format!(
-                                "Block at height {} not found",
-                                number
-                            ))
-                        })?;
-                    Ok(hash)
+                        .map_err(GetMetadataError::RpcFailed)?;
+
+                    let hash_value = hash_opt.ok_or_else(|| {
+                        GetMetadataError::BlockNotFound(format!(
+                            "Block at height {} not found",
+                            number
+                        ))
+                    })?;
+
+                    Ok(format!("{:#x}", hash_value))
                 }
             }
         }

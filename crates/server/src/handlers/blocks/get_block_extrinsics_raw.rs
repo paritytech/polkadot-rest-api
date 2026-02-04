@@ -76,7 +76,6 @@ async fn build_block_raw_response(
     }
     .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
 
-    let block_hash = format!("{:#x}", client_at_block.block_hash());
     let block_number = client_at_block.block_number();
 
     let header = client_at_block
@@ -92,7 +91,7 @@ async fn build_block_raw_response(
 
     let number = format!("0x{:08x}", block_number);
 
-    let extrinsics = fetch_raw_extrinsics(state, &block_hash).await?;
+    let extrinsics = fetch_raw_extrinsics(&client_at_block).await?;
 
     Ok(BlockRawResponse {
         parent_hash,
@@ -105,30 +104,23 @@ async fn build_block_raw_response(
 }
 
 async fn fetch_raw_extrinsics(
-    state: &AppState,
-    block_hash: &str,
+    client_at_block: &super::common::BlockClient,
 ) -> Result<Vec<String>, GetBlockError> {
-    let block_json = state
-        .get_block_json(block_hash)
-        .await
-        .map_err(GetBlockError::BlockFetchFailed)?;
+    let extrinsics = client_at_block.extrinsics().fetch().await.map_err(|e| {
+        GetBlockError::BlockFetchFailed(subxt_rpcs::Error::Client(Box::new(std::io::Error::other(
+            e.to_string(),
+        ))))
+    })?;
 
-    extract_raw_extrinsics_from_json(&block_json)
-}
-
-fn extract_raw_extrinsics_from_json(
-    block_json: &serde_json::Value,
-) -> Result<Vec<String>, GetBlockError> {
-    let extrinsics = block_json
-        .get("block")
-        .and_then(|b| b.get("extrinsics"))
-        .and_then(|e| e.as_array())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsics".to_string()))?;
-
-    let raw_extrinsics: Vec<String> = extrinsics
-        .iter()
-        .filter_map(|e| e.as_str().map(|s| s.to_string()))
-        .collect();
+    let mut raw_extrinsics = Vec::new();
+    for ext_result in extrinsics.iter() {
+        let ext = ext_result.map_err(|e| {
+            GetBlockError::BlockFetchFailed(subxt_rpcs::Error::Client(Box::new(
+                std::io::Error::other(format!("Failed to decode extrinsic: {}", e)),
+            )))
+        })?;
+        raw_extrinsics.push(format!("0x{}", hex::encode(ext.bytes())));
+    }
 
     Ok(raw_extrinsics)
 }

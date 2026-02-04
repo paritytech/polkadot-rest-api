@@ -51,6 +51,7 @@ pub async fn get_extrinsic(
         .block_header()
         .await
         .map_err(GetBlockError::BlockHeaderFailed)?;
+    let parent_hash = format!("{:#x}", header.parent_hash);
 
     let (extrinsics_result, events_result) = tokio::join!(
         extract_extrinsics(&state, &client_at_block, block_number),
