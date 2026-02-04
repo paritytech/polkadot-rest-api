@@ -146,6 +146,19 @@ pub async fn extract_fee_info_for_extrinsic(
                     )
                 {
                     let mut info = transform_fee_info(query_info.clone());
+
+                    // Override weight with actual weight from event (not pre-dispatch estimate)
+                    if let Some(outcome) = outcome {
+                        if let Some(ref actual_weight) = outcome.actual_weight
+                            && let Some(weight_value) = actual_weight_to_json(actual_weight)
+                        {
+                            info.insert("weight".to_string(), weight_value);
+                        }
+                        if let Some(ref class) = outcome.class {
+                            info.insert("class".to_string(), Value::String(class.clone()));
+                        }
+                    }
+
                     info.insert("partialFee".to_string(), Value::String(partial_fee));
                     info.insert(
                         "kind".to_string(),
@@ -162,6 +175,19 @@ pub async fn extract_fee_info_for_extrinsic(
     // Priority 3: queryInfo (pre-dispatch estimation) - reuse cached result
     if let Some((query_info, _)) = query_info_result {
         let mut info = transform_fee_info(query_info);
+
+        // Override weight with actual weight from event if available
+        if let Some(outcome) = outcome {
+            if let Some(ref actual_weight) = outcome.actual_weight
+                && let Some(weight_value) = actual_weight_to_json(actual_weight)
+            {
+                info.insert("weight".to_string(), weight_value);
+            }
+            if let Some(ref class) = outcome.class {
+                info.insert("class".to_string(), Value::String(class.clone()));
+            }
+        }
+
         info.insert("kind".to_string(), Value::String("preDispatch".to_string()));
         return info;
     }
