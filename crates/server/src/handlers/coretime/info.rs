@@ -520,7 +520,7 @@ async fn fetch_max_historical_revenue(
             .constants()
             .entry(legacy_addr)
             .map_err(|_| CoretimeError::ConstantFetchFailed {
-                pallet: "OnDemmandAssignmentProvider",
+                pallet: "OnDemandAssignmentProvider",
                 constant: "MaxHistoricalRevenue",
             })?;
 
