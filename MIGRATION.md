@@ -1,7 +1,7 @@
 # Migration Guide
 
 
-## Substrate API Sidecar v20.9.1 to Polkadot REST API
+## Substrate API Sidecar v20.14.0 to Polkadot REST API
 This guide documents breaking changes and differences between [substrate-api-sidecar](https://github.com/paritytech/substrate-api-sidecar) and this new Rust-based Polkadot REST API implementation.
 
 ## Overview
