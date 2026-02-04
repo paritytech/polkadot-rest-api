@@ -24,7 +24,8 @@ use thiserror::Error;
 use serde::Serialize;
 
 use super::docs::Docs;
-use super::types::{DigestLog, Event, GetBlockError};
+use super::types::{DigestLog, Event, ExtrinsicInfo, ExtrinsicOutcome, GetBlockError};
+use heck::ToSnakeCase;
 
 /// Relay chain block header response
 #[derive(Debug, Serialize)]
@@ -302,6 +303,42 @@ pub fn add_docs_to_events(events: &mut [Event], metadata: &subxt::Metadata) {
     }
 }
 
+/// Add documentation to a single extrinsic if extrinsicDocs is enabled
+pub fn add_docs_to_extrinsic(extrinsic: &mut ExtrinsicInfo, metadata: &subxt::Metadata) {
+    let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
+    let method_name = extrinsic.method.method.to_snake_case();
+    extrinsic.docs =
+        Docs::for_call_subxt(metadata, &pallet_name, &method_name).map(|d| d.to_string());
+}
+
+/// Associate events and outcomes with extrinsics.
+///
+/// This function takes the categorized events and outcomes and attaches them
+/// to the corresponding extrinsics in-place.
+pub fn associate_events_with_extrinsics(
+    extrinsics: &mut [ExtrinsicInfo],
+    per_extrinsic_events: &[Vec<Event>],
+    extrinsic_outcomes: &[ExtrinsicOutcome],
+) {
+    for (i, (extrinsic_events, outcome)) in per_extrinsic_events
+        .iter()
+        .zip(extrinsic_outcomes.iter())
+        .enumerate()
+    {
+        if let Some(extrinsic) = extrinsics.get_mut(i) {
+            extrinsic.events = extrinsic_events.clone();
+            extrinsic.success = outcome.success;
+            if extrinsic.signature.is_some() {
+                if outcome.pays_fee.is_some() {
+                    extrinsic.pays_fee = outcome.pays_fee;
+                }
+            } else {
+                extrinsic.pays_fee = Some(false);
+            }
+        }
+    }
+}
+
 // ================================================================================================
 // Range Parsing
 // ================================================================================================
@@ -414,20 +451,19 @@ use super::processing::{
 };
 use super::types::{BlockBuildParams, BlockResponse};
 use config::ChainType;
-use heck::ToSnakeCase;
 
 /// Context for building a block response.
 pub struct BlockBuildContext<'a> {
     /// Application state (needed for fee extraction)
     pub state: &'a AppState,
-    /// OnlineClient for Subxt 0.50 APIs (finalized head, canonical hash)
+    /// OnlineClient for Subxt 0.50 APIs (finalized head, canonical hash, fee queries)
     pub client: &'a Arc<OnlineClient<SubstrateConfig>>,
-    /// RPC client to use for fee queries (None = use state.rpc_client)
-    pub rpc_client: Option<&'a Arc<RpcClient>>,
     /// SS58 prefix for address encoding
     pub ss58_prefix: u16,
     /// Chain type for XCM decoding
     pub chain_type: ChainType,
+    /// Runtime spec name for fee cache lookup
+    pub spec_name: String,
 }
 
 /// Build a block response using the generic context.
@@ -525,8 +561,14 @@ pub async fn build_block_response_generic(
         if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
             extrinsic.events = extrinsic_events.clone();
             extrinsic.success = outcome.success;
-            if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
-                extrinsic.pays_fee = outcome.pays_fee;
+            if extrinsic.signature.is_some() {
+                // For signed extrinsics, use the value from the event's DispatchInfo
+                if outcome.pays_fee.is_some() {
+                    extrinsic.pays_fee = outcome.pays_fee;
+                }
+            } else {
+                // Unsigned extrinsics never pay fees
+                extrinsic.pays_fee = Some(false);
             }
         }
     }
@@ -541,6 +583,11 @@ pub async fn build_block_response_generic(
 
         if !fee_indices.is_empty() {
             let spec_version = client_at_block.spec_version();
+            let client_at_parent = ctx
+                .client
+                .at_block(header.parent_hash)
+                .await
+                .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
 
             let fee_futures: Vec<_> = fee_indices
                 .iter()
@@ -548,12 +595,12 @@ pub async fn build_block_response_generic(
                     let extrinsic = &extrinsics_with_events[i];
                     extract_fee_info_for_extrinsic(
                         ctx.state,
-                        ctx.rpc_client,
+                        &client_at_parent,
                         &extrinsic.raw_hex,
                         &extrinsic.events,
                         extrinsic_outcomes.get(i),
-                        &parent_hash,
                         spec_version,
+                        &ctx.spec_name,
                     )
                 })
                 .collect();

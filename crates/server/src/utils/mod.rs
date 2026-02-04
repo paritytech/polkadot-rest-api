@@ -16,7 +16,8 @@ pub use extrinsic::{
 pub use fee::{
     FeeCalcError, FeeDetails, FeeServiceError, QueryFeeDetailsCache, RuntimeDispatchInfoRaw,
     WeightRaw, calc_partial_fee, calc_partial_fee_raw, calculate_accurate_fee,
-    dispatch_class_from_u8, extract_estimated_weight, parse_fee_details,
+    decode_runtime_dispatch_info, dispatch_class_from_u8, extract_estimated_weight,
+    parse_fee_details,
 };
 pub use format::{decode_address_to_ss58, hex_with_prefix, lowercase_first_char};
 pub use hash::{HashError, compute_block_hash_from_header_json, parse_block_number_from_json};

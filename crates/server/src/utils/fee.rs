@@ -33,6 +33,12 @@ pub enum FeeServiceError {
 
     #[error("Missing required fee data: {0}")]
     MissingData(String),
+
+    #[error("Failed to decode hex: {0}")]
+    HexDecodeError(#[from] hex::FromHexError),
+
+    #[error("Failed to decode RuntimeDispatchInfo from state_call response")]
+    RuntimeDispatchInfoDecodeError,
 }
 
 // ================================================================================================
@@ -111,6 +117,65 @@ pub fn dispatch_class_from_u8(class: u8) -> String {
         2 => "Mandatory".to_string(),
         _ => "Unknown".to_string(),
     }
+}
+
+/// Decode RuntimeDispatchInfo from SCALE-encoded bytes.
+///
+/// This handles both legacy (V1 weight - single u64) and modern (V2 weight - ref_time + proof_size)
+/// formats automatically based on the byte length and content.
+///
+/// # Arguments
+/// * `result_bytes` - The SCALE-encoded RuntimeDispatchInfo bytes from the runtime API response
+///
+/// # Returns
+/// * `Some(RuntimeDispatchInfoRaw)` if decoding succeeds
+/// * `None` if the bytes cannot be decoded as a valid RuntimeDispatchInfo
+pub fn decode_runtime_dispatch_info(result_bytes: &[u8]) -> Option<RuntimeDispatchInfoRaw> {
+    use parity_scale_codec::{Compact, Decode};
+
+    // Try to decode as legacy RuntimeDispatchInfo (with V1 weight) FIRST
+    // Format: { weight: u64, class: u8, partial_fee: u128 } = exactly 25 bytes
+    // V1 is tried first because it has a fixed size and validates cleanly.
+    // The V2 Compact decoder is too permissive and will "succeed" with garbage on V1 data.
+    if result_bytes.len() == 25
+        && let Ok((weight, class, partial_fee)) = <(u64, u8, u128)>::decode(&mut &result_bytes[..])
+        && class <= 2
+    {
+        return Some(RuntimeDispatchInfoRaw {
+            weight: WeightRaw::V1(weight),
+            class: dispatch_class_from_u8(class),
+            partial_fee,
+        });
+    }
+
+    // Try to decode as modern RuntimeDispatchInfo (with V2 weight)
+    // Format: { weight: { ref_time: Compact<u64>, proof_size: Compact<u64> }, class: u8, partial_fee: u128 }
+    if let Ok((ref_time, proof_size, class, partial_fee)) =
+        <(Compact<u64>, Compact<u64>, u8, u128)>::decode(&mut &result_bytes[..])
+        && class <= 2
+    {
+        return Some(RuntimeDispatchInfoRaw {
+            weight: WeightRaw::V2 {
+                ref_time: ref_time.0,
+                proof_size: proof_size.0,
+            },
+            class: dispatch_class_from_u8(class),
+            partial_fee,
+        });
+    }
+
+    // If V2 failed validation, try V1 without length check as fallback
+    if let Ok((weight, class, partial_fee)) = <(u64, u8, u128)>::decode(&mut &result_bytes[..])
+        && class <= 2
+    {
+        return Some(RuntimeDispatchInfoRaw {
+            weight: WeightRaw::V1(weight),
+            class: dispatch_class_from_u8(class),
+            partial_fee,
+        });
+    }
+
+    None
 }
 
 // ================================================================================================
