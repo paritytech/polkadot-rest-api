@@ -16,7 +16,8 @@ use thiserror::Error;
 #[serde(rename_all = "camelCase")]
 pub struct ParasInclusionQueryParams {
     /// Search depth for relay chain blocks (max 100, default 10)
-    pub depth: Option<String>,
+    #[serde(default = "default_depth")]
+    pub depth: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -37,6 +38,9 @@ pub enum ParasInclusionError {
 
     #[error("Depth parameter cannot exceed 100 to prevent excessive network requests.")]
     DepthTooLarge,
+
+    #[error("Depth parameter must be divisible by 5 for optimal performance.")]
+    DepthNotOptimal,
 
     #[error("Invalid block parameter: {0}")]
     InvalidBlockParam(String),
@@ -74,6 +78,7 @@ impl IntoResponse for ParasInclusionError {
             ParasInclusionError::InvalidDepth
             | ParasInclusionError::DepthTooLarge
             | ParasInclusionError::InvalidBlockParam(_)
+            | ParasInclusionError::DepthNotOptimal
             | ParasInclusionError::BlockNotFound(_)
             | ParasInclusionError::NotAParachain => StatusCode::BAD_REQUEST,
 
@@ -96,6 +101,10 @@ impl IntoResponse for ParasInclusionError {
 const DEFAULT_SEARCH_DEPTH: u32 = 10;
 const MAX_DEPTH: u32 = 100;
 
+fn default_depth() -> Option<String> {
+    Some(DEFAULT_SEARCH_DEPTH.to_string())
+}
+
 /// Handler for GET /paras/{number}/inclusion
 pub async fn get_paras_inclusion(
     State(state): State<AppState>,
@@ -114,7 +123,7 @@ pub async fn get_paras_inclusion(
         .map_err(ParasInclusionError::RpcFailed)?
         .ok_or(ParasInclusionError::BlockNotFound(block_number))?;
 
-    let para_id = get_parachain_id(&state).await?;
+    let para_id = get_parachain_id(&state, block_number).await?;
     let relay_parent_number = extract_relay_parent_number(&state, &block_hash).await?;
 
     let relay_client = state
@@ -140,50 +149,36 @@ pub async fn get_paras_inclusion(
     }))
 }
 
-fn validate_depth(depth: Option<String>) -> Result<u32, ParasInclusionError> {
-    match depth {
-        Some(depth_str) => {
-            let parsed: i32 = depth_str
-                .parse()
-                .map_err(|_| ParasInclusionError::InvalidDepth)?;
+fn validate_depth(depth: String) -> Result<u32, ParasInclusionError> {
+    let parsed: i32 = depth_str
+        .parse()
+        .map_err(|_| ParasInclusionError::InvalidDepth)?;
 
-            if parsed <= 0 {
-                return Err(ParasInclusionError::InvalidDepth);
-            }
-            if parsed > MAX_DEPTH as i32 {
-                return Err(ParasInclusionError::DepthTooLarge);
-            }
-
-            Ok(parsed as u32)
-        }
-        None => Ok(DEFAULT_SEARCH_DEPTH),
+    match parsed {
+        x if x <= 0 => Err(ParasInclusionError::InvalidDepth),
+        x if x > MAX_DEPTH as i32 => Err(ParasInclusionError::DepthTooLarge),
+        x if x % 5 != 0 => Err(ParasInclusionError::DepthNotOptimal),
+        _ => Ok(parsed as u32),
     }
 }
 
-async fn get_parachain_id(state: &AppState) -> Result<u32, ParasInclusionError> {
+async fn get_parachain_id(state: &AppState, block_number: u64) -> Result<u32, ParasInclusionError> {
     let client_at_block = state
         .client
-        .at_current_block()
+        .at_block(block_number)
         .await
         .map_err(|e| ParasInclusionError::ClientAtBlockFailed(e.to_string()))?;
 
-    let addr = subxt::dynamic::storage::<(), Value<()>>("ParachainInfo", "ParachainId");
+    let addr = subxt::dynamic::storage::<(), u32>("ParachainInfo", "ParachainId");
 
     let result = match client_at_block.storage().fetch(addr, ()).await {
         Ok(v) => v,
         Err(_) => return Err(ParasInclusionError::NotAParachain),
     };
 
-    let value: Value<()> = result
-        .decode_as()
-        .map_err(|e| ParasInclusionError::DecodeFailed(e.to_string()))?;
-
-    // ParachainId is a simple u32
-    let json = serde_json::to_value(&value)
-        .map_err(|e| ParasInclusionError::DecodeFailed(e.to_string()))?;
-
-    extract_u32_from_json(&json)
-        .ok_or_else(|| ParasInclusionError::DecodeFailed("Failed to decode parachain ID".into()))
+    result
+        .decode()
+        .map_err(|e| ParasInclusionError::DecodeFailed(e.to_string()))?
 }
 
 async fn extract_relay_parent_number(
