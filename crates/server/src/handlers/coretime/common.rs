@@ -14,26 +14,8 @@ use thiserror::Error;
 // Constants - Broker Pallet SCALE Encoding
 // ============================================================================
 
-// ScheduleItem structure from the Broker pallet:
-// - CoreMask: 80 bits = 10 bytes (fixed-size array)
-// - CoreAssignment: enum with variants Idle(0), Pool(1), Task(2, u32)
-//
-// See: https://github.com/paritytech/polkadot-sdk/blob/master/substrate/frame/broker/src/types.rs
-
 /// Size of CoreMask in bytes (80 bits = 10 bytes).
 pub const CORE_MASK_SIZE: usize = 10;
-
-/// Size of a u32 task ID in bytes.
-pub const TASK_ID_SIZE: usize = 4;
-
-/// CoreAssignment::Idle variant (core is not assigned).
-pub const ASSIGNMENT_IDLE_VARIANT: u8 = 0;
-
-/// CoreAssignment::Pool variant (core contributes to the instantaneous pool).
-pub const ASSIGNMENT_POOL_VARIANT: u8 = 1;
-
-/// CoreAssignment::Task(u32) variant (core is assigned to a specific task/parachain).
-pub const ASSIGNMENT_TASK_VARIANT: u8 = 2;
 
 // ============================================================================
 // Storage Key Constants
@@ -104,15 +86,6 @@ impl CoreAssignment {
             CoreAssignment::Task(id) => id.to_string(),
         }
     }
-}
-
-/// ScheduleItem from the Broker pallet.
-/// Contains a CoreMask and CoreAssignment.
-/// Used in Workload and Reservations storage.
-#[derive(Debug, Clone, PartialEq, Decode, Encode)]
-pub struct ScheduleItem {
-    pub mask: CoreMask,
-    pub assignment: CoreAssignment,
 }
 
 // ============================================================================
@@ -325,24 +298,6 @@ pub fn is_storage_item_not_found_error(error: &subxt::error::StorageError) -> bo
 pub fn has_coretime_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
     let metadata = client_at_block.metadata();
     metadata.pallet_by_name("Coretime").is_some()
-}
-
-/// Checks if the OnDemandAssignmentProvider pallet exists (relay chain).
-pub fn has_on_demand_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
-    let metadata = client_at_block.metadata();
-    metadata
-        .pallet_by_name("OnDemandAssignmentProvider")
-        .is_some()
-}
-
-/// Checks if the CoretimeAssignmentProvider pallet exists (relay chain).
-pub fn has_coretime_assignment_provider(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> bool {
-    let metadata = client_at_block.metadata();
-    metadata
-        .pallet_by_name("CoretimeAssignmentProvider")
-        .is_some()
 }
 
 // ============================================================================

@@ -52,27 +52,6 @@ pub struct ConfigurationInfo {
     pub relay_blocks_per_timeslice: String,
 }
 
-/// Broker status information.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StatusInfo {
-    /// Total number of cores.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub core_count: Option<u32>,
-    /// Number of cores in the private pool.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub private_pool_size: Option<u32>,
-    /// Number of cores in the system pool.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub system_pool_size: Option<u32>,
-    /// Last committed timeslice.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_committed_timeslice: Option<u32>,
-    /// Last timeslice.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_timeslice: Option<u32>,
-}
-
 /// Current region timing information.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
