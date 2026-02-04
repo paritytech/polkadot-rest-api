@@ -253,16 +253,14 @@ impl<'r, const CAMEL_CASE: bool> scale_decode::Visitor for ScaleVisitor<'r, CAME
         let is_account_type = path_segments
             .iter()
             .any(|s| *s == "AccountId32" || *s == "MultiAddress" || *s == "AccountId");
-        let is_vote_type = path_segments.iter().any(|s| *s == "Vote");
+        let is_vote_type = path_segments.contains(&"Vote");
 
         if is_account_type && let Some(ss58) = self.try_extract_ss58(value)? {
             return Ok(Value::String(ss58));
         }
 
-        if is_vote_type {
-            if let Some(byte) = self.try_extract_single_byte(value)? {
-                return Ok(Value::String(format!("0x{:02x}", byte)));
-            }
+        if is_vote_type && let Some(byte) = self.try_extract_single_byte(value)? {
+            return Ok(Value::String(format!("0x{:02x}", byte)));
         }
 
         let fields: Vec<_> = value.collect::<Result<Vec<_>, _>>()?;

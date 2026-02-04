@@ -147,7 +147,6 @@ pub async fn extract_fee_info_for_extrinsic(
                 {
                     let mut info = transform_fee_info(query_info.clone());
 
-                    // Override weight with actual weight from event (not pre-dispatch estimate)
                     if let Some(outcome) = outcome {
                         if let Some(ref actual_weight) = outcome.actual_weight
                             && let Some(weight_value) = actual_weight_to_json(actual_weight)
@@ -176,7 +175,6 @@ pub async fn extract_fee_info_for_extrinsic(
     if let Some((query_info, _)) = query_info_result {
         let mut info = transform_fee_info(query_info);
 
-        // Override weight with actual weight from event if available
         if let Some(outcome) = outcome {
             if let Some(ref actual_weight) = outcome.actual_weight
                 && let Some(weight_value) = actual_weight_to_json(actual_weight)
