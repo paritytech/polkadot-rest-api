@@ -133,7 +133,7 @@ const DEFAULT_SEARCH_DEPTH: &str = "10";
 const MAX_DEPTH: u32 = 100;
 
 fn default_depth() -> String {
-    String::from(DEFAULT_SEARCH_DEPTH)
+    DEFAULT_SEARCH_DEPTH.to_string()
 }
 
 /// Handler for GET /paras/{number}/inclusion
@@ -341,28 +341,28 @@ mod tests {
 
     #[test]
     fn test_validate_depth_default() {
-        assert_eq!(validate_depth(None).unwrap(), 10);
+        assert_eq!(validate_depth(default_depth()).unwrap(), 10);
     }
 
     #[test]
     fn test_validate_depth_valid() {
-        assert_eq!(validate_depth(Some("5".to_string())).unwrap(), 5);
-        assert_eq!(validate_depth(Some("10".to_string())).unwrap(), 10);
-        assert_eq!(validate_depth(Some("100".to_string())).unwrap(), 100);
+        assert_eq!(validate_depth("5".to_string()).unwrap(), 5);
+        assert_eq!(validate_depth("10".to_string()).unwrap(), 10);
+        assert_eq!(validate_depth("100".to_string()).unwrap(), 100);
     }
 
     #[test]
     fn test_validate_depth_invalid() {
         assert!(matches!(
-            validate_depth(Some("0".to_string())),
+            validate_depth("0".to_string()),
             Err(ParasInclusionError::InvalidDepth)
         ));
         assert!(matches!(
-            validate_depth(Some("-5".to_string())),
+            validate_depth("-5".to_string()),
             Err(ParasInclusionError::InvalidDepth)
         ));
         assert!(matches!(
-            validate_depth(Some("abc".to_string())),
+            validate_depth("abc".to_string()),
             Err(ParasInclusionError::InvalidDepth)
         ));
     }
@@ -370,7 +370,7 @@ mod tests {
     #[test]
     fn test_validate_depth_too_large() {
         assert!(matches!(
-            validate_depth(Some("101".to_string())),
+            validate_depth("101".to_string()),
             Err(ParasInclusionError::DepthTooLarge)
         ));
     }
