@@ -144,9 +144,9 @@ pub(crate) async fn build_block_response_for_hash(
     let ctx = BlockBuildContext {
         state,
         client: &state.client,
-        rpc_client: None, // Use state.rpc_client
         ss58_prefix: state.chain_info.ss58_prefix,
         chain_type: state.chain_info.chain_type.clone(),
+        spec_name: state.chain_info.spec_name.clone(),
     };
 
     build_block_response_generic(

@@ -75,6 +75,16 @@ pub struct ExtrinsicQueryParams {
     pub no_fees: bool,
 }
 
+/// Path parameters for /blocks/{blockId}/extrinsics/{extrinsicIndex} and
+/// /rc/blocks/{blockId}/extrinsics/{extrinsicIndex} endpoints
+#[derive(Debug, Deserialize)]
+pub struct ExtrinsicPathParams {
+    #[serde(rename = "blockId")]
+    pub block_id: String,
+    #[serde(rename = "extrinsicIndex")]
+    pub extrinsic_index: String,
+}
+
 impl Default for BlockQueryParams {
     fn default() -> Self {
         Self {
@@ -536,7 +546,7 @@ pub struct ExtrinsicInfo {
     pub events: Vec<Event>,
     /// Whether the extrinsic executed successfully (determined from System.ExtrinsicSuccess event)
     pub success: bool,
-    /// Whether the extrinsic pays a fee (None for unsigned, Some(bool) for signed)
+    /// Whether the extrinsic pays a fee (false for unsigned, value from DispatchInfo for signed)
     /// Extracted from DispatchInfo in System.ExtrinsicSuccess/ExtrinsicFailed events
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pays_fee: Option<bool>,

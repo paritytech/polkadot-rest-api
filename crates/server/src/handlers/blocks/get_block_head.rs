@@ -171,17 +171,18 @@ pub async fn get_block_head(
     // Populate fee info for signed extrinsics that pay fees (unless noFees=true)
     if !params.no_fees {
         let spec_version = client_at_block.spec_version();
+        let client_at_parent = state.client.at_block(header.parent_hash).await?;
 
         for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
             if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
                 extrinsic.info = extract_fee_info_for_extrinsic(
                     &state,
-                    None,
+                    &client_at_parent,
                     &extrinsic.raw_hex,
                     &extrinsic.events,
                     extrinsic_outcomes.get(i),
-                    &parent_hash,
                     spec_version,
+                    &state.chain_info.spec_name,
                 )
                 .await;
             }

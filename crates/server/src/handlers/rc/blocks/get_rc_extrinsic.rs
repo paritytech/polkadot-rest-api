@@ -1,8 +1,19 @@
-//! Handler for GET /blocks/{blockId}/extrinsics/{extrinsicIndex} endpoint.
+//! Handler for GET /rc/blocks/{blockId}/extrinsics/{extrinsicIndex} endpoint.
 //!
 //! This module provides the handler for fetching a specific extrinsic by its index
-//! within a block.
+//! within a Relay Chain block.
 
+use crate::handlers::blocks::common::{
+    add_docs_to_events, add_docs_to_extrinsic, associate_events_with_extrinsics,
+};
+use crate::handlers::blocks::processing::{
+    categorize_events, extract_extrinsics_with_prefix, extract_fee_info_for_extrinsic,
+    fetch_block_events_with_prefix,
+};
+use crate::handlers::blocks::types::{
+    BlockIdentifiers, ExtrinsicIndexResponse, ExtrinsicPathParams, ExtrinsicQueryParams,
+    GetBlockError,
+};
 use crate::state::AppState;
 use crate::utils;
 use axum::{
@@ -11,24 +22,15 @@ use axum::{
     response::IntoResponse,
 };
 
-use super::common::{add_docs_to_events, add_docs_to_extrinsic, associate_events_with_extrinsics};
-use super::processing::{
-    categorize_events, extract_extrinsics, extract_fee_info_for_extrinsic, fetch_block_events,
-};
-use super::types::{
-    BlockIdentifiers, ExtrinsicIndexResponse, ExtrinsicPathParams, ExtrinsicQueryParams,
-    GetBlockError,
-};
-
-/// Handler for GET /blocks/{blockId}/extrinsics/{extrinsicIndex}
+/// Handler for GET /rc/blocks/{blockId}/extrinsics/{extrinsicIndex}
 ///
-/// Returns a specific extrinsic from a block by its index
+/// Returns a specific extrinsic from a Relay Chain block by its index
 ///
 /// Query Parameters:
 /// - `eventDocs` (boolean, default: false): Include documentation for events
 /// - `extrinsicDocs` (boolean, default: false): Include documentation for extrinsics
 /// - `noFees` (boolean, default: false): Skip fee calculation (info will be empty object)
-pub async fn get_extrinsic(
+pub async fn get_rc_extrinsic(
     State(state): State<AppState>,
     Path(path_params): Path<ExtrinsicPathParams>,
     Query(params): Query<ExtrinsicQueryParams>,
@@ -38,10 +40,21 @@ pub async fn get_extrinsic(
         .parse()
         .map_err(|_| GetBlockError::InvalidExtrinsicIndex(path_params.extrinsic_index.clone()))?;
 
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(GetBlockError::RelayChainNotConfigured)?
+        .clone();
+    let relay_chain_info = state
+        .relay_chain_info
+        .clone()
+        .ok_or(GetBlockError::RelayChainNotConfigured)?;
+
+    let ss58_prefix = relay_chain_info.ss58_prefix;
+
     let block_id_parsed = path_params.block_id.parse::<utils::BlockId>()?;
     let client_at_block = match block_id_parsed {
-        utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-        utils::BlockId::Number(number) => state.client.at_block(number).await?,
+        utils::BlockId::Hash(hash) => relay_client.at_block(hash).await?,
+        utils::BlockId::Number(number) => relay_client.at_block(number).await?,
     };
 
     let block_hash = format!("{:#x}", client_at_block.block_hash());
@@ -53,8 +66,8 @@ pub async fn get_extrinsic(
         .map_err(GetBlockError::BlockHeaderFailed)?;
 
     let (extrinsics_result, events_result) = tokio::join!(
-        extract_extrinsics(&state, &client_at_block, block_number),
-        fetch_block_events(&state, &client_at_block, block_number),
+        extract_extrinsics_with_prefix(ss58_prefix, &client_at_block, block_number),
+        fetch_block_events_with_prefix(ss58_prefix, &client_at_block, block_number),
     );
 
     let extrinsics = extrinsics_result?;
@@ -81,7 +94,7 @@ pub async fn get_extrinsic(
 
     if !params.no_fees && extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
         let spec_version = client_at_block.spec_version();
-        let client_at_parent = state.client.at_block(header.parent_hash).await?;
+        let client_at_parent = relay_client.at_block(header.parent_hash).await?;
 
         let fee_info = extract_fee_info_for_extrinsic(
             &state,
@@ -90,7 +103,7 @@ pub async fn get_extrinsic(
             &extrinsic.events,
             extrinsic_outcomes.get(extrinsic_index),
             spec_version,
-            &state.chain_info.spec_name,
+            &relay_chain_info.spec_name,
         )
         .await;
 
@@ -118,35 +131,4 @@ pub async fn get_extrinsic(
     };
 
     Ok(Json(response))
-}
-
-// ================================================================================================
-// Tests
-// ================================================================================================
-
-#[cfg(test)]
-mod tests {
-
-    #[test]
-    fn test_parse_extrinsic_index_valid() {
-        let index: Result<usize, _> = "0".parse();
-        assert!(index.is_ok());
-        assert_eq!(index.unwrap(), 0);
-
-        let index: Result<usize, _> = "10".parse();
-        assert!(index.is_ok());
-        assert_eq!(index.unwrap(), 10);
-    }
-
-    #[test]
-    fn test_parse_extrinsic_index_invalid() {
-        let index: Result<usize, _> = "-1".parse();
-        assert!(index.is_err());
-
-        let index: Result<usize, _> = "abc".parse();
-        assert!(index.is_err());
-
-        let index: Result<usize, _> = "1.5".parse();
-        assert!(index.is_err());
-    }
 }
