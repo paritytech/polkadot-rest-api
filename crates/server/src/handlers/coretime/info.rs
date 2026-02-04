@@ -346,8 +346,17 @@ async fn fetch_configuration(
                     })?;
             Ok(Some(decoded))
         }
-        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => Ok(None),
-        Err(_) => Ok(None),
+        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => {
+            tracing::debug!("Could not find Broker.Configuration storage entry.");
+            Ok(None)
+        }
+        Err(e) => {
+            tracing::debug!(
+                "Failed to retrieve Broker.Configuration: {:?}",
+                format!("{e}")
+            );
+            Ok(None)
+        }
     }
 }
 
@@ -370,8 +379,14 @@ async fn fetch_sale_info(
                     })?;
             Ok(Some(decoded))
         }
-        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => Ok(None),
-        Err(_) => Ok(None),
+        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => {
+            tracing::debug!("Could not find Broker.SaleInfo storage entry.");
+            Ok(None)
+        }
+        Err(e) => {
+            tracing::debug!("Failed to retrieve Broker.SaleInfo: {:?}", format!("{e}"));
+            Ok(None)
+        }
     }
 }
 
@@ -394,8 +409,14 @@ async fn fetch_status(
                     })?;
             Ok(Some(decoded))
         }
-        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => Ok(None),
-        Err(_) => Ok(None),
+        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => {
+            tracing::debug!("Could not find Broker.Status storage entry.");
+            Ok(None)
+        }
+        Err(e) => {
+            tracing::debug!("Failed to retrieve Broker.Status: {:?}", format!("{e}"));
+            Ok(None)
+        }
     }
 }
 
@@ -419,7 +440,13 @@ async fn fetch_relay_block_number(
                     })?;
             Ok(Some(decoded))
         }
-        Err(_) => Ok(None),
+        Err(e) => {
+            tracing::debug!(
+                "Failed to retrieve ParachainSystem.LastRelayChainBlockNumber: {:?}",
+                format!("{e}")
+            );
+            Ok(None)
+        }
     }
 }
 
