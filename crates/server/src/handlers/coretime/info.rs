@@ -113,9 +113,9 @@ pub struct CoretimeRelayInfoResponse {
     /// Parachain ID of the coretime broker chain.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub broker_id: Option<String>,
-    /// Pallet version.
+    /// Pallet's storage version.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pallet_version: Option<String>,
+    pub storage_version: Option<String>,
     /// Maximum historical revenue blocks.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_historical_revenue: Option<String>,
@@ -290,16 +290,16 @@ async fn handle_relay_chain_info(
     }
 
     // Fetch relay chain coretime info
-    let (broker_id, pallet_version, max_historical_revenue) = tokio::join!(
+    let (broker_id, storage_version, max_historical_revenue) = tokio::join!(
         fetch_broker_id(client_at_block),
-        fetch_pallet_version_decoded(client_at_block),
+        fetch_storage_version_decoded(client_at_block),
         fetch_max_historical_revenue(client_at_block)
     );
 
     let response = CoretimeRelayInfoResponse {
         at,
         broker_id: broker_id.ok().flatten().map(|v| v.to_string()),
-        pallet_version: pallet_version.ok().flatten().map(|v| v.to_string()),
+        storage_version: storage_version.ok().flatten().map(|v| v.to_string()),
         max_historical_revenue: max_historical_revenue.ok().flatten().map(|v| v.to_string()),
     };
 
@@ -458,7 +458,7 @@ async fn fetch_broker_id(
     Ok(Some(value))
 }
 
-async fn fetch_pallet_version_decoded(
+async fn fetch_storage_version_decoded(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Option<u16>, CoretimeError> {
     let version = client_at_block
@@ -778,13 +778,13 @@ mod tests {
                 height: "12345".to_string(),
             },
             broker_id: Some("1005".to_string()),
-            pallet_version: Some("1".to_string()),
+            storage_version: Some("1".to_string()),
             max_historical_revenue: Some("28800".to_string()),
         };
 
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"brokerId\":\"1005\""));
-        assert!(json.contains("\"palletVersion\":\"1\""));
+        assert!(json.contains("\"storageVersion\":\"1\""));
         assert!(json.contains("\"maxHistoricalRevenue\":\"28800\""));
     }
 
@@ -796,13 +796,13 @@ mod tests {
                 height: "12345".to_string(),
             },
             broker_id: None,
-            pallet_version: None,
+            storage_version: None,
             max_historical_revenue: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
         assert!(!json.contains("brokerId"));
-        assert!(!json.contains("palletVersion"));
+        assert!(!json.contains("storageVersion"));
         assert!(!json.contains("maxHistoricalRevenue"));
     }
 
