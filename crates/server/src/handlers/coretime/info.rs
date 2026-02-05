@@ -458,31 +458,18 @@ async fn fetch_broker_id(
     Ok(Some(value))
 }
 
-/// Fetches pallet version from CoretimeAssignmentProvider using scale_value.
 async fn fetch_pallet_version_decoded(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Option<u16>, CoretimeError> {
-    // Try to fetch from CoretimeAssignmentProvider::PalletVersion storage
-    let version_addr =
-        subxt::dynamic::storage::<(), u16>("CoretimeAssignmentProvider", "PalletVersion");
     let version = client_at_block
         .storage()
-        .fetch(version_addr, ())
+        .storage_version("CoretimeAssignmentProvider")
         .await
-        .map_err(|_| CoretimeError::StorageFetchFailed {
+        .map_err(|_| CoretimeError::StorageVersionFetchFailed {
             pallet: "CoretimeAssignmentProvider",
-            entry: "PalletVersion",
         })?;
 
-    let decoded = version
-        .decode()
-        .map_err(|e| CoretimeError::StorageDecodeFailed {
-            pallet: "CoretimeAssignmentProvider",
-            entry: "PalletVersion",
-            details: e.to_string(),
-        })?;
-
-    Ok(Some(decoded))
+    Ok(Some(version))
 }
 
 /// Fetches MaxHistoricalRevenue constant from OnDemandAssignmentProvider.

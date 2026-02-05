@@ -127,6 +127,9 @@ pub enum CoretimeError {
         entry: &'static str,
     },
 
+    #[error("Failed to retrieve storageVersion for {pallet}")]
+    StorageVersionFetchFailed { pallet: &'static str },
+
     #[error("Failed to decode {pallet}::{entry} storage: {details}")]
     StorageDecodeFailed {
         pallet: &'static str,
@@ -204,6 +207,9 @@ impl IntoResponse for CoretimeError {
                 "The runtime does not include the broker module at this block".to_string(),
             ),
             CoretimeError::StorageFetchFailed { .. } => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            CoretimeError::StorageVersionFetchFailed { .. } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
             CoretimeError::StorageDecodeFailed { .. } => {
