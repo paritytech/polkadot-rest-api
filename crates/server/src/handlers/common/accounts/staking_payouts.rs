@@ -229,7 +229,7 @@ pub async fn query_staking_payouts(
     }
 
     // Get active era
-    let active_era_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ActiveEra");
+    let active_era_addr = subxt::dynamic::storage::<_, ()>("Staking", "ActiveEra");
     let active_era = if let Ok(value) = client_at_block
         .storage()
         .fetch(active_era_addr, ())
@@ -242,7 +242,7 @@ pub async fn query_staking_payouts(
     };
 
     // Get history depth (default to 84 if not found)
-    let history_depth_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "HistoryDepth");
+    let history_depth_addr = subxt::dynamic::storage::<_, ()>("Staking", "HistoryDepth");
     let history_depth = if let Ok(value) = client_at_block
         .storage()
         .fetch(history_depth_addr, ())
@@ -319,7 +319,7 @@ async fn fetch_era_data(
     let account_bytes: [u8; 32] = *account.as_ref();
 
     // Get total era reward points
-    let reward_points_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasRewardPoints");
+    let reward_points_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasRewardPoints");
     let reward_points_value = client_at_block
         .storage()
         .fetch(reward_points_addr, (era,))
@@ -336,7 +336,7 @@ async fn fetch_era_data(
 
     // Get total era payout
     let validator_reward_addr =
-        subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasValidatorReward");
+        subxt::dynamic::storage::<_, ()>("Staking", "ErasValidatorReward");
     let validator_reward_value = client_at_block
         .storage()
         .fetch(validator_reward_addr, (era,))
@@ -437,7 +437,7 @@ async fn fetch_exposure_data(
     let mut results = Vec::new();
 
     // Try to get nominators to find which validators this account nominates
-    let nominators_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Nominators");
+    let nominators_addr = subxt::dynamic::storage::<_, ()>("Staking", "Nominators");
     if let Ok(nom_value) = client_at_block
         .storage()
         .fetch(nominators_addr, (*account_bytes,))
@@ -449,7 +449,7 @@ async fn fetch_exposure_data(
         for validator_bytes in targets {
             // Try ErasStakersClipped
             let stakers_addr =
-                subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasStakersClipped");
+                subxt::dynamic::storage::<_, ()>("Staking", "ErasStakersClipped");
             if let Ok(exposure_value) = client_at_block
                 .storage()
                 .fetch(stakers_addr, (era, validator_bytes))
@@ -476,7 +476,7 @@ async fn fetch_exposure_data(
     }
 
     // If account is a validator, also check if they have self-stake
-    let bonded_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Bonded");
+    let bonded_addr = subxt::dynamic::storage::<_, ()>("Staking", "Bonded");
     if client_at_block
         .storage()
         .fetch(bonded_addr, (*account_bytes,))
@@ -484,7 +484,7 @@ async fn fetch_exposure_data(
         .is_ok()
     {
         // Account is a stash, check if they're also validating
-        let stakers_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasStakersClipped");
+        let stakers_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasStakersClipped");
         if let Ok(exposure_value) = client_at_block
             .storage()
             .fetch(stakers_addr, (era, *account_bytes))
@@ -510,7 +510,7 @@ async fn fetch_validator_commission(
     era: u32,
     validator_bytes: &[u8; 32],
 ) -> Option<u32> {
-    let prefs_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasValidatorPrefs");
+    let prefs_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasValidatorPrefs");
     let prefs_value = client_at_block
         .storage()
         .fetch(prefs_addr, (era, *validator_bytes))
@@ -527,7 +527,7 @@ async fn check_if_claimed(
     era: u32,
 ) -> bool {
     // First get the controller for this validator
-    let bonded_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Bonded");
+    let bonded_addr = subxt::dynamic::storage::<_, ()>("Staking", "Bonded");
     let controller_bytes = if let Ok(value) = client_at_block
         .storage()
         .fetch(bonded_addr, (*validator_bytes,))
@@ -540,7 +540,7 @@ async fn check_if_claimed(
     };
 
     // Check ledger for claimed rewards
-    let ledger_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Ledger");
+    let ledger_addr = subxt::dynamic::storage::<_, ()>("Staking", "Ledger");
     if let Ok(value) = client_at_block
         .storage()
         .fetch(ledger_addr, (controller_bytes,))

@@ -263,7 +263,7 @@ pub async fn query_staking_info(
     let account_bytes: [u8; 32] = *account.as_ref();
 
     // Query Staking.Bonded to get controller from stash
-    let bonded_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Bonded");
+    let bonded_addr = subxt::dynamic::storage::<_, ()>("Staking", "Bonded");
     let bonded_value = client_at_block
         .storage()
         .fetch(bonded_addr, (account_bytes,))
@@ -282,7 +282,7 @@ pub async fn query_staking_info(
     let controller_bytes: [u8; 32] = *controller_account.as_ref();
 
     // Query Staking.Ledger to get staking ledger
-    let ledger_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Ledger");
+    let ledger_addr = subxt::dynamic::storage::<_, ()>("Staking", "Ledger");
     let ledger_value = client_at_block
         .storage()
         .fetch(ledger_addr, (controller_bytes,))
@@ -296,7 +296,7 @@ pub async fn query_staking_info(
     };
 
     // Query Staking.Payee to get reward destination
-    let payee_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Payee");
+    let payee_addr = subxt::dynamic::storage::<_, ()>("Staking", "Payee");
     let payee_value = client_at_block
         .storage()
         .fetch(payee_addr, (account_bytes,))
@@ -310,7 +310,7 @@ pub async fn query_staking_info(
     };
 
     // Query Staking.Nominators to get nominations
-    let nominators_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Nominators");
+    let nominators_addr = subxt::dynamic::storage::<_, ()>("Staking", "Nominators");
     let nominators_value = client_at_block
         .storage()
         .fetch(nominators_addr, (account_bytes,))
@@ -324,7 +324,7 @@ pub async fn query_staking_info(
     };
 
     // Query Staking.SlashingSpans to get number of slashing spans
-    let slashing_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "SlashingSpans");
+    let slashing_addr = subxt::dynamic::storage::<_, ()>("Staking", "SlashingSpans");
     let num_slashing_spans = if let Ok(value) = client_at_block
         .storage()
         .fetch(slashing_addr, (account_bytes,))
@@ -514,7 +514,7 @@ async fn query_claimed_rewards(
 async fn get_current_era(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u32, StakingQueryError> {
-    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "CurrentEra");
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "CurrentEra");
 
     if let Ok(value) = client_at_block.storage().fetch(storage_addr, ()).await {
         let raw_bytes = value.into_bytes();
@@ -541,7 +541,7 @@ async fn get_current_era(
 /// The history depth determines how many eras we check for claimed rewards.
 /// Default is 84 eras for most Substrate chains.
 async fn get_history_depth(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<u32> {
-    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "HistoryDepth");
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "HistoryDepth");
 
     if let Ok(value) = client_at_block.storage().fetch(storage_addr, ()).await {
         let raw_bytes = value.into_bytes();
@@ -562,7 +562,7 @@ async fn is_validator(
     let stash_bytes: [u8; 32] = *stash.as_ref();
 
     // Query Staking.Validators to check if account is a validator
-    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Validators");
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "Validators");
 
     client_at_block
         .storage()
@@ -639,7 +639,7 @@ async fn get_claimed_pages(
     stash_bytes: &[u8; 32],
 ) -> Option<Vec<u32>> {
     // Try Staking.ClaimedRewards (newer runtimes)
-    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ClaimedRewards");
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ClaimedRewards");
 
     if let Ok(value) = client_at_block
         .storage()
@@ -653,7 +653,7 @@ async fn get_claimed_pages(
     }
 
     // Try Staking.ErasClaimedRewards (Asset Hub)
-    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasClaimedRewards");
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasClaimedRewards");
 
     if let Ok(value) = client_at_block
         .storage()
@@ -676,7 +676,7 @@ async fn get_era_stakers_page_count(
     stash_bytes: &[u8; 32],
 ) -> Option<u32> {
     // Try ErasStakersOverview (paged staking)
-    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasStakersOverview");
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasStakersOverview");
 
     if let Ok(value) = client_at_block
         .storage()
@@ -690,7 +690,7 @@ async fn get_era_stakers_page_count(
     }
 
     // If ErasStakersOverview doesn't exist, check ErasStakers (older format, always 1 page)
-    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasStakers");
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasStakers");
 
     if let Ok(value) = client_at_block
         .storage()

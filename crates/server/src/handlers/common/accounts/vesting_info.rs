@@ -157,7 +157,7 @@ async fn query_vesting_schedules(
     account: &AccountId32,
 ) -> Result<Vec<RawVestingSchedule>, VestingQueryError> {
     // Build the storage address for Vesting::Vesting(account)
-    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Vesting", "Vesting");
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Vesting", "Vesting");
     let account_bytes: [u8; 32] = *account.as_ref();
 
     let storage_value = client_at_block

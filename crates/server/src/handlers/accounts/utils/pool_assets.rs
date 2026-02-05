@@ -105,7 +105,7 @@ pub async fn query_pool_assets(
     for asset_id in assets {
         // Build the storage address for PoolAssets::Account(asset_id, account_id)
         let storage_addr =
-            subxt::dynamic::storage::<_, Vec<u8>>("PoolAssets", "Account");
+            subxt::dynamic::storage::<_, ()>("PoolAssets", "Account");
 
         let storage_value = client_at_block
             .storage()

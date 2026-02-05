@@ -130,7 +130,7 @@ pub async fn query_proxy_info(
     }
 
     // Build the storage address for Proxy::Proxies(account)
-    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Proxy", "Proxies");
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Proxy", "Proxies");
     let account_bytes: [u8; 32] = *account.as_ref();
 
     let storage_value = client_at_block

@@ -261,7 +261,7 @@ async fn query_account_data(
     account: &AccountId32,
 ) -> Result<DecodedAccountData, BalanceQueryError> {
     // Build the storage address for System::Account(account_id)
-    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("System", "Account");
+    let storage_addr = subxt::dynamic::storage::<_, ()>("System", "Account");
     let account_bytes: [u8; 32] = *account.as_ref();
 
     let storage_value = client_at_block
@@ -334,7 +334,7 @@ async fn query_balance_locks(
     }
 
     // Build the storage address for Balances::Locks(account_id)
-    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Balances", "Locks");
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Balances", "Locks");
     let account_bytes: [u8; 32] = *account.as_ref();
 
     let storage_value = client_at_block

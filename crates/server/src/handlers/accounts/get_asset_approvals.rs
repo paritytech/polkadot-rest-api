@@ -110,7 +110,7 @@ async fn query_asset_approval(
     block: &utils::ResolvedBlock,
 ) -> Result<AssetApprovalResponse, AccountsError> {
     // Build the storage address for Assets::Approvals(asset_id, owner, delegate)
-    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Assets", "Approvals");
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Assets", "Approvals");
 
     // Check if the pallet exists by trying to create the storage entry
     if client_at_block.storage().entry(("Assets", "Approvals")).is_err() {
