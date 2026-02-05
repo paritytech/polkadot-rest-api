@@ -3,7 +3,7 @@
 //! Generates a minimal metadata proof for a specific extrinsic, implementing RFC-0078.
 //! This allows offline signers to decode transactions without the full metadata.
 
-use crate::state::AppState;
+use crate::state::{AppState, SubstrateLegacyRpc};
 use crate::utils::BlockId;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use frame_metadata::RuntimeMetadataPrefixed;
@@ -13,6 +13,8 @@ use merkleized_metadata::{
 };
 use parity_scale_codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};
+use subxt::SubstrateConfig;
+use subxt::client::OnlineClientAtBlock;
 use thiserror::Error;
 
 const DEFAULT_DECIMALS: u8 = 10;
@@ -88,13 +90,6 @@ pub enum MetadataBlobError {
         "Metadata V15 is not available on this chain. CheckMetadataHash requires V15 metadata."
     )]
     MetadataV15NotAvailable,
-    #[error(
-        "Failed to retrieve the available metadata versions. CheckMetadataHash requires V15 metadata."
-    )]
-    MetadataVersionsNotAvailable,
-
-    #[error("Failed to decode metadata hex")]
-    HexDecodeFailed,
 
     #[error("Invalid hex encoding in request")]
     InvalidHex { field: String, cause: String },
@@ -113,9 +108,6 @@ pub enum MetadataBlobError {
 
     #[error("Relay chain not configured")]
     RelayChainNotConfigured,
-
-    #[error("Failed to fetch constant {pallet}::{constant}")]
-    ConstantFetchFailed { pallet: String, constant: String },
 }
 
 impl IntoResponse for MetadataBlobError {
@@ -147,26 +139,6 @@ impl IntoResponse for MetadataBlobError {
                     StatusCode::BAD_REQUEST,
                     400,
                     "Metadata V15 not available",
-                    cause.clone(),
-                    format!("Error: {}\n    at metadata_blob", cause),
-                )
-            }
-            MetadataBlobError::MetadataVersionsNotAvailable => {
-                let cause = "Failed to retrieve the available metadata versions. CheckMetadataHash requires V15 metadata.".to_string();
-                (
-                    StatusCode::BAD_REQUEST,
-                    400,
-                    "Metadata versions not available",
-                    cause.clone(),
-                    format!("Error: {}\n    at metadata_blob", cause),
-                )
-            }
-            MetadataBlobError::HexDecodeFailed => {
-                let cause = "Failed to decode metadata hex".to_string();
-                (
-                    StatusCode::BAD_REQUEST,
-                    400,
-                    "Metadata versions not available",
                     cause.clone(),
                     format!("Error: {}\n    at metadata_blob", cause),
                 )
@@ -219,13 +191,6 @@ impl IntoResponse for MetadataBlobError {
                     format!("Error: {}\n    at metadata_blob_rc", cause),
                 )
             }
-            MetadataBlobError::ConstantFetchFailed { pallet, constant } => (
-                StatusCode::BAD_REQUEST,
-                400,
-                "Failed to fetch constant",
-                pallet,
-                constant,
-            ),
         };
 
         let body = Json(MetadataBlobFailure {
@@ -242,7 +207,7 @@ pub async fn metadata_blob(
     State(state): State<AppState>,
     Json(body): Json<MetadataBlobRequest>,
 ) -> Result<Json<MetadataBlobResponse>, MetadataBlobError> {
-    metadata_blob_internal(&state.client, &state.rpc_client, body).await
+    metadata_blob_internal(&state.client, &state.legacy_rpc, body).await
 }
 
 pub async fn metadata_blob_rc(
@@ -252,16 +217,16 @@ pub async fn metadata_blob_rc(
     let relay_client = state
         .get_relay_chain_client()
         .ok_or(MetadataBlobError::RelayChainNotConfigured)?;
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
+    let relay_legacy_rpc = state
+        .get_relay_chain_rpc()
         .ok_or(MetadataBlobError::RelayChainNotConfigured)?;
 
-    metadata_blob_internal(relay_client, relay_rpc_client, body).await
+    metadata_blob_internal(relay_client, relay_legacy_rpc, body).await
 }
 
 async fn metadata_blob_internal(
-    client: &subxt::OnlineClient<subxt::SubstrateConfig>,
-    rpc_client: &subxt_rpcs::RpcClient,
+    client: &subxt::OnlineClient<SubstrateConfig>,
+    legacy_rpc: &SubstrateLegacyRpc,
     body: MetadataBlobRequest,
 ) -> Result<Json<MetadataBlobResponse>, MetadataBlobError> {
     // Validate request: need either tx OR (callData + includedInExtrinsic + includedInSignedData)
@@ -298,48 +263,21 @@ async fn metadata_blob_internal(
             }
         };
 
-    let block_hash = format!("{:#x}", client_at.block_hash());
+    let block_hash = client_at.block_hash();
+    let block_hash_str = format!("{:#x}", block_hash);
     let block_number = client_at.block_number().to_string();
     let spec_version = client_at.spec_version();
 
-    // Get available metadata versions
-    let versions_method =
-        subxt::dynamic::runtime_api_call::<(), Vec<u32>>("Metadata", "metadata_versions", ());
-    let available_versions = client_at
-        .runtime_apis()
-        .call(versions_method)
-        .await
-        .map_err(|_| MetadataBlobError::MetadataV15NotAvailable)?;
+    // Get available metadata versions using call_raw
+    let available_versions = fetch_metadata_versions(&client_at).await?;
 
     // Check if V15 is available
     if !available_versions.contains(&REQUIRED_METADATA_VERSION) {
         return Err(MetadataBlobError::MetadataV15NotAvailable);
     }
 
-    // Fetch metadata V15
-    let metadata_method =
-        subxt::dynamic::runtime_api_call::<_, String>("Metadata", "metadata_at_version", (15u32,));
-    let metadata_result: String = client_at
-        .runtime_apis()
-        .call(metadata_method)
-        .await
-        .map_err(|e| {
-            let cause = e.to_string();
-            MetadataBlobError::FetchFailed {
-                cause: cause.clone(),
-                stack: format!(
-                    "Error: {}\n    at metadata_blob (metadata_at_version)",
-                    cause
-                ),
-            }
-        })?;
-
-    // Extract bytes from Option<OpaqueMetadata>
-    let metadata_hex = metadata_result
-        .strip_prefix("0x")
-        .unwrap_or(&metadata_result);
-    let metadata_bytes: Vec<u8> =
-        hex::decode(metadata_hex).map_err(|_| MetadataBlobError::HexDecodeFailed)?;
+    // Fetch metadata V15 using call_raw
+    let metadata_bytes = fetch_metadata_at_version(&client_at, REQUIRED_METADATA_VERSION).await?;
 
     // Decode metadata
     let metadata_prefixed =
@@ -351,45 +289,36 @@ async fn metadata_blob_internal(
             }
         })?;
 
-
-    // Get runtime version for spec_name
-    let version_method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>("Core", "Version", ());
-    let runtime_version = client_at
-        .runtime_apis()
-        .call(version_method)
-        .await
-        .map_err(|e| {
-            let cause = format!("Failed to decode metadata: {}", e);
-            MetadataBlobError::FetchFailed {
-                cause: cause.clone(),
-                stack: format!("Error: {}\n    at metadata_blob (decode)", cause),
-            }
-        })?;
-    let runtime_version_json = serde_json::to_value(&runtime_version).unwrap_or_default();
-    let spec_name = runtime_version_json
-        .get("spec_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
-
-    let ss58_addr = subxt::dynamic::constant::<u16>("System", "Ss58Prefix");
-
-    let base58_prefix = client_at
-        .constants()
-        .entry(ss58_addr)
-        .unwrap_or(DEFAULT_SS58_PREFIX);
-
-    // Get chain properties
-    let properties: serde_json::Value = rpc_client
-        .request("system_properties", subxt_rpcs::rpc_params![])
+    // Get runtime version for spec_name using legacy RPC (typed)
+    let runtime_version = legacy_rpc
+        .state_get_runtime_version(Some(block_hash))
         .await
         .map_err(|e| {
             let cause = e.to_string();
             MetadataBlobError::FetchFailed {
                 cause: cause.clone(),
-                stack: format!("Error: {}\n    at metadata_blob (properties)", cause),
+                stack: format!("Error: {}\n    at metadata_blob (runtime version)", cause),
             }
         })?;
+
+    let spec_name = runtime_version
+        .other
+        .get("specName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    // Get SS58 prefix from constants
+    let base58_prefix = fetch_ss58_prefix(&client_at);
+
+    // Get chain properties using legacy RPC (typed)
+    let properties = legacy_rpc.system_properties().await.map_err(|e| {
+        let cause = e.to_string();
+        MetadataBlobError::FetchFailed {
+            cause: cause.clone(),
+            stack: format!("Error: {}\n    at metadata_blob (properties)", cause),
+        }
+    })?;
 
     let decimals = extract_decimals(&properties);
     let token_symbol = extract_token_symbol(&properties);
@@ -448,7 +377,7 @@ async fn metadata_blob_internal(
 
     Ok(Json(MetadataBlobResponse {
         at: At {
-            hash: block_hash,
+            hash: block_hash_str,
             height: block_number,
         },
         metadata_hash,
@@ -459,6 +388,56 @@ async fn metadata_blob_internal(
         decimals,
         token_symbol,
     }))
+}
+
+/// Fetch available metadata versions using typed runtime API
+async fn fetch_metadata_versions(
+    client_at: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Result<Vec<u32>, MetadataBlobError> {
+    let method =
+        subxt::dynamic::runtime_api_call::<_, Vec<u32>>("Metadata", "metadata_versions", ());
+
+    client_at.runtime_apis().call(method).await.map_err(|e| {
+        let cause = e.to_string();
+        MetadataBlobError::FetchFailed {
+            cause: cause.clone(),
+            stack: format!("Error: {}\n    at metadata_blob (metadata_versions)", cause),
+        }
+    })
+}
+
+/// Fetch metadata at a specific version using typed runtime API
+async fn fetch_metadata_at_version(
+    client_at: &OnlineClientAtBlock<SubstrateConfig>,
+    version: u32,
+) -> Result<Vec<u8>, MetadataBlobError> {
+    let method = subxt::dynamic::runtime_api_call::<_, Option<Vec<u8>>>(
+        "Metadata",
+        "metadata_at_version",
+        (version,),
+    );
+
+    let metadata_opt = client_at.runtime_apis().call(method).await.map_err(|e| {
+        let cause = e.to_string();
+        MetadataBlobError::FetchFailed {
+            cause: cause.clone(),
+            stack: format!(
+                "Error: {}\n    at metadata_blob (metadata_at_version)",
+                cause
+            ),
+        }
+    })?;
+
+    metadata_opt.ok_or(MetadataBlobError::MetadataV15NotAvailable)
+}
+
+/// Fetch SS58 prefix from System::SS58Prefix constant
+fn fetch_ss58_prefix(client_at: &OnlineClientAtBlock<SubstrateConfig>) -> u16 {
+    let ss58_addr = subxt::dynamic::constant::<u16>("System", "SS58Prefix");
+    client_at
+        .constants()
+        .entry(ss58_addr)
+        .unwrap_or(DEFAULT_SS58_PREFIX)
 }
 
 enum ExtrinsicInput {
@@ -529,7 +508,10 @@ fn decode_hex(s: &str, field: &str) -> Result<Vec<u8>, MetadataBlobError> {
     })
 }
 
-fn extract_decimals(properties: &serde_json::Value) -> u8 {
+/// System properties from RPC (serde_json::Map from legacy_rpc.system_properties())
+type SystemProperties = serde_json::Map<String, serde_json::Value>;
+
+fn extract_decimals(properties: &SystemProperties) -> u8 {
     properties
         .get("tokenDecimals")
         .and_then(|v| {
@@ -545,7 +527,7 @@ fn extract_decimals(properties: &serde_json::Value) -> u8 {
         .unwrap_or(DEFAULT_DECIMALS)
 }
 
-fn extract_token_symbol(properties: &serde_json::Value) -> String {
+fn extract_token_symbol(properties: &SystemProperties) -> String {
     properties
         .get("tokenSymbol")
         .and_then(|v| {
@@ -653,37 +635,41 @@ mod tests {
 
     #[test]
     fn test_extract_decimals_single() {
-        let props = json!({ "tokenDecimals": 12 });
+        let mut props = serde_json::Map::new();
+        props.insert("tokenDecimals".to_string(), json!(12));
         assert_eq!(extract_decimals(&props), 12);
     }
 
     #[test]
     fn test_extract_decimals_array() {
-        let props = json!({ "tokenDecimals": [10, 6] });
+        let mut props = serde_json::Map::new();
+        props.insert("tokenDecimals".to_string(), json!([10, 6]));
         assert_eq!(extract_decimals(&props), 10);
     }
 
     #[test]
     fn test_extract_decimals_default() {
-        let props = json!({});
+        let props = serde_json::Map::new();
         assert_eq!(extract_decimals(&props), DEFAULT_DECIMALS);
     }
 
     #[test]
     fn test_extract_token_symbol_single() {
-        let props = json!({ "tokenSymbol": "KSM" });
+        let mut props = serde_json::Map::new();
+        props.insert("tokenSymbol".to_string(), json!("KSM"));
         assert_eq!(extract_token_symbol(&props), "KSM");
     }
 
     #[test]
     fn test_extract_token_symbol_array() {
-        let props = json!({ "tokenSymbol": ["DOT", "USDT"] });
+        let mut props = serde_json::Map::new();
+        props.insert("tokenSymbol".to_string(), json!(["DOT", "USDT"]));
         assert_eq!(extract_token_symbol(&props), "DOT");
     }
 
     #[test]
     fn test_extract_token_symbol_default() {
-        let props = json!({});
+        let props = serde_json::Map::new();
         assert_eq!(extract_token_symbol(&props), DEFAULT_TOKEN_SYMBOL);
     }
 
