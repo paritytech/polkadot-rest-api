@@ -82,7 +82,9 @@ pub enum PalletError {
     #[error("Pool asset not found: {0}")]
     PoolAssetNotFound(String),
 
-    #[error("Could not find event item (\"{0}\") in metadata. Event item names are expected to be in PascalCase, e.g. 'Transfer'")]
+    #[error(
+        "Could not find event item (\"{0}\") in metadata. Event item names are expected to be in PascalCase, e.g. 'Transfer'"
+    )]
     EventNotFound(String),
 
     #[error("No queryable events items found for palletId \"{0}\"")]
