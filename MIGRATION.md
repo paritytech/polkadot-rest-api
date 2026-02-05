@@ -16,6 +16,7 @@ This project is a Rust-based alternative to substrate-api-sidecar, designed to p
   - `/v1/pallets/asset-conversion/liquidity-pools`
   - `/v1/pallets/asset-conversion/next-available-id`
   - `/v1/pallets/pool-assets/{assetId}/asset-info`
+  - `/v1/pallets/foreign-assets`
 - The `currentCorePrice` calculation for `/v1/coretime/info` has changed. The previous calculation was faulty. For more details, see the linked [PR](https://github.com/paritytech/polkadot-rest-api/pull/175).
 - Renamed `palletVersion` to `storageVersion` in `coretime/info`, in order to match current naming. For more context, see the linked [commit](https://github.com/paritytech/polkadot-sdk/commit/4fe55f0bcb8edccaad73b33b804c349a756f7d3c).
 
