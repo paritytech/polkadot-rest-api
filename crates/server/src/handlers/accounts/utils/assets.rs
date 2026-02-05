@@ -27,6 +27,7 @@ impl AccountStatus {
 
 /// Existence reason for an asset account (modern runtimes)
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 enum ExistenceReason {
     Consumer,
     Sufficient,

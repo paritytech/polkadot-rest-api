@@ -15,6 +15,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 
 /// Account data for modern runtimes (with frozen field)
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 struct AccountDataModern {
     free: u128,
     reserved: u128,
@@ -33,6 +34,7 @@ struct AccountDataLegacy {
 
 /// Account info structure (modern runtime)
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 struct AccountInfoModern {
     nonce: u32,
     consumers: u32,
@@ -43,6 +45,7 @@ struct AccountInfoModern {
 
 /// Account info structure (legacy runtime)
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 struct AccountInfoLegacy {
     nonce: u32,
     consumers: u32,

@@ -50,6 +50,7 @@ struct Nominations {
 
 /// Slashing spans structure
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 struct SlashingSpans {
     span_index: u32,
     last_start: u32,
@@ -59,6 +60,7 @@ struct SlashingSpans {
 
 /// Era stakers overview (for paged staking)
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 struct PagedExposureMetadata {
     #[codec(compact)]
     total: u128,
@@ -70,6 +72,7 @@ struct PagedExposureMetadata {
 
 /// Legacy era stakers (non-paged)
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 struct Exposure {
     #[codec(compact)]
     total: u128,
@@ -80,6 +83,7 @@ struct Exposure {
 
 /// Individual exposure in legacy stakers
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 struct IndividualExposure {
     who: [u8; 32],
     #[codec(compact)]

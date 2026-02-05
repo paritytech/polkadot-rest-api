@@ -27,6 +27,7 @@ impl PoolAccountStatus {
 
 /// Existence reason for a pool asset account (modern runtimes)
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 enum PoolExistenceReason {
     Consumer,
     Sufficient,

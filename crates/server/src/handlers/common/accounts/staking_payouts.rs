@@ -13,6 +13,7 @@ use thiserror::Error;
 
 /// Active era info
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 struct ActiveEraInfo {
     index: u32,
     start: Option<u64>,
@@ -45,6 +46,7 @@ struct IndividualExposureStruct {
 
 /// Nominations structure
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 struct NominationsStruct {
     targets: Vec<[u8; 32]>,
     submitted_in: u32,
@@ -53,6 +55,7 @@ struct NominationsStruct {
 
 /// Validator preferences
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 struct ValidatorPrefs {
     #[codec(compact)]
     commission: u32,
@@ -61,6 +64,7 @@ struct ValidatorPrefs {
 
 /// Staking ledger for claimed rewards check
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 struct StakingLedgerForClaimed {
     stash: [u8; 32],
     #[codec(compact)]
@@ -73,6 +77,7 @@ struct StakingLedgerForClaimed {
 
 /// Unlock chunk
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
 struct UnlockChunkStruct {
     #[codec(compact)]
     value: u128,
