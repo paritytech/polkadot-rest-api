@@ -104,8 +104,7 @@ pub async fn query_pool_assets(
 
     for asset_id in assets {
         // Build the storage address for PoolAssets::Account(asset_id, account_id)
-        let storage_addr =
-            subxt::dynamic::storage::<_, ()>("PoolAssets", "Account");
+        let storage_addr = subxt::dynamic::storage::<_, ()>("PoolAssets", "Account");
 
         let storage_value = client_at_block
             .storage()
@@ -143,7 +142,9 @@ pub struct DecodedPoolAssetBalance {
 }
 
 /// Decode pool asset balance from raw SCALE bytes, handling multiple runtime versions
-fn decode_pool_asset_balance(raw_bytes: &[u8]) -> Result<Option<DecodedPoolAssetBalance>, AccountsError> {
+fn decode_pool_asset_balance(
+    raw_bytes: &[u8],
+) -> Result<Option<DecodedPoolAssetBalance>, AccountsError> {
     // Try modern format first (balance, status, reason)
     if let Ok(account) = PoolAssetAccountModern::decode(&mut &raw_bytes[..]) {
         return Ok(Some(DecodedPoolAssetBalance {
@@ -163,7 +164,7 @@ fn decode_pool_asset_balance(raw_bytes: &[u8]) -> Result<Option<DecodedPoolAsset
     }
 
     // If neither format works, return an error
-    Err(AccountsError::DecodeFailed(parity_scale_codec::Error::from(
-        "Failed to decode pool asset account: unknown format",
-    )))
+    Err(AccountsError::DecodeFailed(
+        parity_scale_codec::Error::from("Failed to decode pool asset account: unknown format"),
+    ))
 }

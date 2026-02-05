@@ -175,9 +175,9 @@ fn decode_pool_asset_approval(
     }
 
     // If decoding fails, return an error
-    Err(AccountsError::DecodeFailed(parity_scale_codec::Error::from(
-        "Failed to decode pool asset approval: unknown format",
-    )))
+    Err(AccountsError::DecodeFailed(
+        parity_scale_codec::Error::from("Failed to decode pool asset approval: unknown format"),
+    ))
 }
 
 // ================================================================================================

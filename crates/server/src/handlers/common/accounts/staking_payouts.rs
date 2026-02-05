@@ -230,11 +230,7 @@ pub async fn query_staking_payouts(
 
     // Get active era
     let active_era_addr = subxt::dynamic::storage::<_, ()>("Staking", "ActiveEra");
-    let active_era = if let Ok(value) = client_at_block
-        .storage()
-        .fetch(active_era_addr, ())
-        .await
-    {
+    let active_era = if let Ok(value) = client_at_block.storage().fetch(active_era_addr, ()).await {
         let raw_bytes = value.into_bytes();
         decode_active_era(&raw_bytes)?
     } else {
@@ -335,8 +331,7 @@ async fn fetch_era_data(
     };
 
     // Get total era payout
-    let validator_reward_addr =
-        subxt::dynamic::storage::<_, ()>("Staking", "ErasValidatorReward");
+    let validator_reward_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasValidatorReward");
     let validator_reward_value = client_at_block
         .storage()
         .fetch(validator_reward_addr, (era,))
@@ -448,8 +443,7 @@ async fn fetch_exposure_data(
 
         for validator_bytes in targets {
             // Try ErasStakersClipped
-            let stakers_addr =
-                subxt::dynamic::storage::<_, ()>("Staking", "ErasStakersClipped");
+            let stakers_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasStakersClipped");
             if let Ok(exposure_value) = client_at_block
                 .storage()
                 .fetch(stakers_addr, (era, validator_bytes))
@@ -622,8 +616,7 @@ fn decode_u128_storage(raw_bytes: &[u8]) -> Result<u128, String> {
 /// Decode era reward points from raw SCALE bytes
 fn decode_era_reward_points(raw_bytes: &[u8]) -> Result<(u32, HashMap<[u8; 32], u32>), String> {
     if let Ok(points) = EraRewardPoints::decode(&mut &raw_bytes[..]) {
-        let individual: HashMap<[u8; 32], u32> =
-            points.individual.into_iter().collect();
+        let individual: HashMap<[u8; 32], u32> = points.individual.into_iter().collect();
         return Ok((points.total, individual));
     }
 

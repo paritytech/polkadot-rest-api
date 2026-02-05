@@ -174,7 +174,9 @@ async fn query_vesting_schedules(
 }
 
 /// Decode vesting schedules from raw SCALE bytes
-fn decode_vesting_schedules(raw_bytes: &[u8]) -> Result<Vec<RawVestingSchedule>, VestingQueryError> {
+fn decode_vesting_schedules(
+    raw_bytes: &[u8],
+) -> Result<Vec<RawVestingSchedule>, VestingQueryError> {
     // Try decoding as Vec<VestingScheduleCompact> (modern runtime)
     if let Ok(schedules) = Vec::<VestingScheduleCompact>::decode(&mut &raw_bytes[..]) {
         return Ok(schedules

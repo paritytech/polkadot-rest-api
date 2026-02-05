@@ -520,10 +520,12 @@ async fn get_current_era(
         let raw_bytes = value.into_bytes();
         // CurrentEra is Option<u32>, so we need to handle the Option wrapper
         // In SCALE, Some(value) is encoded as 0x01 + value, None is 0x00
-        if !raw_bytes.is_empty() && raw_bytes[0] == 1 && raw_bytes.len() >= 5 {
-            if let Ok(era) = u32::decode(&mut &raw_bytes[1..]) {
-                return Ok(era);
-            }
+        if !raw_bytes.is_empty()
+            && raw_bytes[0] == 1
+            && raw_bytes.len() >= 5
+            && let Ok(era) = u32::decode(&mut &raw_bytes[1..])
+        {
+            return Ok(era);
         }
         // Try direct u32 decode (some runtimes may not wrap in Option)
         if let Ok(era) = u32::decode(&mut &raw_bytes[..]) {
@@ -698,10 +700,10 @@ async fn get_era_stakers_page_count(
         .await
     {
         let raw_bytes = value.into_bytes();
-        if let Ok(exposure) = Exposure::decode(&mut &raw_bytes[..]) {
-            if exposure.total > 0 {
-                return Some(1); // Old format always has 1 page
-            }
+        if let Ok(exposure) = Exposure::decode(&mut &raw_bytes[..])
+            && exposure.total > 0
+        {
+            return Some(1); // Old format always has 1 page
         }
     }
 

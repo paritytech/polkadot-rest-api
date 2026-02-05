@@ -113,7 +113,11 @@ async fn query_asset_approval(
     let storage_addr = subxt::dynamic::storage::<_, ()>("Assets", "Approvals");
 
     // Check if the pallet exists by trying to create the storage entry
-    if client_at_block.storage().entry(("Assets", "Approvals")).is_err() {
+    if client_at_block
+        .storage()
+        .entry(("Assets", "Approvals"))
+        .is_err()
+    {
         return Err(AccountsError::PalletNotAvailable("Assets".to_string()));
     }
 
@@ -169,9 +173,9 @@ fn decode_asset_approval(raw_bytes: &[u8]) -> Result<Option<DecodedAssetApproval
     }
 
     // If decoding fails, return an error
-    Err(AccountsError::DecodeFailed(parity_scale_codec::Error::from(
-        "Failed to decode asset approval: unknown format",
-    )))
+    Err(AccountsError::DecodeFailed(
+        parity_scale_codec::Error::from("Failed to decode asset approval: unknown format"),
+    ))
 }
 
 // ================================================================================================

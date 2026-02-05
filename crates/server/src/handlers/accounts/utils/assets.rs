@@ -104,8 +104,7 @@ pub async fn query_assets(
 
     for asset_id in assets {
         // Build the storage address for Assets::Account(asset_id, account_id)
-        let storage_addr =
-            subxt::dynamic::storage::<_, ()>("Assets", "Account");
+        let storage_addr = subxt::dynamic::storage::<_, ()>("Assets", "Account");
 
         let storage_value = client_at_block
             .storage()
@@ -155,7 +154,7 @@ fn decode_asset_balance(raw_bytes: &[u8]) -> Result<Option<DecodedAssetBalance>,
     }
 
     // If neither format works, return an error
-    Err(AccountsError::DecodeFailed(parity_scale_codec::Error::from(
-        "Failed to decode asset account: unknown format",
-    )))
+    Err(AccountsError::DecodeFailed(
+        parity_scale_codec::Error::from("Failed to decode asset account: unknown format"),
+    ))
 }
