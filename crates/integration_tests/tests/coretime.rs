@@ -135,13 +135,13 @@ async fn test_coretime_leases_item_structure() -> Result<()> {
     );
 
     assert!(lease["task"].is_string(), "'task' should be a string");
-    assert!(lease["until"].is_number(), "'until' should be a number");
+    assert!(lease["until"].is_string(), "'until' should be a string");
 
-    // 'core' is optional but if present should be a number
+    // 'core' is optional but if present should be a string
     if lease.get("core").is_some() && !lease["core"].is_null() {
         assert!(
-            lease["core"].is_number(),
-            "'core' should be a number when present"
+            lease["core"].is_string(),
+            "'core' should be a string when present"
         );
     }
 
@@ -152,9 +152,13 @@ async fn test_coretime_leases_item_structure() -> Result<()> {
         "'task' should be a numeric string (parachain ID)"
     );
 
-    // Validate until is a positive number
-    let until = lease["until"].as_u64().unwrap();
-    assert!(until > 0, "'until' should be a positive timeslice value");
+    // Validate until is a positive number (as string)
+    let until = lease["until"].as_str().unwrap();
+    let until_num: u64 = until.parse().expect("'until' should be a numeric string");
+    assert!(
+        until_num > 0,
+        "'until' should be a positive timeslice value"
+    );
 
     println!(
         "ok: Coretime leases item structure test passed ({} leases found)",
@@ -463,7 +467,10 @@ async fn test_coretime_leases_sorting() -> Result<()> {
     let mut seen_none = false;
 
     for lease in leases {
-        let core = lease.get("core").and_then(|c| c.as_u64());
+        let core = lease
+            .get("core")
+            .and_then(|c| c.as_str())
+            .and_then(|s| s.parse::<u64>().ok());
 
         match (core, last_core, seen_none) {
             // If we see a Some after a None, that's wrong
@@ -892,13 +899,9 @@ async fn test_coretime_reservations_consistency() -> Result<()> {
     Ok(())
 }
 
-// ============================================================================
-// Renewals Response Structure Tests
-// ============================================================================
-
-/// Test that the coretime/renewals endpoint returns valid JSON with correct structure
+/// Test that the coretime/info endpoint returns valid JSON with correct structure for coretime chains
 #[tokio::test]
-async fn test_coretime_renewals_response_structure() -> Result<()> {
+async fn test_coretime_info_response_structure() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
 
@@ -907,21 +910,17 @@ async fn test_coretime_renewals_response_structure() -> Result<()> {
         return Ok(());
     }
 
-    tracing::info!("Testing /v1/coretime/renewals endpoint structure");
-    let (status, json) = client.get_json("/v1/coretime/renewals").await?;
+    tracing::info!("Testing /v1/coretime/info endpoint structure on coretime chain");
+    let (status, json) = client.get_json("/v1/coretime/info").await?;
 
     assert!(
         status.is_success(),
-        "Coretime renewals endpoint should return success status, got {}",
+        "Coretime info endpoint should return success status, got {}",
         status
     );
 
     // Verify response has required fields
     assert!(json.get("at").is_some(), "Response should have 'at' field");
-    assert!(
-        json.get("renewals").is_some(),
-        "Response should have 'renewals' field"
-    );
 
     // Verify 'at' structure
     let at = &json["at"];
@@ -943,16 +942,13 @@ async fn test_coretime_renewals_response_structure() -> Result<()> {
         "'at.hash' should be a hex string starting with 0x"
     );
 
-    // Verify renewals is an array
-    assert!(json["renewals"].is_array(), "'renewals' should be an array");
-
-    println!("ok: Coretime renewals response structure test passed");
+    println!("ok: Coretime info response structure test passed");
     Ok(())
 }
 
-/// Test renewal item structure when renewals are present
+/// Test coretime/info configuration section
 #[tokio::test]
-async fn test_coretime_renewals_item_structure() -> Result<()> {
+async fn test_coretime_info_configuration() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
 
@@ -961,110 +957,171 @@ async fn test_coretime_renewals_item_structure() -> Result<()> {
         return Ok(());
     }
 
-    let (status, json) = client.get_json("/v1/coretime/renewals").await?;
+    let (status, json) = client.get_json("/v1/coretime/info").await?;
     assert!(status.is_success());
 
-    let renewals = json["renewals"].as_array().unwrap();
-
-    if renewals.is_empty() {
-        println!("Skipping item structure test: No renewals present on chain");
-        return Ok(());
-    }
-
-    // Check first renewal item structure
-    let renewal = &renewals[0];
-
-    // Required fields
-    assert!(
-        renewal.get("core").is_some(),
-        "Renewal should have 'core' field"
-    );
-    assert!(
-        renewal.get("when").is_some(),
-        "Renewal should have 'when' field"
-    );
-    assert!(
-        renewal.get("task").is_some(),
-        "Renewal should have 'task' field"
-    );
-
-    assert!(renewal["core"].is_number(), "'core' should be a number");
-    assert!(renewal["when"].is_number(), "'when' should be a number");
-    assert!(renewal["task"].is_string(), "'task' should be a string");
-
-    // Optional fields (if present should have correct types)
-    if let Some(completion) = renewal.get("completion") {
-        if !completion.is_null() {
+    // Configuration may be present if broker is configured
+    if let Some(config) = json.get("configuration") {
+        if !config.is_null() {
             assert!(
-                completion.is_string(),
-                "'completion' should be a string when present"
+                config.get("regionLength").is_some(),
+                "Configuration should have 'regionLength'"
             );
-            let completion_str = completion.as_str().unwrap();
             assert!(
-                completion_str == "Complete" || completion_str == "Partial",
-                "'completion' should be 'Complete' or 'Partial', got: {}",
-                completion_str
+                config.get("interludeLength").is_some(),
+                "Configuration should have 'interludeLength'"
+            );
+            assert!(
+                config.get("leadinLength").is_some(),
+                "Configuration should have 'leadinLength'"
+            );
+            assert!(
+                config.get("relayBlocksPerTimeslice").is_some(),
+                "Configuration should have 'relayBlocksPerTimeslice'"
+            );
+
+            // Verify values are strings
+            assert!(
+                config["regionLength"].is_string(),
+                "'regionLength' should be a string"
+            );
+            assert!(
+                config["relayBlocksPerTimeslice"].is_string(),
+                "'relayBlocksPerTimeslice' should be a string"
+            );
+
+            println!(
+                "ok: Configuration found - regionLength: {}, timeslicePeriod: {}",
+                config["regionLength"], config["relayBlocksPerTimeslice"]
             );
         }
     }
 
-    if let Some(mask) = renewal.get("mask") {
-        if !mask.is_null() {
-            assert!(mask.is_string(), "'mask' should be a string when present");
-            let mask_str = mask.as_str().unwrap();
-            assert!(
-                mask_str.starts_with("0x"),
-                "'mask' should be a hex string starting with 0x"
-            );
-            // CoreMask is 80 bits = 10 bytes = 20 hex chars + "0x" prefix
-            assert_eq!(
-                mask_str.len(),
-                22,
-                "'mask' should be 22 characters (0x + 20 hex digits for 10 bytes)"
-            );
-        }
-    }
-
-    if let Some(price) = renewal.get("price") {
-        if !price.is_null() {
-            assert!(price.is_string(), "'price' should be a string when present");
-            let price_str = price.as_str().unwrap();
-            assert!(
-                price_str.parse::<u128>().is_ok(),
-                "'price' should be a numeric string, got: {}",
-                price_str
-            );
-        }
-    }
-
-    // Validate task is empty, "Pool", "Idle", or a numeric string (task ID)
-    let task = renewal["task"].as_str().unwrap();
-    assert!(
-        task.is_empty() || task == "Pool" || task == "Idle" || task.parse::<u32>().is_ok(),
-        "'task' should be empty, 'Pool', 'Idle', or a numeric task ID, got: {}",
-        task
-    );
-
-    // Validate core and when are positive
-    let core = renewal["core"].as_u64().unwrap();
-    let when = renewal["when"].as_u64().unwrap();
-    assert!(when > 0, "'when' should be a positive timeslice value");
-
-    println!(
-        "ok: Coretime renewals item structure test passed ({} renewals found, first core: {})",
-        renewals.len(),
-        core
-    );
+    println!("ok: Coretime info configuration test passed");
     Ok(())
 }
 
-// ============================================================================
-// Renewals Query Parameter Tests
-// ============================================================================
-
-/// Test the 'at' query parameter with a block number for renewals
+/// Test coretime/info cores section
 #[tokio::test]
-async fn test_coretime_renewals_at_block_number() -> Result<()> {
+async fn test_coretime_info_cores() -> Result<()> {
+    init_tracing();
+    let client = setup_client().await?;
+
+    if !is_coretime_chain(&client).await {
+        println!("Skipping test: Not a coretime chain (Broker pallet not found)");
+        return Ok(());
+    }
+
+    let (status, json) = client.get_json("/v1/coretime/info").await?;
+    assert!(status.is_success());
+
+    // Cores section may be present if a sale is active
+    if let Some(cores) = json.get("cores") {
+        if !cores.is_null() {
+            assert!(
+                cores.get("available").is_some(),
+                "Cores should have 'available'"
+            );
+            assert!(cores.get("sold").is_some(), "Cores should have 'sold'");
+            assert!(cores.get("total").is_some(), "Cores should have 'total'");
+            assert!(
+                cores.get("currentCorePrice").is_some(),
+                "Cores should have 'currentCorePrice'"
+            );
+
+            // Verify types - all values are strings per sidecar schema
+            assert!(
+                cores["available"].is_string(),
+                "'available' should be a string"
+            );
+            assert!(cores["sold"].is_string(), "'sold' should be a string");
+            assert!(cores["total"].is_string(), "'total' should be a string");
+            assert!(
+                cores["currentCorePrice"].is_string(),
+                "'currentCorePrice' should be a string"
+            );
+
+            // Verify logical constraints
+            let available: u64 = cores["available"].as_str().unwrap().parse().unwrap();
+            let sold: u64 = cores["sold"].as_str().unwrap().parse().unwrap();
+            let total: u64 = cores["total"].as_str().unwrap().parse().unwrap();
+            assert!(
+                available + sold <= total,
+                "available + sold should be <= total"
+            );
+
+            println!(
+                "ok: Cores found - available: {}, sold: {}, total: {}",
+                available, sold, total
+            );
+        }
+    }
+
+    println!("ok: Coretime info cores test passed");
+    Ok(())
+}
+
+/// Test coretime/info phase section
+#[tokio::test]
+async fn test_coretime_info_phase() -> Result<()> {
+    init_tracing();
+    let client = setup_client().await?;
+
+    if !is_coretime_chain(&client).await {
+        println!("Skipping test: Not a coretime chain (Broker pallet not found)");
+        return Ok(());
+    }
+
+    let (status, json) = client.get_json("/v1/coretime/info").await?;
+    assert!(status.is_success());
+
+    // Phase section may be present if broker is configured and sale is active
+    if let Some(phase) = json.get("phase") {
+        if !phase.is_null() {
+            assert!(
+                phase.get("currentPhase").is_some(),
+                "Phase should have 'currentPhase'"
+            );
+            assert!(phase.get("config").is_some(), "Phase should have 'config'");
+
+            let current_phase = phase["currentPhase"].as_str().unwrap();
+            assert!(
+                ["renewals", "priceDiscovery", "fixedPrice"].contains(&current_phase),
+                "'currentPhase' should be one of: renewals, priceDiscovery, fixedPrice, got: {}",
+                current_phase
+            );
+
+            // Verify config is an array
+            assert!(phase["config"].is_array(), "'config' should be an array");
+
+            let config_array = phase["config"].as_array().unwrap();
+            if !config_array.is_empty() {
+                let first_phase = &config_array[0];
+                assert!(
+                    first_phase.get("phaseName").is_some(),
+                    "Phase config should have 'phaseName'"
+                );
+                assert!(
+                    first_phase.get("lastRelayBlock").is_some(),
+                    "Phase config should have 'lastRelayBlock'"
+                );
+                assert!(
+                    first_phase.get("lastTimeslice").is_some(),
+                    "Phase config should have 'lastTimeslice'"
+                );
+            }
+
+            println!("ok: Phase found - currentPhase: {}", current_phase);
+        }
+    }
+
+    println!("ok: Coretime info phase test passed");
+    Ok(())
+}
+
+/// Test coretime/info 'at' query parameter with block number
+#[tokio::test]
+async fn test_coretime_info_at_block_number() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
 
@@ -1074,7 +1131,7 @@ async fn test_coretime_renewals_at_block_number() -> Result<()> {
     }
 
     // First get the latest block to find a valid block number
-    let (_, latest_json) = client.get_json("/v1/coretime/renewals").await?;
+    let (_, latest_json) = client.get_json("/v1/coretime/info").await?;
     let latest_height: u64 = latest_json["at"]["height"]
         .as_str()
         .unwrap()
@@ -1089,7 +1146,7 @@ async fn test_coretime_renewals_at_block_number() -> Result<()> {
     };
 
     let (status, json) = client
-        .get_json(&format!("/v1/coretime/renewals?at={}", query_height))
+        .get_json(&format!("/v1/coretime/info?at={}", query_height))
         .await?;
 
     assert!(
@@ -1105,13 +1162,13 @@ async fn test_coretime_renewals_at_block_number() -> Result<()> {
         "Response should be at the requested block height"
     );
 
-    println!("ok: Coretime renewals 'at' block number test passed");
+    println!("ok: Coretime info 'at' block number test passed");
     Ok(())
 }
 
-/// Test the 'at' query parameter with a block hash for renewals
+/// Test coretime/info 'at' query parameter with block hash
 #[tokio::test]
-async fn test_coretime_renewals_at_block_hash() -> Result<()> {
+async fn test_coretime_info_at_block_hash() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
 
@@ -1121,11 +1178,11 @@ async fn test_coretime_renewals_at_block_hash() -> Result<()> {
     }
 
     // First get the latest block to get a valid block hash
-    let (_, latest_json) = client.get_json("/v1/coretime/renewals").await?;
+    let (_, latest_json) = client.get_json("/v1/coretime/info").await?;
     let block_hash = latest_json["at"]["hash"].as_str().unwrap();
 
     let (status, json) = client
-        .get_json(&format!("/v1/coretime/renewals?at={}", block_hash))
+        .get_json(&format!("/v1/coretime/info?at={}", block_hash))
         .await?;
 
     assert!(
@@ -1141,54 +1198,17 @@ async fn test_coretime_renewals_at_block_hash() -> Result<()> {
         "Response should be at the requested block hash"
     );
 
-    println!("ok: Coretime renewals 'at' block hash test passed");
+    println!("ok: Coretime info 'at' block hash test passed");
     Ok(())
 }
 
-// ============================================================================
-// Renewals Error Handling Tests
-// ============================================================================
-
-/// Test error response for non-coretime chains (chains without Broker pallet) for renewals
+/// Test coretime/info error response for invalid block parameter
 #[tokio::test]
-async fn test_coretime_renewals_non_coretime_chain() -> Result<()> {
+async fn test_coretime_info_invalid_block_param() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
 
-    // Only run this test on non-coretime chains
-    if is_coretime_chain(&client).await {
-        println!("Skipping test: This is a coretime chain, need non-coretime chain for this test");
-        return Ok(());
-    }
-
-    let response = client.get("/v1/coretime/renewals").await?;
-
-    assert_eq!(
-        response.status.as_u16(),
-        404,
-        "Should return 404 for non-coretime chains"
-    );
-
-    let json = response.json()?;
-    assert!(
-        json["message"]
-            .as_str()
-            .map(|m| m.contains("Broker") || m.contains("pallet"))
-            .unwrap_or(false),
-        "Error message should mention Broker pallet not found"
-    );
-
-    println!("ok: Coretime renewals non-coretime chain error test passed");
-    Ok(())
-}
-
-/// Test error response for invalid block parameter for renewals
-#[tokio::test]
-async fn test_coretime_renewals_invalid_block_param() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    let response = client.get("/v1/coretime/renewals?at=invalid-block").await?;
+    let response = client.get("/v1/coretime/info?at=invalid-block").await?;
 
     assert_eq!(
         response.status.as_u16(),
@@ -1196,18 +1216,18 @@ async fn test_coretime_renewals_invalid_block_param() -> Result<()> {
         "Should return 400 for invalid block parameter"
     );
 
-    println!("ok: Coretime renewals invalid block parameter test passed");
+    println!("ok: Coretime info invalid block parameter test passed");
     Ok(())
 }
 
-/// Test error response for non-existent block (very high block number) for renewals
+/// Test coretime/info error response for non-existent block
 #[tokio::test]
-async fn test_coretime_renewals_nonexistent_block() -> Result<()> {
+async fn test_coretime_info_nonexistent_block() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
 
     // Use a very high block number that doesn't exist
-    let response = client.get("/v1/coretime/renewals?at=999999999").await?;
+    let response = client.get("/v1/coretime/info?at=999999999").await?;
 
     // Should return 404 for non-existent block
     assert_eq!(
@@ -1217,77 +1237,13 @@ async fn test_coretime_renewals_nonexistent_block() -> Result<()> {
         response.status
     );
 
-    let json = response.json()?;
-    assert!(
-        json["error"]
-            .as_str()
-            .map(|m| m.to_lowercase().contains("block") && m.to_lowercase().contains("not found"))
-            .unwrap_or(false),
-        "Error message should indicate block not found: {:?}",
-        json
-    );
-
-    println!("ok: Coretime renewals non-existent block test passed");
+    println!("ok: Coretime info non-existent block test passed");
     Ok(())
 }
 
-/// Test error response for very large block numbers that cause RPC errors for renewals
+/// Test coretime/info consistency across multiple requests
 #[tokio::test]
-async fn test_coretime_renewals_very_large_block_number() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    let response = client.get("/v1/coretime/renewals?at=999999999999").await?;
-
-    // Should return 400 Bad Request
-    assert_eq!(
-        response.status.as_u16(),
-        400,
-        "Should return 400 for very large block number, got {}",
-        response.status
-    );
-
-    let json = response.json()?;
-    assert!(
-        json["error"]
-            .as_str()
-            .map(|m| m.contains("Failed to get block hash"))
-            .unwrap_or(false),
-        "Should indicate block hash retrieval failed: {:?}",
-        json
-    );
-
-    println!("ok: Coretime renewals very large block number test passed");
-    Ok(())
-}
-
-/// Test error response for invalid block hash format for renewals
-#[tokio::test]
-async fn test_coretime_renewals_invalid_block_hash() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    // Invalid hex string (not 32 bytes)
-    let response = client.get("/v1/coretime/renewals?at=0xabc123").await?;
-
-    // Should return 400 or 404 for invalid block hash format
-    assert!(
-        response.status.as_u16() == 400 || response.status.as_u16() == 404,
-        "Should return 400 or 404 for invalid block hash format, got {}",
-        response.status
-    );
-
-    println!("ok: Coretime renewals invalid block hash test passed");
-    Ok(())
-}
-
-// ============================================================================
-// Renewals Consistency Tests
-// ============================================================================
-
-/// Test that multiple requests return consistent data for renewals
-#[tokio::test]
-async fn test_coretime_renewals_consistency() -> Result<()> {
+async fn test_coretime_info_consistency() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
 
@@ -1297,13 +1253,13 @@ async fn test_coretime_renewals_consistency() -> Result<()> {
     }
 
     // Get the latest block hash to ensure we're querying the same block
-    let (_, first_response) = client.get_json("/v1/coretime/renewals").await?;
+    let (_, first_response) = client.get_json("/v1/coretime/info").await?;
     let block_hash = first_response["at"]["hash"].as_str().unwrap();
 
     // Query the same block multiple times
     for i in 0..3 {
         let (status, json) = client
-            .get_json(&format!("/v1/coretime/renewals?at={}", block_hash))
+            .get_json(&format!("/v1/coretime/info?at={}", block_hash))
             .await?;
 
         assert!(status.is_success(), "Request {} should succeed", i + 1);
@@ -1314,525 +1270,93 @@ async fn test_coretime_renewals_consistency() -> Result<()> {
             "Request {} should return same block hash",
             i + 1
         );
-
-        assert_eq!(
-            json["renewals"].as_array().map(|a| a.len()),
-            first_response["renewals"].as_array().map(|a| a.len()),
-            "Request {} should return same number of renewals",
-            i + 1
-        );
     }
 
-    println!("ok: Coretime renewals consistency test passed");
+    println!("ok: Coretime info consistency test passed");
     Ok(())
 }
 
-/// Test that renewals are sorted by core ID
-#[tokio::test]
-async fn test_coretime_renewals_sorting() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    if !is_coretime_chain(&client).await {
-        println!("Skipping test: Not a coretime chain (Broker pallet not found)");
-        return Ok(());
-    }
-
-    let (status, json) = client.get_json("/v1/coretime/renewals").await?;
-    assert!(status.is_success());
-
-    let renewals = json["renewals"].as_array().unwrap();
-
-    if renewals.len() < 2 {
-        println!("Skipping sorting test: Need at least 2 renewals to verify sorting");
-        return Ok(());
-    }
-
-    // Check that renewals are sorted by core ID (ascending)
-    let mut last_core: Option<u64> = None;
-
-    for renewal in renewals {
-        let core = renewal["core"].as_u64().unwrap();
-
-        if let Some(last) = last_core {
-            assert!(
-                core >= last,
-                "Renewals should be sorted by core ID (ascending): {} should come after {}",
-                core,
-                last
-            );
+/// Check if the connected chain is a relay chain (has Coretime pallet but not Broker)
+async fn is_relay_chain(client: &TestClient) -> bool {
+    if let Ok((status, json)) = client.get_json("/v1/capabilities").await {
+        if status.is_success() {
+            if let Some(pallets) = json["pallets"].as_array() {
+                let has_coretime = pallets.iter().any(|p| p.as_str() == Some("Coretime"));
+                let has_broker = pallets.iter().any(|p| p.as_str() == Some("Broker"));
+                return has_coretime && !has_broker;
+            }
         }
-
-        last_core = Some(core);
     }
-
-    println!("ok: Coretime renewals sorting test passed");
-    Ok(())
+    false
 }
 
-// ============================================================================
-// Regions Response Structure Tests
-// ============================================================================
-
-/// Test that the coretime/regions endpoint returns valid JSON with correct structure
+/// Test that the coretime/info endpoint returns valid JSON on relay chains
 #[tokio::test]
-async fn test_coretime_regions_response_structure() -> Result<()> {
+async fn test_coretime_info_relay_chain_response() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
 
-    if !is_coretime_chain(&client).await {
-        println!("Skipping test: Not a coretime chain (Broker pallet not found)");
+    if !is_relay_chain(&client).await {
+        println!(
+            "Skipping test: Not a relay chain (Coretime pallet not found or Broker pallet present)"
+        );
         return Ok(());
     }
 
-    tracing::info!("Testing /v1/coretime/regions endpoint structure");
-    let (status, json) = client.get_json("/v1/coretime/regions").await?;
+    tracing::info!("Testing /v1/coretime/info endpoint structure on relay chain");
+    let (status, json) = client.get_json("/v1/coretime/info").await?;
 
     assert!(
         status.is_success(),
-        "Coretime regions endpoint should return success status, got {}",
+        "Coretime info endpoint should return success status on relay chain, got {}",
         status
     );
 
     // Verify response has required fields
     assert!(json.get("at").is_some(), "Response should have 'at' field");
-    assert!(
-        json.get("regions").is_some(),
-        "Response should have 'regions' field"
-    );
 
     // Verify 'at' structure
     let at = &json["at"];
-    assert!(
-        at.get("hash").is_some(),
-        "Response 'at' should have 'hash' field"
-    );
-    assert!(
-        at.get("height").is_some(),
-        "Response 'at' should have 'height' field"
-    );
     assert!(at["hash"].is_string(), "'at.hash' should be a string");
     assert!(at["height"].is_string(), "'at.height' should be a string");
 
-    // Verify hash format (should start with 0x)
-    let hash = at["hash"].as_str().unwrap();
-    assert!(
-        hash.starts_with("0x"),
-        "'at.hash' should be a hex string starting with 0x"
-    );
+    // Check for relay-chain specific fields (any of these may be present)
+    let has_relay_fields = json.get("brokerId").is_some()
+        || json.get("palletVersion").is_some()
+        || json.get("maxHistoricalRevenue").is_some();
 
-    // Verify regions is an array
-    assert!(json["regions"].is_array(), "'regions' should be an array");
+    if has_relay_fields {
+        // If brokerId is present, verify it's a string
+        if let Some(broker_id) = json.get("brokerId") {
+            if !broker_id.is_null() {
+                assert!(
+                    broker_id.is_string(),
+                    "'brokerId' should be a string when present"
+                );
+            }
+        }
 
-    println!("ok: Coretime regions response structure test passed");
-    Ok(())
-}
+        // If palletVersion is present, verify it's a string
+        if let Some(version) = json.get("palletVersion") {
+            if !version.is_null() {
+                assert!(
+                    version.is_string(),
+                    "'palletVersion' should be a string when present"
+                );
+            }
+        }
 
-/// Test region item structure when regions are present
-#[tokio::test]
-async fn test_coretime_regions_item_structure() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    if !is_coretime_chain(&client).await {
-        println!("Skipping test: Not a coretime chain (Broker pallet not found)");
-        return Ok(());
-    }
-
-    let (status, json) = client.get_json("/v1/coretime/regions").await?;
-    assert!(status.is_success());
-
-    let regions = json["regions"].as_array().unwrap();
-
-    if regions.is_empty() {
-        println!("Skipping item structure test: No regions present on chain");
-        return Ok(());
-    }
-
-    // Check first region item structure
-    let region = &regions[0];
-
-    // Required fields
-    assert!(
-        region.get("core").is_some(),
-        "Region should have 'core' field"
-    );
-    assert!(
-        region.get("begin").is_some(),
-        "Region should have 'begin' field"
-    );
-    assert!(
-        region.get("mask").is_some(),
-        "Region should have 'mask' field"
-    );
-
-    assert!(region["core"].is_number(), "'core' should be a number");
-    assert!(region["begin"].is_number(), "'begin' should be a number");
-    assert!(region["mask"].is_string(), "'mask' should be a string");
-
-    // Validate mask is a valid hex string (should start with 0x)
-    let mask = region["mask"].as_str().unwrap();
-    assert!(
-        mask.starts_with("0x"),
-        "'mask' should be a hex string starting with 0x"
-    );
-
-    // CoreMask is 80 bits = 10 bytes = 20 hex chars + "0x" prefix
-    assert_eq!(
-        mask.len(),
-        22,
-        "'mask' should be 22 characters (0x + 20 hex digits for 10 bytes)"
-    );
-
-    // Optional fields: end, owner, paid
-    // If present, check their types
-    if let Some(end) = region.get("end") {
-        if !end.is_null() {
-            assert!(end.is_number(), "'end' should be a number when present");
+        // If maxHistoricalRevenue is present, verify it's a string
+        if let Some(revenue) = json.get("maxHistoricalRevenue") {
+            if !revenue.is_null() {
+                assert!(
+                    revenue.is_string(),
+                    "'maxHistoricalRevenue' should be a string when present"
+                );
+            }
         }
     }
 
-    if let Some(owner) = region.get("owner") {
-        if !owner.is_null() {
-            assert!(owner.is_string(), "'owner' should be a string when present");
-            let owner_str = owner.as_str().unwrap();
-            // Owner is an SS58-encoded address (base58 string, typically 47-48 chars)
-            // This matches substrate-api-sidecar behavior which uses .toString() on AccountId
-            assert!(
-                !owner_str.is_empty() && owner_str.chars().all(|c| c.is_alphanumeric()),
-                "'owner' should be a valid SS58 address string, got: {}",
-                owner_str
-            );
-        }
-    }
-
-    if let Some(paid) = region.get("paid") {
-        if !paid.is_null() {
-            assert!(paid.is_string(), "'paid' should be a string when present");
-            // paid should be a numeric string
-            let paid_str = paid.as_str().unwrap();
-            assert!(
-                paid_str.parse::<u128>().is_ok(),
-                "'paid' should be a numeric string"
-            );
-        }
-    }
-
-    println!(
-        "ok: Coretime regions item structure test passed ({} regions found)",
-        regions.len()
-    );
-    Ok(())
-}
-
-// ============================================================================
-// Regions Query Parameter Tests
-// ============================================================================
-
-/// Test the 'at' query parameter with a block number for regions
-#[tokio::test]
-async fn test_coretime_regions_at_block_number() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    if !is_coretime_chain(&client).await {
-        println!("Skipping test: Not a coretime chain (Broker pallet not found)");
-        return Ok(());
-    }
-
-    // First get the latest block to find a valid block number
-    let (_, latest_json) = client.get_json("/v1/coretime/regions").await?;
-    let latest_height: u64 = latest_json["at"]["height"]
-        .as_str()
-        .unwrap()
-        .parse()
-        .unwrap();
-
-    // Query a slightly older block (if available)
-    let query_height = if latest_height > 10 {
-        latest_height - 5
-    } else {
-        latest_height
-    };
-
-    let (status, json) = client
-        .get_json(&format!("/v1/coretime/regions?at={}", query_height))
-        .await?;
-
-    assert!(
-        status.is_success(),
-        "Should succeed with valid block number, got {}",
-        status
-    );
-
-    // Verify the response is at the requested block
-    let response_height: u64 = json["at"]["height"].as_str().unwrap().parse().unwrap();
-    assert_eq!(
-        response_height, query_height,
-        "Response should be at the requested block height"
-    );
-
-    println!("ok: Coretime regions 'at' block number test passed");
-    Ok(())
-}
-
-/// Test the 'at' query parameter with a block hash for regions
-#[tokio::test]
-async fn test_coretime_regions_at_block_hash() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    if !is_coretime_chain(&client).await {
-        println!("Skipping test: Not a coretime chain (Broker pallet not found)");
-        return Ok(());
-    }
-
-    // First get the latest block to get a valid block hash
-    let (_, latest_json) = client.get_json("/v1/coretime/regions").await?;
-    let block_hash = latest_json["at"]["hash"].as_str().unwrap();
-
-    let (status, json) = client
-        .get_json(&format!("/v1/coretime/regions?at={}", block_hash))
-        .await?;
-
-    assert!(
-        status.is_success(),
-        "Should succeed with valid block hash, got {}",
-        status
-    );
-
-    // Verify the response has the same hash
-    let response_hash = json["at"]["hash"].as_str().unwrap();
-    assert_eq!(
-        response_hash, block_hash,
-        "Response should be at the requested block hash"
-    );
-
-    println!("ok: Coretime regions 'at' block hash test passed");
-    Ok(())
-}
-
-// ============================================================================
-// Regions Error Handling Tests
-// ============================================================================
-
-/// Test error response for non-coretime chains (chains without Broker pallet) for regions
-#[tokio::test]
-async fn test_coretime_regions_non_coretime_chain() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    // Only run this test on non-coretime chains
-    if is_coretime_chain(&client).await {
-        println!("Skipping test: This is a coretime chain, need non-coretime chain for this test");
-        return Ok(());
-    }
-
-    let response = client.get("/v1/coretime/regions").await?;
-
-    assert_eq!(
-        response.status.as_u16(),
-        404,
-        "Should return 404 for non-coretime chains"
-    );
-
-    let json = response.json()?;
-    assert!(
-        json["message"]
-            .as_str()
-            .map(|m| m.contains("Broker") || m.contains("pallet"))
-            .unwrap_or(false),
-        "Error message should mention Broker pallet not found"
-    );
-
-    println!("ok: Coretime regions non-coretime chain error test passed");
-    Ok(())
-}
-
-/// Test error response for invalid block parameter for regions
-#[tokio::test]
-async fn test_coretime_regions_invalid_block_param() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    let response = client.get("/v1/coretime/regions?at=invalid-block").await?;
-
-    assert_eq!(
-        response.status.as_u16(),
-        400,
-        "Should return 400 for invalid block parameter"
-    );
-
-    println!("ok: Coretime regions invalid block parameter test passed");
-    Ok(())
-}
-
-/// Test error response for non-existent block (very high block number) for regions
-#[tokio::test]
-async fn test_coretime_regions_nonexistent_block() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    // Use a very high block number that doesn't exist
-    let response = client.get("/v1/coretime/regions?at=999999999").await?;
-
-    // Should return 404 for non-existent block
-    assert_eq!(
-        response.status.as_u16(),
-        404,
-        "Should return 404 for non-existent block, got {}",
-        response.status
-    );
-
-    let json = response.json()?;
-    assert!(
-        json["error"]
-            .as_str()
-            .map(|m| m.to_lowercase().contains("block") && m.to_lowercase().contains("not found"))
-            .unwrap_or(false),
-        "Error message should indicate block not found: {:?}",
-        json
-    );
-
-    println!("ok: Coretime regions non-existent block test passed");
-    Ok(())
-}
-
-/// Test error response for very large block numbers that cause RPC errors for regions
-#[tokio::test]
-async fn test_coretime_regions_very_large_block_number() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    let response = client.get("/v1/coretime/regions?at=999999999999").await?;
-
-    // Should return 400 Bad Request
-    assert_eq!(
-        response.status.as_u16(),
-        400,
-        "Should return 400 for very large block number, got {}",
-        response.status
-    );
-
-    let json = response.json()?;
-    assert!(
-        json["error"]
-            .as_str()
-            .map(|m| m.contains("Failed to get block hash"))
-            .unwrap_or(false),
-        "Should indicate block hash retrieval failed: {:?}",
-        json
-    );
-
-    println!("ok: Coretime regions very large block number test passed");
-    Ok(())
-}
-
-/// Test error response for invalid block hash format for regions
-#[tokio::test]
-async fn test_coretime_regions_invalid_block_hash() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    // Invalid hex string (not 32 bytes)
-    let response = client.get("/v1/coretime/regions?at=0xabc123").await?;
-
-    // Should return 400 or 404 for invalid block hash format
-    assert!(
-        response.status.as_u16() == 400 || response.status.as_u16() == 404,
-        "Should return 400 or 404 for invalid block hash format, got {}",
-        response.status
-    );
-
-    println!("ok: Coretime regions invalid block hash test passed");
-    Ok(())
-}
-
-// ============================================================================
-// Regions Consistency Tests
-// ============================================================================
-
-/// Test that multiple requests return consistent data for regions
-#[tokio::test]
-async fn test_coretime_regions_consistency() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    if !is_coretime_chain(&client).await {
-        println!("Skipping test: Not a coretime chain (Broker pallet not found)");
-        return Ok(());
-    }
-
-    // Get the latest block hash to ensure we're querying the same block
-    let (_, first_response) = client.get_json("/v1/coretime/regions").await?;
-    let block_hash = first_response["at"]["hash"].as_str().unwrap();
-
-    // Query the same block multiple times
-    for i in 0..3 {
-        let (status, json) = client
-            .get_json(&format!("/v1/coretime/regions?at={}", block_hash))
-            .await?;
-
-        assert!(status.is_success(), "Request {} should succeed", i + 1);
-
-        assert_eq!(
-            json["at"]["hash"].as_str().unwrap(),
-            block_hash,
-            "Request {} should return same block hash",
-            i + 1
-        );
-
-        assert_eq!(
-            json["regions"].as_array().map(|a| a.len()),
-            first_response["regions"].as_array().map(|a| a.len()),
-            "Request {} should return same number of regions",
-            i + 1
-        );
-    }
-
-    println!("ok: Coretime regions consistency test passed");
-    Ok(())
-}
-
-/// Test that regions are sorted by core ID
-#[tokio::test]
-async fn test_coretime_regions_sorting() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    if !is_coretime_chain(&client).await {
-        println!("Skipping test: Not a coretime chain (Broker pallet not found)");
-        return Ok(());
-    }
-
-    let (status, json) = client.get_json("/v1/coretime/regions").await?;
-    assert!(status.is_success());
-
-    let regions = json["regions"].as_array().unwrap();
-
-    if regions.len() < 2 {
-        println!("Skipping sorting test: Need at least 2 regions to verify sorting");
-        return Ok(());
-    }
-
-    // Check that regions are sorted by core ID
-    let mut last_core: Option<u64> = None;
-
-    for region in regions {
-        let core = region["core"].as_u64().unwrap();
-
-        if let Some(last) = last_core {
-            assert!(
-                core >= last,
-                "Regions should be sorted by core ID (ascending): {} should come after {}",
-                core,
-                last
-            );
-        }
-
-        last_core = Some(core);
-    }
-
-    println!("ok: Coretime regions sorting test passed");
+    println!("ok: Coretime info relay chain response test passed");
     Ok(())
 }

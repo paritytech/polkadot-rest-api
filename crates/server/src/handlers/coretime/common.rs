@@ -1,10 +1,10 @@
 //! Common types and utilities for coretime endpoints.
 //!
-//! This module provides shared error types, response types, constants,
+//! This module provides shared error types, response types,
 //! and utility functions used by coretime endpoints.
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
-use parity_scale_codec::{Compact, Decode, Encode};
+use parity_scale_codec::{Decode, Encode};
 use serde::Serialize;
 use serde_json::json;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
@@ -14,26 +14,8 @@ use thiserror::Error;
 // Constants - Broker Pallet SCALE Encoding
 // ============================================================================
 
-// ScheduleItem structure from the Broker pallet:
-// - CoreMask: 80 bits = 10 bytes (fixed-size array)
-// - CoreAssignment: enum with variants Idle(0), Pool(1), Task(2, u32)
-//
-// See: https://github.com/paritytech/polkadot-sdk/blob/master/substrate/frame/broker/src/types.rs
-
 /// Size of CoreMask in bytes (80 bits = 10 bytes).
 pub const CORE_MASK_SIZE: usize = 10;
-
-/// Size of a u32 task ID in bytes.
-pub const TASK_ID_SIZE: usize = 4;
-
-/// CoreAssignment::Idle variant (core is not assigned).
-pub const ASSIGNMENT_IDLE_VARIANT: u8 = 0;
-
-/// CoreAssignment::Pool variant (core contributes to the instantaneous pool).
-pub const ASSIGNMENT_POOL_VARIANT: u8 = 1;
-
-/// CoreAssignment::Task(u32) variant (core is assigned to a specific task/parachain).
-pub const ASSIGNMENT_TASK_VARIANT: u8 = 2;
 
 // ============================================================================
 // Storage Key Constants
@@ -106,15 +88,6 @@ impl CoreAssignment {
     }
 }
 
-/// ScheduleItem from the Broker pallet.
-/// Contains a CoreMask and CoreAssignment.
-/// Used in Workload and Reservations storage.
-#[derive(Debug, Clone, PartialEq, Decode, Encode)]
-pub struct ScheduleItem {
-    pub mask: CoreMask,
-    pub assignment: CoreAssignment,
-}
-
 // ============================================================================
 // Error Types
 // ============================================================================
@@ -154,6 +127,9 @@ pub enum CoretimeError {
         entry: &'static str,
     },
 
+    #[error("Failed to retrieve storageVersion for {pallet}")]
+    StorageVersionFetchFailed { pallet: &'static str },
+
     #[error("Failed to decode {pallet}::{entry} storage: {details}")]
     StorageDecodeFailed {
         pallet: &'static str,
@@ -168,6 +144,18 @@ pub enum CoretimeError {
         details: String,
     },
 
+    #[error("Failed to fetch constant {pallet}::{constant}")]
+    ConstantFetchFailed {
+        pallet: &'static str,
+        constant: &'static str,
+    },
+
+    #[error("Coretime pallet not found at this block (relay chain endpoint)")]
+    CoretimePalletNotFound,
+
+    #[error("This endpoint is only available on relay chains or coretime chains")]
+    UnsupportedChainType,
+
     #[error(
         "{pallet}::{entry} is not available at this block. This storage item was introduced in a later runtime upgrade."
     )]
@@ -179,12 +167,17 @@ pub enum CoretimeError {
 
 impl IntoResponse for CoretimeError {
     fn into_response(self) -> axum::response::Response {
+        // Match Sidecar's error handling behavior:
+        // - Generic thrown errors become 500 Internal Server Error
+        // - BadRequest (http-errors) becomes 400
+        // - Response format: { code: number, message: string }
         let (status, message) = match &self {
-            // Block/Client errors
+            // Block/Client errors - these map to Sidecar's BadRequest (400)
             CoretimeError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             CoretimeError::BlockResolveFailed(inner) => {
                 let status = if matches!(inner, crate::utils::BlockResolveError::NotFound(_)) {
-                    StatusCode::NOT_FOUND
+                    // Block not found - Sidecar returns 400 with "Specified block number is larger..."
+                    StatusCode::BAD_REQUEST
                 } else {
                     StatusCode::BAD_REQUEST
                 };
@@ -202,25 +195,51 @@ impl IntoResponse for CoretimeError {
                 }
             }
 
-            // Chain type errors
-            CoretimeError::NotCoretimeChain => (StatusCode::BAD_REQUEST, self.to_string()),
+            // Chain type errors - Sidecar throws Error() which becomes 500
+            CoretimeError::NotCoretimeChain => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "This endpoint is only available on coretime chains.".to_string(),
+            ),
 
-            // Pallet errors
-            CoretimeError::BrokerPalletNotFound => (StatusCode::NOT_FOUND, self.to_string()),
-            CoretimeError::StorageFetchFailed { .. } => (StatusCode::NOT_FOUND, self.to_string()),
+            // Pallet errors - Sidecar throws Error() which becomes 500
+            CoretimeError::BrokerPalletNotFound => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "The runtime does not include the broker module at this block".to_string(),
+            ),
+            CoretimeError::StorageFetchFailed { .. } => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            CoretimeError::StorageVersionFetchFailed { .. } => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
             CoretimeError::StorageDecodeFailed { .. } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
             CoretimeError::StorageIterationError { .. } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
+
+            // Coretime info errors
+            CoretimeError::ConstantFetchFailed { .. } => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            CoretimeError::CoretimePalletNotFound => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "The runtime does not include the coretime module at this block".to_string(),
+            ),
+            CoretimeError::UnsupportedChainType => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Unsupported network type.".to_string(),
+            ),
             CoretimeError::StorageItemNotAvailableAtBlock { .. } => {
                 (StatusCode::NOT_FOUND, self.to_string())
             }
         };
 
+        // Match Sidecar's response format: { code: number, message: string }
         let body = Json(json!({
-            "error": message,
+            "code": status.as_u16(),
+            "message": message,
         }));
 
         (status, body).into_response()
@@ -281,14 +300,10 @@ pub fn is_storage_item_not_found_error(error: &subxt::error::StorageError) -> bo
     false
 }
 
-/// Decodes a SCALE compact-encoded u32 and returns (value, bytes_consumed).
-///
-/// Uses `parity_scale_codec::Compact` for proper SCALE decoding.
-pub fn decode_compact_u32(bytes: &[u8]) -> Option<(usize, usize)> {
-    let cursor = &mut &*bytes;
-    let compact_value = <Compact<u32>>::decode(cursor).ok()?;
-    let bytes_consumed = bytes.len() - cursor.len();
-    Some((compact_value.0 as usize, bytes_consumed))
+/// Checks if the Coretime pallet exists in the runtime metadata (relay chain).
+pub fn has_coretime_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
+    let metadata = client_at_block.metadata();
+    metadata.pallet_by_name("Coretime").is_some()
 }
 
 // ============================================================================
@@ -368,21 +383,23 @@ mod tests {
     }
 
     // ------------------------------------------------------------------------
-    // HTTP Status code tests
+    // HTTP Status code tests (matching Sidecar behavior)
     // ------------------------------------------------------------------------
 
     #[tokio::test]
     async fn test_coretime_error_not_coretime_chain_status() {
         let err = CoretimeError::NotCoretimeChain;
         let response = err.into_response();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        // Sidecar throws Error() which becomes 500
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]
     async fn test_coretime_error_broker_pallet_not_found_status() {
         let err = CoretimeError::BrokerPalletNotFound;
         let response = err.into_response();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        // Sidecar throws Error() which becomes 500
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]
@@ -392,7 +409,7 @@ mod tests {
             entry: "Leases",
         };
         let response = err.into_response();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]
@@ -435,9 +452,10 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body_str = String::from_utf8(body.to_vec()).unwrap();
 
-        // Should be JSON with "error" field
-        assert!(body_str.contains("\"error\""));
-        assert!(body_str.contains("Broker pallet not found"));
+        // Should match Sidecar format: { code: number, message: string }
+        assert!(body_str.contains("\"code\":500"));
+        assert!(body_str.contains("\"message\""));
+        assert!(body_str.contains("broker module"));
     }
 
     // ------------------------------------------------------------------------
@@ -533,74 +551,4 @@ mod tests {
 
     // ------------------------------------------------------------------------
     // decode_compact_u32 tests
-    // ------------------------------------------------------------------------
-
-    #[test]
-    fn test_decode_compact_u32_empty_input() {
-        assert_eq!(decode_compact_u32(&[]), None);
-    }
-
-    #[test]
-    fn test_decode_compact_u32_single_byte_mode() {
-        // Single byte mode: values 0-63
-        // Format: xxxxxx00 where x is the value
-        // Value 0: 0b00000000 = 0x00
-        assert_eq!(decode_compact_u32(&[0x00]), Some((0, 1)));
-
-        // Value 1: 0b00000100 = 0x04
-        assert_eq!(decode_compact_u32(&[0x04]), Some((1, 1)));
-
-        // Value 63: 0b11111100 = 0xFC
-        assert_eq!(decode_compact_u32(&[0xFC]), Some((63, 1)));
-    }
-
-    #[test]
-    fn test_decode_compact_u32_two_byte_mode() {
-        // Two byte mode: values 64-16383
-        // Value 64: encoded as 0x0101
-        assert_eq!(decode_compact_u32(&[0x01, 0x01]), Some((64, 2)));
-
-        // Insufficient bytes
-        assert_eq!(decode_compact_u32(&[0x01]), None);
-    }
-
-    #[test]
-    fn test_decode_compact_u32_four_byte_mode() {
-        // Four byte mode: values 16384-1073741823
-        // Value 16384: (16384 << 2) | 0b10 = 0x00010002
-        let encoded: [u8; 4] = [0x02, 0x00, 0x01, 0x00];
-        assert_eq!(decode_compact_u32(&encoded), Some((16384, 4)));
-
-        // Insufficient bytes
-        assert_eq!(decode_compact_u32(&[0x02, 0x00]), None);
-    }
-
-    #[test]
-    fn test_decode_compact_u32_big_integer_mode_not_supported() {
-        // Big integer mode (0b11) is not supported
-        assert_eq!(decode_compact_u32(&[0x03]), None);
-    }
-
-    // ------------------------------------------------------------------------
-    // Constants tests
-    // ------------------------------------------------------------------------
-
-    #[test]
-    fn test_core_mask_size_is_10_bytes() {
-        // CoreMask is 80 bits = 10 bytes
-        assert_eq!(CORE_MASK_SIZE, 10);
-    }
-
-    #[test]
-    fn test_task_id_size_is_4_bytes() {
-        // Task ID is u32 = 4 bytes
-        assert_eq!(TASK_ID_SIZE, 4);
-    }
-
-    #[test]
-    fn test_assignment_variants_are_sequential() {
-        assert_eq!(ASSIGNMENT_IDLE_VARIANT, 0);
-        assert_eq!(ASSIGNMENT_POOL_VARIANT, 1);
-        assert_eq!(ASSIGNMENT_TASK_VARIANT, 2);
-    }
 }
