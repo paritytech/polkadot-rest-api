@@ -1,10 +1,90 @@
 //! Common staking info utilities shared across handler modules.
 
 use crate::utils::ResolvedBlock;
-use scale_value::{Composite, Value, ValueDef};
+use parity_scale_codec::Decode;
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
+
+// ================================================================================================
+// SCALE Decode Types for Staking storage
+// ================================================================================================
+
+/// Unlocking chunk in staking ledger
+#[derive(Debug, Clone, Decode)]
+struct UnlockChunk {
+    value: u128,
+    era: u32,
+}
+
+/// Staking ledger structure
+#[derive(Debug, Clone, Decode)]
+struct StakingLedger {
+    stash: [u8; 32],
+    #[codec(compact)]
+    total: u128,
+    #[codec(compact)]
+    active: u128,
+    unlocking: Vec<UnlockChunk>,
+    // Legacy field - may not exist in newer runtimes
+    // claimed_rewards: Vec<u32>,
+}
+
+/// Reward destination enum
+#[derive(Debug, Clone, Decode)]
+enum RewardDestinationType {
+    Staked,
+    Stash,
+    Controller,
+    Account([u8; 32]),
+    None,
+}
+
+/// Nominations structure
+#[derive(Debug, Clone, Decode)]
+struct Nominations {
+    targets: Vec<[u8; 32]>,
+    submitted_in: u32,
+    suppressed: bool,
+}
+
+/// Slashing spans structure
+#[derive(Debug, Clone, Decode)]
+struct SlashingSpans {
+    span_index: u32,
+    last_start: u32,
+    last_nonzero_slash: u32,
+    prior: Vec<u32>,
+}
+
+/// Era stakers overview (for paged staking)
+#[derive(Debug, Clone, Decode)]
+struct PagedExposureMetadata {
+    #[codec(compact)]
+    total: u128,
+    #[codec(compact)]
+    own: u128,
+    nominator_count: u32,
+    page_count: u32,
+}
+
+/// Legacy era stakers (non-paged)
+#[derive(Debug, Clone, Decode)]
+struct Exposure {
+    #[codec(compact)]
+    total: u128,
+    #[codec(compact)]
+    own: u128,
+    others: Vec<IndividualExposure>,
+}
+
+/// Individual exposure in legacy stakers
+#[derive(Debug, Clone, Decode)]
+struct IndividualExposure {
+    who: [u8; 32],
+    #[codec(compact)]
+    value: u128,
+}
 
 // ================================================================================================
 // Error Types
@@ -171,28 +251,27 @@ pub async fn query_staking_info(
     block: &ResolvedBlock,
     include_claimed_rewards: bool,
 ) -> Result<RawStakingInfo, StakingQueryError> {
-    let bonded_query =
-        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded");
-
     // Check if Staking pallet exists
-    let staking_exists = client_at_block
+    if client_at_block
         .storage()
-        .entry(bonded_query.clone())
-        .is_ok();
-
-    if !staking_exists {
+        .entry(("Staking", "Bonded"))
+        .is_err()
+    {
         return Err(StakingQueryError::StakingPalletNotAvailable);
     }
 
     let account_bytes: [u8; 32] = *account.as_ref();
 
     // Query Staking.Bonded to get controller from stash
-    let bonded_entry = client_at_block.storage().entry(bonded_query)?;
-    let key = vec![Value::from_bytes(account_bytes)];
-    let bonded_value = bonded_entry.try_fetch(key).await?;
+    let bonded_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Bonded");
+    let bonded_value = client_at_block
+        .storage()
+        .fetch(bonded_addr, (account_bytes,))
+        .await;
 
-    let controller = if let Some(value) = bonded_value {
-        decode_account_id(&value).await?
+    let controller = if let Ok(value) = bonded_value {
+        let raw_bytes = value.into_bytes();
+        decode_account_id(&raw_bytes)?
     } else {
         // Address is not a stash account
         return Err(StakingQueryError::NotAStashAccount);
@@ -203,62 +282,59 @@ pub async fn query_staking_info(
     let controller_bytes: [u8; 32] = *controller_account.as_ref();
 
     // Query Staking.Ledger to get staking ledger
-    let ledger_query =
-        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Ledger");
-    let ledger_entry = client_at_block.storage().entry(ledger_query)?;
-    let key = vec![Value::from_bytes(controller_bytes)];
-    let ledger_value = ledger_entry.try_fetch(key).await?;
+    let ledger_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Ledger");
+    let ledger_value = client_at_block
+        .storage()
+        .fetch(ledger_addr, (controller_bytes,))
+        .await;
 
-    let staking = if let Some(value) = ledger_value {
-        decode_staking_ledger(&value).await?
+    let staking = if let Ok(value) = ledger_value {
+        let raw_bytes = value.into_bytes();
+        decode_staking_ledger(&raw_bytes)?
     } else {
         return Err(StakingQueryError::LedgerNotFound);
     };
 
     // Query Staking.Payee to get reward destination
-    let payee_query =
-        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Payee");
-    let payee_entry = client_at_block.storage().entry(payee_query)?;
-    let key = vec![Value::from_bytes(account_bytes)];
-    let payee_value = payee_entry.try_fetch(key).await?;
+    let payee_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Payee");
+    let payee_value = client_at_block
+        .storage()
+        .fetch(payee_addr, (account_bytes,))
+        .await;
 
-    let reward_destination = if let Some(value) = payee_value {
-        decode_reward_destination(&value).await?
+    let reward_destination = if let Ok(value) = payee_value {
+        let raw_bytes = value.into_bytes();
+        decode_reward_destination(&raw_bytes)?
     } else {
         DecodedRewardDestination::Simple("Staked".to_string())
     };
 
     // Query Staking.Nominators to get nominations
-    let nominators_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "Nominators",
-    );
-    let nominators_entry = client_at_block.storage().entry(nominators_query)?;
-    let key = vec![Value::from_bytes(account_bytes)];
-    let nominators_value = nominators_entry.try_fetch(key).await?;
+    let nominators_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Nominators");
+    let nominators_value = client_at_block
+        .storage()
+        .fetch(nominators_addr, (account_bytes,))
+        .await;
 
-    let nominations = if let Some(value) = nominators_value {
-        decode_nominations(&value).await?
+    let nominations = if let Ok(value) = nominators_value {
+        let raw_bytes = value.into_bytes();
+        decode_nominations(&raw_bytes)?
     } else {
         None
     };
 
     // Query Staking.SlashingSpans to get number of slashing spans
-    let slashing_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "SlashingSpans",
-    );
-    let num_slashing_spans =
-        if let Ok(slashing_entry) = client_at_block.storage().entry(slashing_query) {
-            let key = vec![Value::from_bytes(account_bytes)];
-            if let Ok(Some(value)) = slashing_entry.try_fetch(key).await {
-                decode_slashing_spans(&value).await.unwrap_or(0)
-            } else {
-                0
-            }
-        } else {
-            0
-        };
+    let slashing_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "SlashingSpans");
+    let num_slashing_spans = if let Ok(value) = client_at_block
+        .storage()
+        .fetch(slashing_addr, (account_bytes,))
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        decode_slashing_spans(&raw_bytes).unwrap_or(0)
+    } else {
+        0
+    };
 
     // Query claimed rewards if requested
     let claimed_rewards = if include_claimed_rewards {
@@ -292,191 +368,98 @@ pub async fn query_staking_info(
 // Decoding Functions
 // ================================================================================================
 
-/// Decode an AccountId from a storage value
-async fn decode_account_id(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Result<String, StakingQueryError> {
-    let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode account id",
-        ))
-    })?;
+/// Decode an AccountId from raw SCALE bytes
+fn decode_account_id(raw_bytes: &[u8]) -> Result<String, StakingQueryError> {
+    if let Ok(account_bytes) = <[u8; 32]>::decode(&mut &raw_bytes[..]) {
+        let account_id = AccountId32::from(account_bytes);
+        return Ok(account_id.to_ss58check());
+    }
 
-    extract_account_id_from_value(&decoded).ok_or_else(|| {
-        StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to extract account id",
-        ))
-    })
+    Err(StakingQueryError::DecodeFailed(
+        parity_scale_codec::Error::from("Failed to decode account id"),
+    ))
 }
 
-/// Decode staking ledger from storage value
-async fn decode_staking_ledger(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Result<DecodedStakingLedger, StakingQueryError> {
-    let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode staking ledger",
-        ))
-    })?;
+/// Decode staking ledger from raw SCALE bytes
+fn decode_staking_ledger(raw_bytes: &[u8]) -> Result<DecodedStakingLedger, StakingQueryError> {
+    if let Ok(ledger) = StakingLedger::decode(&mut &raw_bytes[..]) {
+        let stash = AccountId32::from(ledger.stash).to_ss58check();
 
-    match &decoded.value {
-        ValueDef::Composite(Composite::Named(fields)) => {
-            let stash =
-                extract_account_id_field(fields, "stash").unwrap_or_else(|| "unknown".to_string());
-
-            let total = extract_u128_field(fields, "total")
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "0".to_string());
-
-            let active = extract_u128_field(fields, "active")
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "0".to_string());
-
-            let unlocking = extract_unlocking_chunks(fields);
-
-            Ok(DecodedStakingLedger {
-                stash,
-                total,
-                active,
-                unlocking,
-                claimed_rewards: None, // Will be populated later if requested
+        let unlocking = ledger
+            .unlocking
+            .into_iter()
+            .map(|chunk| DecodedUnlockingChunk {
+                value: chunk.value.to_string(),
+                era: chunk.era.to_string(),
             })
-        }
-        _ => Err(StakingQueryError::DecodeFailed(
-            parity_scale_codec::Error::from("Invalid staking ledger format"),
-        )),
-    }
-}
+            .collect();
 
-/// Extract unlocking chunks from ledger fields
-fn extract_unlocking_chunks(fields: &[(String, Value<()>)]) -> Vec<DecodedUnlockingChunk> {
-    let mut chunks = Vec::new();
-
-    if let Some((_, unlocking_value)) = fields.iter().find(|(name, _)| name == "unlocking")
-        && let ValueDef::Composite(Composite::Unnamed(items)) = &unlocking_value.value
-    {
-        for item in items {
-            if let ValueDef::Composite(Composite::Named(chunk_fields)) = &item.value {
-                let value = extract_u128_field(chunk_fields, "value")
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "0".to_string());
-
-                let era = extract_u128_field(chunk_fields, "era")
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "0".to_string());
-
-                chunks.push(DecodedUnlockingChunk { value, era });
-            }
-        }
+        return Ok(DecodedStakingLedger {
+            stash,
+            total: ledger.total.to_string(),
+            active: ledger.active.to_string(),
+            unlocking,
+            claimed_rewards: None, // Will be populated later if requested
+        });
     }
 
-    chunks
+    Err(StakingQueryError::DecodeFailed(
+        parity_scale_codec::Error::from("Failed to decode staking ledger"),
+    ))
 }
 
-/// Decode reward destination from storage value
-async fn decode_reward_destination(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
+/// Decode reward destination from raw SCALE bytes
+fn decode_reward_destination(
+    raw_bytes: &[u8],
 ) -> Result<DecodedRewardDestination, StakingQueryError> {
-    let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode reward destination",
-        ))
-    })?;
-
-    match &decoded.value {
-        ValueDef::Variant(variant) => {
-            let name = &variant.name;
-            match name.as_str() {
-                "Staked" | "Stash" | "Controller" | "None" => {
-                    Ok(DecodedRewardDestination::Simple(name.clone()))
-                }
-                "Account" => {
-                    // Extract account from variant values
-                    if let Composite::Unnamed(values) = &variant.values
-                        && let Some(account_value) = values.first()
-                        && let Some(account) = extract_account_id_from_value(account_value)
-                    {
-                        return Ok(DecodedRewardDestination::Account { account });
-                    }
-                    Ok(DecodedRewardDestination::Simple("Account".to_string()))
-                }
-                _ => Ok(DecodedRewardDestination::Simple(name.clone())),
+    if let Ok(dest) = RewardDestinationType::decode(&mut &raw_bytes[..]) {
+        return Ok(match dest {
+            RewardDestinationType::Staked => DecodedRewardDestination::Simple("Staked".to_string()),
+            RewardDestinationType::Stash => DecodedRewardDestination::Simple("Stash".to_string()),
+            RewardDestinationType::Controller => {
+                DecodedRewardDestination::Simple("Controller".to_string())
             }
-        }
-        _ => Ok(DecodedRewardDestination::Simple("Staked".to_string())),
+            RewardDestinationType::None => DecodedRewardDestination::Simple("None".to_string()),
+            RewardDestinationType::Account(account_bytes) => {
+                let account = AccountId32::from(account_bytes).to_ss58check();
+                DecodedRewardDestination::Account { account }
+            }
+        });
     }
+
+    // Default to Staked if decoding fails
+    Ok(DecodedRewardDestination::Simple("Staked".to_string()))
 }
 
-/// Decode nominations from storage value
-async fn decode_nominations(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
+/// Decode nominations from raw SCALE bytes
+fn decode_nominations(
+    raw_bytes: &[u8],
 ) -> Result<Option<DecodedNominationsInfo>, StakingQueryError> {
-    let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode nominations",
-        ))
-    })?;
+    if let Ok(nominations) = Nominations::decode(&mut &raw_bytes[..]) {
+        let targets = nominations
+            .targets
+            .into_iter()
+            .map(|bytes| AccountId32::from(bytes).to_ss58check())
+            .collect();
 
-    match &decoded.value {
-        ValueDef::Composite(Composite::Named(fields)) => {
-            let targets = extract_targets_field(fields);
-
-            let submitted_in = extract_u128_field(fields, "submittedIn")
-                .or_else(|| extract_u128_field(fields, "submitted_in"))
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "0".to_string());
-
-            let suppressed = extract_bool_field(fields, "suppressed").unwrap_or(false);
-
-            Ok(Some(DecodedNominationsInfo {
-                targets,
-                submitted_in,
-                suppressed,
-            }))
-        }
-        _ => Ok(None),
+        return Ok(Some(DecodedNominationsInfo {
+            targets,
+            submitted_in: nominations.submitted_in.to_string(),
+            suppressed: nominations.suppressed,
+        }));
     }
+
+    Ok(None)
 }
 
-/// Extract targets (nominated validators) from nominations
-fn extract_targets_field(fields: &[(String, Value<()>)]) -> Vec<String> {
-    let mut targets = Vec::new();
-
-    if let Some((_, targets_value)) = fields.iter().find(|(name, _)| name == "targets")
-        && let ValueDef::Composite(Composite::Unnamed(items)) = &targets_value.value
-    {
-        for item in items {
-            if let Some(account) = extract_account_id_from_value(item) {
-                targets.push(account);
-            }
-        }
+/// Decode slashing spans count from raw SCALE bytes
+fn decode_slashing_spans(raw_bytes: &[u8]) -> Result<u32, StakingQueryError> {
+    if let Ok(spans) = SlashingSpans::decode(&mut &raw_bytes[..]) {
+        // Count is prior.length + 1
+        return Ok(spans.prior.len() as u32 + 1);
     }
 
-    targets
-}
-
-/// Decode slashing spans count
-async fn decode_slashing_spans(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Result<u32, StakingQueryError> {
-    let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode slashing spans",
-        ))
-    })?;
-
-    match &decoded.value {
-        ValueDef::Composite(Composite::Named(fields)) => {
-            // Count is prior.length + 1
-            if let Some((_, prior_value)) = fields.iter().find(|(name, _)| name == "prior")
-                && let ValueDef::Composite(Composite::Unnamed(items)) = &prior_value.value
-            {
-                return Ok(items.len() as u32 + 1);
-            }
-            Ok(1)
-        }
-        _ => Ok(0),
-    }
+    Ok(0)
 }
 
 // ================================================================================================
@@ -531,19 +514,20 @@ async fn query_claimed_rewards(
 async fn get_current_era(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u32, StakingQueryError> {
-    let query = subxt::storage::dynamic::<(), scale_value::Value>("Staking", "CurrentEra");
+    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "CurrentEra");
 
-    if let Ok(entry) = client_at_block.storage().entry(query)
-        && let Ok(Some(value)) = entry.try_fetch(()).await
-    {
-        let decoded: Value<()> = value.decode_as().map_err(|_| {
-            StakingQueryError::DecodeFailed(parity_scale_codec::Error::from(
-                "Failed to decode CurrentEra",
-            ))
-        })?;
-
-        if let ValueDef::Primitive(scale_value::Primitive::U128(era)) = &decoded.value {
-            return Ok(*era as u32);
+    if let Ok(value) = client_at_block.storage().fetch(storage_addr, ()).await {
+        let raw_bytes = value.into_bytes();
+        // CurrentEra is Option<u32>, so we need to handle the Option wrapper
+        // In SCALE, Some(value) is encoded as 0x01 + value, None is 0x00
+        if !raw_bytes.is_empty() && raw_bytes[0] == 1 && raw_bytes.len() >= 5 {
+            if let Ok(era) = u32::decode(&mut &raw_bytes[1..]) {
+                return Ok(era);
+            }
+        }
+        // Try direct u32 decode (some runtimes may not wrap in Option)
+        if let Ok(era) = u32::decode(&mut &raw_bytes[..]) {
+            return Ok(era);
         }
     }
 
@@ -557,14 +541,13 @@ async fn get_current_era(
 /// The history depth determines how many eras we check for claimed rewards.
 /// Default is 84 eras for most Substrate chains.
 async fn get_history_depth(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<u32> {
-    // Try storage query (older runtimes stored it as a storage item)
-    let query = subxt::storage::dynamic::<(), scale_value::Value>("Staking", "HistoryDepth");
-    if let Ok(entry) = client_at_block.storage().entry(query)
-        && let Ok(Some(value)) = entry.try_fetch(()).await
-        && let Ok(decoded) = value.decode_as::<Value<()>>()
-        && let ValueDef::Primitive(scale_value::Primitive::U128(depth)) = &decoded.value
-    {
-        return Some(*depth as u32);
+    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "HistoryDepth");
+
+    if let Ok(value) = client_at_block.storage().fetch(storage_addr, ()).await {
+        let raw_bytes = value.into_bytes();
+        if let Ok(depth) = u32::decode(&mut &raw_bytes[..]) {
+            return Some(depth);
+        }
     }
 
     // Default history depth for most chains
@@ -579,19 +562,13 @@ async fn is_validator(
     let stash_bytes: [u8; 32] = *stash.as_ref();
 
     // Query Staking.Validators to check if account is a validator
-    let query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "Validators",
-    );
+    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Validators");
 
-    if let Ok(entry) = client_at_block.storage().entry(query) {
-        let key = vec![Value::from_bytes(stash_bytes)];
-        if let Ok(Some(_)) = entry.try_fetch(key).await {
-            return true;
-        }
-    }
-
-    false
+    client_at_block
+        .storage()
+        .fetch(storage_addr, (stash_bytes,))
+        .await
+        .is_ok()
 }
 
 /// Query claim status for a validator at a specific era
@@ -662,34 +639,30 @@ async fn get_claimed_pages(
     stash_bytes: &[u8; 32],
 ) -> Option<Vec<u32>> {
     // Try Staking.ClaimedRewards (newer runtimes)
-    let query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "ClaimedRewards",
-    );
+    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ClaimedRewards");
 
-    if let Ok(entry) = client_at_block.storage().entry(query) {
-        let key = vec![Value::u128(era as u128), Value::from_bytes(*stash_bytes)];
-
-        if let Ok(Some(value)) = entry.try_fetch(key).await
-            && let Ok(decoded) = value.decode_as::<Value<()>>()
-        {
-            return extract_u32_vec(&decoded);
+    if let Ok(value) = client_at_block
+        .storage()
+        .fetch(storage_addr, (era, *stash_bytes))
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        if let Ok(pages) = Vec::<u32>::decode(&mut &raw_bytes[..]) {
+            return Some(pages);
         }
     }
 
     // Try Staking.ErasClaimedRewards (Asset Hub)
-    let query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "ErasClaimedRewards",
-    );
+    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasClaimedRewards");
 
-    if let Ok(entry) = client_at_block.storage().entry(query) {
-        let key = vec![Value::u128(era as u128), Value::from_bytes(*stash_bytes)];
-
-        if let Ok(Some(value)) = entry.try_fetch(key).await
-            && let Ok(decoded) = value.decode_as::<Value<()>>()
-        {
-            return extract_u32_vec(&decoded);
+    if let Ok(value) = client_at_block
+        .storage()
+        .fetch(storage_addr, (era, *stash_bytes))
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        if let Ok(pages) = Vec::<u32>::decode(&mut &raw_bytes[..]) {
+            return Some(pages);
         }
     }
 
@@ -702,173 +675,35 @@ async fn get_era_stakers_page_count(
     era: u32,
     stash_bytes: &[u8; 32],
 ) -> Option<u32> {
-    let query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "ErasStakersOverview",
-    );
+    // Try ErasStakersOverview (paged staking)
+    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasStakersOverview");
 
-    if let Ok(entry) = client_at_block.storage().entry(query) {
-        let key = vec![Value::u128(era as u128), Value::from_bytes(*stash_bytes)];
-
-        if let Ok(Some(value)) = entry.try_fetch(key).await
-            && let Ok(decoded) = value.decode_as::<Value<()>>()
-            && let ValueDef::Composite(Composite::Named(fields)) = &decoded.value
-        {
-            // Look for pageCount field
-            for (name, val) in fields {
-                if (name == "pageCount" || name == "page_count")
-                    && let ValueDef::Primitive(scale_value::Primitive::U128(count)) = &val.value
-                {
-                    return Some(*count as u32);
-                }
-            }
+    if let Ok(value) = client_at_block
+        .storage()
+        .fetch(storage_addr, (era, *stash_bytes))
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        if let Ok(overview) = PagedExposureMetadata::decode(&mut &raw_bytes[..]) {
+            return Some(overview.page_count);
         }
     }
 
     // If ErasStakersOverview doesn't exist, check ErasStakers (older format, always 1 page)
-    let query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "ErasStakers",
-    );
+    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasStakers");
 
-    if let Ok(entry) = client_at_block.storage().entry(query) {
-        let key = vec![Value::u128(era as u128), Value::from_bytes(*stash_bytes)];
-
-        if let Ok(Some(value)) = entry.try_fetch(key).await
-            && let Ok(decoded) = value.decode_as::<Value<()>>()
-        {
-            // Check if total > 0
-            if let ValueDef::Composite(Composite::Named(fields)) = &decoded.value {
-                for (name, val) in fields {
-                    if name == "total"
-                        && let ValueDef::Primitive(scale_value::Primitive::U128(total)) = &val.value
-                        && *total > 0
-                    {
-                        return Some(1); // Old format always has 1 page
-                    }
-                }
+    if let Ok(value) = client_at_block
+        .storage()
+        .fetch(storage_addr, (era, *stash_bytes))
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        if let Ok(exposure) = Exposure::decode(&mut &raw_bytes[..]) {
+            if exposure.total > 0 {
+                return Some(1); // Old format always has 1 page
             }
         }
     }
 
     None
-}
-
-/// Extract a Vec<u32> from a Value (for claimed page indices)
-fn extract_u32_vec(value: &Value<()>) -> Option<Vec<u32>> {
-    match &value.value {
-        ValueDef::Composite(Composite::Unnamed(items)) => {
-            let vec: Vec<u32> = items
-                .iter()
-                .filter_map(|v| match &v.value {
-                    ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n as u32),
-                    _ => None,
-                })
-                .collect();
-            Some(vec)
-        }
-        _ => None,
-    }
-}
-
-// ================================================================================================
-// Helper Functions
-// ================================================================================================
-
-/// Extract an AccountId field from named fields and convert to SS58
-fn extract_account_id_field(fields: &[(String, Value<()>)], field_name: &str) -> Option<String> {
-    fields
-        .iter()
-        .find(|(name, _)| name == field_name)
-        .and_then(|(_, value)| extract_account_id_from_value(value))
-}
-
-/// Extract an AccountId from a Value and convert to SS58
-///
-/// Handles multiple encoding formats:
-/// - `Composite::Unnamed` with byte values (older format)
-/// - `Composite::Named` with an "Id" or similar field
-/// - Direct byte array representation
-fn extract_account_id_from_value(value: &Value<()>) -> Option<String> {
-    match &value.value {
-        ValueDef::Composite(Composite::Unnamed(bytes)) => {
-            // Try to extract as a raw byte array
-            let byte_vec: Vec<u8> = bytes
-                .iter()
-                .filter_map(|v| match &v.value {
-                    ValueDef::Primitive(scale_value::Primitive::U128(b)) => Some(*b as u8),
-                    _ => None,
-                })
-                .collect();
-
-            if byte_vec.len() == 32 {
-                let mut arr = [0u8; 32];
-                arr.copy_from_slice(&byte_vec);
-                let account_id = AccountId32::from(arr);
-                return Some(account_id.to_ss58check());
-            }
-
-            // If we got a single element, it might be a nested account ID
-            if bytes.len() == 1 {
-                return extract_account_id_from_value(&bytes[0]);
-            }
-
-            None
-        }
-        ValueDef::Composite(Composite::Named(fields)) => {
-            // Try common field names for account IDs
-            for field_name in ["Id", "id", "account", "stash", "who"] {
-                if let Some(account) = extract_account_id_field(fields, field_name) {
-                    return Some(account);
-                }
-            }
-            // If there's only one field, try to extract from it
-            if fields.len() == 1 {
-                return extract_account_id_from_value(&fields[0].1);
-            }
-            None
-        }
-        ValueDef::Variant(variant) => {
-            // Handle Option<AccountId> or similar variants
-            match variant.name.as_str() {
-                "Some" | "Id" => {
-                    if let Composite::Unnamed(values) = &variant.values
-                        && let Some(inner) = values.first()
-                    {
-                        return extract_account_id_from_value(inner);
-                    }
-                    if let Composite::Named(fields) = &variant.values
-                        && let Some((_, inner)) = fields.first()
-                    {
-                        return extract_account_id_from_value(inner);
-                    }
-                }
-                _ => {}
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-/// Extract u128 field from named fields
-fn extract_u128_field(fields: &[(String, Value<()>)], field_name: &str) -> Option<u128> {
-    fields
-        .iter()
-        .find(|(name, _)| name == field_name)
-        .and_then(|(_, value)| match &value.value {
-            ValueDef::Primitive(scale_value::Primitive::U128(val)) => Some(*val),
-            _ => None,
-        })
-}
-
-/// Extract bool field from named fields
-fn extract_bool_field(fields: &[(String, Value<()>)], field_name: &str) -> Option<bool> {
-    fields
-        .iter()
-        .find(|(name, _)| name == field_name)
-        .and_then(|(_, value)| match &value.value {
-            ValueDef::Primitive(scale_value::Primitive::Bool(val)) => Some(*val),
-            _ => None,
-        })
 }

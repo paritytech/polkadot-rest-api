@@ -1,11 +1,84 @@
 //! Common staking payouts utilities shared across handler modules.
 
 use crate::utils::ResolvedBlock;
-use scale_value::{Composite, Value, ValueDef};
+use parity_scale_codec::Decode;
 use sp_core::crypto::{AccountId32, Ss58Codec};
 use std::collections::HashMap;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
+
+// ================================================================================================
+// SCALE Decode Types for Staking Payouts storage
+// ================================================================================================
+
+/// Active era info
+#[derive(Debug, Clone, Decode)]
+struct ActiveEraInfo {
+    index: u32,
+    start: Option<u64>,
+}
+
+/// Era reward points
+#[derive(Debug, Clone, Decode)]
+struct EraRewardPoints {
+    total: u32,
+    individual: Vec<([u8; 32], u32)>,
+}
+
+/// Exposure structure (era stakers)
+#[derive(Debug, Clone, Decode)]
+struct ExposureStruct {
+    #[codec(compact)]
+    total: u128,
+    #[codec(compact)]
+    own: u128,
+    others: Vec<IndividualExposureStruct>,
+}
+
+/// Individual exposure in stakers
+#[derive(Debug, Clone, Decode)]
+struct IndividualExposureStruct {
+    who: [u8; 32],
+    #[codec(compact)]
+    value: u128,
+}
+
+/// Nominations structure
+#[derive(Debug, Clone, Decode)]
+struct NominationsStruct {
+    targets: Vec<[u8; 32]>,
+    submitted_in: u32,
+    suppressed: bool,
+}
+
+/// Validator preferences
+#[derive(Debug, Clone, Decode)]
+struct ValidatorPrefs {
+    #[codec(compact)]
+    commission: u32,
+    blocked: bool,
+}
+
+/// Staking ledger for claimed rewards check
+#[derive(Debug, Clone, Decode)]
+struct StakingLedgerForClaimed {
+    stash: [u8; 32],
+    #[codec(compact)]
+    total: u128,
+    #[codec(compact)]
+    active: u128,
+    unlocking: Vec<UnlockChunkStruct>,
+    legacy_claimed_rewards: Vec<u32>,
+}
+
+/// Unlock chunk
+#[derive(Debug, Clone, Decode)]
+struct UnlockChunkStruct {
+    #[codec(compact)]
+    value: u128,
+    #[codec(compact)]
+    era: u32,
+}
 
 // ================================================================================================
 // Error Types
@@ -146,50 +219,40 @@ pub async fn query_staking_payouts(
     block: &ResolvedBlock,
     params: &StakingPayoutsParams,
 ) -> Result<RawStakingPayouts, StakingPayoutsQueryError> {
-    let active_era_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "ActiveEra",
-    );
-
     // Check if Staking pallet exists
-    let staking_exists = client_at_block
+    if client_at_block
         .storage()
-        .entry(active_era_query.clone())
-        .is_ok();
-
-    if !staking_exists {
+        .entry(("Staking", "ActiveEra"))
+        .is_err()
+    {
         return Err(StakingPayoutsQueryError::StakingPalletNotAvailable);
     }
 
-    // Get active era - it's a value storage, use fetch with empty key
-    let active_era_entry = client_at_block.storage().entry(active_era_query)?;
-    let active_era_value = active_era_entry
-        .try_fetch(Vec::<scale_value::Value>::new())
-        .await?;
-    let active_era = if let Some(value) = active_era_value {
-        decode_active_era(&value)?
+    // Get active era
+    let active_era_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ActiveEra");
+    let active_era = if let Ok(value) = client_at_block
+        .storage()
+        .fetch(active_era_addr, ())
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        decode_active_era(&raw_bytes)?
     } else {
         return Err(StakingPayoutsQueryError::NoActiveEra);
     };
 
     // Get history depth (default to 84 if not found)
-    let history_depth_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "HistoryDepth",
-    );
-    let history_depth =
-        if let Ok(history_entry) = client_at_block.storage().entry(history_depth_query) {
-            if let Ok(Some(value)) = history_entry
-                .try_fetch(Vec::<scale_value::Value>::new())
-                .await
-            {
-                decode_u32(&value).unwrap_or(84)
-            } else {
-                84
-            }
-        } else {
-            84
-        };
+    let history_depth_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "HistoryDepth");
+    let history_depth = if let Ok(value) = client_at_block
+        .storage()
+        .fetch(history_depth_addr, ())
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        u32::decode(&mut &raw_bytes[..]).unwrap_or(84)
+    } else {
+        84
+    };
 
     // Validate depth parameter
     if params.depth == 0 || params.depth > history_depth {
@@ -256,22 +319,15 @@ async fn fetch_era_data(
     let account_bytes: [u8; 32] = *account.as_ref();
 
     // Get total era reward points
-    let reward_points_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "ErasRewardPoints",
-    );
-    let reward_points_entry = client_at_block
+    let reward_points_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasRewardPoints");
+    let reward_points_value = client_at_block
         .storage()
-        .entry(reward_points_query)
-        .map_err(|e| e.to_string())?;
-    let key = vec![Value::u128(era as u128)];
-    let reward_points_value = reward_points_entry
-        .try_fetch(key)
-        .await
-        .map_err(|e| e.to_string())?;
+        .fetch(reward_points_addr, (era,))
+        .await;
 
-    let (total_era_reward_points, individual_points) = if let Some(value) = reward_points_value {
-        decode_era_reward_points(&value).map_err(|e| e.to_string())?
+    let (total_era_reward_points, individual_points) = if let Ok(value) = reward_points_value {
+        let raw_bytes = value.into_bytes();
+        decode_era_reward_points(&raw_bytes).map_err(|e| e.to_string())?
     } else {
         return Ok(RawEraPayouts::Message {
             message: format!("No reward points found for era {}", era),
@@ -279,22 +335,16 @@ async fn fetch_era_data(
     };
 
     // Get total era payout
-    let validator_reward_query = subxt::storage::dynamic::<
-        Vec<scale_value::Value>,
-        scale_value::Value,
-    >("Staking", "ErasValidatorReward");
-    let validator_reward_entry = client_at_block
+    let validator_reward_addr =
+        subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasValidatorReward");
+    let validator_reward_value = client_at_block
         .storage()
-        .entry(validator_reward_query)
-        .map_err(|e| e.to_string())?;
-    let key = vec![Value::u128(era as u128)];
-    let validator_reward_value = validator_reward_entry
-        .try_fetch(key)
-        .await
-        .map_err(|e| e.to_string())?;
+        .fetch(validator_reward_addr, (era,))
+        .await;
 
-    let total_era_payout = if let Some(value) = validator_reward_value {
-        decode_u128_storage(&value).map_err(|e| e.to_string())?
+    let total_era_payout = if let Ok(value) = validator_reward_value {
+        let raw_bytes = value.into_bytes();
+        decode_u128_storage(&raw_bytes).map_err(|e| e.to_string())?
     } else {
         return Ok(RawEraPayouts::Message {
             message: format!("No validator reward found for era {}", era),
@@ -384,46 +434,41 @@ async fn fetch_exposure_data(
     era: u32,
     account_bytes: &[u8; 32],
 ) -> Result<Vec<(String, u128, u128)>, String> {
-    let stakers_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "ErasStakersClipped",
-    );
-    let nominators_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "Nominators",
-    );
-    let bonded_query =
-        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded");
-
     let mut results = Vec::new();
 
-    // Try ErasStakersClipped first (standard storage)
-    if let Ok(stakers_entry) = client_at_block.storage().entry(stakers_query.clone()) {
-        // Try to get nominators entry to find which validators this account nominates
-        if let Ok(nominators_entry) = client_at_block.storage().entry(nominators_query) {
-            let key = vec![Value::from_bytes(account_bytes)];
-            if let Ok(Some(nom_value)) = nominators_entry.try_fetch(key).await {
-                let targets = decode_nomination_targets(&nom_value);
+    // Try to get nominators to find which validators this account nominates
+    let nominators_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Nominators");
+    if let Ok(nom_value) = client_at_block
+        .storage()
+        .fetch(nominators_addr, (*account_bytes,))
+        .await
+    {
+        let raw_bytes = nom_value.into_bytes();
+        let targets = decode_nomination_targets(&raw_bytes);
 
-                for validator_bytes in targets {
-                    let key = vec![Value::u128(era as u128), Value::from_bytes(validator_bytes)];
-                    if let Ok(Some(exposure_value)) = stakers_entry.try_fetch(key).await
-                        && let Ok((total, own, others)) = decode_exposure(&exposure_value)
-                    {
-                        // Check if account is in the others list
-                        for (nominator, value) in &others {
-                            if nominator == account_bytes {
-                                let validator_id =
-                                    AccountId32::from(validator_bytes).to_ss58check();
-                                results.push((validator_id, *value, total));
-                                break;
-                            }
-                        }
-                        // Check if account is the validator itself
-                        if account_bytes == &validator_bytes {
+        for validator_bytes in targets {
+            // Try ErasStakersClipped
+            let stakers_addr =
+                subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasStakersClipped");
+            if let Ok(exposure_value) = client_at_block
+                .storage()
+                .fetch(stakers_addr, (era, validator_bytes))
+                .await
+            {
+                let raw_bytes = exposure_value.into_bytes();
+                if let Ok((total, own, others)) = decode_exposure(&raw_bytes) {
+                    // Check if account is in the others list
+                    for (nominator, value) in &others {
+                        if nominator == account_bytes {
                             let validator_id = AccountId32::from(validator_bytes).to_ss58check();
-                            results.push((validator_id, own, total));
+                            results.push((validator_id, *value, total));
+                            break;
                         }
+                    }
+                    // Check if account is the validator itself
+                    if account_bytes == &validator_bytes {
+                        let validator_id = AccountId32::from(validator_bytes).to_ss58check();
+                        results.push((validator_id, own, total));
                     }
                 }
             }
@@ -431,20 +476,26 @@ async fn fetch_exposure_data(
     }
 
     // If account is a validator, also check if they have self-stake
-    if let Ok(bonded_entry) = client_at_block.storage().entry(bonded_query) {
-        let key = vec![Value::from_bytes(account_bytes)];
-        if let Ok(Some(_)) = bonded_entry.try_fetch(key).await {
-            // Account is a stash, check if they're also validating
-            if let Ok(stakers_entry) = client_at_block.storage().entry(stakers_query) {
-                let key = vec![Value::u128(era as u128), Value::from_bytes(account_bytes)];
-                if let Ok(Some(exposure_value)) = stakers_entry.try_fetch(key).await
-                    && let Ok((total, own, _)) = decode_exposure(&exposure_value)
-                {
-                    let validator_id = account.to_ss58check();
-                    // Only add if not already in results
-                    if !results.iter().any(|(v, _, _)| v == &validator_id) {
-                        results.push((validator_id, own, total));
-                    }
+    let bonded_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Bonded");
+    if client_at_block
+        .storage()
+        .fetch(bonded_addr, (*account_bytes,))
+        .await
+        .is_ok()
+    {
+        // Account is a stash, check if they're also validating
+        let stakers_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasStakersClipped");
+        if let Ok(exposure_value) = client_at_block
+            .storage()
+            .fetch(stakers_addr, (era, *account_bytes))
+            .await
+        {
+            let raw_bytes = exposure_value.into_bytes();
+            if let Ok((total, own, _)) = decode_exposure(&raw_bytes) {
+                let validator_id = account.to_ss58check();
+                // Only add if not already in results
+                if !results.iter().any(|(v, _, _)| v == &validator_id) {
+                    results.push((validator_id, own, total));
                 }
             }
         }
@@ -459,14 +510,14 @@ async fn fetch_validator_commission(
     era: u32,
     validator_bytes: &[u8; 32],
 ) -> Option<u32> {
-    let prefs_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Staking",
-        "ErasValidatorPrefs",
-    );
-    let prefs_entry = client_at_block.storage().entry(prefs_query).ok()?;
-    let key = vec![Value::u128(era as u128), Value::from_bytes(validator_bytes)];
-    let prefs_value = prefs_entry.try_fetch(key).await.ok()??;
-    decode_validator_commission(&prefs_value).ok()
+    let prefs_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "ErasValidatorPrefs");
+    let prefs_value = client_at_block
+        .storage()
+        .fetch(prefs_addr, (era, *validator_bytes))
+        .await
+        .ok()?;
+    let raw_bytes = prefs_value.into_bytes();
+    decode_validator_commission(&raw_bytes).ok()
 }
 
 /// Check if rewards have been claimed for a validator in an era
@@ -475,29 +526,28 @@ async fn check_if_claimed(
     validator_bytes: &[u8; 32],
     era: u32,
 ) -> bool {
-    let bonded_query =
-        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Bonded");
-    let ledger_query =
-        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Staking", "Ledger");
-
     // First get the controller for this validator
-    let controller_bytes = if let Ok(bonded_entry) = client_at_block.storage().entry(bonded_query) {
-        let key = vec![Value::from_bytes(validator_bytes)];
-        if let Ok(Some(value)) = bonded_entry.try_fetch(key).await {
-            decode_account_bytes(&value).unwrap_or(*validator_bytes)
-        } else {
-            *validator_bytes
-        }
+    let bonded_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Bonded");
+    let controller_bytes = if let Ok(value) = client_at_block
+        .storage()
+        .fetch(bonded_addr, (*validator_bytes,))
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        decode_account_bytes(&raw_bytes).unwrap_or(*validator_bytes)
     } else {
         *validator_bytes
     };
 
     // Check ledger for claimed rewards
-    if let Ok(ledger_entry) = client_at_block.storage().entry(ledger_query) {
-        let key = vec![Value::from_bytes(controller_bytes)];
-        if let Ok(Some(value)) = ledger_entry.try_fetch(key).await {
-            return check_claimed_in_ledger(&value, era);
-        }
+    let ledger_addr = subxt::dynamic::storage::<_, Vec<u8>>("Staking", "Ledger");
+    if let Ok(value) = client_at_block
+        .storage()
+        .fetch(ledger_addr, (controller_bytes,))
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        return check_claimed_in_ledger(&raw_bytes, era);
     }
 
     false
@@ -553,237 +603,75 @@ fn calculate_payout(
 // Decoding Functions
 // ================================================================================================
 
-fn decode_active_era(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Result<u32, StakingPayoutsQueryError> {
-    let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        StakingPayoutsQueryError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode active era",
-        ))
-    })?;
-
-    match &decoded.value {
-        ValueDef::Composite(Composite::Named(fields)) => {
-            for (name, val) in fields {
-                if name == "index"
-                    && let ValueDef::Primitive(scale_value::Primitive::U128(v)) = &val.value
-                {
-                    return Ok(*v as u32);
-                }
-            }
-            Err(StakingPayoutsQueryError::DecodeFailed(
-                parity_scale_codec::Error::from("Active era index not found"),
-            ))
-        }
-        _ => Err(StakingPayoutsQueryError::DecodeFailed(
-            parity_scale_codec::Error::from("Invalid active era format"),
-        )),
-    }
-}
-
-fn decode_u32(value: &subxt::storage::StorageValue<'_, scale_value::Value>) -> Option<u32> {
-    let decoded: Value<()> = value.decode_as().ok()?;
-    match &decoded.value {
-        ValueDef::Primitive(scale_value::Primitive::U128(v)) => Some(*v as u32),
-        _ => None,
-    }
-}
-
-fn decode_u128_storage(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Result<u128, String> {
-    let decoded: Value<()> = value.decode_as().map_err(|e| e.to_string())?;
-    match &decoded.value {
-        ValueDef::Primitive(scale_value::Primitive::U128(v)) => Ok(*v),
-        _ => Err("Invalid u128 format".to_string()),
-    }
-}
-
-fn decode_era_reward_points(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Result<(u32, HashMap<[u8; 32], u32>), String> {
-    let decoded: Value<()> = value.decode_as().map_err(|e| e.to_string())?;
-
-    let mut total = 0u32;
-    let mut individual = HashMap::new();
-
-    match &decoded.value {
-        ValueDef::Composite(Composite::Named(fields)) => {
-            for (name, val) in fields {
-                if name == "total" {
-                    if let ValueDef::Primitive(scale_value::Primitive::U128(v)) = &val.value {
-                        total = *v as u32;
-                    }
-                } else if name == "individual"
-                    && let ValueDef::Composite(Composite::Unnamed(items)) = &val.value
-                {
-                    for item in items {
-                        if let ValueDef::Composite(Composite::Unnamed(pair)) = &item.value
-                            && pair.len() == 2
-                            && let Some(account) = extract_account_bytes_from_value(&pair[0])
-                            && let ValueDef::Primitive(scale_value::Primitive::U128(points)) =
-                                &pair[1].value
-                        {
-                            individual.insert(account, *points as u32);
-                        }
-                    }
-                }
-            }
-        }
-        _ => return Err("Invalid era reward points format".to_string()),
+/// Decode active era from raw SCALE bytes
+fn decode_active_era(raw_bytes: &[u8]) -> Result<u32, StakingPayoutsQueryError> {
+    if let Ok(era_info) = ActiveEraInfo::decode(&mut &raw_bytes[..]) {
+        return Ok(era_info.index);
     }
 
-    Ok((total, individual))
+    Err(StakingPayoutsQueryError::DecodeFailed(
+        parity_scale_codec::Error::from("Failed to decode active era"),
+    ))
 }
 
-fn decode_exposure(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Result<ExposureData, String> {
-    let decoded: Value<()> = value.decode_as().map_err(|e| e.to_string())?;
+/// Decode u128 from raw SCALE bytes
+fn decode_u128_storage(raw_bytes: &[u8]) -> Result<u128, String> {
+    u128::decode(&mut &raw_bytes[..]).map_err(|e| e.to_string())
+}
 
-    let mut total = 0u128;
-    let mut own = 0u128;
-    let mut others = Vec::new();
-
-    match &decoded.value {
-        ValueDef::Composite(Composite::Named(fields)) => {
-            for (name, val) in fields {
-                if name == "total" {
-                    if let ValueDef::Primitive(scale_value::Primitive::U128(v)) = &val.value {
-                        total = *v;
-                    }
-                } else if name == "own" {
-                    if let ValueDef::Primitive(scale_value::Primitive::U128(v)) = &val.value {
-                        own = *v;
-                    }
-                } else if name == "others"
-                    && let ValueDef::Composite(Composite::Unnamed(items)) = &val.value
-                {
-                    for item in items {
-                        if let ValueDef::Composite(Composite::Named(other_fields)) = &item.value {
-                            let mut who: Option<[u8; 32]> = None;
-                            let mut value_amount = 0u128;
-                            for (field_name, field_val) in other_fields {
-                                if field_name == "who" {
-                                    who = extract_account_bytes_from_value(field_val);
-                                } else if field_name == "value"
-                                    && let ValueDef::Primitive(scale_value::Primitive::U128(v)) =
-                                        &field_val.value
-                                {
-                                    value_amount = *v;
-                                }
-                            }
-                            if let Some(account) = who {
-                                others.push((account, value_amount));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        _ => return Err("Invalid exposure format".to_string()),
+/// Decode era reward points from raw SCALE bytes
+fn decode_era_reward_points(raw_bytes: &[u8]) -> Result<(u32, HashMap<[u8; 32], u32>), String> {
+    if let Ok(points) = EraRewardPoints::decode(&mut &raw_bytes[..]) {
+        let individual: HashMap<[u8; 32], u32> =
+            points.individual.into_iter().collect();
+        return Ok((points.total, individual));
     }
 
-    Ok((total, own, others))
+    Err("Failed to decode era reward points".to_string())
 }
 
-fn decode_nomination_targets(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Vec<[u8; 32]> {
-    let mut targets = Vec::new();
-
-    if let Ok(decoded) = value.decode_as::<Value<()>>()
-        && let ValueDef::Composite(Composite::Named(fields)) = &decoded.value
-    {
-        for (name, val) in fields {
-            if name == "targets"
-                && let ValueDef::Composite(Composite::Unnamed(items)) = &val.value
-            {
-                for item in items {
-                    if let Some(account) = extract_account_bytes_from_value(item) {
-                        targets.push(account);
-                    }
-                }
-            }
-        }
+/// Decode exposure from raw SCALE bytes
+fn decode_exposure(raw_bytes: &[u8]) -> Result<ExposureData, String> {
+    if let Ok(exposure) = ExposureStruct::decode(&mut &raw_bytes[..]) {
+        let others: Vec<([u8; 32], u128)> = exposure
+            .others
+            .into_iter()
+            .map(|ie| (ie.who, ie.value))
+            .collect();
+        return Ok((exposure.total, exposure.own, others));
     }
 
-    targets
+    Err("Failed to decode exposure".to_string())
 }
 
-fn decode_validator_commission(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Result<u32, String> {
-    let decoded: Value<()> = value.decode_as().map_err(|e| e.to_string())?;
-
-    match &decoded.value {
-        ValueDef::Composite(Composite::Named(fields)) => {
-            for (name, val) in fields {
-                if name == "commission"
-                    && let ValueDef::Primitive(scale_value::Primitive::U128(v)) = &val.value
-                {
-                    return Ok(*v as u32);
-                }
-            }
-            Ok(0)
-        }
-        _ => Ok(0),
+/// Decode nomination targets from raw SCALE bytes
+fn decode_nomination_targets(raw_bytes: &[u8]) -> Vec<[u8; 32]> {
+    if let Ok(nominations) = NominationsStruct::decode(&mut &raw_bytes[..]) {
+        return nominations.targets;
     }
+
+    Vec::new()
 }
 
-fn decode_account_bytes(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Option<[u8; 32]> {
-    let decoded: Value<()> = value.decode_as().ok()?;
-    extract_account_bytes_from_value(&decoded)
-}
-
-fn extract_account_bytes_from_value(value: &Value<()>) -> Option<[u8; 32]> {
-    match &value.value {
-        ValueDef::Composite(Composite::Unnamed(bytes)) => {
-            let byte_vec: Vec<u8> = bytes
-                .iter()
-                .filter_map(|v| match &v.value {
-                    ValueDef::Primitive(scale_value::Primitive::U128(b)) => Some(*b as u8),
-                    _ => None,
-                })
-                .collect();
-
-            if byte_vec.len() == 32 {
-                let mut arr = [0u8; 32];
-                arr.copy_from_slice(&byte_vec);
-                Some(arr)
-            } else {
-                None
-            }
-        }
-        _ => None,
+/// Decode validator commission from raw SCALE bytes
+fn decode_validator_commission(raw_bytes: &[u8]) -> Result<u32, String> {
+    if let Ok(prefs) = ValidatorPrefs::decode(&mut &raw_bytes[..]) {
+        return Ok(prefs.commission);
     }
+
+    Err("Failed to decode validator prefs".to_string())
 }
 
-fn check_claimed_in_ledger(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-    era: u32,
-) -> bool {
-    if let Ok(decoded) = value.decode_as::<Value<()>>()
-        && let ValueDef::Composite(Composite::Named(fields)) = &decoded.value
-    {
-        // Check claimedRewards field (newer format)
-        for (name, val) in fields {
-            if (name == "claimedRewards"
-                || name == "claimed_rewards"
-                || name == "legacyClaimedRewards")
-                && let ValueDef::Composite(Composite::Unnamed(eras)) = &val.value
-            {
-                for era_val in eras {
-                    if let ValueDef::Primitive(scale_value::Primitive::U128(e)) = &era_val.value
-                        && *e as u32 == era
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
+/// Decode account bytes from raw SCALE bytes (for Bonded storage)
+fn decode_account_bytes(raw_bytes: &[u8]) -> Option<[u8; 32]> {
+    <[u8; 32]>::decode(&mut &raw_bytes[..]).ok()
+}
+
+/// Check if rewards have been claimed for an era by looking at ledger
+fn check_claimed_in_ledger(raw_bytes: &[u8], era: u32) -> bool {
+    if let Ok(ledger) = StakingLedgerForClaimed::decode(&mut &raw_bytes[..]) {
+        return ledger.legacy_claimed_rewards.contains(&era);
     }
+
     false
 }
