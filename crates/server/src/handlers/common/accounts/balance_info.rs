@@ -4,10 +4,82 @@
 //! that is shared between the regular accounts endpoint and the RC (relay chain) endpoint.
 
 use crate::utils::ResolvedBlock;
-use scale_value::{Composite, Value, ValueDef};
+use parity_scale_codec::Decode;
 use serde::Serialize;
 use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
+
+// ================================================================================================
+// SCALE Decode Types for System::Account storage
+// ================================================================================================
+
+/// Account data for modern runtimes (with frozen field)
+#[derive(Debug, Clone, Decode)]
+struct AccountDataModern {
+    free: u128,
+    reserved: u128,
+    frozen: u128,
+    flags: u128,
+}
+
+/// Account data for legacy runtimes (with misc_frozen/fee_frozen fields)
+#[derive(Debug, Clone, Decode)]
+struct AccountDataLegacy {
+    free: u128,
+    reserved: u128,
+    misc_frozen: u128,
+    fee_frozen: u128,
+}
+
+/// Account info structure (modern runtime)
+#[derive(Debug, Clone, Decode)]
+struct AccountInfoModern {
+    nonce: u32,
+    consumers: u32,
+    providers: u32,
+    sufficients: u32,
+    data: AccountDataModern,
+}
+
+/// Account info structure (legacy runtime)
+#[derive(Debug, Clone, Decode)]
+struct AccountInfoLegacy {
+    nonce: u32,
+    consumers: u32,
+    providers: u32,
+    sufficients: u32,
+    data: AccountDataLegacy,
+}
+
+// ================================================================================================
+// SCALE Decode Types for Balances::Locks storage
+// ================================================================================================
+
+/// Lock reasons enum
+#[derive(Debug, Clone, Decode)]
+enum LockReasons {
+    Fee,
+    Misc,
+    All,
+}
+
+impl LockReasons {
+    fn as_str(&self) -> &'static str {
+        match self {
+            LockReasons::Fee => "Fee",
+            LockReasons::Misc => "Misc",
+            LockReasons::All => "All",
+        }
+    }
+}
+
+/// Balance lock structure
+#[derive(Debug, Clone, Decode)]
+struct BalanceLock {
+    id: [u8; 8],
+    amount: u128,
+    reasons: LockReasons,
+}
 
 // ================================================================================================
 // Shared Types
@@ -103,13 +175,12 @@ pub async fn query_balance_info(
     block: &ResolvedBlock,
     token: Option<String>,
 ) -> Result<RawBalanceInfo, BalanceQueryError> {
-    let storage_query =
-        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("System", "Account");
-
-    // Check if System and Balances pallets exist
-    let system_account_exists = client_at_block.storage().entry(storage_query).is_ok();
-
-    if !system_account_exists {
+    // Check if System pallet exists
+    if client_at_block
+        .storage()
+        .entry(("System", "Account"))
+        .is_err()
+    {
         return Err(BalanceQueryError::BalancesPalletNotAvailable);
     }
 
@@ -189,16 +260,18 @@ async fn query_account_data(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
 ) -> Result<DecodedAccountData, BalanceQueryError> {
-    let storage_query =
-        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("System", "Account");
-    let storage_entry = client_at_block.storage().entry(storage_query)?;
-
+    // Build the storage address for System::Account(account_id)
+    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("System", "Account");
     let account_bytes: [u8; 32] = *account.as_ref();
-    let key = vec![Value::from_bytes(account_bytes)];
-    let storage_value = storage_entry.try_fetch(key).await?;
 
-    if let Some(value) = storage_value {
-        decode_account_info(&value)
+    let storage_value = client_at_block
+        .storage()
+        .fetch(storage_addr, (account_bytes,))
+        .await;
+
+    if let Ok(value) = storage_value {
+        let raw_bytes = value.into_bytes();
+        decode_account_info(&raw_bytes)
     } else {
         // Return empty account data if account doesn't exist
         Ok(DecodedAccountData {
@@ -212,108 +285,35 @@ async fn query_account_data(
     }
 }
 
-fn decode_account_info(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Result<DecodedAccountData, BalanceQueryError> {
-    let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        BalanceQueryError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode account info",
-        ))
-    })?;
-
-    match &decoded.value {
-        ValueDef::Composite(Composite::Named(fields)) => {
-            // Extract nonce
-            let nonce = fields
-                .iter()
-                .find(|(name, _)| name == "nonce")
-                .and_then(|(_, value)| match &value.value {
-                    ValueDef::Primitive(scale_value::Primitive::U128(val)) => Some(*val as u32),
-                    ValueDef::Composite(Composite::Unnamed(vals)) => {
-                        vals.first().and_then(|v| match &v.value {
-                            ValueDef::Primitive(scale_value::Primitive::U128(val)) => {
-                                Some(*val as u32)
-                            }
-                            _ => None,
-                        })
-                    }
-                    _ => None,
-                })
-                .unwrap_or(0);
-
-            // Extract data field which contains balance info
-            let data_value = fields
-                .iter()
-                .find(|(name, _)| name == "data")
-                .map(|(_, v)| v);
-
-            if let Some(data) = data_value {
-                match &data.value {
-                    ValueDef::Composite(Composite::Named(data_fields)) => {
-                        let free = extract_u128_field(data_fields, "free").unwrap_or(0);
-                        let reserved = extract_u128_field(data_fields, "reserved").unwrap_or(0);
-
-                        // Check for new format (frozen) vs old format (miscFrozen, feeFrozen)
-                        let frozen = extract_u128_field(data_fields, "frozen");
-                        let misc_frozen = extract_u128_field(data_fields, "miscFrozen")
-                            .or_else(|| extract_u128_field(data_fields, "misc_frozen"));
-                        let fee_frozen = extract_u128_field(data_fields, "feeFrozen")
-                            .or_else(|| extract_u128_field(data_fields, "fee_frozen"));
-
-                        Ok(DecodedAccountData {
-                            nonce,
-                            free,
-                            reserved,
-                            misc_frozen,
-                            fee_frozen,
-                            frozen,
-                        })
-                    }
-                    _ => Ok(DecodedAccountData {
-                        nonce,
-                        free: 0,
-                        reserved: 0,
-                        misc_frozen: None,
-                        fee_frozen: None,
-                        frozen: Some(0),
-                    }),
-                }
-            } else {
-                Ok(DecodedAccountData {
-                    nonce,
-                    free: 0,
-                    reserved: 0,
-                    misc_frozen: None,
-                    fee_frozen: None,
-                    frozen: Some(0),
-                })
-            }
-        }
-        _ => Ok(DecodedAccountData {
-            nonce: 0,
-            free: 0,
-            reserved: 0,
+fn decode_account_info(raw_bytes: &[u8]) -> Result<DecodedAccountData, BalanceQueryError> {
+    // Try modern format first (with frozen field)
+    if let Ok(account_info) = AccountInfoModern::decode(&mut &raw_bytes[..]) {
+        return Ok(DecodedAccountData {
+            nonce: account_info.nonce,
+            free: account_info.data.free,
+            reserved: account_info.data.reserved,
             misc_frozen: None,
             fee_frozen: None,
-            frozen: Some(0),
-        }),
+            frozen: Some(account_info.data.frozen),
+        });
     }
-}
 
-fn extract_u128_field(fields: &[(String, Value<()>)], name: &str) -> Option<u128> {
-    fields.iter().find(|(n, _)| n == name).and_then(|(_, v)| {
-        match &v.value {
-            ValueDef::Primitive(scale_value::Primitive::U128(val)) => Some(*val),
-            // Sometimes values are wrapped in a Composite
-            ValueDef::Composite(Composite::Unnamed(vals)) => {
-                vals.first().and_then(|inner| match &inner.value {
-                    ValueDef::Primitive(scale_value::Primitive::U128(val)) => Some(*val),
-                    _ => None,
-                })
-            }
-            _ => None,
-        }
-    })
+    // Fall back to legacy format (with misc_frozen/fee_frozen fields)
+    if let Ok(account_info) = AccountInfoLegacy::decode(&mut &raw_bytes[..]) {
+        return Ok(DecodedAccountData {
+            nonce: account_info.nonce,
+            free: account_info.data.free,
+            reserved: account_info.data.reserved,
+            misc_frozen: Some(account_info.data.misc_frozen),
+            fee_frozen: Some(account_info.data.fee_frozen),
+            frozen: None,
+        });
+    }
+
+    // If neither format works, return an error
+    Err(BalanceQueryError::DecodeFailed(
+        parity_scale_codec::Error::from("Failed to decode account info: unknown format"),
+    ))
 }
 
 // ================================================================================================
@@ -324,95 +324,52 @@ async fn query_balance_locks(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
 ) -> Result<Vec<DecodedBalanceLock>, BalanceQueryError> {
-    let storage_query =
-        subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>("Balances", "Locks");
-
     // Check if Balances::Locks exists
-    let locks_exists = client_at_block
+    if client_at_block
         .storage()
-        .entry(storage_query.clone())
-        .is_ok();
-
-    if !locks_exists {
+        .entry(("Balances", "Locks"))
+        .is_err()
+    {
         return Ok(Vec::new());
     }
 
-    let storage_entry = client_at_block.storage().entry(storage_query)?;
+    // Build the storage address for Balances::Locks(account_id)
+    let storage_addr = subxt::dynamic::storage::<_, Vec<u8>>("Balances", "Locks");
     let account_bytes: [u8; 32] = *account.as_ref();
-    let key = vec![Value::from_bytes(account_bytes)];
-    let storage_value = storage_entry.try_fetch(key).await?;
 
-    if let Some(value) = storage_value {
-        decode_balance_locks(&value)
+    let storage_value = client_at_block
+        .storage()
+        .fetch(storage_addr, (account_bytes,))
+        .await;
+
+    if let Ok(value) = storage_value {
+        let raw_bytes = value.into_bytes();
+        decode_balance_locks(&raw_bytes)
     } else {
         Ok(Vec::new())
     }
 }
 
-fn decode_balance_locks(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Result<Vec<DecodedBalanceLock>, BalanceQueryError> {
-    let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        BalanceQueryError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode balance locks",
-        ))
-    })?;
-
-    let mut locks = Vec::new();
-
-    if let ValueDef::Composite(Composite::Unnamed(items)) = &decoded.value {
-        for item in items {
-            if let ValueDef::Composite(Composite::Named(fields)) = &item.value {
-                let id = fields
-                    .iter()
-                    .find(|(name, _)| name == "id")
-                    .map(|(_, v)| extract_lock_id(v))
-                    .unwrap_or_else(|| "unknown".to_string());
-
-                let amount = extract_u128_field(fields, "amount").unwrap_or(0);
-
-                let reasons = fields
-                    .iter()
-                    .find(|(name, _)| name == "reasons")
-                    .map(|(_, v)| extract_lock_reasons(v))
-                    .unwrap_or_else(|| "All".to_string());
-
-                locks.push(DecodedBalanceLock {
+fn decode_balance_locks(raw_bytes: &[u8]) -> Result<Vec<DecodedBalanceLock>, BalanceQueryError> {
+    // Decode as Vec<BalanceLock>
+    if let Ok(locks) = Vec::<BalanceLock>::decode(&mut &raw_bytes[..]) {
+        return Ok(locks
+            .into_iter()
+            .map(|lock| {
+                let id = String::from_utf8_lossy(&lock.id)
+                    .trim_end_matches('\0')
+                    .to_string();
+                DecodedBalanceLock {
                     id,
-                    amount,
-                    reasons,
-                });
-            }
-        }
+                    amount: lock.amount,
+                    reasons: lock.reasons.as_str().to_string(),
+                }
+            })
+            .collect());
     }
 
-    Ok(locks)
-}
-
-fn extract_lock_id(value: &Value<()>) -> String {
-    match &value.value {
-        ValueDef::Composite(Composite::Unnamed(bytes)) => {
-            let byte_vec: Vec<u8> = bytes
-                .iter()
-                .filter_map(|v| match &v.value {
-                    ValueDef::Primitive(scale_value::Primitive::U128(b)) => Some(*b as u8),
-                    _ => None,
-                })
-                .collect();
-
-            String::from_utf8_lossy(&byte_vec)
-                .trim_end_matches('\0')
-                .to_string()
-        }
-        _ => "unknown".to_string(),
-    }
-}
-
-fn extract_lock_reasons(value: &Value<()>) -> String {
-    match &value.value {
-        ValueDef::Variant(variant) => variant.name.clone(),
-        _ => "All".to_string(),
-    }
+    // If decoding fails, return empty (locks may just not exist)
+    Ok(Vec::new())
 }
 
 // ================================================================================================
