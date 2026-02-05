@@ -40,6 +40,13 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
         .route_registered(
             registry,
             API_VERSION,
+            "/pallets/foreign-assets",
+            "get",
+            get(pallets::pallets_foreign_assets),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
             "/pallets/staking/progress",
             "get",
             get(pallets::pallets_staking_progress),

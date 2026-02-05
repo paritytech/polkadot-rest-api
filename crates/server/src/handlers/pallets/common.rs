@@ -70,6 +70,9 @@ pub enum PalletError {
     #[error("Pallet not found: {0}")]
     PalletNotFound(String),
 
+    #[error("Pallet '{0}' is not available on this chain")]
+    PalletNotAvailable(&'static str),
+
     #[error("Asset not found: {0}")]
     AssetNotFound(String),
 
@@ -163,6 +166,7 @@ impl IntoResponse for PalletError {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
             PalletError::PalletNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::PalletNotAvailable(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             PalletError::AssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::PoolNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::PoolAssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),

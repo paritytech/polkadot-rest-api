@@ -535,6 +535,14 @@
         "description": "Test pallets asset-conversion liquidity-pools at Asset Hub Polkadot block 10,260,000"
       },
       {
+        "endpoint": "/v1/pallets/foreign-assets",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "10260000" },
+        "fixture_path": "asset-hub-polkadot/pallets_foreign_assets_10260000.json",
+        "description": "Test pallets foreign-assets endpoint at Asset Hub Polkadot block 10,260,000"
+      },
+      {
         "endpoint": "/v1/blocks/{blockId}",
         "block_height": 11308795,
         "account_id": null,
@@ -910,6 +918,14 @@
         "query_params": { "at": "8000000" },
         "fixture_path": "asset-hub-kusama/pallets_pool_assets_0_asset_info_8000000.json",
         "description": "Test pallets pool-assets asset-info for pool asset 0 (LP token) at Asset Hub Kusama block 8,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/foreign-assets",
+        "block_height": null,
+        "account_id": null,
+        "query_params": { "at": "11152000" },
+        "fixture_path": "asset-hub-kusama/pallets_foreign_assets_11152000.json",
+        "description": "Test pallets foreign-assets endpoint at Asset Hub Kusama block 11,152,000"
       }
     ],
     "coretime-kusama": [
