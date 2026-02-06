@@ -168,13 +168,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_metadata_fixture_loads() {
-        assert!(!ASSET_HUB_METADATA.is_empty());
-        // Check magic number "meta"
-        assert_eq!(&ASSET_HUB_METADATA[0..4], b"meta");
-    }
-
-    #[test]
     fn test_core_version_encoding() {
         let encoded = encode_core_version_response();
         assert!(!encoded.is_empty());

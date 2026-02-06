@@ -113,6 +113,11 @@ pub enum PalletError {
     )]
     DispatchableNotFound(String),
 
+    #[error(
+        "Could not find error item (\"{0}\") in metadata. Error item names are expected to be in PascalCase, e.g. 'InsufficientBalance'"
+    )]
+    ErrorItemNotFound(String),
+
     #[error("Unsupported metadata version")]
     UnsupportedMetadataVersion,
 
@@ -191,6 +196,7 @@ impl IntoResponse for PalletError {
             PalletError::ConstantNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::ConstantItemNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::DispatchableNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::ErrorItemNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::UnsupportedMetadataVersion => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
@@ -240,34 +246,34 @@ pub fn format_account_id(account: &[u8; 32], ss58_prefix: u16) -> String {
 // Query Parameters
 // ============================================================================
 
-/// Query parameters for pallet metadata endpoints.
+/// Query parameters for pallet metadata endpoints (list endpoints).
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PalletQueryParams {
     /// Block hash or number to query at. If not provided, uses the latest block.
     pub at: Option<String>,
 
-    /// If true, only return the names of items without full metadata.
+    /// If `true`, only return the names of items without full metadata.
     #[serde(default)]
     pub only_ids: bool,
 
-    /// If true, resolve the block from the relay chain (Asset Hub only).
+    /// If `true`, resolve the block from the relay chain (Asset Hub only).
     #[serde(default)]
     pub use_rc_block: bool,
 }
 
-/// Query parameters for single item endpoints (e.g., /pallets/{palletId}/consts/{constantId}).
+/// Query parameters for single item endpoints (e.g., `/pallets/{palletId}/errors/{errorId}`).
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PalletItemQueryParams {
     /// Block hash or number to query at. If not provided, uses the latest block.
     pub at: Option<String>,
 
-    /// If true, include full metadata for the item.
+    /// If `true`, include full metadata for the item.
     #[serde(default)]
     pub metadata: bool,
 
-    /// If true, resolve the block from the relay chain (Asset Hub only).
+    /// If `true`, resolve the block from the relay chain (Asset Hub only).
     #[serde(default)]
     pub use_rc_block: bool,
 }
@@ -276,19 +282,19 @@ pub struct PalletItemQueryParams {
 // RC Block Fields
 // ============================================================================
 
-/// Fields to include in responses when useRcBlock=true.
+/// Fields to include in responses when `useRcBlock=true`.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RcBlockFields {
-    /// Relay chain block hash (when useRcBlock=true).
+    /// Relay chain block hash (when `useRcBlock=true`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rc_block_hash: Option<String>,
 
-    /// Relay chain block number (when useRcBlock=true).
+    /// Relay chain block number (when `useRcBlock=true`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rc_block_number: Option<String>,
 
-    /// Asset Hub timestamp (when useRcBlock=true).
+    /// Asset Hub timestamp (when `useRcBlock=true`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ah_timestamp: Option<String>,
 }
