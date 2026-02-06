@@ -118,6 +118,9 @@ pub enum PalletError {
     )]
     ErrorItemNotFound(String),
 
+    #[error("Could not find storage item (\"{item}\") in pallet \"{pallet}\". Storage item names are expected to be in camelCase, e.g. 'account'")]
+    StorageItemNotFound { pallet: String, item: String },
+
     #[error("Unsupported metadata version")]
     UnsupportedMetadataVersion,
 
@@ -197,6 +200,7 @@ impl IntoResponse for PalletError {
             PalletError::ConstantItemNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::DispatchableNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::ErrorItemNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::StorageItemNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::UnsupportedMetadataVersion => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
