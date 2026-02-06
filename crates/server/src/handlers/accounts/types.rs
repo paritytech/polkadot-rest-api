@@ -720,12 +720,23 @@ pub struct StakingLedger {
     /// Active staked balance
     pub active: String,
 
-    /// Total amount being unlocked
-    pub unlocking: String,
+    /// Unlocking chunks with value and era
+    pub unlocking: Vec<UnlockingChunk>,
 
     /// Claimed rewards per era (only when includeClaimedRewards=true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claimed_rewards: Option<Vec<ClaimedReward>>,
+}
+
+/// Unlocking chunk with value and era when funds become available
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlockingChunk {
+    /// Amount being unlocked
+    pub value: String,
+
+    /// Era when funds become available
+    pub era: String,
 }
 
 /// Claimed reward status for a specific era

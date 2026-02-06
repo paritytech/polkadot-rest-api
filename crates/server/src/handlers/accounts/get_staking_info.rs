@@ -1,6 +1,6 @@
 use super::types::{
     AccountsError, BlockInfo, ClaimedReward, NominationsInfo, RewardDestination,
-    StakingInfoQueryParams, StakingInfoResponse, StakingLedger,
+    StakingInfoQueryParams, StakingInfoResponse, StakingLedger, UnlockingChunk,
 };
 use super::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
@@ -50,7 +50,7 @@ pub async fn get_staking_info(
     Path(account_id): Path<String>,
     Query(params): Query<StakingInfoQueryParams>,
 ) -> Result<Response, AccountsError> {
-    let account = validate_and_parse_address(&account_id)?;
+    let account = validate_and_parse_address(&account_id, state.chain_info.ss58_prefix)?;
 
     if params.use_rc_block {
         return handle_use_rc_block(state, account, params).await;
@@ -69,6 +69,7 @@ pub async fn get_staking_info(
         &account,
         &resolved_block,
         params.include_claimed_rewards,
+        state.chain_info.ss58_prefix,
     )
     .await?;
 
@@ -100,13 +101,16 @@ fn format_response(
         suppressed: n.suppressed,
     });
 
-    // Sum all unlocking chunks to get total unlocking amount
-    let unlocking_total: u128 = raw
+    // Convert unlocking chunks to response format
+    let unlocking: Vec<UnlockingChunk> = raw
         .staking
         .unlocking
         .iter()
-        .filter_map(|c| c.value.parse::<u128>().ok())
-        .sum();
+        .map(|c| UnlockingChunk {
+            value: c.value.clone(),
+            era: c.era.clone(),
+        })
+        .collect();
 
     // Convert claimed rewards if present
     let claimed_rewards = raw.staking.claimed_rewards.as_ref().map(|rewards| {
@@ -123,7 +127,7 @@ fn format_response(
         stash: raw.staking.stash.clone(),
         total: raw.staking.total.clone(),
         active: raw.staking.active.clone(),
-        unlocking: unlocking_total.to_string(),
+        unlocking,
         claimed_rewards,
     };
 
@@ -195,6 +199,7 @@ async fn handle_use_rc_block(
             &account,
             &ah_resolved,
             params.include_claimed_rewards,
+            state.chain_info.ss58_prefix,
         )
         .await?;
 

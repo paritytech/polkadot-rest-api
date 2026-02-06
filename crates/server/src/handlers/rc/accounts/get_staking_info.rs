@@ -1,6 +1,6 @@
 use super::types::{
     AccountsError, ClaimedReward, NominationsInfo, RcStakingInfoQueryParams, RcStakingInfoResponse,
-    RelayChainAccess, RewardDestination, StakingLedger,
+    RelayChainAccess, RewardDestination, StakingLedger, UnlockingChunk,
 };
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
@@ -48,7 +48,9 @@ pub async fn get_staking_info(
     Path(account_id): Path<String>,
     Query(params): Query<RcStakingInfoQueryParams>,
 ) -> Result<Response, AccountsError> {
-    let account = validate_and_parse_address(&account_id)?;
+    // Get the relay chain ss58_prefix for address validation
+    let rc_ss58_prefix = get_relay_chain_ss58_prefix(&state)?;
+    let account = validate_and_parse_address(&account_id, rc_ss58_prefix)?;
 
     // Get the relay chain client and info
     let (rc_client, rc_rpc_client, rc_rpc) = get_relay_chain_access(&state)?;
@@ -69,6 +71,7 @@ pub async fn get_staking_info(
         &account,
         &resolved_block,
         params.include_claimed_rewards,
+        rc_ss58_prefix,
     )
     .await?;
 
@@ -80,6 +83,19 @@ pub async fn get_staking_info(
 // ================================================================================================
 // Relay Chain Access
 // ================================================================================================
+
+/// Get the SS58 prefix for the relay chain
+fn get_relay_chain_ss58_prefix(state: &AppState) -> Result<u16, AccountsError> {
+    if state.chain_info.chain_type == ChainType::Relay {
+        return Ok(state.chain_info.ss58_prefix);
+    }
+
+    state
+        .relay_chain_info
+        .as_ref()
+        .map(|info| info.ss58_prefix)
+        .ok_or(AccountsError::RelayChainNotAvailable)
+}
 
 /// Get access to relay chain client and RPC
 fn get_relay_chain_access(state: &AppState) -> Result<RelayChainAccess<'_>, AccountsError> {
@@ -122,13 +138,16 @@ fn format_response(raw: &RawStakingInfo) -> RcStakingInfoResponse {
         suppressed: n.suppressed,
     });
 
-    // Sum all unlocking chunks to get total unlocking amount
-    let unlocking_total: u128 = raw
+    // Convert unlocking chunks to response format
+    let unlocking: Vec<UnlockingChunk> = raw
         .staking
         .unlocking
         .iter()
-        .filter_map(|c| c.value.parse::<u128>().ok())
-        .sum();
+        .map(|c| UnlockingChunk {
+            value: c.value.clone(),
+            era: c.era.clone(),
+        })
+        .collect();
 
     // Convert claimed rewards if present
     let claimed_rewards = raw.staking.claimed_rewards.as_ref().map(|rewards| {
@@ -145,7 +164,7 @@ fn format_response(raw: &RawStakingInfo) -> RcStakingInfoResponse {
         stash: raw.staking.stash.clone(),
         total: raw.staking.total.clone(),
         active: raw.staking.active.clone(),
-        unlocking: unlocking_total.to_string(),
+        unlocking,
         claimed_rewards,
     };
 

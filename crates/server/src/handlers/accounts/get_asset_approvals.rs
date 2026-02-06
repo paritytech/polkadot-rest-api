@@ -63,9 +63,9 @@ pub async fn get_asset_approvals(
     Path(account_id): Path<String>,
     Query(params): Query<AssetApprovalQueryParams>,
 ) -> Result<Response, AccountsError> {
-    let account = validate_and_parse_address(&account_id)?;
+    let account = validate_and_parse_address(&account_id, state.chain_info.ss58_prefix)?;
 
-    let delegate = validate_and_parse_address(&params.delegate)
+    let delegate = validate_and_parse_address(&params.delegate, state.chain_info.ss58_prefix)
         .map_err(|_| AccountsError::InvalidDelegateAddress(params.delegate.clone()))?;
 
     if params.use_rc_block {

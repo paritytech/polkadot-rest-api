@@ -54,7 +54,9 @@ pub async fn get_staking_payouts(
     Path(account_id): Path<String>,
     Query(params): Query<RcStakingPayoutsQueryParams>,
 ) -> Result<Response, AccountsError> {
-    let account = validate_and_parse_address(&account_id)?;
+    // Get the relay chain ss58_prefix for address validation
+    let rc_ss58_prefix = get_relay_chain_ss58_prefix(&state)?;
+    let account = validate_and_parse_address(&account_id, rc_ss58_prefix)?;
 
     // Get the relay chain client and info
     let (rc_client, rc_rpc_client, rc_rpc) = get_relay_chain_access(&state)?;
@@ -97,6 +99,19 @@ pub async fn get_staking_payouts(
 // ================================================================================================
 // Relay Chain Access
 // ================================================================================================
+
+/// Get the SS58 prefix for the relay chain
+fn get_relay_chain_ss58_prefix(state: &AppState) -> Result<u16, AccountsError> {
+    if state.chain_info.chain_type == ChainType::Relay {
+        return Ok(state.chain_info.ss58_prefix);
+    }
+
+    state
+        .relay_chain_info
+        .as_ref()
+        .map(|info| info.ss58_prefix)
+        .ok_or(AccountsError::RelayChainNotAvailable)
+}
 
 /// Get access to relay chain client and RPC
 fn get_relay_chain_access(state: &AppState) -> Result<RelayChainAccess<'_>, AccountsError> {

@@ -10,8 +10,8 @@ use utoipa::ToSchema;
 // Re-export shared types from accounts module
 pub use crate::handlers::accounts::{
     AccountsError, BalanceLock, BlockInfo, ClaimedReward, EraPayouts, EraPayoutsData,
-    NominationsInfo, ProxyDefinition, RewardDestination, StakingLedger, ValidatorPayout,
-    VestingSchedule,
+    NominationsInfo, ProxyDefinition, RewardDestination, StakingLedger, UnlockingChunk,
+    ValidatorPayout, VestingSchedule,
 };
 
 /// Type alias for relay chain access tuple (client, rpc_client, legacy_rpc)
