@@ -1,0 +1,32 @@
+-- Accounts validate endpoint benchmark script
+-- Tests the /v1/accounts/{accountId}/validate endpoint for latency and throughput
+-- Aligned with Sidecar benchmark parameters
+
+local util = require("util")
+
+-- Multiple accounts including hex addresses (matching Sidecar)
+local endpoints = {
+    '15GADXLmZpfCDgVcPuLGCwLAWw3hV9UpwPHw9BJuZEkQREqB/validate',
+    '148fP7zCq1JErXCy92PkNam4KZNcroG9zbbiPwMB1qehgeT4/validate',
+    '121bKwxHucGnDavnkQymq2hW12hsQ3KvXR1zJwAWiafG3Lfx/validate',
+    '13yUANRgTZjbknfWK5BEtLUsW6AffUk7aVgfH4i14wYyRZ6S/validate',
+    '13gYsECU1sSHShqtTQ1wFacthbR5AA6Amh8cs9ENgHTej2qt/validate',
+    '13rpsswYNqksp5DUq1wUhnCWWCauoR64RwWSC8em8D2s6w2B/validate',
+    '0x002a39366f6620a6c2e2fed5990a3d419e6a19dd127fc7a50b515cf17e2dc5cc592312/validate',
+    '0x02ce046d43fc4c0fb8b3b754028515e5020f5f1d8d620b4ef0f983c5df34b1952909e9/validate',
+    '0x086d6f646c6163612f6364707400000000000000000000000000000000000000008333/validate',
+    '0x2a39366f6620a6c2e2fed5990a3d419e6a19dd127fc7a50b515cf17e2dc5cc59/validate',
+}
+
+local counter = 1
+
+request = function()
+    local endpoint = endpoints[counter]
+    counter = counter + 1
+    if counter > #endpoints then
+        counter = 1
+    end
+    return wrk.format("GET", "/v1/accounts/" .. endpoint)
+end
+
+done = util.done()
