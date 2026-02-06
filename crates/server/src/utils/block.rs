@@ -575,7 +575,7 @@ mod tests {
                             "0x0000000000000000000000000000000000000000000000000000000000000000"
                         )),
                         // Return null for test block number - not found
-                        Some(n) if n == 999999 => Json(json!(null)),
+                        Some(999999) => Json(json!(null)),
                         // Return valid hash for other blocks
                         _ => Json(json!(
                             "0x1234567890123456789012345678901234567890123456789012345678901234"
