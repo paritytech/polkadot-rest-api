@@ -18,7 +18,7 @@ use subxt_rpcs::rpc_params;
 use thiserror::Error;
 
 lazy_static! {
-    static ref VERSION_REGEX: Regex =
+    pub static ref VERSION_REGEX: Regex =
         Regex::new(r"^[vV](\d+)$").expect("VERSION_REGEX is a valid regex pattern");
 }
 
@@ -333,7 +333,7 @@ pub async fn runtime_metadata_versioned(
     }))
 }
 
-fn convert_metadata(metadata: &RuntimeMetadata) -> Result<Value, GetMetadataError> {
+pub fn convert_metadata(metadata: &RuntimeMetadata) -> Result<Value, GetMetadataError> {
     match metadata {
         RuntimeMetadata::V14(m) => Ok(json!({ "v14": convert_v14(m) })),
         RuntimeMetadata::V15(m) => Ok(json!({ "v15": convert_v15(m) })),
