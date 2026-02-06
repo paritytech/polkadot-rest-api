@@ -1,0 +1,1 @@
+{"at":{"hash":"0xe80a0074e8fed2486ce8e31f2d0640d2c9ee04f5e2776655c20273aa3e1cb21e","height":"12987123"},"pallet":"balances","palletIndex":"10","errorItem":"insufficientBalance","metadata":{"name":"InsufficientBalance","fields":[],"index":"2","docs":["Balance too low to send value."],"args":[]}}

@@ -70,6 +70,9 @@ pub enum PalletError {
     #[error("Pallet not found: {0}")]
     PalletNotFound(String),
 
+    #[error("Pallet '{0}' is not available on this chain")]
+    PalletNotAvailable(&'static str),
+
     #[error("Asset not found: {0}")]
     AssetNotFound(String),
 
@@ -78,6 +81,14 @@ pub enum PalletError {
 
     #[error("Pool asset not found: {0}")]
     PoolAssetNotFound(String),
+
+    #[error(
+        "Could not find event item (\"{0}\") in metadata. Event item names are expected to be in PascalCase, e.g. 'Transfer'"
+    )]
+    EventNotFound(String),
+
+    #[error("No queryable events items found for palletId \"{0}\"")]
+    NoEventsInPallet(String),
 
     // ========================================================================
     // Metadata/Constant Errors
@@ -94,13 +105,18 @@ pub enum PalletError {
     #[error("Failed to fetch metadata")]
     MetadataFetchFailed,
 
-    #[error("Failed to decode metadata")]
-    MetadataDecodeFailed,
+    #[error("Failed to decode metadata: {0}")]
+    MetadataDecodeFailed(String),
 
     #[error(
         "Could not find dispatchable item (\"{0}\") in metadata. dispatchable item names are expected to be in camel case, e.g. 'transfer'"
     )]
     DispatchableNotFound(String),
+
+    #[error(
+        "Could not find error item (\"{0}\") in metadata. Error item names are expected to be in PascalCase, e.g. 'InsufficientBalance'"
+    )]
+    ErrorItemNotFound(String),
 
     #[error("Unsupported metadata version")]
     UnsupportedMetadataVersion,
@@ -163,20 +179,24 @@ impl IntoResponse for PalletError {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
             PalletError::PalletNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::PalletNotAvailable(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             PalletError::AssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::PoolNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::PoolAssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::EventNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::NoEventsInPallet(_) => (StatusCode::BAD_REQUEST, self.to_string()),
 
             // Metadata errors
-            PalletError::ConstantNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
-            PalletError::ConstantItemNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::MetadataFetchFailed => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
-            PalletError::MetadataDecodeFailed => {
+            PalletError::MetadataDecodeFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
+            PalletError::ConstantNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::ConstantItemNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::DispatchableNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::ErrorItemNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::UnsupportedMetadataVersion => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
@@ -226,7 +246,7 @@ pub fn format_account_id(account: &[u8; 32], ss58_prefix: u16) -> String {
 // Query Parameters
 // ============================================================================
 
-/// Query parameters for pallet metadata endpoints.
+/// Query parameters for pallet metadata endpoints (list endpoints).
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PalletQueryParams {
@@ -242,7 +262,7 @@ pub struct PalletQueryParams {
     pub use_rc_block: bool,
 }
 
-/// Query parameters for single item endpoints (e.g., `/pallets/{palletId}/consts/{constantId}`).
+/// Query parameters for single item endpoints (e.g., `/pallets/{palletId}/errors/{errorId}`).
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PalletItemQueryParams {
