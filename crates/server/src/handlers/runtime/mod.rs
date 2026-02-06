@@ -7,3 +7,11 @@ pub use get_metadata::runtime_metadata;
 pub use get_metadata::runtime_metadata_versioned;
 pub use get_metadata::runtime_metadata_versions;
 pub use get_spec::runtime_spec;
+
+// Re-export types and helpers for RC runtime handlers
+pub use get_metadata::{
+    GetMetadataError, RuntimeMetadataResponse, VERSION_REGEX, convert_metadata,
+};
+pub use get_spec::{
+    BlockInfo as SpecBlockInfo, RuntimeSpecResponse, transform_chain_type, transform_properties,
+};
