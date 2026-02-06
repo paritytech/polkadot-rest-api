@@ -1,6 +1,7 @@
 //! Handler for POST /transaction/metadata-blob
 //!
-//! Generates a minimal metadata proof for a specific extrinsic, implementing RFC-0078.
+//! Generates a minimal metadata proof for a specific extrinsic, implementing 
+//! RFC-0078: https://polkadot-fellows.github.io/RFCs/approved/0078-merkleized-metadata.html.
 //! This allows offline signers to decode transactions without the full metadata.
 
 use crate::state::{AppState, SubstrateLegacyRpc};
