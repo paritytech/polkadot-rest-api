@@ -1,5 +1,5 @@
 use crate::handlers::coretime::common::{
-    AtResponse, CORE_MASK_SIZE, CoretimeError, CoretimeQueryParams, has_broker_pallet,
+    AtResponse, CoretimeError, CoretimeQueryParams, ScheduleItem, has_broker_pallet,
 };
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
@@ -32,21 +32,6 @@ pub struct CoretimeReservationsResponse {
     pub at: AtResponse,
     /// List of reservations with their mask and task info.
     pub reservations: Vec<ReservationInfo>,
-}
-
-/// On-chain ScheduleItem from the Broker pallet.
-#[derive(Debug, Clone, scale_decode::DecodeAsType)]
-struct ReservationScheduleItem {
-    mask: [u8; CORE_MASK_SIZE],
-    assignment: ReservationAssignment,
-}
-
-/// On-chain CoreAssignment enum from the Broker pallet.
-#[derive(Debug, Clone, scale_decode::DecodeAsType)]
-enum ReservationAssignment {
-    Idle,
-    Pool,
-    Task(u32),
 }
 
 /// Handler for GET /coretime/reservations endpoint.
@@ -98,7 +83,7 @@ pub async fn coretime_reservations(
         .into_response())
 }
 
-async fn fetch_reservations(
+pub async fn fetch_reservations(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<ReservationInfo>, CoretimeError> {
     let reservations_addr = subxt::dynamic::storage::<(), ()>("Broker", "Reservations");
@@ -117,7 +102,7 @@ async fn fetch_reservations(
     };
 
     // Decode directly into typed Vec<Vec<ScheduleItem>>
-    let reservations: Vec<Vec<ReservationScheduleItem>> =
+    let reservations: Vec<Vec<ScheduleItem>> =
         reservations_value
             .decode_as()
             .map_err(|e| CoretimeError::StorageDecodeFailed {
@@ -134,27 +119,25 @@ async fn fetch_reservations(
 
 /// Extracts reservation info from a list of schedule items.
 /// Uses the first schedule item's mask and assignment.
-fn extract_reservation_info(items: &[ReservationScheduleItem]) -> ReservationInfo {
-    match items.first() {
-        Some(first) => {
-            let mask = format!("0x{}", hex::encode(first.mask));
-            let task = match first.assignment {
-                ReservationAssignment::Idle => String::new(),
-                ReservationAssignment::Pool => "Pool".to_string(),
-                ReservationAssignment::Task(id) => id.to_string(),
-            };
-            ReservationInfo { mask, task }
-        }
-        None => ReservationInfo {
+fn extract_reservation_info(items: &[ScheduleItem]) -> ReservationInfo {
+    if items.is_empty() {
+        return ReservationInfo {
             mask: String::new(),
             task: String::new(),
-        },
+        };
     }
+
+    let first = &items[0];
+    let mask = format!("0x{}", hex::encode(first.mask));
+    let task = first.assignment.to_task_string();
+
+    ReservationInfo { mask, task }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::handlers::coretime::common::{CORE_MASK_SIZE, CoreAssignment, ScheduleItem};
 
     // ------------------------------------------------------------------------
     // extract_reservation_info tests
@@ -169,9 +152,9 @@ mod tests {
 
     #[test]
     fn test_extract_reservation_info_idle() {
-        let items = vec![ReservationScheduleItem {
+        let items = vec![ScheduleItem {
             mask: [0xFF; CORE_MASK_SIZE],
-            assignment: ReservationAssignment::Idle,
+            assignment: CoreAssignment::Idle,
         }];
 
         let result = extract_reservation_info(&items);
@@ -181,9 +164,9 @@ mod tests {
 
     #[test]
     fn test_extract_reservation_info_pool() {
-        let items = vec![ReservationScheduleItem {
+        let items = vec![ScheduleItem {
             mask: [0xAA; CORE_MASK_SIZE],
-            assignment: ReservationAssignment::Pool,
+            assignment: CoreAssignment::Pool,
         }];
 
         let result = extract_reservation_info(&items);
@@ -193,9 +176,9 @@ mod tests {
 
     #[test]
     fn test_extract_reservation_info_task() {
-        let items = vec![ReservationScheduleItem {
+        let items = vec![ScheduleItem {
             mask: [0xFF; CORE_MASK_SIZE],
-            assignment: ReservationAssignment::Task(1000),
+            assignment: CoreAssignment::Task(1000),
         }];
 
         let result = extract_reservation_info(&items);
@@ -206,13 +189,13 @@ mod tests {
     #[test]
     fn test_extract_reservation_info_uses_first_item() {
         let items = vec![
-            ReservationScheduleItem {
+            ScheduleItem {
                 mask: [0xFF; CORE_MASK_SIZE],
-                assignment: ReservationAssignment::Task(1000),
+                assignment: CoreAssignment::Task(1000),
             },
-            ReservationScheduleItem {
+            ScheduleItem {
                 mask: [0x00; CORE_MASK_SIZE],
-                assignment: ReservationAssignment::Task(2000),
+                assignment: CoreAssignment::Task(2000),
             },
         ];
 
@@ -223,13 +206,13 @@ mod tests {
     #[test]
     fn test_extract_reservation_info_multiple_reservations() {
         let reservations = vec![
-            vec![ReservationScheduleItem {
+            vec![ScheduleItem {
                 mask: [0xFF; CORE_MASK_SIZE],
-                assignment: ReservationAssignment::Task(1000),
+                assignment: CoreAssignment::Task(1000),
             }],
-            vec![ReservationScheduleItem {
+            vec![ScheduleItem {
                 mask: [0xAA; CORE_MASK_SIZE],
-                assignment: ReservationAssignment::Pool,
+                assignment: CoreAssignment::Pool,
             }],
         ];
 
