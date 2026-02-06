@@ -118,7 +118,9 @@ pub enum PalletError {
     )]
     ErrorItemNotFound(String),
 
-    #[error("Could not find storage item (\"{item}\") in pallet \"{pallet}\". Storage item names are expected to be in camelCase, e.g. 'account'")]
+    #[error(
+        "Could not find storage item (\"{item}\") in pallet \"{pallet}\". Storage item names are expected to be in camelCase, e.g. 'account'"
+    )]
     StorageItemNotFound { pallet: String, item: String },
 
     #[error("Unsupported metadata version")]
