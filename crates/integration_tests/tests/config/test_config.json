@@ -381,6 +381,16 @@
         "query_params": {},
         "fixture_path": "polkadot/pallets_system_errors.json",
         "description": "Test pallets system errors at Polkadot"
+      },
+      {
+        "endpoint": "/v1/pallets/on-going-referenda",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "24000000"
+        },
+        "fixture_path": "polkadot/pallets_on_going_referenda_24000000.json",
+        "description": "Test on-going referenda at Polkadot block 24,000,000"
       }
     ],
     "kusama": [
@@ -557,6 +567,16 @@
         "query_params": {},
         "fixture_path": "kusama/pallets_system_errors.json",
         "description": "Test pallets system errors at Kusama"
+      },
+      {
+        "endpoint": "/v1/pallets/on-going-referenda",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "25000000"
+        },
+        "fixture_path": "kusama/pallets_on_going_referenda_25000000.json",
+        "description": "Test on-going referenda at Kusama block 25,000,000"
       }
     ],
     "asset-hub-polkadot": [
