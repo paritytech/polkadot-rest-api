@@ -1,0 +1,97 @@
+{
+    "at": {
+        "hash": "0x6750195fcf8ffdbd5ee3fae98d21d04789596144169b511e4973c866ddae4d9c",
+        "height": "12676268"
+    },
+    "pallet": "assets",
+    "palletIndex": "50",
+    "items": [
+        {
+            "name": "Asset",
+            "modifier": "Optional",
+            "type": {
+                "map": {
+                    "hashers": [
+                        "Blake2_128Concat"
+                    ],
+                    "key": "4",
+                    "value": "953"
+                }
+            },
+            "fallback": "0x00",
+            "docs": " Details of an asset.",
+            "deprecationInfo": {
+                "notDeprecated": null
+            }
+        },
+        {
+            "name": "Account",
+            "modifier": "Optional",
+            "type": {
+                "map": {
+                    "hashers": [
+                        "Blake2_128Concat",
+                        "Blake2_128Concat"
+                    ],
+                    "key": "955",
+                    "value": "956"
+                }
+            },
+            "fallback": "0x00",
+            "docs": " The holdings of a specific account for a specific asset.",
+            "deprecationInfo": {
+                "notDeprecated": null
+            }
+        },
+        {
+            "name": "Approvals",
+            "modifier": "Optional",
+            "type": {
+                "map": {
+                    "hashers": [
+                        "Blake2_128Concat",
+                        "Blake2_128Concat",
+                        "Blake2_128Concat"
+                    ],
+                    "key": "959",
+                    "value": "960"
+                }
+            },
+            "fallback": "0x00",
+            "docs": " Approved balance transfers. First balance is the amount approved for transfer. Second\n is the amount of `T::Currency` reserved for storing this.\n First key is the asset ID, second key is the owner and third key is the delegate.",
+            "deprecationInfo": {
+                "notDeprecated": null
+            }
+        },
+        {
+            "name": "Metadata",
+            "modifier": "Default",
+            "type": {
+                "map": {
+                    "hashers": [
+                        "Blake2_128Concat"
+                    ],
+                    "key": "4",
+                    "value": "961"
+                }
+            },
+            "fallback": "0x0000000000000000000000000000000000000000",
+            "docs": " Metadata of an asset.",
+            "deprecationInfo": {
+                "notDeprecated": null
+            }
+        },
+        {
+            "name": "NextAssetId",
+            "modifier": "Optional",
+            "type": {
+                "plain": "4"
+            },
+            "fallback": "0x00",
+            "docs": " The asset ID enforced for the next asset creation, if any present. Otherwise, this storage\n item has no effect.\n\n This can be useful for setting up constraints for IDs of the new assets. For example, by\n providing an initial [`NextAssetId`] and using the [`crate::AutoIncAssetId`] callback, an\n auto-increment model can be applied to all new asset IDs.\n\n The initial next asset ID can be set using the [`GenesisConfig`] or the\n [SetNextAssetId](`migration::next_asset_id::SetNextAssetId`) migration.",
+            "deprecationInfo": {
+                "notDeprecated": null
+            }
+        }
+    ]
+}
