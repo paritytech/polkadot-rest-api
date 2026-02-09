@@ -143,13 +143,13 @@ struct Exposure {
     total: u128,
     #[codec(compact)]
     own: u128,
-    others: Vec<IndividualExposure>,
+    others: Vec<ExposureIndividual>,
 }
 
-/// Individual exposure in legacy stakers
+/// Individual exposure in era stakers
 #[derive(Debug, Clone, Decode)]
 #[allow(dead_code)]
-struct IndividualExposure {
+struct ExposureIndividual {
     who: [u8; 32],
     #[codec(compact)]
     value: u128,
@@ -388,11 +388,20 @@ pub async fn is_validator(
     let stash_bytes: [u8; 32] = *stash.as_ref();
     let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "Validators");
 
-    client_at_block
+    match client_at_block
         .storage()
         .fetch(storage_addr, (stash_bytes,))
         .await
-        .is_ok()
+    {
+        Ok(value) => {
+            // Check if the value is non-empty (account has validator prefs set)
+            let raw_bytes = value.into_bytes();
+            // ValidatorPrefs has at least commission (Perbill = u32), so non-empty means validator
+            // Empty or default bytes mean not a validator
+            !raw_bytes.is_empty() && raw_bytes != [0u8; 0]
+        }
+        Err(_) => false,
+    }
 }
 
 /// Get the current era from `Staking.CurrentEra` storage.
@@ -559,7 +568,6 @@ pub async fn get_era_stakers_page_count(
 
     None
 }
-
 // ================================================================================================
 // Internal Helper Functions
 // ================================================================================================

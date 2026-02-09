@@ -237,15 +237,20 @@ async fn query_claimed_rewards(
     let era_start = current_era.saturating_sub(history_depth);
 
     // Query all eras in parallel
+    // Note: For nominators, this checks current nominations against each era's claimed status.
+    // If nominations have changed over time, historical eras may show inaccurate status.
     let era_futures: Vec<_> = (era_start..current_era)
         .map(|era| {
             let nominations = nominations.clone();
             async move {
-                let status = if is_validator {
+                let status = if let Some(noms) = &nominations {
+                    // Account has nominations, check if any nominated validator has claimed
+                    query_nominator_claim_status(client_at_block, era, &noms.targets).await
+                } else if is_validator {
+                    // No nominations but is a validator, check own claimed rewards
                     query_validator_claim_status(client_at_block, era, stash).await
-                } else if let Some(noms) = &nominations {
-                    query_nominator_claim_status(client_at_block, era, &noms.targets, stash).await
                 } else {
+                    // Neither nominator nor validator
                     ClaimStatus::Undefined
                 };
                 EraClaimStatus { era, status }
@@ -293,21 +298,47 @@ async fn query_validator_claim_status(
 }
 
 /// Query claim status for a nominator at a specific era
+///
+/// This follows Sidecar's approach: iterate through nominated validators and return
+/// the status of the first validator that was active in that era.
+///
+/// Note: This checks CURRENT nominated validators, not historical ones.
+/// If nominations changed over time, this may not accurately reflect historical eras.
 async fn query_nominator_claim_status(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     era: u32,
     validator_targets: &[String],
-    _nominator_stash: &AccountId32,
 ) -> ClaimStatus {
-    for validator_ss58 in validator_targets {
+    // Iterate through nominated validators, find the first one that was active in this era
+    for (idx, validator_ss58) in validator_targets.iter().enumerate() {
         if let Ok(validator_account) = AccountId32::from_ss58check(validator_ss58) {
-            let status =
-                query_validator_claim_status(client_at_block, era, &validator_account).await;
+            // Query both page count (to check if validator was active) and claimed pages
+            let (page_count, claimed_pages) = tokio::join!(
+                staking::get_era_stakers_page_count(client_at_block, era, &validator_account),
+                staking::get_claimed_pages(client_at_block, era, &validator_account),
+            );
 
-            match status {
-                ClaimStatus::Claimed | ClaimStatus::PartiallyClaimed => return status,
-                ClaimStatus::Unclaimed => return status,
-                ClaimStatus::Undefined => continue,
+            // Check if validator was active in this era (has ErasStakersOverview data)
+            if let Some(total_pages) = page_count {
+                // Validator was active, determine claim status
+                let status = match claimed_pages {
+                    Some(pages) => {
+                        if pages.is_empty() {
+                            ClaimStatus::Unclaimed
+                        } else if pages.len() as u32 >= total_pages {
+                            ClaimStatus::Claimed
+                        } else {
+                            ClaimStatus::PartiallyClaimed
+                        }
+                    }
+                    None => ClaimStatus::Unclaimed,
+                };
+                return status;
+            }
+            // Validator not active in this era, try next one
+            // If this is the last validator and none were active, return Undefined
+            if idx == validator_targets.len() - 1 {
+                return ClaimStatus::Undefined;
             }
         }
     }
