@@ -253,6 +253,33 @@ struct RelayCoreDescriptorRaw {
     current_work: Option<RelayWorkState>,
 }
 
+/// On-chain ParaLifecycle enum for DecodeAsType decoding.
+/// Matches polkadot_runtime_parachains::paras::ParaLifecycle.
+#[derive(Debug, Clone, DecodeAsType)]
+enum ParaLifecycleType {
+    Onboarding,
+    Parathread,
+    Parachain,
+    UpgradingParathread,
+    DowngradingParachain,
+    OffboardingParathread,
+    OffboardingParachain,
+}
+
+impl ParaLifecycleType {
+    fn as_str(&self) -> &'static str {
+        match self {
+            ParaLifecycleType::Onboarding => "Onboarding",
+            ParaLifecycleType::Parathread => "Parathread",
+            ParaLifecycleType::Parachain => "Parachain",
+            ParaLifecycleType::UpgradingParathread => "UpgradingParathread",
+            ParaLifecycleType::DowngradingParachain => "DowngradingParachain",
+            ParaLifecycleType::OffboardingParathread => "OffboardingParathread",
+            ParaLifecycleType::OffboardingParachain => "OffboardingParachain",
+        }
+    }
+}
+
 /// Parachain lifecycle from relay chain.
 #[derive(Debug, Clone)]
 struct ParaLifecycle {
@@ -941,7 +968,7 @@ async fn fetch_para_lifecycles(
     }
 
     let lifecycles_addr =
-        subxt::dynamic::storage::<(u32,), scale_value::Value>("Paras", "ParaLifecycles");
+        subxt::dynamic::storage::<(u32,), ParaLifecycleType>("Paras", "ParaLifecycles");
 
     let mut lifecycles = Vec::new();
 
@@ -975,19 +1002,12 @@ async fn fetch_para_lifecycles(
             None => continue,
         };
 
-        // Decode the lifecycle type as a string
-        // The on-chain type is an enum, so we extract the variant name
+        // Decode the lifecycle type using DecodeAsType
         let lifecycle_type = entry
             .value()
-            .decode_as::<scale_value::Value>()
+            .decode_as::<ParaLifecycleType>()
             .ok()
-            .and_then(|v| {
-                // scale_value::Value for enums typically has the variant name
-                match &v.value {
-                    scale_value::ValueDef::Variant(variant) => Some(variant.name.clone()),
-                    _ => None,
-                }
-            });
+            .map(|lt| lt.as_str().to_string());
 
         lifecycles.push(ParaLifecycle {
             para_id,
