@@ -281,9 +281,7 @@ async fn handle_event_item_use_rc_block(
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
     if ah_blocks.is_empty() {
-        return Ok(
-            (StatusCode::OK, Json(Vec::<PalletEventItemResponse>::new())).into_response()
-        );
+        return Ok((StatusCode::OK, Json(Vec::<PalletEventItemResponse>::new())).into_response());
     }
 
     let mut results = Vec::new();

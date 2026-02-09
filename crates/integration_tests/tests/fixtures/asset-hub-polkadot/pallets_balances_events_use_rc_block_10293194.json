@@ -1,0 +1,295 @@
+[
+    {
+        "at": {
+            "hash": "0xb8f4e8190a22d14e5a15d5851792a5f0d55795a31a0aa900590f21a6ad548f2e",
+            "height": "1276963"
+        },
+        "pallet": "balances",
+        "palletIndex": "10",
+        "items": [
+            {
+                "name": "Endowed",
+                "fields": [
+                    {
+                        "name": "account",
+                        "type": "0",
+                        "typeName": "T::AccountId",
+                        "docs": []
+                    },
+                    {
+                        "name": "free_balance",
+                        "type": "6",
+                        "typeName": "T::Balance",
+                        "docs": []
+                    }
+                ],
+                "index": "0",
+                "docs": [
+                    "An account was created with some free balance."
+                ],
+                "args": [
+                    "AccountId32",
+                    "u128"
+                ]
+            },
+            {
+                "name": "DustLost",
+                "fields": [
+                    {
+                        "name": "account",
+                        "type": "0",
+                        "typeName": "T::AccountId",
+                        "docs": []
+                    },
+                    {
+                        "name": "amount",
+                        "type": "6",
+                        "typeName": "T::Balance",
+                        "docs": []
+                    }
+                ],
+                "index": "1",
+                "docs": [
+                    "An account was removed whose balance was non-zero but below ExistentialDeposit,",
+                    "resulting in an outright loss."
+                ],
+                "args": [
+                    "AccountId32",
+                    "u128"
+                ]
+            },
+            {
+                "name": "Transfer",
+                "fields": [
+                    {
+                        "name": "from",
+                        "type": "0",
+                        "typeName": "T::AccountId",
+                        "docs": []
+                    },
+                    {
+                        "name": "to",
+                        "type": "0",
+                        "typeName": "T::AccountId",
+                        "docs": []
+                    },
+                    {
+                        "name": "amount",
+                        "type": "6",
+                        "typeName": "T::Balance",
+                        "docs": []
+                    }
+                ],
+                "index": "2",
+                "docs": [
+                    "Transfer succeeded."
+                ],
+                "args": [
+                    "AccountId32",
+                    "AccountId32",
+                    "u128"
+                ]
+            },
+            {
+                "name": "BalanceSet",
+                "fields": [
+                    {
+                        "name": "who",
+                        "type": "0",
+                        "typeName": "T::AccountId",
+                        "docs": []
+                    },
+                    {
+                        "name": "free",
+                        "type": "6",
+                        "typeName": "T::Balance",
+                        "docs": []
+                    },
+                    {
+                        "name": "reserved",
+                        "type": "6",
+                        "typeName": "T::Balance",
+                        "docs": []
+                    }
+                ],
+                "index": "3",
+                "docs": [
+                    "A balance was set by root."
+                ],
+                "args": [
+                    "AccountId32",
+                    "u128",
+                    "u128"
+                ]
+            },
+            {
+                "name": "Reserved",
+                "fields": [
+                    {
+                        "name": "who",
+                        "type": "0",
+                        "typeName": "T::AccountId",
+                        "docs": []
+                    },
+                    {
+                        "name": "amount",
+                        "type": "6",
+                        "typeName": "T::Balance",
+                        "docs": []
+                    }
+                ],
+                "index": "4",
+                "docs": [
+                    "Some balance was reserved (moved from free to reserved)."
+                ],
+                "args": [
+                    "AccountId32",
+                    "u128"
+                ]
+            },
+            {
+                "name": "Unreserved",
+                "fields": [
+                    {
+                        "name": "who",
+                        "type": "0",
+                        "typeName": "T::AccountId",
+                        "docs": []
+                    },
+                    {
+                        "name": "amount",
+                        "type": "6",
+                        "typeName": "T::Balance",
+                        "docs": []
+                    }
+                ],
+                "index": "5",
+                "docs": [
+                    "Some balance was unreserved (moved from reserved to free)."
+                ],
+                "args": [
+                    "AccountId32",
+                    "u128"
+                ]
+            },
+            {
+                "name": "ReserveRepatriated",
+                "fields": [
+                    {
+                        "name": "from",
+                        "type": "0",
+                        "typeName": "T::AccountId",
+                        "docs": []
+                    },
+                    {
+                        "name": "to",
+                        "type": "0",
+                        "typeName": "T::AccountId",
+                        "docs": []
+                    },
+                    {
+                        "name": "amount",
+                        "type": "6",
+                        "typeName": "T::Balance",
+                        "docs": []
+                    },
+                    {
+                        "name": "destination_status",
+                        "type": "29",
+                        "typeName": "Status",
+                        "docs": []
+                    }
+                ],
+                "index": "6",
+                "docs": [
+                    "Some balance was moved from the reserve of the first account to the second account.",
+                    "Final argument indicates the destination balance type."
+                ],
+                "args": [
+                    "AccountId32",
+                    "AccountId32",
+                    "u128",
+                    "{\"_enum\":[\"Free\",\"Reserved\"]}"
+                ]
+            },
+            {
+                "name": "Deposit",
+                "fields": [
+                    {
+                        "name": "who",
+                        "type": "0",
+                        "typeName": "T::AccountId",
+                        "docs": []
+                    },
+                    {
+                        "name": "amount",
+                        "type": "6",
+                        "typeName": "T::Balance",
+                        "docs": []
+                    }
+                ],
+                "index": "7",
+                "docs": [
+                    "Some amount was deposited (e.g. for transaction fees)."
+                ],
+                "args": [
+                    "AccountId32",
+                    "u128"
+                ]
+            },
+            {
+                "name": "Withdraw",
+                "fields": [
+                    {
+                        "name": "who",
+                        "type": "0",
+                        "typeName": "T::AccountId",
+                        "docs": []
+                    },
+                    {
+                        "name": "amount",
+                        "type": "6",
+                        "typeName": "T::Balance",
+                        "docs": []
+                    }
+                ],
+                "index": "8",
+                "docs": [
+                    "Some amount was withdrawn from the account (e.g. for transaction fees)."
+                ],
+                "args": [
+                    "AccountId32",
+                    "u128"
+                ]
+            },
+            {
+                "name": "Slashed",
+                "fields": [
+                    {
+                        "name": "who",
+                        "type": "0",
+                        "typeName": "T::AccountId",
+                        "docs": []
+                    },
+                    {
+                        "name": "amount",
+                        "type": "6",
+                        "typeName": "T::Balance",
+                        "docs": []
+                    }
+                ],
+                "index": "9",
+                "docs": [
+                    "Some amount was removed from the account (e.g. for misbehavior)."
+                ],
+                "args": [
+                    "AccountId32",
+                    "u128"
+                ]
+            }
+        ],
+        "rcBlockHash": "0xb3776c31cdcec764c7b9d508b14c813c512226abeef4f55ca4e743426bd40c94",
+        "rcBlockNumber": "10293194",
+        "ahTimestamp": "1652483166456"
+    }
+]

@@ -7,12 +7,14 @@
 use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
 use crate::state::AppState;
 use crate::utils;
+use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
     extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use config::ChainType;
 use futures::future::join_all;
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
@@ -159,9 +161,8 @@ pub async fn pallets_on_going_referenda(
     State(state): State<AppState>,
     Query(params): Query<OnGoingReferendaQueryParams>,
 ) -> Result<Response, PalletError> {
-    // useRcBlock is not supported for this endpoint (relay chain only)
     if params.use_rc_block {
-        return Err(PalletError::UseRcBlockNotSupported);
+        return handle_use_rc_block(state, params).await;
     }
 
     // Create client at the specified block
@@ -196,6 +197,67 @@ pub async fn pallets_on_going_referenda(
         }),
     )
         .into_response())
+}
+
+async fn handle_use_rc_block(
+    state: AppState,
+    params: OnGoingReferendaQueryParams,
+) -> Result<Response, PalletError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(PalletError::UseRcBlockNotSupported);
+    }
+
+    if state.get_relay_chain_client().is_none() {
+        return Err(PalletError::RelayChainNotConfigured);
+    }
+
+    let rc_block_id = params
+        .at
+        .as_ref()
+        .ok_or(PalletError::AtParameterRequired)?
+        .parse::<utils::BlockId>()?;
+
+    let rc_resolved_block = utils::resolve_block_with_rpc(
+        state.get_relay_chain_rpc_client().expect("checked above"),
+        state.get_relay_chain_rpc().expect("checked above"),
+        Some(rc_block_id),
+    )
+    .await?;
+
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+
+    if ah_blocks.is_empty() {
+        return Ok((StatusCode::OK, Json(Vec::<OnGoingReferendaResponse>::new())).into_response());
+    }
+
+    let mut results = Vec::new();
+    let rc_block_hash = rc_resolved_block.hash.clone();
+    let rc_block_number = rc_resolved_block.number.to_string();
+
+    for ah_block in &ah_blocks {
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
+
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+
+        let referenda =
+            fetch_ongoing_referenda(&client_at_block, state.chain_info.ss58_prefix, &at.height)
+                .await?;
+
+        results.push(OnGoingReferendaResponse {
+            at,
+            referenda,
+            rc_block_hash: Some(rc_block_hash.clone()),
+            rc_block_number: Some(rc_block_number.clone()),
+            ah_timestamp,
+        });
+    }
+
+    Ok((StatusCode::OK, Json(results)).into_response())
 }
 
 // ============================================================================
