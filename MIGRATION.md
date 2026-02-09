@@ -17,8 +17,14 @@ This project is a Rust-based alternative to substrate-api-sidecar, designed to p
   - `/v1/pallets/asset-conversion/next-available-id`
   - `/v1/pallets/pool-assets/{assetId}/asset-info`
   - `/v1/pallets/foreign-assets`
-- The `currentCorePrice` calculation for `/v1/coretime/info` has changed. The previous calculation was faulty. For more details, see the linked [PR](https://github.com/paritytech/polkadot-rest-api/pull/175).
 - Renamed `palletVersion` to `storageVersion` in `coretime/info`, in order to match current naming. For more context, see the linked [commit](https://github.com/paritytech/polkadot-sdk/commit/4fe55f0bcb8edccaad73b33b804c349a756f7d3c).
+
+#### Coretime endpoints
+- Numeric Fields: All u16 and u32 fields are now returned as numbers instead of strings. This is an intentional divergence to provide more accurate JSON types, while maintaining safety for large values (u128 is still returned as a string).
+- HTTP Status Codes: Error responses that occur when, for example, a pallet is missing at a requested block now return 400 or 404 instead of 500.
+- `/v1/coretime/info`: The `currentCorePrice` calculation has been corrected. The previous calculation was faulty. For more details, see the related [PR](https://github.com/paritytech/polkadot-rest-api/pull/175).
+- `/v1/coretime/overview`: The `type` field is now returned as `lifecycle` since this is a more accurate name field that matches the on-chain type (`ParaLifecycle` enum, `ParaLifecycles` storage, `fn lifecycle()` accessor).
+
 
 ### API Changes
 

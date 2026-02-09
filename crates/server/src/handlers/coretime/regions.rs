@@ -174,7 +174,7 @@ pub async fn coretime_regions(
 ///
 /// Broker::Regions is a StorageMap with RegionId as key and RegionRecord as value.
 /// Uses typed DecodeAsType decoding for efficiency - no intermediate scale_value::Value.
-async fn fetch_regions(
+pub async fn fetch_regions(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
 ) -> Result<Vec<RegionInfo>, CoretimeError> {

@@ -391,6 +391,26 @@
         },
         "fixture_path": "polkadot/pallets_on_going_referenda_24000000.json",
         "description": "Test on-going referenda at Polkadot block 24,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/overview",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "24000000"
+        },
+        "fixture_path": "polkadot/coretime_overview_24000000.json",
+        "description": "Test coretime overview endpoint at Polkadot block 24,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/info",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "24000000"
+        },
+        "fixture_path": "polkadot/coretime_info_24000000.json",
+        "description": "Test coretime info endpoint at Polkadot block 24,000,000"
       }
     ],
     "kusama": [
@@ -577,6 +597,26 @@
         },
         "fixture_path": "kusama/pallets_on_going_referenda_25000000.json",
         "description": "Test on-going referenda at Kusama block 25,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/overview",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "29000000"
+        },
+        "fixture_path": "kusama/coretime_overview_29000000.json",
+        "description": "Test coretime overview endpoint at Kusama block 29,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/info",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "29000000"
+        },
+        "fixture_path": "kusama/coretime_info_29000000.json",
+        "description": "Test coretime info endpoint at Kusama block 29,000,000"
       }
     ],
     "asset-hub-polkadot": [
@@ -1245,6 +1285,26 @@
         },
         "fixture_path": "coretime-kusama/coretime_renewals_2000000.json",
         "description": "Test coretime renewals endpoint at Coretime Kusama block 2,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/overview",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "2000000"
+        },
+        "fixture_path": "coretime-kusama/coretime_overview_2000000.json",
+        "description": "Test coretime overview endpoint at Coretime Kusama block 2,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/info",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "2000000"
+        },
+        "fixture_path": "coretime-kusama/coretime_info_2000000.json",
+        "description": "Test coretime info endpoint at Coretime Kusama block 2,000,000"
       }
     ],
     "coretime-polkadot": [
@@ -1287,6 +1347,26 @@
         },
         "fixture_path": "coretime-polkadot/coretime_renewals_1000000.json",
         "description": "Test coretime renewals endpoint at Coretime Polkadot block 1,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/overview",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "1000000"
+        },
+        "fixture_path": "coretime-polkadot/coretime_overview_1000000.json",
+        "description": "Test coretime overview endpoint at Coretime Polkadot block 1,000,000"
+      },
+      {
+        "endpoint": "/v1/coretime/info",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "2000000"
+        },
+        "fixture_path": "coretime-polkadot/coretime_info_2000000.json",
+        "description": "Test coretime info endpoint at Coretime Polkadot block 2,000,000"
       }
     ]
   }

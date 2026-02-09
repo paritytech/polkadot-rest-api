@@ -1,0 +1,1995 @@
+{
+  "at": {
+    "hash": "0x95d94a0573df805d36591254bddf1ab51262d0eeb2092fe512e0c9095769e6df",
+    "height": "1000000"
+  },
+  "cores": [
+    {
+      "coreId": 0,
+      "paraId": "1001",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "1001"
+      },
+      "workplan": [
+        {
+          "core": 0,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "1001"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "reservation",
+        "details": {
+          "mask": "0xffffffffffffffffffff"
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 1,
+      "paraId": "1002",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "1002"
+      },
+      "workplan": [
+        {
+          "core": 1,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "1002"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "reservation",
+        "details": {
+          "mask": "0xffffffffffffffffffff"
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 2,
+      "paraId": "1000",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "1000"
+      },
+      "workplan": [
+        {
+          "core": 2,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "1000"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "reservation",
+        "details": {
+          "mask": "0xffffffffffffffffffff"
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 3,
+      "paraId": "1004",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "1004"
+      },
+      "workplan": [
+        {
+          "core": 3,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "1004"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "reservation",
+        "details": {
+          "mask": "0xffffffffffffffffffff"
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 4,
+      "paraId": "1005",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "1005"
+      },
+      "workplan": [
+        {
+          "core": 4,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "1005"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "reservation",
+        "details": {
+          "mask": "0xffffffffffffffffffff"
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 5,
+      "paraId": "Pool",
+      "workload": {
+        "isPool": true,
+        "isTask": false,
+        "mask": "0xffffffffffffffffffff",
+        "task": "Pool"
+      },
+      "workplan": [
+        {
+          "core": 5,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": true,
+              "isTask": false,
+              "mask": "0xffffffffffffffffffff",
+              "task": "Pool"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "ondemand"
+      },
+      "regions": []
+    },
+    {
+      "coreId": 6,
+      "paraId": "2035",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2035"
+      },
+      "workplan": [
+        {
+          "core": 6,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2035"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 359280
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 7,
+      "paraId": "3344",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3344"
+      },
+      "workplan": [
+        {
+          "core": 7,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3344"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 344160
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 8,
+      "paraId": "3370",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3370"
+      },
+      "workplan": [
+        {
+          "core": 8,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3370"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 389520
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 9,
+      "paraId": "3367",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3367"
+      },
+      "workplan": [
+        {
+          "core": 9,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3367"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 374400
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 10,
+      "paraId": "2086",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2086"
+      },
+      "workplan": [
+        {
+          "core": 10,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2086"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 389520
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 11,
+      "paraId": "2032",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2032"
+      },
+      "workplan": [
+        {
+          "core": 11,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2032"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 359280
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 12,
+      "paraId": "2051",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2051"
+      },
+      "workplan": [
+        {
+          "core": 12,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2051"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 389520
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 13,
+      "paraId": "3369",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3369"
+      },
+      "workplan": [
+        {
+          "core": 13,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3369"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 313920
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 14,
+      "paraId": "2008",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2008"
+      },
+      "workplan": [
+        {
+          "core": 14,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2008"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 389520
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 15,
+      "paraId": "2025",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2025"
+      },
+      "workplan": [
+        {
+          "core": 15,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2025"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 359280
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 16,
+      "paraId": "2000",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2000"
+      },
+      "workplan": [
+        {
+          "core": 16,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2000"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 313920
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 17,
+      "paraId": "2092",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2092"
+      },
+      "workplan": [
+        {
+          "core": 17,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2092"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 404640
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 18,
+      "paraId": "2002",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2002"
+      },
+      "workplan": [
+        {
+          "core": 18,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2002"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 359280
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 19,
+      "paraId": "2039",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2039"
+      },
+      "workplan": [
+        {
+          "core": 19,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2039"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 389520
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 20,
+      "paraId": "2030",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2030"
+      },
+      "workplan": [
+        {
+          "core": 20,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2030"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 374400
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 21,
+      "paraId": "2019",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2019"
+      },
+      "workplan": [
+        {
+          "core": 21,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2019"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 404640
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 22,
+      "paraId": "2104",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2104"
+      },
+      "workplan": [
+        {
+          "core": 22,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2104"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 404640
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 23,
+      "paraId": "2046",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2046"
+      },
+      "workplan": [
+        {
+          "core": 23,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2046"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 374400
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 24,
+      "paraId": "3345",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3345"
+      },
+      "workplan": [
+        {
+          "core": 24,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3345"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 344160
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 25,
+      "paraId": "3340",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3340"
+      },
+      "workplan": [
+        {
+          "core": 25,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3340"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 344160
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 26,
+      "paraId": "3338",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3338"
+      },
+      "workplan": [
+        {
+          "core": 26,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3338"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 329040
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 27,
+      "paraId": "2004",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2004"
+      },
+      "workplan": [
+        {
+          "core": 27,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2004"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 329040
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 28,
+      "paraId": "3377",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3377"
+      },
+      "workplan": [
+        {
+          "core": 28,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3377"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 389520
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 29,
+      "paraId": "3373",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3373"
+      },
+      "workplan": [
+        {
+          "core": 29,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3373"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 389520
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 30,
+      "paraId": "2031",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2031"
+      },
+      "workplan": [
+        {
+          "core": 30,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2031"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 344160
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 31,
+      "paraId": "3389",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3389"
+      },
+      "workplan": [
+        {
+          "core": 31,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3389"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 404640
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 32,
+      "paraId": "3366",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3366"
+      },
+      "workplan": [
+        {
+          "core": 32,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3366"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 374400
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 33,
+      "paraId": "2037",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2037"
+      },
+      "workplan": [
+        {
+          "core": 33,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2037"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 374400
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 34,
+      "paraId": "2034",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2034"
+      },
+      "workplan": [
+        {
+          "core": 34,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2034"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 359280
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 35,
+      "paraId": "2090",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2090"
+      },
+      "workplan": [
+        {
+          "core": 35,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2090"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 404640
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 36,
+      "paraId": "3346",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3346"
+      },
+      "workplan": [
+        {
+          "core": 36,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3346"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 344160
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 37,
+      "paraId": "2012",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2012"
+      },
+      "workplan": [
+        {
+          "core": 37,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2012"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 359280
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 38,
+      "paraId": "3397",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3397"
+      },
+      "workplan": [
+        {
+          "core": 38,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3397"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 404640
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 39,
+      "paraId": "2043",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2043"
+      },
+      "workplan": [
+        {
+          "core": 39,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2043"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 374400
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 40,
+      "paraId": "2091",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2091"
+      },
+      "workplan": [
+        {
+          "core": 40,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2091"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 404640
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 41,
+      "paraId": "2026",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2026"
+      },
+      "workplan": [
+        {
+          "core": 41,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2026"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 344160
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 42,
+      "paraId": "3388",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3388"
+      },
+      "workplan": [
+        {
+          "core": 42,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3388"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 404640
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 43,
+      "paraId": "3354",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3354"
+      },
+      "workplan": [
+        {
+          "core": 43,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3354"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 359280
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 44,
+      "paraId": "2006",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2006"
+      },
+      "workplan": [
+        {
+          "core": 44,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2006"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 344160
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 45,
+      "paraId": "2013",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2013"
+      },
+      "workplan": [
+        {
+          "core": 45,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2013"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "lease",
+        "details": {
+          "until": 374400
+        }
+      },
+      "regions": []
+    },
+    {
+      "coreId": 46,
+      "paraId": "2094",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2094"
+      },
+      "workplan": [
+        {
+          "core": 46,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2101"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": []
+    },
+    {
+      "coreId": 47,
+      "paraId": "2056",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2056"
+      },
+      "workplan": [
+        {
+          "core": 47,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3403"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": []
+    },
+    {
+      "coreId": 48,
+      "paraId": "3333",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3333"
+      },
+      "workplan": [
+        {
+          "core": 48,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3404"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": [
+        {
+          "core": 48,
+          "begin": 302685,
+          "end": 307725,
+          "owner": "145wS9x6ZqohEpHQd4WGu42g9BCZ3L7iXii2VSEevsXs3wvx",
+          "paid": "16168469809",
+          "mask": "0xffffffffffffffffffff"
+        }
+      ]
+    },
+    {
+      "coreId": 49,
+      "paraId": "3403",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3403"
+      },
+      "workplan": [
+        {
+          "core": 49,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3405"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": []
+    },
+    {
+      "coreId": 50,
+      "paraId": "3404",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3404"
+      },
+      "workplan": [
+        {
+          "core": 50,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3406"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": []
+    },
+    {
+      "coreId": 51,
+      "paraId": "3405",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3405"
+      },
+      "workplan": [
+        {
+          "core": 51,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "3407"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": [
+        {
+          "core": 51,
+          "begin": 287565,
+          "end": 292605,
+          "owner": "16XHLnbTwYzNdjVDKBjJ991qGycqG6ztsqdUQmYid18FJqNw",
+          "paid": "690035714200",
+          "mask": "0xffffffffffffffffffff"
+        }
+      ]
+    },
+    {
+      "coreId": 52,
+      "paraId": "3406",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3406"
+      },
+      "workplan": [
+        {
+          "core": 52,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2094"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": [
+        {
+          "core": 52,
+          "begin": 297645,
+          "end": 302685,
+          "owner": "13ajYZo7VvCeyo3m1uV8ALx9CFHaioDfu9VPrCvFe6kJmWPh",
+          "paid": "219914934344",
+          "mask": "0xffffffffffffffffffff"
+        }
+      ]
+    },
+    {
+      "coreId": 53,
+      "paraId": "3407",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3407"
+      },
+      "workplan": [
+        {
+          "core": 53,
+          "timeslice": 307725,
+          "info": [
+            {
+              "isPool": false,
+              "isTask": true,
+              "mask": "0xffffffffffffffffffff",
+              "task": "2056"
+            }
+          ]
+        }
+      ],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": [
+        {
+          "core": 53,
+          "begin": 292605,
+          "end": 297645,
+          "owner": "13ajYZo7VvCeyo3m1uV8ALx9CFHaioDfu9VPrCvFe6kJmWPh",
+          "paid": "880878771947",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 53,
+          "begin": 297645,
+          "end": 302685,
+          "owner": "145wS9x6ZqohEpHQd4WGu42g9BCZ3L7iXii2VSEevsXs3wvx",
+          "paid": "116239209290",
+          "mask": "0xffffffffffffffffffff"
+        }
+      ]
+    },
+    {
+      "coreId": 54,
+      "paraId": "2101",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "2101"
+      },
+      "workplan": [],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": [
+        {
+          "core": 54,
+          "begin": 307725,
+          "end": 312765,
+          "owner": "13ajYZo7VvCeyo3m1uV8ALx9CFHaioDfu9VPrCvFe6kJmWPh",
+          "paid": "14793124466",
+          "mask": "0xffffffffffffffffffff"
+        }
+      ]
+    },
+    {
+      "coreId": 55,
+      "paraId": "3400",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3400"
+      },
+      "workplan": [],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": [
+        {
+          "core": 55,
+          "begin": 302685,
+          "end": 307725,
+          "owner": "158BPpq5RRYW2LTkCyVwvcryN51JBHmq5Fy4QQ6k9tDqT9P6",
+          "paid": "2557489255",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 55,
+          "begin": 297645,
+          "end": 302685,
+          "owner": "15fTH34bbKGMUjF1bLmTqxPYgpg481imThwhWcQfCyktyBzL",
+          "paid": "46268483091",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 55,
+          "begin": 307725,
+          "end": 312765,
+          "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+          "paid": "9634432781",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 55,
+          "begin": 289855,
+          "end": 292605,
+          "owner": "154jnYuSvtnpCRNjQuunWpcRhzzU2J7ZhHE5vCZiwq6oKWUR",
+          "paid": "526571428600",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 55,
+          "begin": 292605,
+          "end": 297645,
+          "owner": "145wS9x6ZqohEpHQd4WGu42g9BCZ3L7iXii2VSEevsXs3wvx",
+          "paid": "275048944358",
+          "mask": "0xffffffffffffffffffff"
+        }
+      ]
+    },
+    {
+      "coreId": 56,
+      "paraId": "3395",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3395"
+      },
+      "workplan": [],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": [
+        {
+          "core": 56,
+          "begin": 307725,
+          "end": 312765,
+          "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+          "paid": "9622560071",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 56,
+          "begin": 297645,
+          "end": 302685,
+          "owner": "15fTH34bbKGMUjF1bLmTqxPYgpg481imThwhWcQfCyktyBzL",
+          "paid": "46241499758",
+          "mask": "0xffffffffffffffffffff"
+        }
+      ]
+    },
+    {
+      "coreId": 57,
+      "paraId": "3403",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3403"
+      },
+      "workplan": [],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": [
+        {
+          "core": 57,
+          "begin": 297645,
+          "end": 302685,
+          "owner": "14ibZhLk9zuhBwbtYdKqscEU7Ad3zJrrVUuq9wy7kJKq2hjY",
+          "paid": "45817859859",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 57,
+          "begin": 302685,
+          "end": 307725,
+          "owner": "145wS9x6ZqohEpHQd4WGu42g9BCZ3L7iXii2VSEevsXs3wvx",
+          "paid": "1511071942",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 57,
+          "begin": 307725,
+          "end": 312765,
+          "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+          "paid": "9621750565",
+          "mask": "0xffffffffffffffffffff"
+        }
+      ]
+    },
+    {
+      "coreId": 58,
+      "paraId": "Pool",
+      "workload": {
+        "isPool": true,
+        "isTask": false,
+        "mask": "0xffffffffffffffffffff",
+        "task": "Pool"
+      },
+      "workplan": [],
+      "type": {
+        "condition": "ondemand"
+      },
+      "regions": [
+        {
+          "core": 58,
+          "begin": 302685,
+          "end": 307725,
+          "owner": "158BPpq5RRYW2LTkCyVwvcryN51JBHmq5Fy4QQ6k9tDqT9P6",
+          "paid": "1511071942",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 58,
+          "begin": 307725,
+          "end": 312765,
+          "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+          "paid": "9617163404",
+          "mask": "0xffffffffffffffffffff"
+        }
+      ]
+    },
+    {
+      "coreId": 59,
+      "paraId": "3405",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3405"
+      },
+      "workplan": [],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": [
+        {
+          "core": 59,
+          "begin": 302685,
+          "end": 307725,
+          "owner": "16hVZMikbFaJa5JGpNija63YSB7ShHEChsWW7Ytcj9Trdaxd",
+          "paid": "1511071942",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 59,
+          "begin": 307725,
+          "end": 312765,
+          "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+          "paid": "9615004732",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 59,
+          "begin": 297645,
+          "end": 302685,
+          "owner": "13ajYZo7VvCeyo3m1uV8ALx9CFHaioDfu9VPrCvFe6kJmWPh",
+          "paid": "40143245112",
+          "mask": "0xffffffffffffffffffff"
+        }
+      ]
+    },
+    {
+      "coreId": 60,
+      "paraId": "3406",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3406"
+      },
+      "workplan": [],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": [
+        {
+          "core": 60,
+          "begin": 297645,
+          "end": 302685,
+          "owner": "15k9niqckMg338cFBoz9vWFGwnCtwPBquKvqJEfHApijZkDz",
+          "paid": "37714736750",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 60,
+          "begin": 307725,
+          "end": 312765,
+          "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+          "paid": "9613385721",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 60,
+          "begin": 302685,
+          "end": 307725,
+          "owner": "16hVZMikbFaJa5JGpNija63YSB7ShHEChsWW7Ytcj9Trdaxd",
+          "paid": "1511071942",
+          "mask": "0xffffffffffffffffffff"
+        }
+      ]
+    },
+    {
+      "coreId": 61,
+      "paraId": "3395",
+      "workload": {
+        "isPool": false,
+        "isTask": true,
+        "mask": "0xffffffffffffffffffff",
+        "task": "3395"
+      },
+      "workplan": [],
+      "type": {
+        "condition": "bulk"
+      },
+      "regions": [
+        {
+          "core": 61,
+          "begin": 302685,
+          "end": 307725,
+          "owner": "16hVZMikbFaJa5JGpNija63YSB7ShHEChsWW7Ytcj9Trdaxd",
+          "paid": "1511071942",
+          "mask": "0xffffffffffffffffffff"
+        },
+        {
+          "core": 61,
+          "begin": 307725,
+          "end": 312765,
+          "owner": "16YBdgR2NXVfcgVx8vmGimJMo8CFzULktruh1bTDUnY2Ss6Q",
+          "paid": "9612576216",
+          "mask": "0xffffffffffffffffffff"
+        }
+      ]
+    }
+  ]
+}

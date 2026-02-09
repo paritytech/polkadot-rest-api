@@ -1,0 +1,1409 @@
+{
+  "at": {
+    "hash": "0x6dbd45df20d8b28177b04b8e35412989468dd2fa09803242a961cdf3fd80593c",
+    "height": "24000000"
+  },
+  "cores": [
+    {
+      "core": 0,
+      "paraId": 1001,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "1001",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 1,
+      "paraId": 1002,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "1002",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 2,
+      "paraId": 1000,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "1000",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 3,
+      "paraId": 1004,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "1004",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 4,
+      "paraId": 1005,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "1005",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 6,
+      "paraId": 2035,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2035",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 7,
+      "paraId": 3344,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3344",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 8,
+      "paraId": 3370,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3370",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 9,
+      "paraId": 3367,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3367",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 10,
+      "paraId": 2086,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2086",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 11,
+      "paraId": 2032,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2032",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 12,
+      "paraId": 2051,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2051",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 13,
+      "paraId": 3369,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3369",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 14,
+      "paraId": 2008,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2008",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 15,
+      "paraId": 2025,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2025",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 16,
+      "paraId": 2000,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2000",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 17,
+      "paraId": 2092,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2092",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 18,
+      "paraId": 2002,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2002",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 19,
+      "paraId": 2039,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2039",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 20,
+      "paraId": 2030,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2030",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 21,
+      "paraId": 2019,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2019",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 22,
+      "paraId": 2104,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2104",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 23,
+      "paraId": 2046,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2046",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 24,
+      "paraId": 3345,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3345",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 25,
+      "paraId": 3340,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3340",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 26,
+      "paraId": 3338,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3338",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 27,
+      "paraId": 2004,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2004",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 28,
+      "paraId": 3377,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3377",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 29,
+      "paraId": 3373,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3373",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 30,
+      "paraId": 2031,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2031",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 31,
+      "paraId": 3389,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3389",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 32,
+      "paraId": 3366,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3366",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 33,
+      "paraId": 2037,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2037",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 34,
+      "paraId": 2034,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2034",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 35,
+      "paraId": 2090,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2090",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 36,
+      "paraId": 3346,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3346",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 37,
+      "paraId": 2012,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2012",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 38,
+      "paraId": 3397,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3397",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 39,
+      "paraId": 2043,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2043",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 40,
+      "paraId": 2091,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2091",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 41,
+      "paraId": 2026,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2026",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 42,
+      "paraId": 3388,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3388",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 43,
+      "paraId": 3354,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3354",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 44,
+      "paraId": 2006,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2006",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 45,
+      "paraId": 2013,
+      "lifecycle": "Parachain",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2013",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 46,
+      "paraId": 2094,
+      "lifecycle": "Parathread",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2094",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 47,
+      "paraId": 2040,
+      "lifecycle": "Parathread",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2040",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 48,
+      "paraId": 3333,
+      "lifecycle": "Parathread",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3333",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 49,
+      "paraId": 2106,
+      "lifecycle": "Parathread",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2106",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 50,
+      "paraId": 2093,
+      "lifecycle": "Parathread",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2093",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 51,
+      "paraId": 2101,
+      "lifecycle": "Parathread",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2101",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 52,
+      "paraId": 2056,
+      "lifecycle": "Parathread",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "2056",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 57,
+      "paraId": 3403,
+      "lifecycle": "Parathread",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3403",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 59,
+      "paraId": 3405,
+      "lifecycle": "Parathread",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3405",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 60,
+      "paraId": 3406,
+      "lifecycle": "Parathread",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3406",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    },
+    {
+      "core": 61,
+      "paraId": 3395,
+      "lifecycle": "Parathread",
+      "info": {
+        "currentWork": {
+          "assignments": [
+            {
+              "task": "3395",
+              "ratio": 57600,
+              "remaining": 57600,
+              "isTask": true,
+              "isPool": false
+            }
+          ],
+          "endHint": null,
+          "pos": 1,
+          "step": 57600
+        },
+        "queue": {
+          "first": "0",
+          "last": "0"
+        }
+      }
+    }
+  ],
+  "coreSchedules": []
+}

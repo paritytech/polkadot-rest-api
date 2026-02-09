@@ -5,6 +5,7 @@
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use parity_scale_codec::{Decode, Encode};
+use scale_decode::DecodeAsType;
 use serde::Serialize;
 use serde_json::json;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
@@ -58,13 +59,32 @@ pub const U128_SIZE: usize = 16;
 pub type CoreMask = [u8; CORE_MASK_SIZE];
 
 // ============================================================================
+// Core Type Condition Constants
+// ============================================================================
+
+/// Core type condition: core is assigned via a lease.
+pub const CORE_TYPE_LEASE: &str = "lease";
+
+/// Core type condition: core is purchased via bulk coretime.
+pub const CORE_TYPE_BULK: &str = "bulk";
+
+/// Core type condition: core is reserved for system parachains.
+pub const CORE_TYPE_RESERVATION: &str = "reservation";
+
+/// Core type condition: core contributes to the on-demand (instantaneous) pool.
+pub const CORE_TYPE_ONDEMAND: &str = "ondemand";
+
+/// Task string for cores contributing to the instantaneous pool.
+pub const TASK_POOL: &str = "Pool";
+
+// ============================================================================
 // Shared Types
 // ============================================================================
 
 /// CoreAssignment enum representing how a core is assigned.
 /// Matches the Broker pallet's CoreAssignment type.
-/// Derives Decode/Encode for SCALE codec support.
-#[derive(Debug, Clone, PartialEq, Decode, Encode)]
+/// Derives Decode/Encode for SCALE codec support, and DecodeAsType for subxt typed decoding.
+#[derive(Debug, Clone, PartialEq, Decode, Encode, DecodeAsType)]
 pub enum CoreAssignment {
     /// Core is idle (not assigned).
     Idle,
@@ -77,15 +97,25 @@ pub enum CoreAssignment {
 impl CoreAssignment {
     /// Returns the task string representation for JSON serialization.
     /// - Task(id) -> "id"
-    /// - Pool -> "Pool"
+    /// - Pool -> TASK_POOL ("Pool")
     /// - Idle -> ""
     pub fn to_task_string(&self) -> String {
         match self {
             CoreAssignment::Idle => String::new(),
-            CoreAssignment::Pool => "Pool".to_string(),
+            CoreAssignment::Pool => TASK_POOL.to_string(),
             CoreAssignment::Task(id) => id.to_string(),
         }
     }
+}
+
+/// ScheduleItem from the Broker pallet.
+/// Contains a CoreMask and CoreAssignment.
+/// Used in Workload and Reservations storage.
+/// DecodeAsType enables efficient typed decoding via subxt's storage iteration.
+#[derive(Debug, Clone, PartialEq, Decode, Encode, DecodeAsType)]
+pub struct ScheduleItem {
+    pub mask: CoreMask,
+    pub assignment: CoreAssignment,
 }
 
 // ============================================================================
@@ -195,20 +225,16 @@ impl IntoResponse for CoretimeError {
                 }
             }
 
-            // Chain type errors - Sidecar throws Error() which becomes 500
-            CoretimeError::NotCoretimeChain => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "This endpoint is only available on coretime chains.".to_string(),
-            ),
+            // Chain type errors
+            CoretimeError::NotCoretimeChain => (StatusCode::BAD_REQUEST, self.to_string()),
+            CoretimeError::UnsupportedChainType => (StatusCode::BAD_REQUEST, self.to_string()),
 
-            // Pallet errors - Sidecar throws Error() which becomes 500
-            CoretimeError::BrokerPalletNotFound => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "The runtime does not include the broker module at this block".to_string(),
-            ),
-            CoretimeError::StorageFetchFailed { .. } => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
+            // Pallet errors — the requested resource doesn't exist at this block
+            CoretimeError::BrokerPalletNotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            CoretimeError::CoretimePalletNotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            CoretimeError::StorageFetchFailed { .. } => (StatusCode::NOT_FOUND, self.to_string()),
+
+            // Decode/iteration errors — genuine server-side failures
             CoretimeError::StorageVersionFetchFailed { .. } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
@@ -218,19 +244,9 @@ impl IntoResponse for CoretimeError {
             CoretimeError::StorageIterationError { .. } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
-
-            // Coretime info errors
             CoretimeError::ConstantFetchFailed { .. } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
-            CoretimeError::CoretimePalletNotFound => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "The runtime does not include the coretime module at this block".to_string(),
-            ),
-            CoretimeError::UnsupportedChainType => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Unsupported network type.".to_string(),
-            ),
             CoretimeError::StorageItemNotAvailableAtBlock { .. } => {
                 (StatusCode::NOT_FOUND, self.to_string())
             }
@@ -278,6 +294,24 @@ pub struct CoretimeQueryParams {
 pub fn has_broker_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
     let metadata = client_at_block.metadata();
     metadata.pallet_by_name("Broker").is_some()
+}
+
+/// Checks if the CoretimeAssignmentProvider pallet exists in the runtime metadata.
+/// This pallet is present on relay chains and contains core descriptors and schedules.
+pub fn has_coretime_assignment_provider_pallet(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> bool {
+    let metadata = client_at_block.metadata();
+    metadata
+        .pallet_by_name("CoretimeAssignmentProvider")
+        .is_some()
+}
+
+/// Checks if the Paras pallet exists in the runtime metadata.
+/// This pallet is present on relay chains and contains parachain lifecycle information.
+pub fn has_paras_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
+    let metadata = client_at_block.metadata();
+    metadata.pallet_by_name("Paras").is_some()
 }
 
 /// Checks if an error indicates that a storage item was not found in metadata.
@@ -383,23 +417,21 @@ mod tests {
     }
 
     // ------------------------------------------------------------------------
-    // HTTP Status code tests (matching Sidecar behavior)
+    // HTTP Status code tests
     // ------------------------------------------------------------------------
 
     #[tokio::test]
     async fn test_coretime_error_not_coretime_chain_status() {
         let err = CoretimeError::NotCoretimeChain;
         let response = err.into_response();
-        // Sidecar throws Error() which becomes 500
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
     async fn test_coretime_error_broker_pallet_not_found_status() {
         let err = CoretimeError::BrokerPalletNotFound;
         let response = err.into_response();
-        // Sidecar throws Error() which becomes 500
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
@@ -409,7 +441,7 @@ mod tests {
             entry: "Leases",
         };
         let response = err.into_response();
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
@@ -452,10 +484,10 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body_str = String::from_utf8(body.to_vec()).unwrap();
 
-        // Should match Sidecar format: { code: number, message: string }
-        assert!(body_str.contains("\"code\":500"));
+        // Response format: { code: number, message: string }
+        assert!(body_str.contains("\"code\":404"));
         assert!(body_str.contains("\"message\""));
-        assert!(body_str.contains("broker module"));
+        assert!(body_str.contains("Broker pallet not found"));
     }
 
     // ------------------------------------------------------------------------
@@ -531,7 +563,7 @@ mod tests {
     #[test]
     fn test_core_assignment_pool_to_string() {
         let assignment = CoreAssignment::Pool;
-        assert_eq!(assignment.to_task_string(), "Pool");
+        assert_eq!(assignment.to_task_string(), TASK_POOL);
     }
 
     #[test]
