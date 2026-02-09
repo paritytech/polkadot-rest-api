@@ -615,10 +615,10 @@ pub async fn get_era_stakers_page_count(
         .await
     {
         let raw_bytes = value.into_bytes();
-        if let Ok(exposure) = Exposure::decode(&mut &raw_bytes[..]) {
-            if exposure.total > 0 {
-                return Some(1);
-            }
+        if let Ok(exposure) = Exposure::decode(&mut &raw_bytes[..])
+            && exposure.total > 0
+        {
+            return Some(1);
         }
     }
 
@@ -639,10 +639,11 @@ pub async fn get_active_era(client_at_block: &OnlineClientAtBlock<SubstrateConfi
             return Some(era_info.index);
         }
         // Try with Option wrapper
-        if raw_bytes.len() > 1 && raw_bytes[0] == 1 {
-            if let Ok(era_info) = ActiveEraInfo::decode(&mut &raw_bytes[1..]) {
-                return Some(era_info.index);
-            }
+        if raw_bytes.len() > 1
+            && raw_bytes[0] == 1
+            && let Ok(era_info) = ActiveEraInfo::decode(&mut &raw_bytes[1..])
+        {
+            return Some(era_info.index);
         }
     }
 
