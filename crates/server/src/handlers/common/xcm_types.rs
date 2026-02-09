@@ -65,15 +65,15 @@ impl Serialize for Junctions {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(Some(1))?;
         match self {
-            Junctions::Here => map.serialize_entry("Here", &serde_json::Value::Null)?,
-            Junctions::X1(arr) => map.serialize_entry("X1", &arr.as_slice())?,
-            Junctions::X2(arr) => map.serialize_entry("X2", &arr.as_slice())?,
-            Junctions::X3(arr) => map.serialize_entry("X3", &arr.as_slice())?,
-            Junctions::X4(arr) => map.serialize_entry("X4", &arr.as_slice())?,
-            Junctions::X5(arr) => map.serialize_entry("X5", &arr.as_slice())?,
-            Junctions::X6(arr) => map.serialize_entry("X6", &arr.as_slice())?,
-            Junctions::X7(arr) => map.serialize_entry("X7", &arr.as_slice())?,
-            Junctions::X8(arr) => map.serialize_entry("X8", &arr.as_slice())?,
+            Junctions::Here => map.serialize_entry("here", &serde_json::Value::Null)?,
+            Junctions::X1(arr) => map.serialize_entry("x1", &arr.as_slice())?,
+            Junctions::X2(arr) => map.serialize_entry("x2", &arr.as_slice())?,
+            Junctions::X3(arr) => map.serialize_entry("x3", &arr.as_slice())?,
+            Junctions::X4(arr) => map.serialize_entry("x4", &arr.as_slice())?,
+            Junctions::X5(arr) => map.serialize_entry("x5", &arr.as_slice())?,
+            Junctions::X6(arr) => map.serialize_entry("x6", &arr.as_slice())?,
+            Junctions::X7(arr) => map.serialize_entry("x7", &arr.as_slice())?,
+            Junctions::X8(arr) => map.serialize_entry("x8", &arr.as_slice())?,
         }
         map.end()
     }
@@ -124,43 +124,43 @@ impl Serialize for Junction {
         let mut map = serializer.serialize_map(Some(1))?;
         match self {
             Junction::Parachain(id) => {
-                map.serialize_entry("Parachain", &format_number_with_commas(*id as u128))?
+                map.serialize_entry("parachain", &format_number_with_commas(*id as u128))?
             }
             Junction::AccountId32 { network, id } => {
                 let inner = AccountId32Inner { network, id };
-                map.serialize_entry("AccountId32", &inner)?
+                map.serialize_entry("accountId32", &inner)?
             }
             Junction::AccountIndex64 { network, index } => {
                 let inner = AccountIndex64Inner {
                     network,
                     index: *index,
                 };
-                map.serialize_entry("AccountIndex64", &inner)?
+                map.serialize_entry("accountIndex64", &inner)?
             }
             Junction::AccountKey20 { network, key } => {
                 let inner = AccountKey20Inner { network, key };
-                map.serialize_entry("AccountKey20", &inner)?
+                map.serialize_entry("accountKey20", &inner)?
             }
             Junction::PalletInstance(idx) => {
-                map.serialize_entry("PalletInstance", &idx.to_string())?
+                map.serialize_entry("palletInstance", &idx.to_string())?
             }
             Junction::GeneralIndex(idx) => {
-                map.serialize_entry("GeneralIndex", &format_number_with_commas(*idx))?
+                map.serialize_entry("generalIndex", &format_number_with_commas(*idx))?
             }
             Junction::GeneralKey { length, data } => {
                 let inner = GeneralKeyInner {
                     length: *length,
                     data,
                 };
-                map.serialize_entry("GeneralKey", &inner)?
+                map.serialize_entry("generalKey", &inner)?
             }
-            Junction::OnlyChild => map.serialize_entry("OnlyChild", &serde_json::Value::Null)?,
+            Junction::OnlyChild => map.serialize_entry("onlyChild", &serde_json::Value::Null)?,
             Junction::Plurality { id, part } => {
                 let inner = PluralityInner { id, part };
-                map.serialize_entry("Plurality", &inner)?
+                map.serialize_entry("plurality", &inner)?
             }
             Junction::GlobalConsensus(network) => {
-                map.serialize_entry("GlobalConsensus", network)?
+                map.serialize_entry("globalConsensus", network)?
             }
         }
         map.end()
@@ -264,41 +264,53 @@ pub enum NetworkId {
 
 impl Serialize for NetworkId {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(1))?;
         match self {
             NetworkId::ByGenesis(hash) => {
-                let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("ByGenesis", &format!("0x{}", hex::encode(hash)))?;
-                map.end()
+                map.serialize_entry("byGenesis", &format!("0x{}", hex::encode(hash)))?;
             }
             NetworkId::ByFork {
                 block_number,
                 block_hash,
             } => {
-                let mut map = serializer.serialize_map(Some(1))?;
                 let inner = ByForkInner {
                     block_number: *block_number,
                     block_hash,
                 };
-                map.serialize_entry("ByFork", &inner)?;
-                map.end()
+                map.serialize_entry("byFork", &inner)?;
             }
-            NetworkId::Polkadot => serializer.serialize_str("Polkadot"),
-            NetworkId::Kusama => serializer.serialize_str("Kusama"),
-            NetworkId::Westend => serializer.serialize_str("Westend"),
-            NetworkId::Rococo => serializer.serialize_str("Rococo"),
-            NetworkId::Wococo => serializer.serialize_str("Wococo"),
+            NetworkId::Polkadot => {
+                map.serialize_entry("polkadot", &serde_json::Value::Null)?;
+            }
+            NetworkId::Kusama => {
+                map.serialize_entry("kusama", &serde_json::Value::Null)?;
+            }
+            NetworkId::Westend => {
+                map.serialize_entry("westend", &serde_json::Value::Null)?;
+            }
+            NetworkId::Rococo => {
+                map.serialize_entry("rococo", &serde_json::Value::Null)?;
+            }
+            NetworkId::Wococo => {
+                map.serialize_entry("wococo", &serde_json::Value::Null)?;
+            }
             NetworkId::Ethereum { chain_id } => {
-                let mut map = serializer.serialize_map(Some(1))?;
                 let inner = EthereumInner {
                     chain_id: *chain_id,
                 };
-                map.serialize_entry("Ethereum", &inner)?;
-                map.end()
+                map.serialize_entry("ethereum", &inner)?;
             }
-            NetworkId::BitcoinCore => serializer.serialize_str("BitcoinCore"),
-            NetworkId::BitcoinCash => serializer.serialize_str("BitcoinCash"),
-            NetworkId::PolkadotBulletin => serializer.serialize_str("PolkadotBulletin"),
+            NetworkId::BitcoinCore => {
+                map.serialize_entry("bitcoinCore", &serde_json::Value::Null)?;
+            }
+            NetworkId::BitcoinCash => {
+                map.serialize_entry("bitcoinCash", &serde_json::Value::Null)?;
+            }
+            NetworkId::PolkadotBulletin => {
+                map.serialize_entry("polkadotBulletin", &serde_json::Value::Null)?;
+            }
         }
+        map.end()
     }
 }
 
@@ -339,7 +351,6 @@ impl Serialize for EthereumInner {
     Encode,
     subxt::ext::scale_decode::DecodeAsType,
     subxt::ext::scale_encode::EncodeAsType,
-    Serialize,
 )]
 #[decode_as_type(crate_path = "subxt::ext::scale_decode")]
 #[encode_as_type(crate_path = "subxt::ext::scale_encode")]
@@ -356,6 +367,31 @@ pub enum BodyId {
     Treasury,
 }
 
+impl Serialize for BodyId {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(1))?;
+        match self {
+            BodyId::Unit => map.serialize_entry("unit", &serde_json::Value::Null)?,
+            BodyId::Moniker(data) => {
+                map.serialize_entry("moniker", &format!("0x{}", hex::encode(data)))?
+            }
+            BodyId::Index(idx) => {
+                map.serialize_entry("index", &format_number_with_commas(*idx as u128))?
+            }
+            BodyId::Executive => map.serialize_entry("executive", &serde_json::Value::Null)?,
+            BodyId::Technical => map.serialize_entry("technical", &serde_json::Value::Null)?,
+            BodyId::Legislative => map.serialize_entry("legislative", &serde_json::Value::Null)?,
+            BodyId::Judicial => map.serialize_entry("judicial", &serde_json::Value::Null)?,
+            BodyId::Defense => map.serialize_entry("defense", &serde_json::Value::Null)?,
+            BodyId::Administration => {
+                map.serialize_entry("administration", &serde_json::Value::Null)?
+            }
+            BodyId::Treasury => map.serialize_entry("treasury", &serde_json::Value::Null)?,
+        }
+        map.end()
+    }
+}
+
 /// XCM v3 BodyPart enum (used by Plurality junction).
 #[derive(
     Debug,
@@ -364,7 +400,6 @@ pub enum BodyId {
     Encode,
     subxt::ext::scale_decode::DecodeAsType,
     subxt::ext::scale_encode::EncodeAsType,
-    Serialize,
 )]
 #[decode_as_type(crate_path = "subxt::ext::scale_decode")]
 #[encode_as_type(crate_path = "subxt::ext::scale_encode")]
@@ -392,6 +427,70 @@ pub enum BodyPart {
         #[codec(compact)]
         denom: u32,
     },
+}
+
+impl Serialize for BodyPart {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(1))?;
+        match self {
+            BodyPart::Voice => map.serialize_entry("voice", &serde_json::Value::Null)?,
+            BodyPart::Members { count } => {
+                #[derive(Serialize)]
+                struct Inner {
+                    count: String,
+                }
+                map.serialize_entry(
+                    "members",
+                    &Inner {
+                        count: format_number_with_commas(*count as u128),
+                    },
+                )?
+            }
+            BodyPart::Fraction { nom, denom } => {
+                #[derive(Serialize)]
+                struct Inner {
+                    nom: String,
+                    denom: String,
+                }
+                map.serialize_entry(
+                    "fraction",
+                    &Inner {
+                        nom: format_number_with_commas(*nom as u128),
+                        denom: format_number_with_commas(*denom as u128),
+                    },
+                )?
+            }
+            BodyPart::AtLeastProportion { nom, denom } => {
+                #[derive(Serialize)]
+                struct Inner {
+                    nom: String,
+                    denom: String,
+                }
+                map.serialize_entry(
+                    "atLeastProportion",
+                    &Inner {
+                        nom: format_number_with_commas(*nom as u128),
+                        denom: format_number_with_commas(*denom as u128),
+                    },
+                )?
+            }
+            BodyPart::MoreThanProportion { nom, denom } => {
+                #[derive(Serialize)]
+                struct Inner {
+                    nom: String,
+                    denom: String,
+                }
+                map.serialize_entry(
+                    "moreThanProportion",
+                    &Inner {
+                        nom: format_number_with_commas(*nom as u128),
+                        denom: format_number_with_commas(*denom as u128),
+                    },
+                )?
+            }
+        }
+        map.end()
+    }
 }
 
 // ============================================================================
@@ -481,7 +580,7 @@ mod tests {
             result
         );
         assert_eq!(result["parents"], "0");
-        assert!(result["interior"].get("Here").is_some());
+        assert!(result["interior"].get("here").is_some());
     }
 
     #[test]

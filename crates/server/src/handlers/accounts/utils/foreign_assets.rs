@@ -1,17 +1,9 @@
-// ================================================================================================
-// Foreign Assets Data Fetching
-// ================================================================================================
-//
-// Uses typed DecodeAsType decoding (subxt 0.50.0 pattern) for efficient
-// storage queries against the ForeignAssets pallet. Falls back to scale_value
-// decoding for older runtimes when the typed decode fails.
-
 use crate::handlers::accounts::{AccountsError, ForeignAssetBalance};
-use crate::handlers::common::xcm_types::{Location, BLAKE2_128_HASH_LEN};
+use crate::handlers::common::xcm_types::{BLAKE2_128_HASH_LEN, Location};
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use sp_core::crypto::AccountId32;
-use subxt::{OnlineClientAtBlock, SubstrateConfig};
+use subxt::{OnlineClientAtBlock, SubstrateConfig, ext::scale_decode::DecodeAsType};
 
 // ============================================================================
 // SCALE Decode Types for ForeignAssets::Account storage
@@ -22,8 +14,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 ///
 /// Modern runtimes (post-v9160) use this enum. The `Sufficient` variant
 /// indicates the asset is self-sufficient (does not require an ED deposit).
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+#[derive(Debug, Clone, Decode, DecodeAsType)]
 #[allow(dead_code)] // Fields needed for SCALE decoding layout
 enum ExistenceReason {
     Consumer,
@@ -37,8 +28,7 @@ enum ExistenceReason {
 /// This matches the modern runtime layout (post-v9160 with `reason` field).
 ///
 /// Storage type: DoubleMap(Location, AccountId32) -> Option<AssetAccount>
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+#[derive(Debug, Clone, Decode, DecodeAsType)]
 #[allow(dead_code)] // `extra` needed for SCALE decoding layout
 struct AssetAccount {
     balance: u128,
@@ -48,8 +38,7 @@ struct AssetAccount {
 }
 
 /// Status of an asset account (modern runtimes).
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+#[derive(Debug, Clone, Decode, DecodeAsType)]
 enum AssetAccountStatus {
     Liquid,
     Frozen,
@@ -147,13 +136,11 @@ pub async fn query_foreign_assets(
                             asset_account.status,
                             AssetAccountStatus::Frozen | AssetAccountStatus::Blocked
                         );
-                        let is_sufficient = matches!(
-                            asset_account.reason,
-                            ExistenceReason::Sufficient
-                        );
+                        let is_sufficient =
+                            matches!(asset_account.reason, ExistenceReason::Sufficient);
 
-                        let multi_location_json = serde_json::to_value(location)
-                            .unwrap_or(serde_json::json!({}));
+                        let multi_location_json =
+                            serde_json::to_value(location).unwrap_or(serde_json::json!({}));
 
                         balances.push(ForeignAssetBalance {
                             multi_location: multi_location_json,
@@ -171,10 +158,9 @@ pub async fn query_foreign_assets(
                         // Fallback: use scale_value decode for older runtimes
                         if let Some(fb) =
                             fallback_decode_foreign_asset_account(&storage_val, location)
+                            && fb.balance != "0"
                         {
-                            if fb.balance != "0" {
-                                balances.push(fb);
-                            }
+                            balances.push(fb);
                         }
                     }
                 }
@@ -199,9 +185,8 @@ pub fn parse_foreign_asset_locations(
     let mut locations = Vec::new();
     for json_str in json_strings {
         // Parse JSON string
-        let json_value: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
-            AccountsError::InvalidForeignAsset(format!("Invalid JSON: {}", e))
-        })?;
+        let json_value: serde_json::Value = serde_json::from_str(json_str)
+            .map_err(|e| AccountsError::InvalidForeignAsset(format!("Invalid JSON: {}", e)))?;
 
         // Deserialize into staging_xcm Location (which has Deserialize)
         let xcm_location: staging_xcm::v4::Location =

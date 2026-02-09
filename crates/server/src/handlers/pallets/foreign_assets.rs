@@ -105,7 +105,6 @@ struct AssetMetadataStorage {
     is_frozen: bool,
 }
 
-
 // ============================================================================
 // Main Handler
 // ============================================================================
@@ -370,7 +369,6 @@ async fn fetch_all_foreign_assets(
 
     Ok(items)
 }
-
 
 /// Format asset details into JSON.
 fn format_asset_details(details: &AssetDetails, ss58_prefix: u16) -> serde_json::Value {

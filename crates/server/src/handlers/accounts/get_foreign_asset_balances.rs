@@ -102,7 +102,8 @@ async fn query_foreign_asset_balances(
         }
     };
 
-    let foreign_assets = query_foreign_assets(client_at_block, account, &locations_to_query).await?;
+    let foreign_assets =
+        query_foreign_assets(client_at_block, account, &locations_to_query).await?;
 
     Ok(ForeignAssetBalancesResponse {
         at: BlockInfo {
