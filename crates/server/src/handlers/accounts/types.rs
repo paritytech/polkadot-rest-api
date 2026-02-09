@@ -984,7 +984,47 @@ pub struct ForeignAssetBalancesQueryParams {
 
     /// Optional list of foreign asset multilocations as JSON strings to query
     /// (queries all if omitted). Each element is a JSON-encoded XCM Location.
-    pub foreign_assets: Option<Vec<String>>,
+    /// Format follows Express 4.x array params: ?foreignAssets[]=JSON1&foreignAssets[]=JSON2
+    #[serde(
+        default,
+        rename = "foreignAssets[]",
+        deserialize_with = "string_or_vec"
+    )]
+    pub foreign_assets: Vec<String>,
+}
+
+/// Deserializer that accepts either a single string or a sequence of strings.
+/// Needed because `serde_urlencoded` (used by axum's `Query`) deserializes a
+/// single repeated query param as a plain string, not a one-element Vec.
+fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct StringOrVec;
+
+    impl<'de> de::Visitor<'de> for StringOrVec {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or a sequence of strings")
+        }
+
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<Vec<String>, E> {
+            Ok(vec![value.to_owned()])
+        }
+
+        fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<String>, A::Error> {
+            let mut vec = Vec::new();
+            while let Some(val) = seq.next_element()? {
+                vec.push(val);
+            }
+            Ok(vec)
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVec)
 }
 
 /// Response for GET /accounts/{accountId}/foreign-asset-balances

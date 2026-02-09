@@ -77,7 +77,7 @@ async fn query_foreign_asset_balances(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     block: &utils::ResolvedBlock,
-    foreign_assets_filter: &Option<Vec<String>>,
+    foreign_assets_filter: &[String],
 ) -> Result<ForeignAssetBalancesResponse, AccountsError> {
     // Check pallet exists
     let pallet_exists = client_at_block
@@ -91,15 +91,12 @@ async fn query_foreign_asset_balances(
     }
 
     // Determine which locations to query
-    let locations_to_query = match foreign_assets_filter {
-        Some(json_strings) if !json_strings.is_empty() => {
-            // Parse each JSON string as a Location
-            parse_foreign_asset_locations(json_strings)?
-        }
-        _ => {
-            // No filter: query all registered foreign assets
-            query_all_foreign_asset_locations(client_at_block).await?
-        }
+    let locations_to_query = if foreign_assets_filter.is_empty() {
+        // No filter: query all registered foreign assets
+        query_all_foreign_asset_locations(client_at_block).await?
+    } else {
+        // Parse each JSON string as a Location
+        parse_foreign_asset_locations(foreign_assets_filter)?
     };
 
     let foreign_assets =

@@ -179,14 +179,22 @@ pub async fn query_foreign_assets(
 ///
 /// Uses `staging_xcm::v4::Location` for JSON deserialization (which has full
 /// serde support), then SCALE-encodes and decodes into our typed Location struct.
+///
+/// Accepts both numeric (`"parents": 2`) and string-encoded (`"parents": "2"`)
+/// number values to be compatible with Sidecar's query format where numbers
+/// are represented as strings.
 pub fn parse_foreign_asset_locations(
     json_strings: &[String],
 ) -> Result<Vec<Location>, AccountsError> {
     let mut locations = Vec::new();
     for json_str in json_strings {
         // Parse JSON string
-        let json_value: serde_json::Value = serde_json::from_str(json_str)
+        let mut json_value: serde_json::Value = serde_json::from_str(json_str)
             .map_err(|e| AccountsError::InvalidForeignAsset(format!("Invalid JSON: {}", e)))?;
+
+        // Coerce string-encoded numbers to actual numbers so staging_xcm can
+        // deserialize them (it expects u8/u32/u64/u128, not strings).
+        coerce_string_numbers(&mut json_value);
 
         // Deserialize into staging_xcm Location (which has Deserialize)
         let xcm_location: staging_xcm::v4::Location =
@@ -203,6 +211,34 @@ pub fn parse_foreign_asset_locations(
         locations.push(our_location);
     }
     Ok(locations)
+}
+
+/// Recursively convert string-encoded numbers to JSON numbers.
+///
+/// Sidecar formats all numbers as strings (e.g., `"parents": "2"`,
+/// `"Parachain": "1000"`), but `staging_xcm`'s serde `Deserialize` expects
+/// actual JSON numbers. This coerces any string that parses as a `u128`
+/// into a `Number`. Hex strings ("0x...") and other non-numeric strings
+/// are left unchanged.
+fn coerce_string_numbers(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::String(s) => {
+            if let Ok(n) = s.parse::<u128>() {
+                *value = serde_json::json!(n);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr.iter_mut() {
+                coerce_string_numbers(item);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for val in map.values_mut() {
+                coerce_string_numbers(val);
+            }
+        }
+        _ => {}
+    }
 }
 
 // ============================================================================
