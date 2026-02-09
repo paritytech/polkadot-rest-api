@@ -87,3 +87,11 @@ pub fn decode_address_to_ss58(hex_str: &str, ss58_prefix: u16) -> Option<String>
             .to_ss58check_with_version(sp_core::crypto::Ss58AddressFormat::custom(ss58_prefix)),
     )
 }
+
+pub fn to_camel_case(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
+    }
+}

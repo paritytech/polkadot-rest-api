@@ -405,6 +405,67 @@ fn format_id_with_comma(id: u32) -> String {
 }
 
 // ============================================================================
+// RC (Relay Chain) Handler
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcOnGoingReferendaQueryParams {
+    pub at: Option<String>,
+}
+
+/// Handler for GET `/rc/pallets/on-going-referenda`
+///
+/// Returns ongoing referenda from the relay chain.
+pub async fn rc_pallets_on_going_referenda(
+    State(state): State<AppState>,
+    Query(params): Query<RcOnGoingReferendaQueryParams>,
+) -> Result<Response, PalletError> {
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_chain_info = state
+        .relay_chain_info
+        .as_ref()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
+    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+
+    let client_at_block = relay_client.at_block(resolved.number).await?;
+
+    let at = AtResponse {
+        hash: resolved.hash.clone(),
+        height: resolved.number.to_string(),
+    };
+
+    let referenda =
+        fetch_ongoing_referenda(&client_at_block, relay_chain_info.ss58_prefix, &at.height).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(OnGoingReferendaResponse {
+            at,
+            referenda,
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        }),
+    )
+        .into_response())
+}
+
+// ============================================================================
 // Unit Tests
 // ============================================================================
 

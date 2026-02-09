@@ -8,6 +8,7 @@
 use crate::handlers::pallets::common::{AtResponse, PalletError};
 use crate::state::AppState;
 use crate::utils;
+use crate::utils::format::to_camel_case;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
@@ -18,16 +19,6 @@ use axum::{
 use config::ChainType;
 use serde::{Deserialize, Serialize};
 use subxt::Metadata;
-
-/// Convert first character to lowercase (matching Sidecar's camelCase behavior)
-fn to_camel_case(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
-    }
-}
-
 // ============================================================================
 // Request/Response Types
 // ============================================================================
@@ -464,6 +455,153 @@ fn extract_pallet_constants(
     })
 }
 
+// ============================================================================
+// RC (Relay Chain) Handlers
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcConstantsQueryParams {
+    pub at: Option<String>,
+    #[serde(default)]
+    pub only_ids: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcConstantItemQueryParams {
+    pub at: Option<String>,
+    #[serde(default)]
+    pub metadata: bool,
+}
+
+/// Handler for GET `/rc/pallets/{palletId}/consts`
+///
+/// Returns constants from the relay chain's pallet metadata.
+pub async fn rc_pallets_constants(
+    State(state): State<AppState>,
+    Path(pallet_id): Path<String>,
+    Query(params): Query<RcConstantsQueryParams>,
+) -> Result<Response, PalletError> {
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
+    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+
+    let client_at_block = relay_client.at_block(resolved.number).await?;
+    let metadata = client_at_block.metadata();
+
+    let pallet_info = extract_pallet_constants(&metadata, &pallet_id)?;
+
+    let at = AtResponse {
+        hash: resolved.hash.clone(),
+        height: resolved.number.to_string(),
+    };
+
+    let items = if params.only_ids {
+        ConstantsItems::OnlyIds(
+            pallet_info
+                .constants
+                .iter()
+                .map(|c| c.name.clone())
+                .collect(),
+        )
+    } else {
+        ConstantsItems::Full(pallet_info.constants)
+    };
+
+    Ok((
+        StatusCode::OK,
+        Json(PalletConstantsResponse {
+            at,
+            pallet: pallet_id.to_lowercase(),
+            pallet_index: pallet_info.index.to_string(),
+            items,
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        }),
+    )
+        .into_response())
+}
+
+/// Handler for GET `/rc/pallets/{palletId}/consts/{constantItemId}`
+///
+/// Returns a specific constant from the relay chain's pallet metadata.
+pub async fn rc_pallets_constant_item(
+    State(state): State<AppState>,
+    Path((pallet_id, constant_item_id)): Path<(String, String)>,
+    Query(params): Query<RcConstantItemQueryParams>,
+) -> Result<Response, PalletError> {
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
+    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+
+    let client_at_block = relay_client.at_block(resolved.number).await?;
+    let metadata = client_at_block.metadata();
+
+    let pallet_info = extract_pallet_constants(&metadata, &pallet_id)?;
+
+    let constant = pallet_info
+        .constants
+        .iter()
+        .find(|c| c.name.to_lowercase() == constant_item_id.to_lowercase())
+        .ok_or_else(|| PalletError::ConstantItemNotFound {
+            pallet: pallet_info.name.clone(),
+            item: constant_item_id.clone(),
+        })?;
+
+    let at = AtResponse {
+        hash: resolved.hash.clone(),
+        height: resolved.number.to_string(),
+    };
+
+    let metadata_field = if params.metadata {
+        Some(constant.clone())
+    } else {
+        None
+    };
+
+    Ok((
+        StatusCode::OK,
+        Json(PalletConstantItemResponse {
+            at,
+            pallet: pallet_id.to_lowercase(),
+            pallet_index: pallet_info.index.to_string(),
+            constants_item: to_camel_case(&constant_item_id),
+            metadata: metadata_field,
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        }),
+    )
+        .into_response())
+}
 // ============================================================================
 // Tests
 // ============================================================================

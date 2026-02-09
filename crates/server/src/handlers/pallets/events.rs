@@ -260,6 +260,139 @@ fn extract_pallet_events(
 }
 
 // ============================================================================
+// RC (Relay Chain) Handlers
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcEventsQueryParams {
+    pub at: Option<String>,
+    #[serde(default)]
+    pub only_ids: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcEventItemQueryParams {
+    pub at: Option<String>,
+    #[serde(default)]
+    pub metadata: bool,
+}
+
+/// Handler for GET `/rc/pallets/{palletId}/events`
+///
+/// Returns events from the relay chain's pallet metadata.
+pub async fn rc_pallet_events(
+    State(state): State<AppState>,
+    Path(pallet_id): Path<String>,
+    Query(params): Query<RcEventsQueryParams>,
+) -> Result<Response, PalletError> {
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
+    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+
+    let client_at_block = relay_client.at_block(resolved.number).await?;
+    let metadata = client_at_block.metadata();
+
+    let pallet_info = extract_pallet_events(&metadata, &pallet_id)?;
+
+    let at = AtResponse {
+        hash: resolved.hash.clone(),
+        height: resolved.number.to_string(),
+    };
+
+    let items = if params.only_ids {
+        EventsItems::OnlyIds(pallet_info.events.iter().map(|e| e.name.clone()).collect())
+    } else {
+        EventsItems::Full(pallet_info.events)
+    };
+
+    Ok((
+        StatusCode::OK,
+        Json(PalletEventsResponse {
+            at,
+            pallet: pallet_id.to_lowercase(),
+            pallet_index: pallet_info.index.to_string(),
+            items,
+        }),
+    )
+        .into_response())
+}
+
+/// Handler for GET `/rc/pallets/{palletId}/events/{eventItemId}`
+///
+/// Returns a specific event from the relay chain's pallet metadata.
+pub async fn rc_pallet_event_item(
+    State(state): State<AppState>,
+    Path((pallet_id, event_item_id)): Path<(String, String)>,
+    Query(params): Query<RcEventItemQueryParams>,
+) -> Result<Response, PalletError> {
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
+    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+
+    let client_at_block = relay_client.at_block(resolved.number).await?;
+    let metadata = client_at_block.metadata();
+
+    let pallet_info = extract_pallet_events(&metadata, &pallet_id)?;
+
+    let event = pallet_info
+        .events
+        .iter()
+        .find(|e| e.name.to_lowercase() == event_item_id.to_lowercase())
+        .ok_or_else(|| PalletError::EventNotFound(event_item_id.clone()))?;
+
+    let at = AtResponse {
+        hash: resolved.hash.clone(),
+        height: resolved.number.to_string(),
+    };
+
+    let metadata_field = if params.metadata {
+        Some(event.clone())
+    } else {
+        None
+    };
+
+    Ok((
+        StatusCode::OK,
+        Json(PalletEventItemResponse {
+            at,
+            pallet: pallet_id.to_lowercase(),
+            pallet_index: pallet_info.index.to_string(),
+            event_item: event.name.to_lower_camel_case(),
+            metadata: metadata_field,
+        }),
+    )
+        .into_response())
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
