@@ -43,6 +43,13 @@ pub fn accounts_routes(registry: &RouteRegistry) -> Router<AppState> {
         .route_registered(
             registry,
             API_VERSION,
+            "/accounts/:accountId/foreign-asset-balances",
+            "get",
+            get(accounts::get_foreign_asset_balances),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
             "/accounts/:accountId/pool-asset-balances",
             "get",
             get(accounts::get_pool_asset_balances),
