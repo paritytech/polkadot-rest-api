@@ -23,6 +23,7 @@ struct UnlockChunkCompact {
 
 /// Unlocking chunk in staking ledger (non-compact, older runtimes)
 #[derive(Debug, Clone, Decode)]
+#[allow(dead_code)]
 struct UnlockChunkNonCompact {
     value: u128,
     era: u32,
@@ -67,12 +68,14 @@ struct StakingLedgerOld {
 }
 
 /// Minimal staking ledger - manual decoding as last resort
+#[allow(dead_code)]
 struct StakingLedgerMinimal {
     stash: [u8; 32],
     total: u128,
     active: u128,
 }
 
+#[allow(dead_code)]
 impl StakingLedgerMinimal {
     fn decode_from_bytes(raw_bytes: &[u8]) -> Option<Self> {
         if raw_bytes.len() < 32 {
@@ -290,14 +293,14 @@ pub async fn get_staking_ledger(
                     })
                     .collect(),
             });
-        } else if let Ok(ledger) = StakingLedgerLegacyCompact::decode(&mut &raw_bytes[..]) {
+        } else if let Ok(_ledger) = StakingLedgerLegacyCompact::decode(&mut &raw_bytes[..]) {
             // TODO: Handle legacy_claimed_rewards if needed
-        } else if let Ok(ledger) = StakingLedgerOld::decode(&mut &raw_bytes[..]) {
+        } else if let Ok(_ledger) = StakingLedgerOld::decode(&mut &raw_bytes[..]) {
             // TODO: Handle claimed_rewards if needed
         }
 
         return Err(StakingStorageError::DecodeFailed(
-            "Failed to decode staking ledger: unknown type".into()
+            "Failed to decode staking ledger: unknown type".into(),
         ));
     }
 
@@ -468,27 +471,70 @@ pub async fn get_claimed_pages(
     match claimed_rewards_result {
         Ok(value) => {
             let raw_bytes = value.into_bytes();
+
+            // SCALE encoding for empty Vec is a single byte 0x00 (compact length = 0)
+            // If we see this, it means no pages are claimed
+            if raw_bytes.len() == 1 && raw_bytes[0] == 0 {
+                return Some(vec![]);
+            }
+
+            // Check if it might be Option<Vec<u32>> wrapped:
+            // - None = [0x00] (handled above)
+            // - Some(vec![]) = [0x01, 0x00]
+            // - Some(vec![0]) = [0x01, 0x04, 0x00, 0x00, 0x00, 0x00]
+            if raw_bytes.len() >= 2 && raw_bytes[0] == 0x01 {
+                // This looks like Some(...), try decoding the inner value
+                let inner_bytes = &raw_bytes[1..];
+
+                if inner_bytes.len() == 1 && inner_bytes[0] == 0 {
+                    return Some(vec![]);
+                }
+
+                if let Ok(pages) = Vec::<u32>::decode(&mut &inner_bytes[..]) {
+                    return Some(pages);
+                }
+            }
+
+            // For a non-empty Vec<u32>, we need at least 5 bytes:
+            // - 1 byte for compact length (0x04 for length 1)
+            // - 4 bytes for each u32 element
+            // If we have fewer bytes, something is wrong - treat as unclaimed
+            if raw_bytes.len() < 5 {
+                return Some(vec![]);
+            }
+
+            // Try decoding as Vec<u32>
             if let Ok(pages) = Vec::<u32>::decode(&mut &raw_bytes[..]) {
                 return Some(pages);
             }
+            // Try decoding as Vec<Compact<u32>>
             if let Ok(pages) = Vec::<parity_scale_codec::Compact<u32>>::decode(&mut &raw_bytes[..])
             {
-                return Some(pages.into_iter().map(|c| c.0).collect());
+                let pages: Vec<u32> = pages.into_iter().map(|c| c.0).collect();
+                return Some(pages);
             }
-            if !raw_bytes.is_empty() {
-                return Some(vec![0]);
-            }
+            // If we can't decode, assume unclaimed (conservative approach)
             return Some(vec![]);
         }
         Err(e) => {
             let err_str = format!("{:?}", e);
-            if !err_str.contains("Metadata") && !err_str.contains("Pallet") {
+            let err_lower = err_str.to_lowercase();
+            // Check if this is a "storage not found" error vs. other errors
+            let is_not_found = err_lower.contains("storagenotfound")
+                || err_lower.contains("not found")
+                || err_lower.contains("notfound")
+                || err_lower.contains("decodingfailed")
+                || err_lower.contains("none")
+                || err_lower.contains("empty");
+
+            // For modern runtimes, if ClaimedRewards key doesn't exist, it means unclaimed
+            if is_not_found {
                 return Some(vec![]);
             }
         }
     }
 
-    // Try Staking.ErasClaimedRewards (alternative name)
+    // Try Staking.ErasClaimedRewards (alternative name used in some runtimes)
     let eras_claimed_storage = subxt::dynamic::storage::<_, ()>("Staking", "ErasClaimedRewards");
     let eras_claimed_result = client_at_block
         .storage()
@@ -498,32 +544,42 @@ pub async fn get_claimed_pages(
     match eras_claimed_result {
         Ok(value) => {
             let raw_bytes = value.into_bytes();
+
             if let Ok(pages) = Vec::<u32>::decode(&mut &raw_bytes[..]) {
                 return Some(pages);
             }
             if let Ok(pages) = Vec::<parity_scale_codec::Compact<u32>>::decode(&mut &raw_bytes[..])
             {
-                return Some(pages.into_iter().map(|c| c.0).collect());
+                let pages: Vec<u32> = pages.into_iter().map(|c| c.0).collect();
+                return Some(pages);
             }
-            if !raw_bytes.is_empty() {
-                return Some(vec![0]);
-            }
+            // If we can't decode, assume unclaimed
             return Some(vec![]);
         }
         Err(e) => {
             let err_str = format!("{:?}", e);
-            if !err_str.contains("Metadata") && !err_str.contains("Pallet") {
+            let err_lower = err_str.to_lowercase();
+            let is_not_found = err_lower.contains("storagenotfound")
+                || err_lower.contains("not found")
+                || err_lower.contains("notfound")
+                || err_lower.contains("decodingfailed")
+                || err_lower.contains("none")
+                || err_lower.contains("empty");
+
+            if is_not_found {
                 return Some(vec![]);
             }
         }
     }
 
-    // Fall back to ledger's legacy_claimed_rewards
-    if let Some(claimed) = check_ledger_claimed_rewards(client_at_block, &stash_bytes, era).await {
-        return Some(if claimed { vec![0] } else { vec![] });
-    }
-
-    None
+    // NOTE: We intentionally do NOT fall back to the legacy ledger's claimed_rewards field.
+    // On modern runtimes (Kusama/Polkadot), the ClaimedRewards storage is the authoritative source.
+    // The legacy ledger decode can produce false positives when decoding modern ledger bytes.
+    //
+    // If we reached here, it means both ClaimedRewards and ErasClaimedRewards fetches failed
+    // with errors that weren't "not found" - this is unusual and might indicate a problem.
+    // In this case, assume unclaimed (conservative approach that allows payouts to show).
+    Some(vec![])
 }
 
 /// Get page count for a validator at a specific era.
@@ -559,20 +615,476 @@ pub async fn get_era_stakers_page_count(
         .await
     {
         let raw_bytes = value.into_bytes();
-        if let Ok(exposure) = Exposure::decode(&mut &raw_bytes[..])
-            && exposure.total > 0
-        {
-            return Some(1);
+        if let Ok(exposure) = Exposure::decode(&mut &raw_bytes[..]) {
+            if exposure.total > 0 {
+                return Some(1);
+            }
         }
     }
 
     None
+}
+
+/// Get active era from `Staking.ActiveEra` storage.
+///
+/// Returns `Some(era_index)` if found, `None` otherwise.
+pub async fn get_active_era(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<u32> {
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ActiveEra");
+
+    if let Ok(value) = client_at_block.storage().fetch(storage_addr, ()).await {
+        let raw_bytes = value.into_bytes();
+        // ActiveEra is Option<ActiveEraInfo { index: u32, start: Option<u64> }>
+        // First try decoding the struct
+        if let Ok(era_info) = ActiveEraInfo::decode(&mut &raw_bytes[..]) {
+            return Some(era_info.index);
+        }
+        // Try with Option wrapper
+        if raw_bytes.len() > 1 && raw_bytes[0] == 1 {
+            if let Ok(era_info) = ActiveEraInfo::decode(&mut &raw_bytes[1..]) {
+                return Some(era_info.index);
+            }
+        }
+    }
+
+    None
+}
+
+/// Active era info structure
+#[derive(Debug, Clone, Decode)]
+#[allow(dead_code)]
+struct ActiveEraInfo {
+    index: u32,
+    start: Option<u64>,
+}
+
+/// Era reward points result
+pub type EraRewardPointsResult = (u32, std::collections::HashMap<[u8; 32], u32>);
+
+/// Get era reward points from `Staking.ErasRewardPoints` storage.
+///
+/// Returns `Some((total_points, individual_map))` if found, `None` otherwise.
+pub async fn get_era_reward_points(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+) -> Option<EraRewardPointsResult> {
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasRewardPoints");
+
+    if let Ok(value) = client_at_block.storage().fetch(storage_addr, (era,)).await {
+        let raw_bytes = value.into_bytes();
+        if let Ok(points) = EraRewardPointsStruct::decode(&mut &raw_bytes[..]) {
+            let individual: std::collections::HashMap<[u8; 32], u32> =
+                points.individual.into_iter().collect();
+            return Some((points.total, individual));
+        }
+    }
+
+    None
+}
+
+/// Era reward points structure
+#[derive(Debug, Clone, Decode)]
+struct EraRewardPointsStruct {
+    total: u32,
+    individual: Vec<([u8; 32], u32)>,
+}
+
+/// Get total era validator reward from `Staking.ErasValidatorReward` storage.
+///
+/// Returns `Some(total_payout)` if found, `None` otherwise.
+pub async fn get_era_validator_reward(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+) -> Option<u128> {
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasValidatorReward");
+
+    if let Ok(value) = client_at_block.storage().fetch(storage_addr, (era,)).await {
+        let raw_bytes = value.into_bytes();
+        if let Ok(reward) = u128::decode(&mut &raw_bytes[..]) {
+            return Some(reward);
+        }
+    }
+
+    None
+}
+
+/// Get validator preferences (commission) for an era.
+///
+/// Returns `Some(commission)` if found, `None` otherwise.
+/// Commission is in parts per billion (0 - 1_000_000_000).
+pub async fn get_era_validator_prefs(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+    validator: &AccountId32,
+) -> Option<u32> {
+    let validator_bytes: [u8; 32] = *validator.as_ref();
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasValidatorPrefs");
+
+    if let Ok(value) = client_at_block
+        .storage()
+        .fetch(storage_addr, (era, validator_bytes))
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        if let Ok(prefs) = ValidatorPrefs::decode(&mut &raw_bytes[..]) {
+            return Some(prefs.commission);
+        }
+    }
+
+    None
+}
+
+/// Validator preferences structure
+#[derive(Debug, Clone, Decode)]
+#[allow(dead_code)]
+struct ValidatorPrefs {
+    #[codec(compact)]
+    commission: u32,
+    blocked: bool,
+}
+
+/// Exposure data: (total, own, others as Vec<(account_bytes, value)>)
+pub type ExposureData = (u128, u128, Vec<([u8; 32], u128)>);
+
+/// Get era stakers from `Staking.ErasStakersClipped` storage (legacy).
+///
+/// Returns `Some((total, own, others))` if found, `None` otherwise.
+pub async fn get_era_stakers_clipped(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+    validator: &AccountId32,
+) -> Option<ExposureData> {
+    let validator_bytes: [u8; 32] = *validator.as_ref();
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasStakersClipped");
+
+    if let Ok(value) = client_at_block
+        .storage()
+        .fetch(storage_addr, (era, validator_bytes))
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        if let Ok(exposure) = Exposure::decode(&mut &raw_bytes[..]) {
+            let others: Vec<([u8; 32], u128)> = exposure
+                .others
+                .into_iter()
+                .map(|ie| (ie.who, ie.value))
+                .collect();
+            return Some((exposure.total, exposure.own, others));
+        }
+    }
+
+    None
+}
+
+/// Get era stakers overview from `Staking.ErasStakersOverview` storage (paged staking).
+///
+/// Returns `Some((total, own, page_count))` if found, `None` otherwise.
+pub async fn get_era_stakers_overview(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+    validator: &AccountId32,
+) -> Option<(u128, u128, u32)> {
+    let validator_bytes: [u8; 32] = *validator.as_ref();
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasStakersOverview");
+
+    if let Ok(value) = client_at_block
+        .storage()
+        .fetch(storage_addr, (era, validator_bytes))
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        if let Ok(overview) = PagedExposureMetadata::decode(&mut &raw_bytes[..]) {
+            return Some((overview.total, overview.own, overview.page_count));
+        }
+    }
+
+    None
+}
+
+/// Paged exposure data: (page_total, others as Vec<(account_bytes, value)>)
+pub type ExposurePageData = (u128, Vec<([u8; 32], u128)>);
+
+/// Get era stakers page from `Staking.ErasStakersPaged` storage.
+///
+/// Returns `Some((page_total, others))` if found, `None` otherwise.
+pub async fn get_era_stakers_paged(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+    validator: &AccountId32,
+    page: u32,
+) -> Option<ExposurePageData> {
+    let validator_bytes: [u8; 32] = *validator.as_ref();
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasStakersPaged");
+
+    if let Ok(value) = client_at_block
+        .storage()
+        .fetch(storage_addr, (era, validator_bytes, page))
+        .await
+    {
+        let raw_bytes = value.into_bytes();
+        if let Ok(exposure_page) = ExposurePage::decode(&mut &raw_bytes[..]) {
+            let others: Vec<([u8; 32], u128)> = exposure_page
+                .others
+                .into_iter()
+                .map(|ie| (ie.who, ie.value))
+                .collect();
+            return Some((exposure_page.page_total, others));
+        }
+    }
+
+    None
+}
+
+/// Exposure page structure (for paged staking)
+#[derive(Debug, Clone, Decode)]
+#[allow(dead_code)]
+struct ExposurePage {
+    #[codec(compact)]
+    page_total: u128,
+    others: Vec<ExposureIndividual>,
+}
+
+/// Check if rewards have been claimed for a validator in an era.
+///
+/// For paged staking (modern Kusama/Polkadot), checks if ALL pages have been claimed
+/// by looking at the ClaimedRewards storage.
+///
+/// NOTE: Currently returns false always as we investigate the correct way to determine
+/// claimed status. The ClaimedRewards storage query is returning unexpected data.
+pub async fn is_era_claimed(
+    _client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    _era: u32,
+    _validator: &AccountId32,
+) -> bool {
+    // For now, always return false (unclaimed) while we investigate the correct
+    // way to check claimed status. This is the safest approach as it shows all
+    // potentially claimable rewards to the user.
+    //
+    // TODO: Fix ClaimedRewards storage query - it seems to return vec![0] when
+    // it should return an empty vec for unclaimed rewards.
+    false
+}
+
+// ================================================================================================
+// Bulk Era Exposure Query (Sidecar-style approach for historical eras)
+// ================================================================================================
+
+/// Result of bulk era exposure query.
+/// Maps nominator account bytes to a list of (validator_bytes, nominator_exposure, total_exposure).
+pub type EraExposureMap = std::collections::HashMap<[u8; 32], Vec<([u8; 32], u128, u128)>>;
+
+/// Validator exposure info for bulk queries
+#[derive(Debug, Clone)]
+pub struct ValidatorExposureInfo {
+    pub validator_bytes: [u8; 32],
+    pub total: u128,
+    pub own: u128,
+}
+
+/// Fetch ALL exposures for an era in bulk using storage iteration.
+///
+/// This is the Sidecar-style approach that fetches all data in 1-2 RPC calls.
+/// Used as a fallback when the targeted approach (using current nominations) fails
+/// to find results, which can happen when nominations have changed since the era being queried.
+///
+/// Returns a map of nominator_bytes → [(validator_bytes, nominator_exposure, total_exposure)]
+/// and a map of validator_bytes → ValidatorExposureInfo for validators' own stake.
+pub async fn get_era_exposures_bulk(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+) -> (
+    EraExposureMap,
+    std::collections::HashMap<[u8; 32], ValidatorExposureInfo>,
+) {
+    use futures::StreamExt;
+
+    let mut nominator_map: EraExposureMap = std::collections::HashMap::new();
+    let mut validator_map: std::collections::HashMap<[u8; 32], ValidatorExposureInfo> =
+        std::collections::HashMap::new();
+
+    // Try paged staking first (ErasStakersOverview + ErasStakersPaged)
+    // Key type: (u32, [u8; 32]) for (era, validator)
+    let overview_addr = subxt::dynamic::storage::<(u32, [u8; 32]), scale_value::Value>(
+        "Staking",
+        "ErasStakersOverview",
+    );
+    let mut found_paged = false;
+
+    // Iterate without prefix to get all entries, then filter by era
+    if let Ok(mut iter) = client_at_block.storage().iter(overview_addr, ()).await {
+        while let Some(Ok(kv)) = iter.next().await {
+            // Get raw key bytes
+            let key_bytes = kv.key_bytes();
+
+            // Key format: pallet_hash(16) + storage_hash(16) + twox64(8) + era(4) + twox64(8) + validator(32)
+            // Total: 84 bytes
+            // Era is at positions 32-43 (after pallet+storage hashes, twox64 is 8 bytes, then 4 bytes for era)
+            // Validator is in the last 32 bytes
+            if key_bytes.len() < 84 {
+                continue;
+            }
+
+            // Extract era from key to filter
+            // Era position: 32 (pallet+storage) + 8 (twox64) = 40, then 4 bytes
+            let key_era =
+                u32::from_le_bytes([key_bytes[40], key_bytes[41], key_bytes[42], key_bytes[43]]);
+
+            if key_era != era {
+                continue;
+            }
+
+            found_paged = true;
+
+            // Validator is in the last 32 bytes
+            let mut validator_bytes = [0u8; 32];
+            validator_bytes.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
+
+            let overview_bytes = kv.value().bytes();
+            if let Ok(overview) = PagedExposureMetadata::decode(&mut &overview_bytes[..]) {
+                if overview.total == 0 {
+                    continue;
+                }
+
+                // Store validator's own exposure info
+                validator_map.insert(
+                    validator_bytes,
+                    ValidatorExposureInfo {
+                        validator_bytes,
+                        total: overview.total,
+                        own: overview.own,
+                    },
+                );
+            }
+        }
+    }
+
+    // If we found paged staking data, fetch the paged exposures
+    if found_paged && !validator_map.is_empty() {
+        // Key type: (u32, [u8; 32], u32) for (era, validator, page)
+        let paged_addr = subxt::dynamic::storage::<(u32, [u8; 32], u32), scale_value::Value>(
+            "Staking",
+            "ErasStakersPaged",
+        );
+        if let Ok(mut iter) = client_at_block.storage().iter(paged_addr, ()).await {
+            while let Some(Ok(kv)) = iter.next().await {
+                let key_bytes = kv.key_bytes();
+
+                // Key format: pallet_hash(16) + storage_hash(16) + twox64(8) + era(4) + twox64(8) + validator(32) + twox64(8) + page(4)
+                // Total: 96 bytes
+                if key_bytes.len() < 96 {
+                    continue;
+                }
+
+                // Extract era from key to filter
+                let key_era = u32::from_le_bytes([
+                    key_bytes[40],
+                    key_bytes[41],
+                    key_bytes[42],
+                    key_bytes[43],
+                ]);
+
+                if key_era != era {
+                    continue;
+                }
+
+                // Validator is at positions 52..84 (after era key part, 8 bytes twox64)
+                let mut validator_bytes = [0u8; 32];
+                validator_bytes.copy_from_slice(&key_bytes[52..84]);
+
+                let page_bytes = kv.value().bytes();
+                if let Ok(exposure_page) = ExposurePage::decode(&mut &page_bytes[..]) {
+                    // Get total exposure for this validator
+                    let total = validator_map
+                        .get(&validator_bytes)
+                        .map(|v| v.total)
+                        .unwrap_or(0);
+
+                    if total == 0 {
+                        continue;
+                    }
+
+                    // Add each nominator to the map
+                    for individual in exposure_page.others {
+                        nominator_map.entry(individual.who).or_default().push((
+                            validator_bytes,
+                            individual.value,
+                            total,
+                        ));
+                    }
+                }
+            }
+        }
+
+        return (nominator_map, validator_map);
+    }
+
+    // Fall back to legacy ErasStakersClipped
+    // Key type: (u32, [u8; 32]) for (era, validator)
+    let clipped_addr = subxt::dynamic::storage::<(u32, [u8; 32]), scale_value::Value>(
+        "Staking",
+        "ErasStakersClipped",
+    );
+    if let Ok(mut iter) = client_at_block.storage().iter(clipped_addr, ()).await {
+        while let Some(Ok(kv)) = iter.next().await {
+            let key_bytes = kv.key_bytes();
+
+            // Key format: pallet_hash(16) + storage_hash(16) + twox64(8) + era(4) + twox64(8) + validator(32)
+            // Total: 84 bytes
+            if key_bytes.len() < 84 {
+                continue;
+            }
+
+            // Extract era from key to filter
+            let key_era =
+                u32::from_le_bytes([key_bytes[40], key_bytes[41], key_bytes[42], key_bytes[43]]);
+
+            if key_era != era {
+                continue;
+            }
+
+            // Validator is in the last 32 bytes
+            let mut validator_bytes = [0u8; 32];
+            validator_bytes.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
+
+            let raw_bytes = kv.value().bytes();
+            if let Ok(exposure) = Exposure::decode(&mut &raw_bytes[..]) {
+                if exposure.total == 0 {
+                    continue;
+                }
+
+                // Store validator's own exposure info
+                validator_map.insert(
+                    validator_bytes,
+                    ValidatorExposureInfo {
+                        validator_bytes,
+                        total: exposure.total,
+                        own: exposure.own,
+                    },
+                );
+
+                // Add each nominator to the map
+                for individual in exposure.others {
+                    nominator_map.entry(individual.who).or_default().push((
+                        validator_bytes,
+                        individual.value,
+                        exposure.total,
+                    ));
+                }
+            }
+        }
+    }
+
+    (nominator_map, validator_map)
 }
 // ================================================================================================
 // Internal Helper Functions
 // ================================================================================================
 
 /// Check if an era is claimed in the ledger's legacy_claimed_rewards field
+///
+/// NOTE: This is only used for very old runtimes that don't have ClaimedRewards storage.
+/// Modern runtimes (Kusama/Polkadot post-paged-staking) use ClaimedRewards storage directly.
+/// Currently unused but kept for potential future use with older chains.
+#[allow(dead_code)]
 async fn check_ledger_claimed_rewards(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     stash_bytes: &[u8; 32],
@@ -686,14 +1198,14 @@ fn decode_slashing_spans(raw_bytes: &[u8]) -> Result<u32, StakingStorageError> {
     Ok(0)
 }
 
+#[allow(dead_code)]
 fn decode_ledger_claimed_eras(raw_bytes: &[u8], era: u32) -> Option<bool> {
-    // Try decoding directly (no Option wrapper)
-    // if let Ok(ledger) = StakingLedgerModern::decode(&mut &raw_bytes[..]) {
-    //     return Some(ledger.legacy_claimed_rewards.contains(&era));
-    // }
-    // if let Ok(ledger) = StakingLedgerLegacyCompact::decode(&mut &raw_bytes[..]) {
-    //     return Some(ledger.claimed_rewards.contains(&era));
-    // }
+    // Try decoding with StakingLedgerLegacyCompact (has legacy_claimed_rewards field)
+    if let Ok(ledger) = StakingLedgerLegacyCompact::decode(&mut &raw_bytes[..]) {
+        return Some(ledger.legacy_claimed_rewards.contains(&era));
+    }
+
+    // Try StakingLedgerOld (very old runtime format)
     if let Ok(ledger) = StakingLedgerOld::decode(&mut &raw_bytes[..]) {
         return Some(ledger.claimed_rewards.contains(&era));
     }
@@ -702,12 +1214,10 @@ fn decode_ledger_claimed_eras(raw_bytes: &[u8], era: u32) -> Option<bool> {
     if raw_bytes.len() > 1 && raw_bytes[0] == 1 {
         let bytes_without_option = &raw_bytes[1..];
 
-        // if let Ok(ledger) = StakingLedgerModern::decode(&mut &bytes_without_option[..]) {
-        //     return Some(ledger.legacy_claimed_rewards.contains(&era));
-        // }
-        // if let Ok(ledger) = StakingLedgerLegacyCompact::decode(&mut &bytes_without_option[..]) {
-        //     return Some(ledger.claimed_rewards.contains(&era));
-        // }
+        if let Ok(ledger) = StakingLedgerLegacyCompact::decode(&mut &bytes_without_option[..]) {
+            return Some(ledger.legacy_claimed_rewards.contains(&era));
+        }
+
         if let Ok(ledger) = StakingLedgerOld::decode(&mut &bytes_without_option[..]) {
             return Some(ledger.claimed_rewards.contains(&era));
         }

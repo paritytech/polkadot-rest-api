@@ -818,7 +818,7 @@ pub enum EraPayouts {
 #[serde(rename_all = "camelCase")]
 pub struct EraPayoutsData {
     /// Era index
-    pub era: u32,
+    pub era: String,
 
     /// Total reward points for the era
     pub total_era_reward_points: String,

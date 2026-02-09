@@ -176,8 +176,9 @@ pub async fn query_staking_info(
     }
 
     let controller = staking::get_bonded_controller(client_at_block, account, ss58_prefix).await?;
-    let controller_account = AccountId32::from_string(&controller)
-        .map_err(|_| StakingStorageError::DecodeFailed("Failed to decode controller account".into()))?;
+    let controller_account = AccountId32::from_string(&controller).map_err(|_| {
+        StakingStorageError::DecodeFailed("Failed to decode controller account".into())
+    })?;
 
     // Run all independent queries in parallel
     // Pass `account` as the expected stash for ledger validation
@@ -192,7 +193,9 @@ pub async fn query_staking_info(
 
     // Query claimed rewards if requested
     let claimed_rewards = if include_claimed_rewards {
-        query_claimed_rewards(client_at_block, account, &nominations).await.ok()
+        query_claimed_rewards(client_at_block, account, &nominations)
+            .await
+            .ok()
     } else {
         None
     };

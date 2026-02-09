@@ -1,89 +1,12 @@
 //! Common staking payouts utilities shared across handler modules.
 
+use crate::handlers::runtime_queries::staking;
 use crate::utils::ResolvedBlock;
-use parity_scale_codec::Decode;
 use sp_core::crypto::{AccountId32, Ss58Codec};
-use std::collections::HashMap;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
 
-// ================================================================================================
-// SCALE Decode Types for Staking Payouts storage
-// ================================================================================================
-
-/// Active era info
-#[derive(Debug, Clone, Decode)]
-#[allow(dead_code)] // Fields needed for SCALE decoding
-struct ActiveEraInfo {
-    index: u32,
-    start: Option<u64>,
-}
-
-/// Era reward points
-#[derive(Debug, Clone, Decode)]
-struct EraRewardPoints {
-    total: u32,
-    individual: Vec<([u8; 32], u32)>,
-}
-
-/// Exposure structure (era stakers)
-#[derive(Debug, Clone, Decode)]
-struct ExposureStruct {
-    #[codec(compact)]
-    total: u128,
-    #[codec(compact)]
-    own: u128,
-    others: Vec<IndividualExposureStruct>,
-}
-
-/// Individual exposure in stakers
-#[derive(Debug, Clone, Decode)]
-struct IndividualExposureStruct {
-    who: [u8; 32],
-    #[codec(compact)]
-    value: u128,
-}
-
-/// Nominations structure
-#[derive(Debug, Clone, Decode)]
-#[allow(dead_code)] // Fields needed for SCALE decoding
-struct NominationsStruct {
-    targets: Vec<[u8; 32]>,
-    submitted_in: u32,
-    suppressed: bool,
-}
-
-/// Validator preferences
-#[derive(Debug, Clone, Decode)]
-#[allow(dead_code)] // Fields needed for SCALE decoding
-struct ValidatorPrefs {
-    #[codec(compact)]
-    commission: u32,
-    blocked: bool,
-}
-
-/// Staking ledger for claimed rewards check
-#[derive(Debug, Clone, Decode)]
-#[allow(dead_code)] // Fields needed for SCALE decoding
-struct StakingLedgerForClaimed {
-    stash: [u8; 32],
-    #[codec(compact)]
-    total: u128,
-    #[codec(compact)]
-    active: u128,
-    unlocking: Vec<UnlockChunkStruct>,
-    legacy_claimed_rewards: Vec<u32>,
-}
-
-/// Unlock chunk
-#[derive(Debug, Clone, Decode)]
-#[allow(dead_code)] // Fields needed for SCALE decoding
-struct UnlockChunkStruct {
-    #[codec(compact)]
-    value: u128,
-    #[codec(compact)]
-    era: u32,
-}
+// Types are defined in runtime_queries::staking module
 
 // ================================================================================================
 // Error Types
@@ -128,9 +51,6 @@ impl From<subxt::error::StorageError> for StakingPayoutsQueryError {
 // ================================================================================================
 // Data Types
 // ================================================================================================
-
-/// Decoded exposure data: (total, own, others as Vec<(account_bytes, value)>)
-pub type ExposureData = (u128, u128, Vec<([u8; 32], u128)>);
 
 /// Query parameters for staking payouts
 #[derive(Debug, Clone)]
@@ -223,6 +143,7 @@ pub async fn query_staking_payouts(
     account: &AccountId32,
     block: &ResolvedBlock,
     params: &StakingPayoutsParams,
+    ss58_prefix: u16,
 ) -> Result<RawStakingPayouts, StakingPayoutsQueryError> {
     // Check if Staking pallet exists
     if client_at_block
@@ -234,26 +155,12 @@ pub async fn query_staking_payouts(
     }
 
     // Get active era
-    let active_era_addr = subxt::dynamic::storage::<_, ()>("Staking", "ActiveEra");
-    let active_era = if let Ok(value) = client_at_block.storage().fetch(active_era_addr, ()).await {
-        let raw_bytes = value.into_bytes();
-        decode_active_era(&raw_bytes)?
-    } else {
-        return Err(StakingPayoutsQueryError::NoActiveEra);
-    };
+    let active_era = staking::get_active_era(client_at_block)
+        .await
+        .ok_or(StakingPayoutsQueryError::NoActiveEra)?;
 
     // Get history depth (default to 84 if not found)
-    let history_depth_addr = subxt::dynamic::storage::<_, ()>("Staking", "HistoryDepth");
-    let history_depth = if let Ok(value) = client_at_block
-        .storage()
-        .fetch(history_depth_addr, ())
-        .await
-    {
-        let raw_bytes = value.into_bytes();
-        u32::decode(&mut &raw_bytes[..]).unwrap_or(84)
-    } else {
-        84
-    };
+    let history_depth = staking::get_history_depth(client_at_block).await;
 
     // Validate depth parameter
     if params.depth == 0 || params.depth > history_depth {
@@ -272,14 +179,20 @@ pub async fn query_staking_payouts(
     if target_era < min_era {
         return Err(StakingPayoutsQueryError::InvalidEra(target_era));
     }
-
     // Calculate start era based on depth
     let start_era = target_era.saturating_sub(params.depth - 1).max(min_era);
 
     // Process each era
     let mut eras_payouts = Vec::new();
     for era in start_era..=target_era {
-        let era_payout = process_era(client_at_block, account, era, params.unclaimed_only).await;
+        let era_payout = process_era(
+            client_at_block,
+            account,
+            era,
+            params.unclaimed_only,
+            ss58_prefix,
+        )
+        .await;
         eras_payouts.push(era_payout);
     }
 
@@ -301,9 +214,10 @@ async fn process_era(
     account: &AccountId32,
     era: u32,
     unclaimed_only: bool,
+    ss58_prefix: u16,
 ) -> RawEraPayouts {
     // Try to get era data
-    match fetch_era_data(client_at_block, account, era, unclaimed_only).await {
+    match fetch_era_data(client_at_block, account, era, unclaimed_only, ss58_prefix).await {
         Ok(data) => data,
         Err(e) => RawEraPayouts::Message {
             message: format!("Era {}: {}", era, e),
@@ -316,43 +230,34 @@ async fn fetch_era_data(
     account: &AccountId32,
     era: u32,
     unclaimed_only: bool,
+    ss58_prefix: u16,
 ) -> Result<RawEraPayouts, String> {
     let account_bytes: [u8; 32] = *account.as_ref();
 
     // Get total era reward points
-    let reward_points_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasRewardPoints");
-    let reward_points_value = client_at_block
-        .storage()
-        .fetch(reward_points_addr, (era,))
-        .await;
-
-    let (total_era_reward_points, individual_points) = if let Ok(value) = reward_points_value {
-        let raw_bytes = value.into_bytes();
-        decode_era_reward_points(&raw_bytes).map_err(|e| e.to_string())?
-    } else {
-        return Ok(RawEraPayouts::Message {
-            message: format!("No reward points found for era {}", era),
-        });
-    };
+    let (total_era_reward_points, individual_points) =
+        match staking::get_era_reward_points(client_at_block, era).await {
+            Some(points) => points,
+            None => {
+                return Ok(RawEraPayouts::Message {
+                    message: format!("No reward points found for era {}", era),
+                });
+            }
+        };
 
     // Get total era payout
-    let validator_reward_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasValidatorReward");
-    let validator_reward_value = client_at_block
-        .storage()
-        .fetch(validator_reward_addr, (era,))
-        .await;
-
-    let total_era_payout = if let Ok(value) = validator_reward_value {
-        let raw_bytes = value.into_bytes();
-        decode_u128_storage(&raw_bytes).map_err(|e| e.to_string())?
-    } else {
-        return Ok(RawEraPayouts::Message {
-            message: format!("No validator reward found for era {}", era),
-        });
+    let total_era_payout = match staking::get_era_validator_reward(client_at_block, era).await {
+        Some(reward) => reward,
+        None => {
+            return Ok(RawEraPayouts::Message {
+                message: format!("No validator reward found for era {}", era),
+            });
+        }
     };
 
-    // Get exposure data - try ErasStakersClipped first
-    let exposure_data = fetch_exposure_data(client_at_block, account, era, &account_bytes).await?;
+    // Get exposure data
+    let exposure_data =
+        fetch_exposure_data(client_at_block, account, era, &account_bytes, ss58_prefix).await?;
 
     if exposure_data.is_empty() {
         return Ok(RawEraPayouts::Message {
@@ -426,81 +331,183 @@ async fn fetch_era_data(
 // Storage Fetching Functions
 // ================================================================================================
 
-/// Fetch exposure data for an account in an era
+/// Fetch exposure data for an account in an era.
 /// Returns Vec<(validator_id, nominator_exposure, total_exposure)>
+///
+/// Strategy:
+/// 1. First try targeted approach using current nominations (fast)
+/// 2. If no results, fall back to bulk approach (slower but handles historical eras
+///    where nominations may have changed)
 async fn fetch_exposure_data(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     era: u32,
     account_bytes: &[u8; 32],
+    ss58_prefix: u16,
+) -> Result<Vec<(String, u128, u128)>, String> {
+    // First try the targeted approach using current nominations
+    let results =
+        fetch_exposure_data_targeted(client_at_block, account, era, account_bytes, ss58_prefix)
+            .await?;
+
+    if !results.is_empty() {
+        return Ok(results);
+    }
+
+    // Targeted approach found nothing - fall back to bulk approach
+    // This handles cases where nominations have changed since the era being queried
+    fetch_exposure_data_bulk(client_at_block, era, account_bytes, ss58_prefix).await
+}
+
+/// Targeted approach: query only the validators the account is currently nominating.
+/// Fast but may miss historical nominations.
+async fn fetch_exposure_data_targeted(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    account: &AccountId32,
+    era: u32,
+    account_bytes: &[u8; 32],
+    ss58_prefix: u16,
 ) -> Result<Vec<(String, u128, u128)>, String> {
     let mut results = Vec::new();
 
-    // Try to get nominators to find which validators this account nominates
-    let nominators_addr = subxt::dynamic::storage::<_, ()>("Staking", "Nominators");
-    if let Ok(nom_value) = client_at_block
-        .storage()
-        .fetch(nominators_addr, (*account_bytes,))
-        .await
-    {
-        let raw_bytes = nom_value.into_bytes();
-        let targets = decode_nomination_targets(&raw_bytes);
+    // Get the account's nominations to find which validators to query
+    // Note: This uses current nominations which may differ from historical eras
+    let nominations = staking::get_nominations(client_at_block, account, ss58_prefix).await;
 
-        for validator_bytes in targets {
-            // Try ErasStakersClipped
-            let stakers_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasStakersClipped");
-            if let Ok(exposure_value) = client_at_block
-                .storage()
-                .fetch(stakers_addr, (era, validator_bytes))
-                .await
-            {
-                let raw_bytes = exposure_value.into_bytes();
-                if let Ok((total, own, others)) = decode_exposure(&raw_bytes) {
-                    // Check if account is in the others list
-                    for (nominator, value) in &others {
-                        if nominator == account_bytes {
-                            let validator_id = AccountId32::from(validator_bytes).to_ss58check();
-                            results.push((validator_id, *value, total));
-                            break;
-                        }
-                    }
-                    // Check if account is the validator itself
-                    if account_bytes == &validator_bytes {
-                        let validator_id = AccountId32::from(validator_bytes).to_ss58check();
-                        results.push((validator_id, own, total));
-                    }
-                }
+    // Also check if account is a validator
+    let is_validator = staking::is_validator(client_at_block, account).await;
+
+    // Collect validator addresses to query
+    let mut validators_to_query: Vec<AccountId32> = Vec::new();
+
+    if let Some(noms) = &nominations {
+        for target_ss58 in &noms.targets {
+            if let Ok(validator_account) = AccountId32::from_ss58check(target_ss58) {
+                validators_to_query.push(validator_account);
             }
         }
     }
 
-    // If account is a validator, also check if they have self-stake
-    let bonded_addr = subxt::dynamic::storage::<_, ()>("Staking", "Bonded");
-    if client_at_block
-        .storage()
-        .fetch(bonded_addr, (*account_bytes,))
+    // If account is a validator, also check their own exposure
+    if is_validator {
+        validators_to_query.push(account.clone());
+    }
+
+    if validators_to_query.is_empty() {
+        return Ok(results);
+    }
+
+    // Query each validator's exposure to find the account's stake
+    for validator in &validators_to_query {
+        if let Some(exposure) = find_account_in_validator_exposure(
+            client_at_block,
+            era,
+            validator,
+            account_bytes,
+            ss58_prefix,
+        )
         .await
-        .is_ok()
-    {
-        // Account is a stash, check if they're also validating
-        let stakers_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasStakersClipped");
-        if let Ok(exposure_value) = client_at_block
-            .storage()
-            .fetch(stakers_addr, (era, *account_bytes))
-            .await
         {
-            let raw_bytes = exposure_value.into_bytes();
-            if let Ok((total, own, _)) = decode_exposure(&raw_bytes) {
-                let validator_id = account.to_ss58check();
-                // Only add if not already in results
-                if !results.iter().any(|(v, _, _)| v == &validator_id) {
-                    results.push((validator_id, own, total));
-                }
+            let validator_ss58 = validator.to_ss58check_with_version(ss58_prefix.into());
+            if !results.iter().any(|(v, _, _)| v == &validator_ss58) {
+                results.push(exposure);
             }
         }
     }
 
     Ok(results)
+}
+
+/// Bulk approach: fetch all exposures for the era and find the account.
+/// Slower but handles historical eras where nominations may have changed.
+async fn fetch_exposure_data_bulk(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+    account_bytes: &[u8; 32],
+    ss58_prefix: u16,
+) -> Result<Vec<(String, u128, u128)>, String> {
+    let (nominator_map, validator_map) =
+        staking::get_era_exposures_bulk(client_at_block, era).await;
+
+    let mut results = Vec::new();
+
+    // Check if the account is a nominator
+    if let Some(nominations) = nominator_map.get(account_bytes) {
+        for (validator_bytes, nominator_exposure, total_exposure) in nominations {
+            let validator_id =
+                AccountId32::from(*validator_bytes).to_ss58check_with_version(ss58_prefix.into());
+            if !results.iter().any(|(v, _, _)| v == &validator_id) {
+                results.push((validator_id, *nominator_exposure, *total_exposure));
+            }
+        }
+    }
+
+    // Check if the account is a validator itself
+    if let Some(validator_info) = validator_map.get(account_bytes) {
+        let validator_id =
+            AccountId32::from(*account_bytes).to_ss58check_with_version(ss58_prefix.into());
+        if !results.iter().any(|(v, _, _)| v == &validator_id) {
+            results.push((validator_id, validator_info.own, validator_info.total));
+        }
+    }
+
+    Ok(results)
+}
+
+/// Find an account's exposure within a specific validator's stakers.
+/// Returns Some((validator_ss58, nominator_exposure, total_exposure)) if found.
+async fn find_account_in_validator_exposure(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+    validator: &AccountId32,
+    account_bytes: &[u8; 32],
+    ss58_prefix: u16,
+) -> Option<(String, u128, u128)> {
+    let validator_bytes: [u8; 32] = *validator.as_ref();
+    let validator_ss58 = validator.to_ss58check_with_version(ss58_prefix.into());
+
+    // Try paged staking first (ErasStakersOverview + ErasStakersPaged)
+    if let Some((total, own, page_count)) =
+        staking::get_era_stakers_overview(client_at_block, era, validator).await
+    {
+        // Check if account is the validator itself
+        if account_bytes == &validator_bytes {
+            return Some((validator_ss58, own, total));
+        }
+
+        // Search through paged exposures for the account
+        for page in 0..page_count {
+            if let Some((_page_total, others)) =
+                staking::get_era_stakers_paged(client_at_block, era, validator, page).await
+            {
+                for (nominator_bytes, nominator_value) in others {
+                    if &nominator_bytes == account_bytes {
+                        return Some((validator_ss58.clone(), nominator_value, total));
+                    }
+                }
+            }
+        }
+        return None;
+    }
+
+    // Fall back to legacy ErasStakersClipped
+    if let Some((total, own, others)) =
+        staking::get_era_stakers_clipped(client_at_block, era, validator).await
+    {
+        // Check if account is the validator itself
+        if account_bytes == &validator_bytes {
+            return Some((validator_ss58, own, total));
+        }
+
+        // Search through nominators for the account
+        for (nominator_bytes, nominator_value) in others {
+            if &nominator_bytes == account_bytes {
+                return Some((validator_ss58.clone(), nominator_value, total));
+            }
+        }
+    }
+
+    None
 }
 
 /// Fetch validator commission for a specific era
@@ -509,14 +516,8 @@ async fn fetch_validator_commission(
     era: u32,
     validator_bytes: &[u8; 32],
 ) -> Option<u32> {
-    let prefs_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasValidatorPrefs");
-    let prefs_value = client_at_block
-        .storage()
-        .fetch(prefs_addr, (era, *validator_bytes))
-        .await
-        .ok()?;
-    let raw_bytes = prefs_value.into_bytes();
-    decode_validator_commission(&raw_bytes).ok()
+    let validator_account = AccountId32::from(*validator_bytes);
+    staking::get_era_validator_prefs(client_at_block, era, &validator_account).await
 }
 
 /// Check if rewards have been claimed for a validator in an era
@@ -525,31 +526,8 @@ async fn check_if_claimed(
     validator_bytes: &[u8; 32],
     era: u32,
 ) -> bool {
-    // First get the controller for this validator
-    let bonded_addr = subxt::dynamic::storage::<_, ()>("Staking", "Bonded");
-    let controller_bytes = if let Ok(value) = client_at_block
-        .storage()
-        .fetch(bonded_addr, (*validator_bytes,))
-        .await
-    {
-        let raw_bytes = value.into_bytes();
-        decode_account_bytes(&raw_bytes).unwrap_or(*validator_bytes)
-    } else {
-        *validator_bytes
-    };
-
-    // Check ledger for claimed rewards
-    let ledger_addr = subxt::dynamic::storage::<_, ()>("Staking", "Ledger");
-    if let Ok(value) = client_at_block
-        .storage()
-        .fetch(ledger_addr, (controller_bytes,))
-        .await
-    {
-        let raw_bytes = value.into_bytes();
-        return check_claimed_in_ledger(&raw_bytes, era);
-    }
-
-    false
+    let validator_account = AccountId32::from(*validator_bytes);
+    staking::is_era_claimed(client_at_block, era, &validator_account).await
 }
 
 // ================================================================================================
@@ -558,12 +536,11 @@ async fn check_if_claimed(
 
 /// Calculate the payout for a nominator
 ///
-/// Formula:
-/// 1. validator_era_payout = (validator_points / total_era_points) * total_era_payout
-/// 2. commission_payout = validator_era_payout * (commission / 1_000_000_000)
-/// 3. stakers_payout = validator_era_payout - commission_payout
-/// 4. nominator_payout = stakers_payout * (nominator_exposure / total_exposure)
-/// 5. If is_validator: add commission_payout to their share
+/// Matches Substrate's on-chain calculation which uses floor division at each step:
+/// 1. validator_total_reward = total_era_payout * validator_points / total_era_points
+/// 2. validator_commission = validator_total_reward * commission / BILLION
+/// 3. staker_reward_pool = validator_total_reward - validator_commission
+/// 4. nominator_payout = staker_reward_pool * nominator_exposure / total_exposure
 fn calculate_payout(
     total_era_reward_points: u32,
     total_era_payout: u128,
@@ -573,103 +550,36 @@ fn calculate_payout(
     total_exposure: u128,
     is_validator: bool,
 ) -> u128 {
+    const BILLION: u128 = 1_000_000_000;
+
     if total_era_reward_points == 0 || total_exposure == 0 {
         return 0;
     }
 
-    // Calculate validator's share of era payout
-    let validator_era_payout = (total_era_payout).saturating_mul(validator_points as u128)
+    // Step 1: Calculate validator's total reward from the era
+    // validator_total_reward = total_era_payout * validator_points / total_era_points
+    let validator_total_reward = total_era_payout.saturating_mul(validator_points as u128)
         / (total_era_reward_points as u128);
 
-    // Calculate commission (commission is in parts per billion)
-    let commission_payout = validator_era_payout.saturating_mul(commission as u128) / 1_000_000_000;
+    // Step 2: Calculate commission taken by validator
+    // validator_commission = validator_total_reward * commission / BILLION
+    let validator_commission_payout =
+        validator_total_reward.saturating_mul(commission as u128) / BILLION;
 
-    // Remaining goes to stakers proportionally
-    let stakers_payout = validator_era_payout.saturating_sub(commission_payout);
+    // Step 3: Calculate the reward pool for all stakers (validator + nominators)
+    // staker_reward_pool = validator_total_reward - validator_commission
+    let staker_reward_pool = validator_total_reward.saturating_sub(validator_commission_payout);
 
-    // Calculate nominator's proportional share
-    let nominator_payout = stakers_payout.saturating_mul(nominator_exposure) / total_exposure;
+    // Step 4: Calculate nominator's share of the staker reward pool
+    // nominator_payout = staker_reward_pool * nominator_exposure / total_exposure
+    let staker_payout = staker_reward_pool.saturating_mul(nominator_exposure) / total_exposure;
 
     if is_validator {
-        // Validator gets their commission plus their proportional share
-        nominator_payout.saturating_add(commission_payout)
+        // Validator gets their staker share plus commission
+        staker_payout.saturating_add(validator_commission_payout)
     } else {
-        nominator_payout
+        staker_payout
     }
 }
 
-// ================================================================================================
-// Decoding Functions
-// ================================================================================================
-
-/// Decode active era from raw SCALE bytes
-fn decode_active_era(raw_bytes: &[u8]) -> Result<u32, StakingPayoutsQueryError> {
-    if let Ok(era_info) = ActiveEraInfo::decode(&mut &raw_bytes[..]) {
-        return Ok(era_info.index);
-    }
-
-    Err(StakingPayoutsQueryError::DecodeFailed(
-        parity_scale_codec::Error::from("Failed to decode active era"),
-    ))
-}
-
-/// Decode u128 from raw SCALE bytes
-fn decode_u128_storage(raw_bytes: &[u8]) -> Result<u128, String> {
-    u128::decode(&mut &raw_bytes[..]).map_err(|e| e.to_string())
-}
-
-/// Decode era reward points from raw SCALE bytes
-fn decode_era_reward_points(raw_bytes: &[u8]) -> Result<(u32, HashMap<[u8; 32], u32>), String> {
-    if let Ok(points) = EraRewardPoints::decode(&mut &raw_bytes[..]) {
-        let individual: HashMap<[u8; 32], u32> = points.individual.into_iter().collect();
-        return Ok((points.total, individual));
-    }
-
-    Err("Failed to decode era reward points".to_string())
-}
-
-/// Decode exposure from raw SCALE bytes
-fn decode_exposure(raw_bytes: &[u8]) -> Result<ExposureData, String> {
-    if let Ok(exposure) = ExposureStruct::decode(&mut &raw_bytes[..]) {
-        let others: Vec<([u8; 32], u128)> = exposure
-            .others
-            .into_iter()
-            .map(|ie| (ie.who, ie.value))
-            .collect();
-        return Ok((exposure.total, exposure.own, others));
-    }
-
-    Err("Failed to decode exposure".to_string())
-}
-
-/// Decode nomination targets from raw SCALE bytes
-fn decode_nomination_targets(raw_bytes: &[u8]) -> Vec<[u8; 32]> {
-    if let Ok(nominations) = NominationsStruct::decode(&mut &raw_bytes[..]) {
-        return nominations.targets;
-    }
-
-    Vec::new()
-}
-
-/// Decode validator commission from raw SCALE bytes
-fn decode_validator_commission(raw_bytes: &[u8]) -> Result<u32, String> {
-    if let Ok(prefs) = ValidatorPrefs::decode(&mut &raw_bytes[..]) {
-        return Ok(prefs.commission);
-    }
-
-    Err("Failed to decode validator prefs".to_string())
-}
-
-/// Decode account bytes from raw SCALE bytes (for Bonded storage)
-fn decode_account_bytes(raw_bytes: &[u8]) -> Option<[u8; 32]> {
-    <[u8; 32]>::decode(&mut &raw_bytes[..]).ok()
-}
-
-/// Check if rewards have been claimed for an era by looking at ledger
-fn check_claimed_in_ledger(raw_bytes: &[u8], era: u32) -> bool {
-    if let Ok(ledger) = StakingLedgerForClaimed::decode(&mut &raw_bytes[..]) {
-        return ledger.legacy_claimed_rewards.contains(&era);
-    }
-
-    false
-}
+// Decoding functions have been moved to runtime_queries::staking module

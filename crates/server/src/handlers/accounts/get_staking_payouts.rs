@@ -86,8 +86,14 @@ pub async fn get_staking_payouts(
         unclaimed_only: params.unclaimed_only,
     };
 
-    let raw_payouts =
-        query_staking_payouts(&client_at_block, &account, &resolved_block, &staking_params).await?;
+    let raw_payouts = query_staking_payouts(
+        &client_at_block,
+        &account,
+        &resolved_block,
+        &staking_params,
+        state.chain_info.ss58_prefix,
+    )
+    .await?;
 
     let response = format_response(&raw_payouts, None, None, None);
 
@@ -109,7 +115,7 @@ fn format_response(
         .iter()
         .map(|era_payout| match era_payout {
             RawEraPayouts::Payouts(data) => EraPayouts::Payouts(EraPayoutsData {
-                era: data.era,
+                era: data.era.to_string(),
                 total_era_reward_points: data.total_era_reward_points.to_string(),
                 total_era_payout: data.total_era_payout.to_string(),
                 payouts: data
@@ -198,9 +204,14 @@ async fn handle_use_rc_block(
             number: ah_block.number,
         };
         let client_at_block = state.client.at_block(ah_resolved.number).await?;
-        let raw_payouts =
-            query_staking_payouts(&client_at_block, &account, &ah_resolved, &staking_params)
-                .await?;
+        let raw_payouts = query_staking_payouts(
+            &client_at_block,
+            &account,
+            &ah_resolved,
+            &staking_params,
+            state.chain_info.ss58_prefix,
+        )
+        .await?;
 
         let response = format_response(
             &raw_payouts,
