@@ -1,0 +1,85 @@
+{
+  "at": {
+    "hash": "0x63cf90d74a0067a48b4bd0cc4bfd8de06a1bb352e631671294c5e486124ef508",
+    "height": "5000000"
+  },
+  "pallet": "assets",
+  "palletIndex": "50",
+  "items": [
+    {
+      "name": "Asset",
+      "modifier": "Optional",
+      "type": {
+        "map": {
+          "hashers": [
+            "Blake2_128Concat"
+          ],
+          "key": "4",
+          "value": "332"
+        }
+      },
+      "fallback": "0x00",
+      "docs": " Details of an asset.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "Account",
+      "modifier": "Optional",
+      "type": {
+        "map": {
+          "hashers": [
+            "Blake2_128Concat",
+            "Blake2_128Concat"
+          ],
+          "key": "334",
+          "value": "335"
+        }
+      },
+      "fallback": "0x00",
+      "docs": " The holdings of a specific account for a specific asset.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "Approvals",
+      "modifier": "Optional",
+      "type": {
+        "map": {
+          "hashers": [
+            "Blake2_128Concat",
+            "Blake2_128Concat",
+            "Blake2_128Concat"
+          ],
+          "key": "338",
+          "value": "339"
+        }
+      },
+      "fallback": "0x00",
+      "docs": " Approved balance transfers. First balance is the amount approved for transfer. Second\n is the amount of `T::Currency` reserved for storing this.\n First key is the asset ID, second key is the owner and third key is the delegate.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "Metadata",
+      "modifier": "Default",
+      "type": {
+        "map": {
+          "hashers": [
+            "Blake2_128Concat"
+          ],
+          "key": "4",
+          "value": "340"
+        }
+      },
+      "fallback": "0x0000000000000000000000000000000000000000",
+      "docs": " Metadata of an asset.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    }
+  ]
+}

@@ -86,7 +86,7 @@ pub struct RuntimeSpecResponse {
 /// Transform chain type to lowercase object format
 /// - String "Live" -> {"live": null}
 /// - Object {"Live": null} -> {"live": null}
-fn transform_chain_type(chain_type: Value) -> Value {
+pub fn transform_chain_type(chain_type: Value) -> Value {
     match chain_type {
         Value::String(s) => {
             let mut map = serde_json::Map::new();
@@ -109,7 +109,7 @@ fn transform_chain_type(chain_type: Value) -> Value {
 /// - tokenDecimals: number or array -> array of strings
 /// - tokenSymbol: string or array -> array of strings
 /// - isEthereum: add if missing (default false)
-fn transform_properties(properties: Value) -> Value {
+pub fn transform_properties(properties: Value) -> Value {
     let mut result = serde_json::Map::new();
 
     if let Value::Object(props) = properties {

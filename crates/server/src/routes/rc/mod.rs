@@ -1,6 +1,7 @@
 pub mod accounts;
 pub mod blocks;
 pub mod node;
+pub mod runtime;
 
 use crate::routes::RouteRegistry;
 use crate::state::AppState;
@@ -14,6 +15,7 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
             .merge(blocks::routes(registry))
             .merge(node::routes(registry))
             .merge(accounts::routes(registry))
+            .merge(runtime::routes(registry))
     } else {
         router
     }
