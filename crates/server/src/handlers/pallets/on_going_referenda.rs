@@ -215,10 +215,7 @@ async fn fetch_ongoing_referenda(
     let count_addr = subxt::dynamic::storage::<(), u32>("Referenda", "ReferendumCount");
     let referendum_count: u32 = match client_at_block.storage().fetch(count_addr, ()).await {
         Ok(storage_val) => match storage_val.decode() {
-            Ok(count) => {
-                tracing::info!("Successfully decoded ReferendumCount: {}", count);
-                count
-            }
+            Ok(count) => count,
             Err(e) => {
                 tracing::warn!("Failed to decode ReferendumCount: {:?}", e);
                 return Err(PalletError::StorageDecodeFailed {
@@ -266,8 +263,6 @@ async fn fetch_ongoing_referenda(
             }
         }
     };
-
-    tracing::info!("ReferendumCount: {}", referendum_count);
 
     // Iterate in batches from highest ID to lowest (ongoing referenda are usually recent)
     // Use concurrent requests for better performance
@@ -319,12 +314,6 @@ async fn fetch_ongoing_referenda(
 
         id -= batch_size as i64;
     }
-
-    tracing::info!(
-        "Found {} ongoing referenda out of {} total",
-        referenda.len(),
-        referendum_count
-    );
 
     // Sort by ID in descending order to match Sidecar's ordering (highest ID first)
     referenda.sort_by(|a, b| {
