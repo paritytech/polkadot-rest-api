@@ -209,29 +209,19 @@ mod tests {
         let registered: BTreeSet<String> = registry
             .routes()
             .into_iter()
-            .map(|r| {
-                format!(
-                    "{} {}",
-                    r.method.to_uppercase(),
-                    normalize_path(&r.path)
-                )
-            })
+            .map(|r| format!("{} {}", r.method.to_uppercase(), normalize_path(&r.path)))
             .collect();
 
         // Collect OpenAPI spec paths as "METHOD /normalized/path"
         let spec = ApiDoc::openapi();
-        let json_value =
-            serde_json::to_value(&spec).expect("Failed to serialize OpenAPI spec");
+        let json_value = serde_json::to_value(&spec).expect("Failed to serialize OpenAPI spec");
 
         let mut openapi: BTreeSet<String> = BTreeSet::new();
         if let Some(paths) = json_value["paths"].as_object() {
             for (path, methods) in paths {
                 if let Some(methods_obj) = methods.as_object() {
                     for method in methods_obj.keys() {
-                        if matches!(
-                            method.as_str(),
-                            "get" | "post" | "put" | "delete" | "patch"
-                        ) {
+                        if matches!(method.as_str(), "get" | "post" | "put" | "delete" | "patch") {
                             openapi.insert(format!(
                                 "{} {}",
                                 method.to_uppercase(),
@@ -244,10 +234,8 @@ mod tests {
         }
 
         // Find differences
-        let undocumented: Vec<&String> =
-            registered.difference(&openapi).collect();
-        let phantom: Vec<&String> =
-            openapi.difference(&registered).collect();
+        let undocumented: Vec<&String> = registered.difference(&openapi).collect();
+        let phantom: Vec<&String> = openapi.difference(&registered).collect();
 
         let mut errors = String::new();
 
