@@ -153,14 +153,14 @@ async fn handle_use_rc_block(
     let rc_hash = if params.finalized {
         state
             .get_relay_chain_rpc()
-            .unwrap()
+            .ok_or(GetBlockError::RelayChainNotConfigured)?
             .chain_get_finalized_head()
             .await
             .map_err(GetBlockError::RpcCallFailed)?
     } else {
         state
             .get_relay_chain_rpc()
-            .unwrap()
+            .ok_or(GetBlockError::RelayChainNotConfigured)?
             .chain_get_block_hash(None)
             .await
             .map_err(GetBlockError::RpcCallFailed)?
@@ -168,8 +168,12 @@ async fn handle_use_rc_block(
     };
 
     let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().unwrap(),
-        state.get_relay_chain_rpc().unwrap(),
+        state
+            .get_relay_chain_rpc_client()
+            .ok_or(GetBlockError::RelayChainNotConfigured)?,
+        state
+            .get_relay_chain_rpc()
+            .ok_or(GetBlockError::RelayChainNotConfigured)?,
         Some(utils::BlockId::Hash(rc_hash)),
     )
     .await?;
