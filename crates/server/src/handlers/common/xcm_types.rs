@@ -154,9 +154,7 @@ impl Serialize for Junction {
                 };
                 map.serialize_entry("GeneralKey", &inner)?
             }
-            Junction::OnlyChild => {
-                map.serialize_entry("OnlyChild", &serde_json::Value::Null)?
-            }
+            Junction::OnlyChild => map.serialize_entry("OnlyChild", &serde_json::Value::Null)?,
             Junction::Plurality { id, part } => {
                 let inner = PluralityInner { id, part };
                 map.serialize_entry("Plurality", &inner)?
