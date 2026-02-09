@@ -4,12 +4,14 @@
 //! within a block.
 
 use crate::state::AppState;
-use crate::utils;
+use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
     extract::{Path, Query, State},
-    response::IntoResponse,
+    response::{IntoResponse, Response},
 };
+use config::ChainType;
+use serde_json::json;
 
 use super::common::{add_docs_to_events, add_docs_to_extrinsic, associate_events_with_extrinsics};
 use super::processing::{
@@ -28,11 +30,16 @@ use super::types::{
 /// - `eventDocs` (boolean, default: false): Include documentation for events
 /// - `extrinsicDocs` (boolean, default: false): Include documentation for extrinsics
 /// - `noFees` (boolean, default: false): Skip fee calculation (info will be empty object)
+/// - `useRcBlock` (boolean, default: false): When true, treat blockId as Relay Chain block and return Asset Hub extrinsics
 pub async fn get_extrinsic(
     State(state): State<AppState>,
     Path(path_params): Path<ExtrinsicPathParams>,
     Query(params): Query<ExtrinsicQueryParams>,
-) -> Result<impl IntoResponse, GetBlockError> {
+) -> Result<Response, GetBlockError> {
+    if params.use_rc_block {
+        return handle_use_rc_block(state, path_params, params).await;
+    }
+
     let extrinsic_index: usize = path_params
         .extrinsic_index
         .parse()
@@ -47,14 +54,100 @@ pub async fn get_extrinsic(
     let block_hash = format!("{:#x}", client_at_block.block_hash());
     let block_number = client_at_block.block_number();
 
+    let response = build_extrinsic_response(
+        &state,
+        &block_hash,
+        block_number,
+        extrinsic_index,
+        &client_at_block,
+        &params,
+    )
+    .await?;
+
+    Ok(Json(response).into_response())
+}
+
+async fn handle_use_rc_block(
+    state: AppState,
+    path_params: ExtrinsicPathParams,
+    params: ExtrinsicQueryParams,
+) -> Result<Response, GetBlockError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(GetBlockError::UseRcBlockNotSupported);
+    }
+
+    if state.get_relay_chain_client().is_none() {
+        return Err(GetBlockError::RelayChainNotConfigured);
+    }
+
+    let extrinsic_index: usize = path_params
+        .extrinsic_index
+        .parse()
+        .map_err(|_| GetBlockError::InvalidExtrinsicIndex(path_params.extrinsic_index.clone()))?;
+
+    let rc_block_id = path_params.block_id.parse::<utils::BlockId>()?;
+    let rc_resolved_block = utils::resolve_block_with_rpc(
+        state.get_relay_chain_rpc_client().unwrap(),
+        state.get_relay_chain_rpc().unwrap(),
+        Some(rc_block_id),
+    )
+    .await?;
+
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
+        .await
+        .map_err(|e| GetBlockError::RcBlockError(Box::new(e)))?;
+
+    if ah_blocks.is_empty() {
+        return Ok(Json(json!([])).into_response());
+    }
+
+    let rc_block_number = rc_resolved_block.number.to_string();
+    let rc_block_hash = rc_resolved_block.hash.clone();
+
+    let mut results = Vec::new();
+    for ah_block in ah_blocks {
+        let client_at_block = state
+            .client
+            .at_block(ah_block.number)
+            .await
+            .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+
+        let mut response = build_extrinsic_response(
+            &state,
+            &ah_block.hash,
+            ah_block.number,
+            extrinsic_index,
+            &client_at_block,
+            &params,
+        )
+        .await?;
+
+        response.rc_block_hash = Some(rc_block_hash.clone());
+        response.rc_block_number = Some(rc_block_number.clone());
+        response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+
+        results.push(response);
+    }
+
+    Ok(Json(json!(results)).into_response())
+}
+
+async fn build_extrinsic_response(
+    state: &AppState,
+    block_hash: &str,
+    block_number: u64,
+    extrinsic_index: usize,
+    client_at_block: &super::common::BlockClient,
+    params: &ExtrinsicQueryParams,
+) -> Result<ExtrinsicIndexResponse, GetBlockError> {
     let header = client_at_block
         .block_header()
         .await
         .map_err(GetBlockError::BlockHeaderFailed)?;
 
     let (extrinsics_result, events_result) = tokio::join!(
-        extract_extrinsics(&state, &client_at_block, block_number),
-        fetch_block_events(&state, &client_at_block, block_number),
+        extract_extrinsics(state, client_at_block, block_number),
+        fetch_block_events(state, client_at_block, block_number),
     );
 
     let extrinsics = extrinsics_result?;
@@ -84,7 +177,7 @@ pub async fn get_extrinsic(
         let client_at_parent = state.client.at_block(header.parent_hash).await?;
 
         let fee_info = extract_fee_info_for_extrinsic(
-            &state,
+            state,
             &client_at_parent,
             &extrinsic.raw_hex,
             &extrinsic.events,
@@ -109,15 +202,16 @@ pub async fn get_extrinsic(
         }
     }
 
-    let response = ExtrinsicIndexResponse {
+    Ok(ExtrinsicIndexResponse {
         at: BlockIdentifiers {
             height: block_number.to_string(),
-            hash: block_hash,
+            hash: block_hash.to_string(),
         },
         extrinsics: extrinsic,
-    };
-
-    Ok(Json(response))
+        rc_block_hash: None,
+        rc_block_number: None,
+        ah_timestamp: None,
+    })
 }
 
 // ================================================================================================
