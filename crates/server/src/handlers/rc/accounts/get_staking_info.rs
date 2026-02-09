@@ -26,6 +26,23 @@ use config::ChainType;
 ///
 /// Query Parameters:
 /// - `at` (optional): Block identifier (hash or height) - defaults to latest finalized
+#[utoipa::path(
+    get,
+    path = "/v1/rc/accounts/{accountId}/staking-info",
+    tag = "rc",
+    summary = "RC get staking info",
+    description = "Returns staking information for a given stash account on the relay chain.",
+    params(
+        ("accountId" = String, Path, description = "SS58-encoded stash account address"),
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+    ),
+    responses(
+        (status = 200, description = "Staking information", body = Object),
+        (status = 400, description = "Invalid account address"),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_staking_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,

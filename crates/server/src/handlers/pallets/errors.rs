@@ -171,7 +171,24 @@ pub struct PalletErrorItemResponse {
 // Handler
 // ============================================================================
 
-/// Handler for `GET /pallets/{palletId}/errors`.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/{palletId}/errors",
+    tag = "pallets",
+    summary = "Pallet errors",
+    description = "Returns all errors defined in a pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return error names"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Pallet errors", body = Object),
+        (status = 400, description = "Invalid pallet"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_pallet_errors(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
@@ -212,7 +229,25 @@ pub async fn get_pallet_errors(
     Ok((StatusCode::OK, Json(response)).into_response())
 }
 
-/// Handler for `GET /pallets/{palletId}/errors/{errorItemId}`.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/{palletId}/errors/{errorItemId}",
+    tag = "pallets",
+    summary = "Pallet error details",
+    description = "Returns metadata for a specific error in a pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("errorItemId" = String, Path, description = "Name of the error"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Error details", body = Object),
+        (status = 404, description = "Error not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_pallet_error_item(
     State(state): State<AppState>,
     Path((pallet_id, error_id)): Path<(String, String)>,

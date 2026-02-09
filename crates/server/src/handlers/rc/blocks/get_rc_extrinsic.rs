@@ -30,6 +30,26 @@ use axum::{
 /// - `eventDocs` (boolean, default: false): Include documentation for events
 /// - `extrinsicDocs` (boolean, default: false): Include documentation for extrinsics
 /// - `noFees` (boolean, default: false): Skip fee calculation (info will be empty object)
+#[utoipa::path(
+    get,
+    path = "/v1/rc/blocks/{blockId}/extrinsics/{extrinsicIndex}",
+    tag = "rc",
+    summary = "RC get extrinsic by index",
+    description = "Returns a specific extrinsic from a relay chain block by its index.",
+    params(
+        ("blockId" = String, Path, description = "Block height number or block hash"),
+        ("extrinsicIndex" = String, Path, description = "Index of the extrinsic in the block"),
+        ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include extrinsic documentation"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation")
+    ),
+    responses(
+        (status = 200, description = "Extrinsic details", body = Object),
+        (status = 400, description = "Invalid block ID or extrinsic index"),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_extrinsic(
     State(state): State<AppState>,
     Path(path_params): Path<ExtrinsicPathParams>,

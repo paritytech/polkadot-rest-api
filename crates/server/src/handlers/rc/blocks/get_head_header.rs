@@ -70,6 +70,21 @@ impl IntoResponse for GetRcBlockHeadHeaderError {
 ///
 /// Query Parameters:
 /// - `finalized` (boolean, default: true): When true, returns finalized head. When false, returns canonical head.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/blocks/head/header",
+    tag = "rc",
+    summary = "RC get head block header",
+    description = "Returns the header of the latest relay chain block.",
+    params(
+        ("finalized" = Option<bool>, Query, description = "When true returns finalized head (default: true)")
+    ),
+    responses(
+        (status = 200, description = "Relay chain head block header", body = Object),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_blocks_head_header(
     State(state): State<AppState>,
     Query(params): Query<RcBlockHeadHeaderQueryParams>,

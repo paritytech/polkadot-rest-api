@@ -114,12 +114,22 @@ impl IntoResponse for ParaInclusionsError {
     }
 }
 
-/// Handler for GET /blocks/{blockId}/para-inclusions
-///
-/// Returns parachain inclusion information for a given relay chain block.
-///
-/// Query Parameters:
-/// - `paraId` (optional): Filter results by a specific parachain ID
+#[utoipa::path(
+    get,
+    path = "/v1/blocks/{blockId}/para-inclusions",
+    tag = "blocks",
+    summary = "Get parachain inclusions",
+    description = "Returns parachain inclusion information for a given relay chain block. Extracts CandidateIncluded events from the ParaInclusion pallet.",
+    params(
+        ("blockId" = String, Path, description = "Block height number or block hash"),
+        ("paraId" = Option<u32>, Query, description = "Filter results by a specific parachain ID")
+    ),
+    responses(
+        (status = 200, description = "Parachain inclusion information", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_block_para_inclusions(
     State(state): State<AppState>,
     Path(block_id): Path<String>,

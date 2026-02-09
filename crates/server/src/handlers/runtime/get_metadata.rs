@@ -137,6 +137,21 @@ pub struct RuntimeMetadataResponse {
     pub metadata: Value,
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/runtime/metadata",
+    tag = "runtime",
+    summary = "Runtime metadata",
+    description = "Returns the decoded runtime metadata in JSON format.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Runtime metadata", body = Object),
+        (status = 400, description = "Invalid block parameter"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn runtime_metadata(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
@@ -175,9 +190,21 @@ pub async fn runtime_metadata(
     }))
 }
 
-/// Handler for GET /runtime/metadata/versions
-///
-/// Returns the available metadata versions at a given block.
+#[utoipa::path(
+    get,
+    path = "/v1/runtime/metadata/versions",
+    tag = "runtime",
+    summary = "Available metadata versions",
+    description = "Returns the available metadata versions at a given block.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "List of available metadata versions", body = Vec<String>),
+        (status = 400, description = "Invalid block parameter"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn runtime_metadata_versions(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
@@ -219,10 +246,22 @@ pub async fn runtime_metadata_versions(
     Ok(Json(version_strings))
 }
 
-/// Handler for GET /runtime/metadata/{version}
-///
-/// Returns the metadata at a specific version.
-/// The version parameter should be in "vX" format (e.g., "v14", "v15").
+#[utoipa::path(
+    get,
+    path = "/v1/runtime/metadata/{version}",
+    tag = "runtime",
+    summary = "Runtime metadata by version",
+    description = "Returns the metadata at a specific version. The version parameter should be in 'vX' format (e.g., 'v14', 'v15').",
+    params(
+        ("version" = String, Path, description = "Metadata version (e.g., 'v14', 'v15')"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Runtime metadata at specified version", body = Object),
+        (status = 400, description = "Invalid version format or block parameter"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn runtime_metadata_versioned(
     State(state): State<AppState>,
     Path(version): Path<String>,

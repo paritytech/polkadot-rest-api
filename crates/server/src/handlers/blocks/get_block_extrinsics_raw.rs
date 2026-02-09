@@ -49,13 +49,21 @@ pub struct BlockRawResponse {
 // Main Handler
 // ================================================================================================
 
-/// Handler for GET /blocks/{blockId}/extrinsics-raw
-///
-/// Returns raw block data with hex-encoded extrinsics for a given block identifier (hash or number).
-/// The extrinsics are returned as raw hex strings without decoding.
-///
-/// # Path Parameters
-/// - `blockId`: Block identifier (height number or block hash)
+#[utoipa::path(
+    get,
+    path = "/v1/blocks/{blockId}/extrinsics-raw",
+    tag = "blocks",
+    summary = "Get raw extrinsics",
+    description = "Returns raw block data with hex-encoded extrinsics for a given block identifier. The extrinsics are returned as raw hex strings without decoding.",
+    params(
+        ("blockId" = String, Path, description = "Block height number or block hash")
+    ),
+    responses(
+        (status = 200, description = "Raw block data with hex-encoded extrinsics", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_block_extrinsics_raw(
     State(state): State<AppState>,
     Path(block_id): Path<String>,

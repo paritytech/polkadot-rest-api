@@ -150,6 +150,21 @@ struct StatusRecord {
     last_committed_timeslice: u32,
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/coretime/info",
+    tag = "coretime",
+    summary = "Get coretime info",
+    description = "Returns coretime chain status information including the last committed timeslice.",
+    params(
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+    ),
+    responses(
+        (status = 200, description = "Coretime info", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn coretime_info(
     State(state): State<AppState>,
     Query(params): Query<CoretimeQueryParams>,

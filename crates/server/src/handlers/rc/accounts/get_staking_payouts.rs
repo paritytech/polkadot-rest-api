@@ -29,6 +29,26 @@ use config::ChainType;
 /// - `depth` (optional): Number of eras to query (default: 1)
 /// - `era` (optional): The era to query at (default: active_era - 1)
 /// - `unclaimedOnly` (optional): Only show unclaimed rewards (default: true)
+#[utoipa::path(
+    get,
+    path = "/v1/rc/accounts/{accountId}/staking-payouts",
+    tag = "rc",
+    summary = "RC get staking payouts",
+    description = "Returns staking payout information for a given account on the relay chain.",
+    params(
+        ("accountId" = String, Path, description = "SS58-encoded account address"),
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
+        ("depth" = Option<u32>, Query, description = "Number of eras to query (default: 1)"),
+        ("era" = Option<u32>, Query, description = "The era to query at (default: active_era - 1)"),
+        ("unclaimedOnly" = Option<bool>, Query, description = "Only show unclaimed rewards (default: true)")
+    ),
+    responses(
+        (status = 200, description = "Staking payouts", body = Object),
+        (status = 400, description = "Invalid account address"),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_staking_payouts(
     State(state): State<AppState>,
     Path(account_id): Path<String>,

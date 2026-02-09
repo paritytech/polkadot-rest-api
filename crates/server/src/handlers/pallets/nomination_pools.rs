@@ -163,9 +163,21 @@ struct RewardPoolStorageV1 {
 // Main Handlers
 // ============================================================================
 
-/// Handler for GET `/pallets/nomination-pools/info`
-///
-/// Returns global nomination pools statistics and configuration.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/nomination-pools/info",
+    tag = "pallets",
+    summary = "Nomination pools info",
+    description = "Returns global nomination pools statistics and configuration.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Nomination pools information", body = Object),
+        (status = 400, description = "Not supported on this chain"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn pallets_nomination_pools_info(
     State(state): State<AppState>,
     Query(params): Query<NominationPoolsQueryParams>,
@@ -282,9 +294,22 @@ pub async fn pallets_nomination_pools_info(
         .into_response())
 }
 
-/// Handler for GET `/pallets/nomination-pools/{poolId}`
-///
-/// Returns details for a specific nomination pool.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/nomination-pools/{poolId}",
+    tag = "pallets",
+    summary = "Nomination pool details",
+    description = "Returns details for a specific nomination pool.",
+    params(
+        ("poolId" = String, Path, description = "Pool ID"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Pool details", body = Object),
+        (status = 404, description = "Pool not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn pallets_nomination_pools_pool(
     State(state): State<AppState>,
     Path(pool_id): Path<String>,

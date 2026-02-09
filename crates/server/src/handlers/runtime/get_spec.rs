@@ -167,6 +167,21 @@ pub fn transform_properties(properties: Value) -> Value {
     Value::Object(result)
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/runtime/spec",
+    tag = "runtime",
+    summary = "Runtime specification",
+    description = "Returns the runtime specification including version, APIs, and chain properties.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Runtime specification", body = Object),
+        (status = 400, description = "Invalid block parameter"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn runtime_spec(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,

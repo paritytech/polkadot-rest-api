@@ -23,6 +23,19 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
 /// - `ss58Prefix`: The SS58 prefix (null if invalid)
 /// - `network`: The network name for the prefix (null if invalid/unknown)
 /// - `accountId`: The account ID in hex format (null if invalid)
+#[utoipa::path(
+    get,
+    path = "/v1/accounts/{accountId}/validate",
+    tag = "accounts",
+    summary = "Validate account address",
+    description = "Validates an SS58-encoded account address and returns details about its format.",
+    params(
+        ("accountId" = String, Path, description = "SS58-encoded account address to validate")
+    ),
+    responses(
+        (status = 200, description = "Validation result", body = Object)
+    )
+)]
 pub async fn get_validate(
     Path(address): Path<String>,
     Query(_params): Query<AccountValidateQueryParams>,

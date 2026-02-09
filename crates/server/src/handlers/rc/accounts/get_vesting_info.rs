@@ -25,6 +25,24 @@ use config::ChainType;
 /// Query Parameters:
 /// - `at` (optional): Block identifier (hash or height) - defaults to latest finalized
 /// - `includeClaimable` (optional): When true, calculate vested amounts
+#[utoipa::path(
+    get,
+    path = "/v1/rc/accounts/{accountId}/vesting-info",
+    tag = "rc",
+    summary = "RC get vesting info",
+    description = "Returns vesting information for a given account on the relay chain.",
+    params(
+        ("accountId" = String, Path, description = "SS58-encoded account address"),
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
+        ("includeClaimable" = Option<bool>, Query, description = "When true, calculate vested amounts")
+    ),
+    responses(
+        (status = 200, description = "Vesting information", body = Object),
+        (status = 400, description = "Invalid account address"),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_vesting_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,

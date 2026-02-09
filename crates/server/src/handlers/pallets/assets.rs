@@ -77,6 +77,22 @@ pub struct PalletsAssetsInfoResponse {
 // Main Handler
 // ============================================================================
 
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/assets/{assetId}/asset-info",
+    tag = "pallets",
+    summary = "Asset info",
+    description = "Returns details for a specific asset including supply, admin, and metadata.",
+    params(
+        ("assetId" = String, Path, description = "Asset ID"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Asset information", body = Object),
+        (status = 404, description = "Asset not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn pallets_assets_asset_info(
     State(state): State<AppState>,
     Path(asset_id): Path<String>,

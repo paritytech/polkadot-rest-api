@@ -25,6 +25,24 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 /// - `at` (optional): Block identifier (hash or height) - defaults to latest finalized
 /// - `useRcBlock` (optional): When true, treat 'at' as relay chain block identifier
 /// - `assets` (optional): List of asset IDs to query (queries all if omitted)
+#[utoipa::path(
+    get,
+    path = "/v1/accounts/{accountId}/asset-balances",
+    tag = "accounts",
+    summary = "Account asset balances",
+    description = "Returns asset balances for a given account on Asset Hub chains.",
+    params(
+        ("accountId" = String, Path, description = "SS58-encoded account address"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier"),
+        ("assets" = Option<String>, Query, description = "Comma-separated list of asset IDs to query")
+    ),
+    responses(
+        (status = 200, description = "Account asset balances", body = Object),
+        (status = 400, description = "Invalid parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_asset_balances(
     State(state): State<AppState>,
     Path(account_id): Path<String>,

@@ -73,6 +73,21 @@ struct ActiveEraInfo {
     start: Option<u64>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/staking/validators",
+    tag = "pallets",
+    summary = "Staking validators",
+    description = "Returns the list of active validators and their info.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Validator information", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn pallets_staking_validators(
     State(state): State<AppState>,
     Query(params): Query<StakingValidatorsQueryParams>,
@@ -117,6 +132,20 @@ pub async fn pallets_staking_validators(
     Ok((StatusCode::OK, Json(response)).into_response())
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/rc/pallets/staking/validators",
+    tag = "rc",
+    summary = "RC staking validators",
+    description = "Returns the list of active validators from the relay chain.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Relay chain validator information", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn rc_pallets_staking_validators(
     State(state): State<AppState>,
     Query(params): Query<RcStakingValidatorsQueryParams>,

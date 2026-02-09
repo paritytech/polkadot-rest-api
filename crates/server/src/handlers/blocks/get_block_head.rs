@@ -77,6 +77,25 @@ impl Default for BlockHeadQueryParams {
 /// - `noFees` (boolean, default: false): Skip fee calculation
 /// - `decodedXcmMsgs` (boolean, default: false): Decode and include XCM messages
 /// - `paraId` (number, optional): Filter XCM messages by parachain ID
+#[utoipa::path(
+    get,
+    path = "/v1/blocks/head",
+    tag = "blocks",
+    summary = "Get latest block",
+    description = "Returns the latest finalized or canonical block with full extrinsic and event details.",
+    params(
+        ("finalized" = Option<bool>, Query, description = "When true (default), returns finalized head. When false, returns canonical head."),
+        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation for extrinsics"),
+        ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID")
+    ),
+    responses(
+        (status = 200, description = "Latest block information", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_block_head(
     State(state): State<AppState>,
     Query(params): Query<BlockHeadQueryParams>,

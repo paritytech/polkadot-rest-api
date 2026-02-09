@@ -124,6 +124,21 @@ pub struct CoretimeRegionsResponse {
 ///
 /// Query Parameters:
 /// - at: Optional block number or hash to query at (defaults to latest finalized)
+#[utoipa::path(
+    get,
+    path = "/v1/coretime/regions",
+    tag = "coretime",
+    summary = "Get coretime regions",
+    description = "Returns all regions on a coretime chain including begin/end timeslices, core, owner, and mask.",
+    params(
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+    ),
+    responses(
+        (status = 200, description = "Coretime regions", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn coretime_regions(
     State(state): State<AppState>,
     Query(params): Query<CoretimeQueryParams>,

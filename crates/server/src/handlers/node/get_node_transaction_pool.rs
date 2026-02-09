@@ -108,9 +108,20 @@ pub struct TransactionPoolResponse {
     pub pool: Vec<TransactionPoolEntry>,
 }
 
-/// Handler for GET /node/transaction-pool
-///
-/// Returns the transaction pool with optional fee information.
+#[utoipa::path(
+    get,
+    path = "/v1/node/transaction-pool",
+    tag = "node",
+    summary = "Transaction pool",
+    description = "Returns the node's transaction pool with optional fee information.",
+    params(
+        ("includeFee" = Option<bool>, Query, description = "Include fee details for each transaction")
+    ),
+    responses(
+        (status = 200, description = "Transaction pool entries", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_node_transaction_pool(
     State(state): State<AppState>,
     Query(params): Query<TransactionPoolQueryParams>,

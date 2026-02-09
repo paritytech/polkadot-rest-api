@@ -29,6 +29,25 @@ use serde_json::json;
 /// - `useRcBlock` (optional): When true, treat 'at' as relay chain block identifier
 /// - `token` (optional): Token symbol for chains with multiple tokens (defaults to native)
 /// - `denominated` (optional): When true, denominate balances using chain decimals
+#[utoipa::path(
+    get,
+    path = "/v1/accounts/{accountId}/balance-info",
+    tag = "accounts",
+    summary = "Account balance info",
+    description = "Returns balance information for a given account including free, reserved, and locked balances.",
+    params(
+        ("accountId" = String, Path, description = "SS58-encoded account address"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier"),
+        ("token" = Option<String>, Query, description = "Token symbol for chains with multiple tokens"),
+        ("denominated" = Option<bool>, Query, description = "When true, denominate balances using chain decimals")
+    ),
+    responses(
+        (status = 200, description = "Account balance information", body = Object),
+        (status = 400, description = "Invalid account or block parameter"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_balance_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,

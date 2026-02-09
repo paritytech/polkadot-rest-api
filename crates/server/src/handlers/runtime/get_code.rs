@@ -77,6 +77,21 @@ pub struct AtBlockParam {
 /// Returns:
 /// - `at`: Block number and hash at which the call was made
 /// - `code`: Runtime code Wasm blob as hex string
+#[utoipa::path(
+    get,
+    path = "/v1/runtime/code",
+    tag = "runtime",
+    summary = "Runtime Wasm code",
+    description = "Returns the Wasm code blob of the Substrate runtime at a given block.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Runtime code", body = Object),
+        (status = 400, description = "Invalid block parameter"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn runtime_code(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,

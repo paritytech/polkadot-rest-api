@@ -51,6 +51,21 @@ impl IntoResponse for CapabilitiesError {
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/capabilities",
+    tag = "capabilities",
+    summary = "API capabilities",
+    description = "Returns the chain name and list of available pallets in the runtime metadata.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Chain capabilities", body = Object),
+        (status = 400, description = "Invalid block parameter"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_capabilities(
     State(state): State<AppState>,
     Query(params): Query<AtBlockParam>,

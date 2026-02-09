@@ -58,13 +58,17 @@ pub struct AhmInfoResponse {
     pub asset_hub: AhmStartEndBlocks,
 }
 
-/// Get Asset Hub Migration information
-///
-/// This endpoint returns information about the Asset Hub migration, including
-/// start and end blocks for both relay chain and Asset Hub.
-///
-/// Returns:
-/// - Information about migration boundaries for relay and asset hub
+#[utoipa::path(
+    get,
+    path = "/v1/ahm-info",
+    tag = "ahm",
+    summary = "Asset Hub Migration info",
+    description = "Returns information about the Asset Hub migration, including start and end blocks for both relay chain and Asset Hub.",
+    responses(
+        (status = 200, description = "AHM migration boundaries", body = Object),
+        (status = 404, description = "No migration data available")
+    )
+)]
 pub async fn ahm_info(
     State(state): State<AppState>,
 ) -> Result<Json<AhmInfoResponse>, GetAhmInfoError> {

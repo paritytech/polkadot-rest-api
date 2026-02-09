@@ -52,9 +52,17 @@ pub struct NodeVersionResponse {
     pub chain: String,
 }
 
-/// Handler for GET /node/version
-///
-/// Returns the node's version information including client version, implementation name, and chain name.
+#[utoipa::path(
+    get,
+    path = "/v1/node/version",
+    tag = "node",
+    summary = "Node version",
+    description = "Returns the node's version information including client version, implementation name, and chain name.",
+    responses(
+        (status = 200, description = "Node version information", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_node_version(
     State(state): State<AppState>,
 ) -> Result<Json<NodeVersionResponse>, GetNodeVersionError> {

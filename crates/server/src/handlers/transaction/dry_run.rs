@@ -222,6 +222,19 @@ impl From<subxt::error::RuntimeApiError> for DryRunError {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/transaction/dry-run",
+    tag = "transaction",
+    summary = "Dry run transaction",
+    description = "Dry run a transaction to check validity without submitting.",
+    request_body(content = Object, description = "Transaction with 'tx', 'senderAddress', and optional 'at' fields"),
+    responses(
+        (status = 200, description = "Dry run result", body = Object),
+        (status = 400, description = "Invalid transaction"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn dry_run(
     State(state): State<AppState>,
     Json(body): Json<DryRunRequest>,
@@ -229,6 +242,19 @@ pub async fn dry_run(
     dry_run_internal(&state.client, body).await
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/rc/transaction/dry-run",
+    tag = "rc",
+    summary = "RC dry run transaction",
+    description = "Dry run a transaction on the relay chain.",
+    request_body(content = Object, description = "Transaction with 'tx', 'senderAddress', and optional 'at' fields"),
+    responses(
+        (status = 200, description = "Dry run result", body = Object),
+        (status = 400, description = "Invalid transaction"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn dry_run_rc(
     State(state): State<AppState>,
     Json(body): Json<DryRunRequest>,

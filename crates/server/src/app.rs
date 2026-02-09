@@ -1,6 +1,7 @@
-use crate::{logging::http_logger_middleware, routes, state::AppState};
-use axum::{Router, middleware, routing::get};
+use crate::{logging::http_logger_middleware, openapi::ApiDoc, routes, state::AppState};
+use axum::{Router, middleware, response::Html, routing::get};
 use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
+use utoipa::OpenApi;
 
 pub fn create_app(state: AppState) -> Router {
     let request_limit = state.config.express.request_limit;
@@ -49,7 +50,13 @@ pub fn create_app(state: AppState) -> Router {
     };
 
     // Build root router
-    let mut app = Router::new().nest("/v1", v1_routes);
+    let mut app = Router::new()
+        .nest("/v1", v1_routes)
+        .route(
+            "/api-docs/openapi.json",
+            get(|| async { axum::Json(ApiDoc::openapi()) }),
+        )
+        .route("/docs", get(swagger_ui));
 
     // Add metrics endpoints if enabled (separate from v1 routes, no prefix)
     if metrics_enabled {
@@ -61,4 +68,8 @@ pub fn create_app(state: AppState) -> Router {
         .layer(TraceLayer::new_for_http())
         .layer(RequestBodyLimitLayer::new(request_limit))
         .with_state(state)
+}
+
+async fn swagger_ui() -> Html<&'static str> {
+    Html(include_str!("swagger_ui.html"))
 }

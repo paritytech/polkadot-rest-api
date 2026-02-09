@@ -18,7 +18,7 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
             API_VERSION,
             "/transaction",
             "post",
-            post(|state, body| transaction::submit(state, body, false)),
+            post(transaction::submit),
         )
         .route_registered(
             registry,
@@ -64,7 +64,7 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
                 API_VERSION,
                 "/rc/transaction",
                 "post",
-                post(|state, body| transaction::submit(state, body, true)),
+                post(transaction::submit_rc),
             )
             .route_registered(
                 registry,

@@ -50,6 +50,7 @@ regex = "1.10"
 tracing-loki = "0.2"
 url = "2.5"
 http-body-util = "0.1"
+utoipa = { version = "5", features = ["axum_extras"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

@@ -20,14 +20,26 @@ use super::types::{
     GetBlockError,
 };
 
-/// Handler for GET /blocks/{blockId}/extrinsics/{extrinsicIndex}
-///
-/// Returns a specific extrinsic from a block by its index
-///
-/// Query Parameters:
-/// - `eventDocs` (boolean, default: false): Include documentation for events
-/// - `extrinsicDocs` (boolean, default: false): Include documentation for extrinsics
-/// - `noFees` (boolean, default: false): Skip fee calculation (info will be empty object)
+#[utoipa::path(
+    get,
+    path = "/v1/blocks/{blockId}/extrinsics/{extrinsicIndex}",
+    tag = "blocks",
+    summary = "Get extrinsic by index",
+    description = "Returns a specific extrinsic from a block by its index within the block.",
+    params(
+        ("blockId" = String, Path, description = "Block height number or block hash"),
+        ("extrinsicIndex" = String, Path, description = "Index of the extrinsic within the block"),
+        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation")
+    ),
+    responses(
+        (status = 200, description = "Extrinsic details", body = Object),
+        (status = 400, description = "Invalid block identifier or extrinsic index"),
+        (status = 404, description = "Extrinsic not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_extrinsic(
     State(state): State<AppState>,
     Path(path_params): Path<ExtrinsicPathParams>,

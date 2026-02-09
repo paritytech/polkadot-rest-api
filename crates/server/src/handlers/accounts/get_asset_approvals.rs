@@ -29,6 +29,25 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 /// - `useRcBlock` (optional): When true, treat 'at' as relay chain block identifier
 /// - `assetId` (required): The asset ID to query approval for
 /// - `delegate` (required): The delegate address with spending approval
+#[utoipa::path(
+    get,
+    path = "/v1/accounts/{accountId}/asset-approvals",
+    tag = "accounts",
+    summary = "Account asset approvals",
+    description = "Returns asset approval information for a given account, asset, and delegate.",
+    params(
+        ("accountId" = String, Path, description = "SS58-encoded account address"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier"),
+        ("assetId" = String, Query, description = "The asset ID to query approval for"),
+        ("delegate" = String, Query, description = "The delegate address with spending approval")
+    ),
+    responses(
+        (status = 200, description = "Asset approval information", body = Object),
+        (status = 400, description = "Invalid parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_asset_approvals(
     State(state): State<AppState>,
     Path(account_id): Path<String>,

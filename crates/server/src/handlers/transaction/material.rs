@@ -212,6 +212,23 @@ fn parse_metadata_params(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/transaction/material",
+    tag = "transaction",
+    summary = "Transaction construction material",
+    description = "Returns network information needed for transaction construction including genesis hash, spec version, and optionally metadata.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("noMeta" = Option<bool>, Query, description = "DEPRECATED: If true, metadata is not included"),
+        ("metadata" = Option<String>, Query, description = "Metadata format: 'json' or 'scale'")
+    ),
+    responses(
+        (status = 200, description = "Transaction material", body = Object),
+        (status = 400, description = "Invalid parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn material(
     State(state): State<AppState>,
     Query(query): Query<MaterialQuery>,
@@ -219,6 +236,22 @@ pub async fn material(
     material_internal(&state.client, &state.rpc_client, query).await
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/rc/transaction/material",
+    tag = "rc",
+    summary = "RC transaction material",
+    description = "Returns relay chain network information for transaction construction.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("noMeta" = Option<bool>, Query, description = "DEPRECATED: If true, metadata is not included"),
+        ("metadata" = Option<String>, Query, description = "Metadata format: 'json' or 'scale'")
+    ),
+    responses(
+        (status = 200, description = "Relay chain transaction material", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn material_rc(
     State(state): State<AppState>,
     Query(query): Query<MaterialQuery>,
@@ -252,6 +285,24 @@ fn parse_metadata_version(version_str: &str) -> Result<u32, MaterialError> {
         })
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/transaction/material/{metadataVersion}",
+    tag = "transaction",
+    summary = "Transaction material with versioned metadata",
+    description = "Returns transaction construction material with metadata at a specific version.",
+    params(
+        ("metadataVersion" = String, Path, description = "Metadata version (e.g., 'v14', 'v15')"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("noMeta" = Option<bool>, Query, description = "DEPRECATED: If true, metadata is not included"),
+        ("metadata" = Option<String>, Query, description = "Metadata format: 'json' or 'scale'")
+    ),
+    responses(
+        (status = 200, description = "Transaction material with versioned metadata", body = Object),
+        (status = 400, description = "Invalid parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn material_versioned(
     State(state): State<AppState>,
     Path(metadata_version): Path<String>,
@@ -260,6 +311,23 @@ pub async fn material_versioned(
     material_versioned_internal(&state.client, &state.rpc_client, metadata_version, query).await
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/rc/transaction/material/{metadataVersion}",
+    tag = "rc",
+    summary = "RC transaction material versioned",
+    description = "Returns relay chain transaction material with metadata at a specific version.",
+    params(
+        ("metadataVersion" = String, Path, description = "Metadata version (e.g., 'v14', 'v15')"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("noMeta" = Option<bool>, Query, description = "DEPRECATED: If true, metadata is not included"),
+        ("metadata" = Option<String>, Query, description = "Metadata format: 'json' or 'scale'")
+    ),
+    responses(
+        (status = 200, description = "Relay chain transaction material with versioned metadata", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn material_versioned_rc(
     State(state): State<AppState>,
     Path(metadata_version): Path<String>,

@@ -152,9 +152,21 @@ struct DecidingDetails {
 // Main Handler
 // ============================================================================
 
-/// Handler for GET /pallets/on-going-referenda
-///
-/// Returns all currently active referenda from the Referenda pallet.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/on-going-referenda",
+    tag = "pallets",
+    summary = "On-going referenda",
+    description = "Returns all currently active referenda from the Referenda pallet.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Active referenda", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn pallets_on_going_referenda(
     State(state): State<AppState>,
     Query(params): Query<OnGoingReferendaQueryParams>,

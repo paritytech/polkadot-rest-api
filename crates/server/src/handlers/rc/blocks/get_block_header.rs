@@ -56,6 +56,22 @@ impl IntoResponse for GetRcBlockHeaderError {
 ///
 /// # Path Parameters
 /// - `blockId`: Block identifier (height number or block hash)
+#[utoipa::path(
+    get,
+    path = "/v1/rc/blocks/{blockId}/header",
+    tag = "rc",
+    summary = "RC get block header",
+    description = "Returns the header of a relay chain block by block hash or block number.",
+    params(
+        ("blockId" = String, Path, description = "Block height number or block hash")
+    ),
+    responses(
+        (status = 200, description = "Relay chain block header", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_block_header(
     State(state): State<AppState>,
     Path(block_id): Path<String>,

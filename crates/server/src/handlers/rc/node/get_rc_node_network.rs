@@ -62,6 +62,18 @@ impl IntoResponse for GetRcNodeNetworkError {
 ///
 /// Returns the relay chain node's network information. This endpoint is specifically
 /// for Asset Hub instances to query relay chain node networking details.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/node/network",
+    tag = "rc",
+    summary = "RC get node network",
+    description = "Returns the relay chain node's network information.",
+    responses(
+        (status = 200, description = "Relay chain node network info", body = Object),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_node_network(
     State(state): State<AppState>,
 ) -> Result<Json<NodeNetworkResponse>, GetRcNodeNetworkError> {

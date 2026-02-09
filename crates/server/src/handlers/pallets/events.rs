@@ -107,6 +107,24 @@ struct PalletEventsInfo {
 /// Handler for GET `/pallets/{palletId}/events`
 ///
 /// Returns all events defined in a pallet.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/{palletId}/events",
+    tag = "pallets",
+    summary = "Get pallet events",
+    description = "Returns all events defined in a pallet.",
+    params(
+        ("palletId" = String, Path, description = "Pallet name or index"),
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return event names")
+    ),
+    responses(
+        (status = 200, description = "Pallet events", body = Object),
+        (status = 400, description = "Invalid request"),
+        (status = 404, description = "Pallet not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_pallet_events(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
@@ -151,6 +169,25 @@ pub async fn get_pallet_events(
 /// Handler for GET `/pallets/{palletId}/events/{eventItemId}`
 ///
 /// Returns metadata for a specific event in a pallet.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/{palletId}/events/{eventItemId}",
+    tag = "pallets",
+    summary = "Get pallet event item",
+    description = "Returns metadata for a specific event in a pallet.",
+    params(
+        ("palletId" = String, Path, description = "Pallet name or index"),
+        ("eventItemId" = String, Path, description = "Event name"),
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
+        ("metadata" = Option<bool>, Query, description = "Include full event metadata")
+    ),
+    responses(
+        (status = 200, description = "Event item details", body = Object),
+        (status = 400, description = "Invalid request"),
+        (status = 404, description = "Pallet or event not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_pallet_event_item(
     State(state): State<AppState>,
     Path((pallet_id, event_item_id)): Path<(String, String)>,

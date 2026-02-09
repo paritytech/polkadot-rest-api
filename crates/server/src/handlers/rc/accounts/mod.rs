@@ -1,10 +1,10 @@
 //! RC (Relay Chain) account-related handlers.
 
-mod get_balance_info;
-mod get_proxy_info;
-mod get_staking_info;
-mod get_staking_payouts;
-mod get_vesting_info;
+pub mod get_balance_info;
+pub mod get_proxy_info;
+pub mod get_staking_info;
+pub mod get_staking_payouts;
+pub mod get_vesting_info;
 mod types;
 
 pub use get_balance_info::get_balance_info;

@@ -44,6 +44,21 @@ pub struct CoretimeReservationsResponse {
 ///
 /// Query Parameters:
 /// - at: Optional block number or hash to query at (defaults to latest finalized)
+#[utoipa::path(
+    get,
+    path = "/v1/coretime/reservations",
+    tag = "coretime",
+    summary = "Get coretime reservations",
+    description = "Returns all reservations on a coretime chain. Reserved cores are permanently allocated and not available for sale.",
+    params(
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+    ),
+    responses(
+        (status = 200, description = "Coretime reservations", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn coretime_reservations(
     State(state): State<AppState>,
     Query(params): Query<CoretimeQueryParams>,

@@ -18,16 +18,22 @@ use axum::{
 use config::ChainType;
 use serde_json::json;
 
-/// Handler for GET /blocks/{blockId}/header
-///
-/// Returns the header of the specified block (lightweight)
-///
-/// Path Parameters:
-/// - `blockId`: Block height or block hash
-///
-/// Query Parameters:
-/// - `useRcBlock` (boolean, default: false): When true, treat blockId as Relay Chain block
-///   and return Asset Hub blocks included in it
+#[utoipa::path(
+    get,
+    path = "/v1/blocks/{blockId}/header",
+    tag = "blocks",
+    summary = "Get block header by ID",
+    description = "Returns the header of the specified block (lightweight, no extrinsics/events).",
+    params(
+        ("blockId" = String, Path, description = "Block height number or block hash"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat blockId as Relay Chain block and return Asset Hub blocks")
+    ),
+    responses(
+        (status = 200, description = "Block header information", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_block_header(
     State(state): State<AppState>,
     Path(block_id): Path<String>,

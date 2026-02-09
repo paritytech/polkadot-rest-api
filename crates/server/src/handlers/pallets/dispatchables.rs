@@ -223,6 +223,24 @@ pub struct PalletDispatchableItemResponse {
 /// - `400 Bad Request`: Invalid block parameter or unsupported `useRcBlock` usage.
 /// - `404 Not Found`: Pallet not found in metadata.
 /// - `503 Service Unavailable`: RPC connection lost.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/{palletId}/dispatchables",
+    tag = "pallets",
+    summary = "Pallet dispatchables",
+    description = "Returns the dispatchable calls defined in a pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return dispatchable names"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Pallet dispatchables", body = Object),
+        (status = 400, description = "Invalid pallet"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_pallets_dispatchables(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
@@ -292,6 +310,25 @@ pub async fn get_pallets_dispatchables(
 /// - `400 Bad Request`: Invalid block parameter or unsupported `useRcBlock` usage.
 /// - `404 Not Found`: Pallet or dispatchable not found in metadata.
 /// - `503 Service Unavailable`: RPC connection lost.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/{palletId}/dispatchables/{dispatchableItemId}",
+    tag = "pallets",
+    summary = "Pallet dispatchable details",
+    description = "Returns a single dispatchable call defined in a pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("dispatchableItemId" = String, Path, description = "Name of the dispatchable"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Dispatchable details", body = Object),
+        (status = 404, description = "Dispatchable not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_pallet_dispatchable_item(
     State(state): State<AppState>,
     Path((pallet_id, dispatchable_id)): Path<(String, String)>,

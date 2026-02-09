@@ -111,6 +111,19 @@ impl IntoResponse for FeeEstimateError {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/transaction/fee-estimate",
+    tag = "transaction",
+    summary = "Estimate transaction fee",
+    description = "Estimate the fee for a transaction.",
+    request_body(content = Object, description = "Transaction with 'tx' field containing hex-encoded transaction"),
+    responses(
+        (status = 200, description = "Fee estimate", body = Object),
+        (status = 400, description = "Invalid transaction"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn fee_estimate(
     State(state): State<AppState>,
     Json(body): Json<FeeEstimateRequest>,
@@ -118,6 +131,19 @@ pub async fn fee_estimate(
     fee_estimate_internal(&state.client, body).await
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/rc/transaction/fee-estimate",
+    tag = "rc",
+    summary = "RC fee estimate",
+    description = "Estimate the fee for a relay chain transaction.",
+    request_body(content = Object, description = "Transaction with 'tx' field"),
+    responses(
+        (status = 200, description = "Fee estimate", body = Object),
+        (status = 400, description = "Invalid transaction"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn fee_estimate_rc(
     State(state): State<AppState>,
     Json(body): Json<FeeEstimateRequest>,

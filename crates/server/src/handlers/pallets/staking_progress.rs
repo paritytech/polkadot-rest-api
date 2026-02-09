@@ -148,6 +148,21 @@ struct SessionEraProgress {
     current_session_index: u32,
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/staking/progress",
+    tag = "pallets",
+    summary = "Staking progress",
+    description = "Returns staking progress including era, session info, and validator counts.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Staking progress information", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn pallets_staking_progress(
     State(state): State<AppState>,
     Query(params): Query<StakingProgressQueryParams>,
@@ -320,6 +335,20 @@ pub async fn pallets_staking_progress(
     Ok((StatusCode::OK, Json(response)).into_response())
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/rc/pallets/staking/progress",
+    tag = "rc",
+    summary = "RC staking progress",
+    description = "Returns staking progress from the relay chain.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Relay chain staking progress", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn rc_pallets_staking_progress(
     State(state): State<AppState>,
     Query(params): Query<RcStakingProgressQueryParams>,
