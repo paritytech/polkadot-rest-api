@@ -257,39 +257,6 @@ async fn test_coretime_leases_at_block_hash() -> Result<()> {
 // Error Handling Tests
 // ============================================================================
 
-/// Test error response for non-coretime chains (chains without Broker pallet)
-#[tokio::test]
-async fn test_coretime_leases_non_coretime_chain() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    // Only run this test on non-coretime chains
-    if is_coretime_chain(&client).await {
-        println!("Skipping test: This is a coretime chain, need non-coretime chain for this test");
-        return Ok(());
-    }
-
-    let response = client.get("/v1/coretime/leases").await?;
-
-    assert_eq!(
-        response.status.as_u16(),
-        404,
-        "Should return 404 for non-coretime chains"
-    );
-
-    let json = response.json()?;
-    assert!(
-        json["message"]
-            .as_str()
-            .map(|m| m.contains("Broker") || m.contains("pallet"))
-            .unwrap_or(false),
-        "Error message should mention Broker pallet not found"
-    );
-
-    println!("ok: Coretime leases non-coretime chain error test passed");
-    Ok(())
-}
-
 /// Test error response for invalid block parameter
 #[tokio::test]
 async fn test_coretime_leases_invalid_block_param() -> Result<()> {
@@ -720,39 +687,6 @@ async fn test_coretime_reservations_at_block_hash() -> Result<()> {
 // Reservations Error Handling Tests
 // ============================================================================
 
-/// Test error response for non-coretime chains (chains without Broker pallet) for reservations
-#[tokio::test]
-async fn test_coretime_reservations_non_coretime_chain() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    // Only run this test on non-coretime chains
-    if is_coretime_chain(&client).await {
-        println!("Skipping test: This is a coretime chain, need non-coretime chain for this test");
-        return Ok(());
-    }
-
-    let response = client.get("/v1/coretime/reservations").await?;
-
-    assert_eq!(
-        response.status.as_u16(),
-        404,
-        "Should return 404 for non-coretime chains"
-    );
-
-    let json = response.json()?;
-    assert!(
-        json["message"]
-            .as_str()
-            .map(|m| m.contains("Broker") || m.contains("pallet"))
-            .unwrap_or(false),
-        "Error message should mention Broker pallet not found"
-    );
-
-    println!("ok: Coretime reservations non-coretime chain error test passed");
-    Ok(())
-}
-
 /// Test error response for invalid block parameter for reservations
 #[tokio::test]
 async fn test_coretime_reservations_invalid_block_param() -> Result<()> {
@@ -1165,39 +1099,6 @@ async fn test_coretime_renewals_at_block_hash() -> Result<()> {
 // ============================================================================
 // Renewals Error Handling Tests
 // ============================================================================
-
-/// Test error response for non-coretime chains (chains without Broker pallet) for renewals
-#[tokio::test]
-async fn test_coretime_renewals_non_coretime_chain() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    // Only run this test on non-coretime chains
-    if is_coretime_chain(&client).await {
-        println!("Skipping test: This is a coretime chain, need non-coretime chain for this test");
-        return Ok(());
-    }
-
-    let response = client.get("/v1/coretime/renewals").await?;
-
-    assert_eq!(
-        response.status.as_u16(),
-        404,
-        "Should return 404 for non-coretime chains"
-    );
-
-    let json = response.json()?;
-    assert!(
-        json["message"]
-            .as_str()
-            .map(|m| m.contains("Broker") || m.contains("pallet"))
-            .unwrap_or(false),
-        "Error message should mention Broker pallet not found"
-    );
-
-    println!("ok: Coretime renewals non-coretime chain error test passed");
-    Ok(())
-}
 
 /// Test error response for invalid block parameter for renewals
 #[tokio::test]
@@ -1639,39 +1540,6 @@ async fn test_coretime_regions_at_block_hash() -> Result<()> {
 // ============================================================================
 // Regions Error Handling Tests
 // ============================================================================
-
-/// Test error response for non-coretime chains (chains without Broker pallet) for regions
-#[tokio::test]
-async fn test_coretime_regions_non_coretime_chain() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    // Only run this test on non-coretime chains
-    if is_coretime_chain(&client).await {
-        println!("Skipping test: This is a coretime chain, need non-coretime chain for this test");
-        return Ok(());
-    }
-
-    let response = client.get("/v1/coretime/regions").await?;
-
-    assert_eq!(
-        response.status.as_u16(),
-        404,
-        "Should return 404 for non-coretime chains"
-    );
-
-    let json = response.json()?;
-    assert!(
-        json["message"]
-            .as_str()
-            .map(|m| m.contains("Broker") || m.contains("pallet"))
-            .unwrap_or(false),
-        "Error message should mention Broker pallet not found"
-    );
-
-    println!("ok: Coretime regions non-coretime chain error test passed");
-    Ok(())
-}
 
 /// Test error response for invalid block parameter for regions
 #[tokio::test]
@@ -2177,6 +2045,12 @@ async fn test_coretime_info_invalid_block_param() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
 
+    // Coretime routes only exist on relay and coretime chains
+    if !is_coretime_chain(&client).await && !is_relay_chain(&client).await {
+        println!("Skipping test: No coretime routes on this chain type");
+        return Ok(());
+    }
+
     let response = client.get("/v1/coretime/info?at=invalid-block").await?;
 
     assert_eq!(
@@ -2194,6 +2068,12 @@ async fn test_coretime_info_invalid_block_param() -> Result<()> {
 async fn test_coretime_info_nonexistent_block() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
+
+    // Coretime routes only exist on relay and coretime chains
+    if !is_coretime_chain(&client).await && !is_relay_chain(&client).await {
+        println!("Skipping test: No coretime routes on this chain type");
+        return Ok(());
+    }
 
     // Use a very high block number that doesn't exist
     let response = client.get("/v1/coretime/info?at=999999999").await?;
@@ -2291,36 +2171,36 @@ async fn test_coretime_info_relay_chain_response() -> Result<()> {
 
     // Check for relay-chain specific fields (any of these may be present)
     let has_relay_fields = json.get("brokerId").is_some()
-        || json.get("palletVersion").is_some()
+        || json.get("storageVersion").is_some()
         || json.get("maxHistoricalRevenue").is_some();
 
     if has_relay_fields {
-        // If brokerId is present, verify it's a string
+        // If brokerId is present, verify it's a number (u32)
         if let Some(broker_id) = json.get("brokerId") {
             if !broker_id.is_null() {
                 assert!(
-                    broker_id.is_string(),
-                    "'brokerId' should be a string when present"
+                    broker_id.is_number(),
+                    "'brokerId' should be a number when present"
                 );
             }
         }
 
-        // If palletVersion is present, verify it's a string
-        if let Some(version) = json.get("palletVersion") {
+        // If storageVersion is present, verify it's a number (u16)
+        if let Some(version) = json.get("storageVersion") {
             if !version.is_null() {
                 assert!(
-                    version.is_string(),
-                    "'palletVersion' should be a string when present"
+                    version.is_number(),
+                    "'storageVersion' should be a number when present"
                 );
             }
         }
 
-        // If maxHistoricalRevenue is present, verify it's a string
+        // If maxHistoricalRevenue is present, verify it's a number (u32)
         if let Some(revenue) = json.get("maxHistoricalRevenue") {
             if !revenue.is_null() {
                 assert!(
-                    revenue.is_string(),
-                    "'maxHistoricalRevenue' should be a string when present"
+                    revenue.is_number(),
+                    "'maxHistoricalRevenue' should be a number when present"
                 );
             }
         }
@@ -2612,44 +2492,17 @@ async fn test_coretime_overview_at_block_hash() -> Result<()> {
 // Overview Error Handling Tests
 // ============================================================================
 
-/// Test error response for non-coretime chains (chains without Broker pallet) for overview
-#[tokio::test]
-async fn test_coretime_overview_non_coretime_chain() -> Result<()> {
-    init_tracing();
-    let client = setup_client().await?;
-
-    // Only run this test on non-coretime chains
-    if is_coretime_chain(&client).await {
-        println!("Skipping test: This is a coretime chain, need non-coretime chain for this test");
-        return Ok(());
-    }
-
-    let response = client.get("/v1/coretime/overview").await?;
-
-    assert_eq!(
-        response.status.as_u16(),
-        404,
-        "Should return 404 for non-coretime chains"
-    );
-
-    let json = response.json()?;
-    assert!(
-        json["message"]
-            .as_str()
-            .map(|m| m.contains("Broker") || m.contains("pallet"))
-            .unwrap_or(false),
-        "Error message should mention Broker pallet not found"
-    );
-
-    println!("ok: Coretime overview non-coretime chain error test passed");
-    Ok(())
-}
-
 /// Test error response for invalid block parameter for overview
 #[tokio::test]
 async fn test_coretime_overview_invalid_block_param() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
+
+    // Coretime routes only exist on relay and coretime chains
+    if !is_coretime_chain(&client).await && !is_relay_chain(&client).await {
+        println!("Skipping test: No coretime routes on this chain type");
+        return Ok(());
+    }
 
     let response = client.get("/v1/coretime/overview?at=invalid-block").await?;
 
@@ -2668,6 +2521,12 @@ async fn test_coretime_overview_invalid_block_param() -> Result<()> {
 async fn test_coretime_overview_nonexistent_block() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
+
+    // Coretime routes only exist on relay and coretime chains
+    if !is_coretime_chain(&client).await && !is_relay_chain(&client).await {
+        println!("Skipping test: No coretime routes on this chain type");
+        return Ok(());
+    }
 
     // Use a very high block number that doesn't exist
     let response = client.get("/v1/coretime/overview?at=999999999").await?;
@@ -2699,6 +2558,12 @@ async fn test_coretime_overview_nonexistent_block() -> Result<()> {
 async fn test_coretime_overview_very_large_block_number() -> Result<()> {
     init_tracing();
     let client = setup_client().await?;
+
+    // Coretime routes only exist on relay and coretime chains
+    if !is_coretime_chain(&client).await && !is_relay_chain(&client).await {
+        println!("Skipping test: No coretime routes on this chain type");
+        return Ok(());
+    }
 
     let response = client.get("/v1/coretime/overview?at=999999999999").await?;
 
