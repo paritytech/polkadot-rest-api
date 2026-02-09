@@ -1112,6 +1112,18 @@
         },
         "fixture_path": "asset-hub-polkadot/pallets_nomination_pools_info_use_rc_block_29698001.json",
         "description": "Test pallets nomination-pools info with useRcBlock=true at RC block 29,698,001"
+      },
+      {
+        "endpoint": "/v1/pallets/nomination-pools/{poolId}",
+        "block_height": null,
+        "account_id": null,
+        "pool_id": "1",
+        "query_params": {
+          "at": "29698001",
+          "useRcBlock": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_nomination_pools_1_use_rc_block_29698001.json",
+        "description": "Test pallets nomination-pools pool 1 with useRcBlock=true at RC block 29,698,001"
       }
     ],
     "asset-hub-kusama": [

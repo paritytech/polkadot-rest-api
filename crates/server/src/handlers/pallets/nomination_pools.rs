@@ -217,16 +217,15 @@ pub async fn pallets_nomination_pools_pool(
         .parse()
         .map_err(|_| PalletError::PoolNotFound(format!("Invalid pool ID: {}", pool_id)))?;
 
+    if params.use_rc_block {
+        return handle_pool_use_rc_block(state, pool_id, params).await;
+    }
+
     // Check if chain supports nomination pools (not Asset Hub)
     if state.chain_info.chain_type == ChainType::AssetHub {
         return Err(PalletError::UnsupportedChainForStaking(
             "Nomination pools are not available on Asset Hub".to_string(),
         ));
-    }
-
-    // Handle useRcBlock mode - not typically used for nomination pools but supported for consistency
-    if params.use_rc_block {
-        return Err(PalletError::UseRcBlockNotSupported);
     }
 
     // Create client at the specified block
@@ -330,6 +329,69 @@ async fn handle_info_use_rc_block(
         .await;
 
         results.push(response);
+    }
+
+    Ok((StatusCode::OK, Json(results)).into_response())
+}
+
+async fn handle_pool_use_rc_block(
+    state: AppState,
+    pool_id: u32,
+    params: NominationPoolsQueryParams,
+) -> Result<Response, PalletError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(PalletError::UseRcBlockNotSupported);
+    }
+
+    if state.get_relay_chain_client().is_none() {
+        return Err(PalletError::RelayChainNotConfigured);
+    }
+
+    let rc_block_id = params
+        .at
+        .as_ref()
+        .ok_or(PalletError::AtParameterRequired)?
+        .parse::<utils::BlockId>()?;
+
+    let rc_resolved_block = utils::resolve_block_with_rpc(
+        state.get_relay_chain_rpc_client().expect("checked above"),
+        state.get_relay_chain_rpc().expect("checked above"),
+        Some(rc_block_id),
+    )
+    .await?;
+
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+
+    if ah_blocks.is_empty() {
+        return Ok((StatusCode::OK, Json(Vec::<NominationPoolResponse>::new())).into_response());
+    }
+
+    let mut results = Vec::new();
+    let rc_block_hash = rc_resolved_block.hash.clone();
+    let rc_block_number = rc_resolved_block.number.to_string();
+    let ss58_prefix = state.chain_info.ss58_prefix;
+
+    for ah_block in &ah_blocks {
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
+
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+
+        let bonded_pool = fetch_bonded_pool(&client_at_block, pool_id, ss58_prefix).await;
+        let reward_pool = fetch_reward_pool(&client_at_block, pool_id).await;
+
+        results.push(NominationPoolResponse {
+            at,
+            bonded_pool,
+            reward_pool,
+            rc_block_hash: Some(rc_block_hash.clone()),
+            rc_block_number: Some(rc_block_number.clone()),
+            ah_timestamp,
+        });
     }
 
     Ok((StatusCode::OK, Json(results)).into_response())
@@ -491,7 +553,7 @@ fn bonded_pool_v2_to_json(storage: &BondedPoolStorageV2, ss58_prefix: u16) -> Js
                     "minDelay": cr.min_delay.to_string()
                 })
             }),
-            "throttleFrom": storage.commission.throttle_from,
+            "throttleFrom": storage.commission.throttle_from.map(|t| t.to_string()),
             "claimPermission": match &storage.commission.claim_permission {
                 Some(CommissionClaimPermission::Permissionless) => Some("Permissionless"),
                 Some(CommissionClaimPermission::Account(_)) => Some("Account"),
