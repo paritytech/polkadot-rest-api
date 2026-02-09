@@ -1027,6 +1027,47 @@
         "query_params": {},
         "fixture_path": "asset-hub-polkadot/pallets_system_errors.json",
         "description": "Test pallets system errors at Asset Hub Polkadot"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 10554957,
+        "account_id": null,
+        "query_params": {
+          "useRcBlock": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/use_rc_block_10554957.json",
+        "description": "Test /blocks/{blockId} endpoint with useRcBlock=true at Polkadot Relay Chain block 10,554,957"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}/header",
+        "block_height": 10293194,
+        "account_id": null,
+        "query_params": {
+          "useRcBlock": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/use_rc_block_header_10293194.json",
+        "description": "Test /blocks/{blockId}/header endpoint with useRcBlock=true at Polkadot Relay Chain block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}/extrinsics-raw",
+        "block_height": 10554957,
+        "account_id": null,
+        "query_params": {
+          "useRcBlock": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/use_rc_block_extrinsics_raw_10554957.json",
+        "description": "Test /blocks/{blockId}/extrinsics-raw endpoint with useRcBlock=true at Polkadot Relay Chain block 10,554,957"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}/extrinsics/{extrinsicIndex}",
+        "block_height": 10554957,
+        "account_id": null,
+        "extrinsic_index": 0,
+        "query_params": {
+          "useRcBlock": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/use_rc_block_extrinsic_10554957_0.json",
+        "description": "Test /blocks/{blockId}/extrinsics/{extrinsicIndex} endpoint with useRcBlock=true at Polkadot Relay Chain block 10,554,957, extrinsic index 0"
       }
     ],
     "asset-hub-kusama": [
