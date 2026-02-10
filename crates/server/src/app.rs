@@ -41,6 +41,10 @@ pub fn create_app(state: AppState) -> Router {
         .merge(routes::version::routes(registry))
         .with_state(state.clone());
 
+    let v1_routes = v1_routes.layer(middleware::from_fn(
+        crate::middleware::rc_format::rc_format_middleware,
+    ));
+
     // Apply metrics middleware if enabled (needs to be after with_state)
     let v1_routes = if metrics_enabled {
         v1_routes.layer(middleware::from_fn_with_state(
