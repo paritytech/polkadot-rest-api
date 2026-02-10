@@ -264,10 +264,25 @@ pub enum NetworkId {
 
 impl Serialize for NetworkId {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(1))?;
+        // Simple unit variants serialize as just a string (to match Sidecar format)
+        // e.g., NetworkId::Kusama -> "Kusama"
+        // Complex variants with data serialize as objects
+        // e.g., NetworkId::Ethereum { chain_id: 1 } -> {"Ethereum": {"chainId": "1"}}
         match self {
+            // Simple unit variants - serialize as strings
+            NetworkId::Polkadot => serializer.serialize_str("Polkadot"),
+            NetworkId::Kusama => serializer.serialize_str("Kusama"),
+            NetworkId::Westend => serializer.serialize_str("Westend"),
+            NetworkId::Rococo => serializer.serialize_str("Rococo"),
+            NetworkId::Wococo => serializer.serialize_str("Wococo"),
+            NetworkId::BitcoinCore => serializer.serialize_str("BitcoinCore"),
+            NetworkId::BitcoinCash => serializer.serialize_str("BitcoinCash"),
+            NetworkId::PolkadotBulletin => serializer.serialize_str("PolkadotBulletin"),
+            // Complex variants with data - serialize as objects
             NetworkId::ByGenesis(hash) => {
+                let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("ByGenesis", &format!("0x{}", hex::encode(hash)))?;
+                map.end()
             }
             NetworkId::ByFork {
                 block_number,
@@ -277,40 +292,19 @@ impl Serialize for NetworkId {
                     block_number: *block_number,
                     block_hash,
                 };
+                let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("ByFork", &inner)?;
-            }
-            NetworkId::Polkadot => {
-                map.serialize_entry("Polkadot", &serde_json::Value::Null)?;
-            }
-            NetworkId::Kusama => {
-                map.serialize_entry("Kusama", &serde_json::Value::Null)?;
-            }
-            NetworkId::Westend => {
-                map.serialize_entry("Westend", &serde_json::Value::Null)?;
-            }
-            NetworkId::Rococo => {
-                map.serialize_entry("Rococo", &serde_json::Value::Null)?;
-            }
-            NetworkId::Wococo => {
-                map.serialize_entry("Wococo", &serde_json::Value::Null)?;
+                map.end()
             }
             NetworkId::Ethereum { chain_id } => {
                 let inner = EthereumInner {
                     chain_id: *chain_id,
                 };
+                let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("Ethereum", &inner)?;
-            }
-            NetworkId::BitcoinCore => {
-                map.serialize_entry("BitcoinCore", &serde_json::Value::Null)?;
-            }
-            NetworkId::BitcoinCash => {
-                map.serialize_entry("BitcoinCash", &serde_json::Value::Null)?;
-            }
-            NetworkId::PolkadotBulletin => {
-                map.serialize_entry("PolkadotBulletin", &serde_json::Value::Null)?;
+                map.end()
             }
         }
-        map.end()
     }
 }
 
