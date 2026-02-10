@@ -6,6 +6,7 @@
 use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
 use crate::state::AppState;
 use crate::utils;
+use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -170,16 +171,15 @@ pub async fn pallets_nomination_pools_info(
     State(state): State<AppState>,
     Query(params): Query<NominationPoolsQueryParams>,
 ) -> Result<Response, PalletError> {
+    if params.use_rc_block {
+        return handle_info_use_rc_block(state, params).await;
+    }
+
     // Check if chain supports nomination pools (not Asset Hub)
     if state.chain_info.chain_type == ChainType::AssetHub {
         return Err(PalletError::UnsupportedChainForStaking(
             "Nomination pools are not available on Asset Hub".to_string(),
         ));
-    }
-
-    // Handle useRcBlock mode - not typically used for nomination pools but supported for consistency
-    if params.use_rc_block {
-        return Err(PalletError::UseRcBlockNotSupported);
     }
 
     // Create client at the specified block
@@ -199,87 +199,9 @@ pub async fn pallets_nomination_pools_info(
         height: client_at_block.block_number().to_string(),
     };
 
-    // Fetch all nomination pools info storage values
-    let counter_for_bonded_pools =
-        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "CounterForBondedPools")
-            .await
-            .unwrap_or(0);
-    let counter_for_metadata =
-        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "CounterForMetadata")
-            .await
-            .unwrap_or(0);
-    let counter_for_pool_members =
-        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "CounterForPoolMembers")
-            .await
-            .unwrap_or(0);
-    let counter_for_reverse_pool_id_lookup = fetch_storage_value::<u32>(
-        &client_at_block,
-        "NominationPools",
-        "CounterForReversePoolIdLookup",
-    )
-    .await
-    .unwrap_or(0);
-    let counter_for_reward_pools =
-        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "CounterForRewardPools")
-            .await
-            .unwrap_or(0);
-    let counter_for_sub_pools_storage = fetch_storage_value::<u32>(
-        &client_at_block,
-        "NominationPools",
-        "CounterForSubPoolsStorage",
-    )
-    .await
-    .unwrap_or(0);
-    let last_pool_id =
-        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "LastPoolId")
-            .await
-            .unwrap_or(0);
-    let max_pool_members =
-        fetch_storage_value::<Option<u32>>(&client_at_block, "NominationPools", "MaxPoolMembers")
-            .await
-            .flatten();
-    let max_pool_members_per_pool = fetch_storage_value::<Option<u32>>(
-        &client_at_block,
-        "NominationPools",
-        "MaxPoolMembersPerPool",
-    )
-    .await
-    .flatten();
-    let max_pools =
-        fetch_storage_value::<Option<u32>>(&client_at_block, "NominationPools", "MaxPools")
-            .await
-            .flatten();
-    let min_create_bond =
-        fetch_storage_value::<u128>(&client_at_block, "NominationPools", "MinCreateBond")
-            .await
-            .unwrap_or(0);
-    let min_join_bond =
-        fetch_storage_value::<u128>(&client_at_block, "NominationPools", "MinJoinBond")
-            .await
-            .unwrap_or(0);
+    let response = build_nomination_pools_info(&client_at_block, at, None, None, None).await;
 
-    Ok((
-        StatusCode::OK,
-        Json(NominationPoolsInfoResponse {
-            at,
-            counter_for_bonded_pools: counter_for_bonded_pools.to_string(),
-            counter_for_metadata: counter_for_metadata.to_string(),
-            counter_for_pool_members: counter_for_pool_members.to_string(),
-            counter_for_reverse_pool_id_lookup: counter_for_reverse_pool_id_lookup.to_string(),
-            counter_for_reward_pools: counter_for_reward_pools.to_string(),
-            counter_for_sub_pools_storage: counter_for_sub_pools_storage.to_string(),
-            last_pool_id: last_pool_id.to_string(),
-            max_pool_members,
-            max_pool_members_per_pool,
-            max_pools,
-            min_create_bond: min_create_bond.to_string(),
-            min_join_bond: min_join_bond.to_string(),
-            rc_block_hash: None,
-            rc_block_number: None,
-            ah_timestamp: None,
-        }),
-    )
-        .into_response())
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 /// Handler for GET `/pallets/nomination-pools/{poolId}`
@@ -295,16 +217,15 @@ pub async fn pallets_nomination_pools_pool(
         .parse()
         .map_err(|_| PalletError::PoolNotFound(format!("Invalid pool ID: {}", pool_id)))?;
 
+    if params.use_rc_block {
+        return handle_pool_use_rc_block(state, pool_id, params).await;
+    }
+
     // Check if chain supports nomination pools (not Asset Hub)
     if state.chain_info.chain_type == ChainType::AssetHub {
         return Err(PalletError::UnsupportedChainForStaking(
             "Nomination pools are not available on Asset Hub".to_string(),
         ));
-    }
-
-    // Handle useRcBlock mode - not typically used for nomination pools but supported for consistency
-    if params.use_rc_block {
-        return Err(PalletError::UseRcBlockNotSupported);
     }
 
     // Create client at the specified block
@@ -347,6 +268,217 @@ pub async fn pallets_nomination_pools_pool(
         }),
     )
         .into_response())
+}
+
+async fn handle_info_use_rc_block(
+    state: AppState,
+    params: NominationPoolsQueryParams,
+) -> Result<Response, PalletError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(PalletError::UseRcBlockNotSupported);
+    }
+
+    if state.get_relay_chain_client().is_none() {
+        return Err(PalletError::RelayChainNotConfigured);
+    }
+
+    let rc_block_id = params
+        .at
+        .as_ref()
+        .ok_or(PalletError::AtParameterRequired)?
+        .parse::<utils::BlockId>()?;
+
+    let rc_resolved_block = utils::resolve_block_with_rpc(
+        state.get_relay_chain_rpc_client().expect("checked above"),
+        state.get_relay_chain_rpc().expect("checked above"),
+        Some(rc_block_id),
+    )
+    .await?;
+
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+
+    if ah_blocks.is_empty() {
+        return Ok((
+            StatusCode::OK,
+            Json(Vec::<NominationPoolsInfoResponse>::new()),
+        )
+            .into_response());
+    }
+
+    let mut results = Vec::new();
+    let rc_block_hash = rc_resolved_block.hash.clone();
+    let rc_block_number = rc_resolved_block.number.to_string();
+
+    for ah_block in &ah_blocks {
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
+
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+
+        let response = build_nomination_pools_info(
+            &client_at_block,
+            at,
+            Some(rc_block_hash.clone()),
+            Some(rc_block_number.clone()),
+            ah_timestamp,
+        )
+        .await;
+
+        results.push(response);
+    }
+
+    Ok((StatusCode::OK, Json(results)).into_response())
+}
+
+async fn handle_pool_use_rc_block(
+    state: AppState,
+    pool_id: u32,
+    params: NominationPoolsQueryParams,
+) -> Result<Response, PalletError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(PalletError::UseRcBlockNotSupported);
+    }
+
+    if state.get_relay_chain_client().is_none() {
+        return Err(PalletError::RelayChainNotConfigured);
+    }
+
+    let rc_block_id = params
+        .at
+        .as_ref()
+        .ok_or(PalletError::AtParameterRequired)?
+        .parse::<utils::BlockId>()?;
+
+    let rc_resolved_block = utils::resolve_block_with_rpc(
+        state.get_relay_chain_rpc_client().expect("checked above"),
+        state.get_relay_chain_rpc().expect("checked above"),
+        Some(rc_block_id),
+    )
+    .await?;
+
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+
+    if ah_blocks.is_empty() {
+        return Ok((StatusCode::OK, Json(Vec::<NominationPoolResponse>::new())).into_response());
+    }
+
+    let mut results = Vec::new();
+    let rc_block_hash = rc_resolved_block.hash.clone();
+    let rc_block_number = rc_resolved_block.number.to_string();
+    let ss58_prefix = state.chain_info.ss58_prefix;
+
+    for ah_block in &ah_blocks {
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
+
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+
+        let bonded_pool = fetch_bonded_pool(&client_at_block, pool_id, ss58_prefix).await;
+        let reward_pool = fetch_reward_pool(&client_at_block, pool_id).await;
+
+        results.push(NominationPoolResponse {
+            at,
+            bonded_pool,
+            reward_pool,
+            rc_block_hash: Some(rc_block_hash.clone()),
+            rc_block_number: Some(rc_block_number.clone()),
+            ah_timestamp,
+        });
+    }
+
+    Ok((StatusCode::OK, Json(results)).into_response())
+}
+
+async fn build_nomination_pools_info(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    at: AtResponse,
+    rc_block_hash: Option<String>,
+    rc_block_number: Option<String>,
+    ah_timestamp: Option<String>,
+) -> NominationPoolsInfoResponse {
+    let counter_for_bonded_pools =
+        fetch_storage_value::<u32>(client_at_block, "NominationPools", "CounterForBondedPools")
+            .await
+            .unwrap_or(0);
+    let counter_for_metadata =
+        fetch_storage_value::<u32>(client_at_block, "NominationPools", "CounterForMetadata")
+            .await
+            .unwrap_or(0);
+    let counter_for_pool_members =
+        fetch_storage_value::<u32>(client_at_block, "NominationPools", "CounterForPoolMembers")
+            .await
+            .unwrap_or(0);
+    let counter_for_reverse_pool_id_lookup = fetch_storage_value::<u32>(
+        client_at_block,
+        "NominationPools",
+        "CounterForReversePoolIdLookup",
+    )
+    .await
+    .unwrap_or(0);
+    let counter_for_reward_pools =
+        fetch_storage_value::<u32>(client_at_block, "NominationPools", "CounterForRewardPools")
+            .await
+            .unwrap_or(0);
+    let counter_for_sub_pools_storage = fetch_storage_value::<u32>(
+        client_at_block,
+        "NominationPools",
+        "CounterForSubPoolsStorage",
+    )
+    .await
+    .unwrap_or(0);
+    let last_pool_id = fetch_storage_value::<u32>(client_at_block, "NominationPools", "LastPoolId")
+        .await
+        .unwrap_or(0);
+    let max_pool_members =
+        fetch_storage_value::<Option<u32>>(client_at_block, "NominationPools", "MaxPoolMembers")
+            .await
+            .flatten();
+    let max_pool_members_per_pool = fetch_storage_value::<Option<u32>>(
+        client_at_block,
+        "NominationPools",
+        "MaxPoolMembersPerPool",
+    )
+    .await
+    .flatten();
+    let max_pools =
+        fetch_storage_value::<Option<u32>>(client_at_block, "NominationPools", "MaxPools")
+            .await
+            .flatten();
+    let min_create_bond =
+        fetch_storage_value::<u128>(client_at_block, "NominationPools", "MinCreateBond")
+            .await
+            .unwrap_or(0);
+    let min_join_bond =
+        fetch_storage_value::<u128>(client_at_block, "NominationPools", "MinJoinBond")
+            .await
+            .unwrap_or(0);
+
+    NominationPoolsInfoResponse {
+        at,
+        counter_for_bonded_pools: counter_for_bonded_pools.to_string(),
+        counter_for_metadata: counter_for_metadata.to_string(),
+        counter_for_pool_members: counter_for_pool_members.to_string(),
+        counter_for_reverse_pool_id_lookup: counter_for_reverse_pool_id_lookup.to_string(),
+        counter_for_reward_pools: counter_for_reward_pools.to_string(),
+        counter_for_sub_pools_storage: counter_for_sub_pools_storage.to_string(),
+        last_pool_id: last_pool_id.to_string(),
+        max_pool_members,
+        max_pool_members_per_pool,
+        max_pools,
+        min_create_bond: min_create_bond.to_string(),
+        min_join_bond: min_join_bond.to_string(),
+        rc_block_hash,
+        rc_block_number,
+        ah_timestamp,
+    }
 }
 
 // ============================================================================
@@ -421,7 +553,7 @@ fn bonded_pool_v2_to_json(storage: &BondedPoolStorageV2, ss58_prefix: u16) -> Js
                     "minDelay": cr.min_delay.to_string()
                 })
             }),
-            "throttleFrom": storage.commission.throttle_from,
+            "throttleFrom": storage.commission.throttle_from.map(|t| t.to_string()),
             "claimPermission": match &storage.commission.claim_permission {
                 Some(CommissionClaimPermission::Permissionless) => Some("Permissionless"),
                 Some(CommissionClaimPermission::Account(_)) => Some("Account"),
