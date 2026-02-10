@@ -352,9 +352,11 @@
         "endpoint": "/v1/pallets/balances/errors",
         "block_height": null,
         "account_id": null,
-        "query_params": {},
+        "query_params": {
+          "at": "29679173"
+        },
         "fixture_path": "polkadot/pallets_balances_errors.json",
-        "description": "Test pallets balances errors at Polkadot"
+        "description": "Test pallets balances errors at Polkadot block 29,679,173"
       },
       {
         "endpoint": "/v1/pallets/balances/errors",
@@ -371,18 +373,21 @@
         "block_height": null,
         "account_id": null,
         "query_params": {
+          "at": "29679173",
           "onlyIds": "true"
         },
         "fixture_path": "polkadot/pallets_balances_errors_onlyIds.json",
-        "description": "Test pallets balances errors onlyIds at Polkadot"
+        "description": "Test pallets balances errors onlyIds at Polkadot block 29,679,173"
       },
       {
         "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
         "block_height": null,
         "account_id": null,
-        "query_params": {},
+        "query_params": {
+          "at": "29679173"
+        },
         "fixture_path": "polkadot/pallets_balances_errors_InsufficientBalance.json",
-        "description": "Test pallets balances errors InsufficientBalance at Polkadot"
+        "description": "Test pallets balances errors InsufficientBalance at Polkadot block 29,679,173"
       },
       {
         "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
@@ -400,18 +405,21 @@
         "block_height": null,
         "account_id": null,
         "query_params": {
+          "at": "29679173",
           "metadata": "true"
         },
         "fixture_path": "polkadot/pallets_balances_errors_InsufficientBalance_metadata.json",
-        "description": "Test pallets balances errors InsufficientBalance with metadata at Polkadot"
+        "description": "Test pallets balances errors InsufficientBalance with metadata at Polkadot block 29,679,173"
       },
       {
         "endpoint": "/v1/pallets/system/errors",
         "block_height": null,
         "account_id": null,
-        "query_params": {},
+        "query_params": {
+          "at": "29679173"
+        },
         "fixture_path": "polkadot/pallets_system_errors.json",
-        "description": "Test pallets system errors at Polkadot"
+        "description": "Test pallets system errors at Polkadot block 29,679,173"
       },
       {
         "endpoint": "/v1/pallets/on-going-referenda",
@@ -559,9 +567,11 @@
         "endpoint": "/v1/pallets/balances/errors",
         "block_height": null,
         "account_id": null,
-        "query_params": {},
+        "query_params": {
+          "at": "32141942"
+        },
         "fixture_path": "kusama/pallets_balances_errors.json",
-        "description": "Test pallets balances errors at Kusama"
+        "description": "Test pallets balances errors at Kusama block 32,141,942"
       },
       {
         "endpoint": "/v1/pallets/balances/errors",
@@ -578,28 +588,32 @@
         "block_height": null,
         "account_id": null,
         "query_params": {
+          "at": "32141942",
           "onlyIds": "true"
         },
         "fixture_path": "kusama/pallets_balances_errors_onlyIds.json",
-        "description": "Test pallets balances errors onlyIds at Kusama"
-      },
-      {
-        "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
-        "block_height": null,
-        "account_id": null,
-        "query_params": {},
-        "fixture_path": "kusama/pallets_balances_errors_InsufficientBalance.json",
-        "description": "Test pallets balances errors InsufficientBalance at Kusama"
+        "description": "Test pallets balances errors onlyIds at Kusama block 32,141,942"
       },
       {
         "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
         "block_height": null,
         "account_id": null,
         "query_params": {
+          "at": "32141942"
+        },
+        "fixture_path": "kusama/pallets_balances_errors_InsufficientBalance.json",
+        "description": "Test pallets balances errors InsufficientBalance at Kusama block 32,141,942"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "32141938",
           "metadata": "true"
         },
         "fixture_path": "kusama/pallets_balances_errors_InsufficientBalance_metadata.json",
-        "description": "Test pallets balances errors InsufficientBalance with metadata at Kusama"
+        "description": "Test pallets balances errors InsufficientBalance with metadata at Kusama block 32,141,938"
       },
       {
         "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
@@ -615,9 +629,11 @@
         "endpoint": "/v1/pallets/system/errors",
         "block_height": null,
         "account_id": null,
-        "query_params": {},
+        "query_params": {
+          "at": "32141940"
+        },
         "fixture_path": "kusama/pallets_system_errors.json",
-        "description": "Test pallets system errors at Kusama"
+        "description": "Test pallets system errors at Kusama block 32,141,940"
       },
       {
         "endpoint": "/v1/pallets/on-going-referenda",
@@ -1328,9 +1344,11 @@
         "endpoint": "/v1/pallets/balances/errors",
         "block_height": null,
         "account_id": null,
-        "query_params": {},
+        "query_params": {
+          "at": "12987114"
+        },
         "fixture_path": "asset-hub-kusama/pallets_balances_errors.json",
-        "description": "Test pallets balances errors at Asset Hub Kusama"
+        "description": "Test pallets balances errors at Asset Hub Kusama block 12,987,114"
       },
       {
         "endpoint": "/v1/pallets/balances/errors",
@@ -1347,28 +1365,32 @@
         "block_height": null,
         "account_id": null,
         "query_params": {
+          "at": "12987120",
           "onlyIds": "true"
         },
         "fixture_path": "asset-hub-kusama/pallets_balances_errors_onlyIds.json",
-        "description": "Test pallets balances errors onlyIds at Asset Hub Kusama"
-      },
-      {
-        "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
-        "block_height": null,
-        "account_id": null,
-        "query_params": {},
-        "fixture_path": "asset-hub-kusama/pallets_balances_errors_InsufficientBalance.json",
-        "description": "Test pallets balances errors InsufficientBalance at Asset Hub Kusama"
+        "description": "Test pallets balances errors onlyIds at Asset Hub Kusama block 12,987,120"
       },
       {
         "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
         "block_height": null,
         "account_id": null,
         "query_params": {
+          "at": "12987120"
+        },
+        "fixture_path": "asset-hub-kusama/pallets_balances_errors_InsufficientBalance.json",
+        "description": "Test pallets balances errors InsufficientBalance at Asset Hub Kusama block 12,987,120"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "12987123",
           "metadata": "true"
         },
         "fixture_path": "asset-hub-kusama/pallets_balances_errors_InsufficientBalance_metadata.json",
-        "description": "Test pallets balances errors InsufficientBalance with metadata at Asset Hub Kusama"
+        "description": "Test pallets balances errors InsufficientBalance with metadata at Asset Hub Kusama block 12,987,123"
       },
       {
         "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
@@ -1384,9 +1406,11 @@
         "endpoint": "/v1/pallets/system/errors",
         "block_height": null,
         "account_id": null,
-        "query_params": {},
+        "query_params": {
+          "at": "12987123"
+        },
         "fixture_path": "asset-hub-kusama/pallets_system_errors.json",
-        "description": "Test pallets system errors at Asset Hub Kusama"
+        "description": "Test pallets system errors at Asset Hub Kusama block 12,987,123"
       },
       {
         "endpoint": "/v1/blocks/{blockId}",
