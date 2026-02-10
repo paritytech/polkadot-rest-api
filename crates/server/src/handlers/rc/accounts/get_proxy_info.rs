@@ -32,7 +32,7 @@ use config::ChainType;
         ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
     ),
     responses(
-        (status = 200, description = "Proxy information", body = Object),
+        (status = 200, description = "Proxy information", body = RcProxyInfoResponse),
         (status = 400, description = "Invalid account address"),
         (status = 503, description = "Relay chain not configured"),
         (status = 500, description = "Internal server error")

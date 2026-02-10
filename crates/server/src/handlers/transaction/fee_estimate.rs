@@ -2,13 +2,14 @@ use crate::state::AppState;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use utoipa::ToSchema;
 
 #[derive(Debug, Deserialize)]
 pub struct FeeEstimateRequest {
     pub tx: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FeeEstimateResponse {
     pub weight: Weight,
@@ -16,7 +17,7 @@ pub struct FeeEstimateResponse {
     pub partial_fee: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Weight {
     pub ref_time: String,
@@ -119,7 +120,7 @@ impl IntoResponse for FeeEstimateError {
     description = "Estimate the fee for a transaction.",
     request_body(content = Object, description = "Transaction with 'tx' field containing hex-encoded transaction"),
     responses(
-        (status = 200, description = "Fee estimate", body = Object),
+        (status = 200, description = "Fee estimate", body = FeeEstimateResponse),
         (status = 400, description = "Invalid transaction"),
         (status = 500, description = "Internal server error")
     )
@@ -139,7 +140,7 @@ pub async fn fee_estimate(
     description = "Estimate the fee for a relay chain transaction.",
     request_body(content = Object, description = "Transaction with 'tx' field"),
     responses(
-        (status = 200, description = "Fee estimate", body = Object),
+        (status = 200, description = "Fee estimate", body = FeeEstimateResponse),
         (status = 400, description = "Invalid transaction"),
         (status = 500, description = "Internal server error")
     )

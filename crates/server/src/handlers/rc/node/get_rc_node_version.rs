@@ -66,7 +66,7 @@ impl IntoResponse for GetRcNodeVersionError {
     summary = "RC get node version",
     description = "Returns the relay chain node's version information.",
     responses(
-        (status = 200, description = "Relay chain node version", body = Object),
+        (status = 200, description = "Relay chain node version", body = NodeVersionResponse),
         (status = 503, description = "Relay chain not configured"),
         (status = 500, description = "Internal server error")
     )

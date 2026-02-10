@@ -46,7 +46,7 @@ use sp_core::crypto::AccountId32;
         ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
-        (status = 200, description = "Staking payout information", body = Object),
+        (status = 200, description = "Staking payout information", body = StakingPayoutsResponse),
         (status = 400, description = "Invalid parameters"),
         (status = 500, description = "Internal server error")
     )

@@ -39,7 +39,7 @@ use sp_core::crypto::AccountId32;
         ("includeClaimable" = Option<bool>, Query, description = "When true, calculate vested amounts")
     ),
     responses(
-        (status = 200, description = "Vesting information", body = Object),
+        (status = 200, description = "Vesting information", body = VestingInfoResponse),
         (status = 400, description = "Invalid parameters"),
         (status = 500, description = "Internal server error")
     )

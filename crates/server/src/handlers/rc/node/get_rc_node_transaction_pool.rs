@@ -104,7 +104,7 @@ impl IntoResponse for GetRcNodeTransactionPoolError {
         ("includeFee" = Option<bool>, Query, description = "Include fee information for each transaction (default: false)")
     ),
     responses(
-        (status = 200, description = "Relay chain transaction pool", body = Object),
+        (status = 200, description = "Relay chain transaction pool", body = TransactionPoolResponse),
         (status = 503, description = "Relay chain not configured"),
         (status = 500, description = "Internal server error")
     )

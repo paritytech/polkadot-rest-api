@@ -35,7 +35,7 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
         ("addresses" = String, Query, description = "Comma-separated list of SS58 addresses to compare (max 30)")
     ),
     responses(
-        (status = 200, description = "Comparison result", body = Object),
+        (status = 200, description = "Comparison result", body = AccountCompareResponse),
         (status = 400, description = "Invalid parameters")
     )
 )]

@@ -21,6 +21,7 @@ use parity_scale_codec::Decode;
 use serde::Serialize;
 use serde_json::json;
 use subxt_rpcs::rpc_params;
+use utoipa::ToSchema;
 
 // ============================================================================
 // Query Parameters
@@ -73,7 +74,7 @@ pub enum StorageItems {
 }
 
 /// Block information in the response
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AtResponse {
     pub hash: String,
     pub height: String,

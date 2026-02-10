@@ -39,7 +39,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
         ("assets" = Option<String>, Query, description = "Comma-separated list of pool asset IDs to query")
     ),
     responses(
-        (status = 200, description = "Pool asset balances", body = Object),
+        (status = 200, description = "Pool asset balances", body = PoolAssetBalancesResponse),
         (status = 400, description = "Invalid parameters"),
         (status = 500, description = "Internal server error")
     )

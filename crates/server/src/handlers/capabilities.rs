@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashSet;
 use thiserror::Error;
+use utoipa::ToSchema;
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CapabilitiesResponse {
     chain: String,
@@ -61,7 +62,7 @@ impl IntoResponse for CapabilitiesError {
         ("at" = Option<String>, Query, description = "Block hash or number to query at")
     ),
     responses(
-        (status = 200, description = "Chain capabilities", body = Object),
+        (status = 200, description = "Chain capabilities", body = CapabilitiesResponse),
         (status = 400, description = "Invalid block parameter"),
         (status = 500, description = "Internal server error")
     )

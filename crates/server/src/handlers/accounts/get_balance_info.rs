@@ -43,7 +43,7 @@ use serde_json::json;
         ("denominated" = Option<bool>, Query, description = "When true, denominate balances using chain decimals")
     ),
     responses(
-        (status = 200, description = "Account balance information", body = Object),
+        (status = 200, description = "Account balance information", body = BalanceInfoResponse),
         (status = 400, description = "Invalid account or block parameter"),
         (status = 500, description = "Internal server error")
     )

@@ -43,7 +43,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
         ("delegate" = String, Query, description = "The delegate address with spending approval")
     ),
     responses(
-        (status = 200, description = "Asset approval information", body = Object),
+        (status = 200, description = "Asset approval information", body = AssetApprovalResponse),
         (status = 400, description = "Invalid parameters"),
         (status = 500, description = "Internal server error")
     )

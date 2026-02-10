@@ -1,6 +1,8 @@
 use crate::{logging::http_logger_middleware, openapi::ApiDoc, routes, state::AppState};
-use axum::{Router, middleware, response::Html, routing::get};
-use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
+use axum::{Router, middleware, response::Redirect, routing::get};
+use tower_http::{
+    cors::CorsLayer, limit::RequestBodyLimitLayer, services::ServeDir, trace::TraceLayer,
+};
 use utoipa::OpenApi;
 
 pub fn create_app(state: AppState) -> Router {
@@ -56,7 +58,9 @@ pub fn create_app(state: AppState) -> Router {
             "/api-docs/openapi.json",
             get(|| async { axum::Json(ApiDoc::openapi()) }),
         )
-        .route("/docs", get(swagger_ui));
+        // Serve docs static site at /docs (redirect /docs -> /docs/)
+        .route("/docs", get(|| async { Redirect::permanent("/docs/") }))
+        .nest_service("/docs/", ServeDir::new("docs/dist"));
 
     // Add metrics endpoints if enabled (separate from v1 routes, no prefix)
     if metrics_enabled {
@@ -70,6 +74,3 @@ pub fn create_app(state: AppState) -> Router {
         .with_state(state)
 }
 
-async fn swagger_ui() -> Html<&'static str> {
-    Html(include_str!("swagger_ui.html"))
-}

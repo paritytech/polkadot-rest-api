@@ -33,7 +33,7 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
         ("accountId" = String, Path, description = "SS58-encoded account address to validate")
     ),
     responses(
-        (status = 200, description = "Validation result", body = Object)
+        (status = 200, description = "Validation result", body = AccountValidateResponse)
     )
 )]
 pub async fn get_validate(

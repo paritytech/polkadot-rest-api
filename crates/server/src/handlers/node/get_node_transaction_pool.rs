@@ -8,6 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
+use utoipa::ToSchema;
 
 use super::common::{
     FetchError, TipExtractionError, fetch_transaction_pool_simple, fetch_transaction_pool_with_fees,
@@ -89,7 +90,7 @@ pub struct TransactionPoolQueryParams {
     pub include_fee: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionPoolEntry {
     pub hash: String,
@@ -102,7 +103,7 @@ pub struct TransactionPoolEntry {
     pub partial_fee: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionPoolResponse {
     pub pool: Vec<TransactionPoolEntry>,
@@ -118,7 +119,7 @@ pub struct TransactionPoolResponse {
         ("includeFee" = Option<bool>, Query, description = "Include fee details for each transaction")
     ),
     responses(
-        (status = 200, description = "Transaction pool entries", body = Object),
+        (status = 200, description = "Transaction pool entries", body = TransactionPoolResponse),
         (status = 500, description = "Internal server error")
     )
 )]

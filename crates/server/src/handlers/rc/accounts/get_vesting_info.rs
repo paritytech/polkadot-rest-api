@@ -37,7 +37,7 @@ use config::ChainType;
         ("includeClaimable" = Option<bool>, Query, description = "When true, calculate vested amounts")
     ),
     responses(
-        (status = 200, description = "Vesting information", body = Object),
+        (status = 200, description = "Vesting information", body = RcVestingInfoResponse),
         (status = 400, description = "Invalid account address"),
         (status = 503, description = "Relay chain not configured"),
         (status = 500, description = "Internal server error")

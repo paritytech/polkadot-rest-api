@@ -43,7 +43,7 @@ use config::ChainType;
         ("unclaimedOnly" = Option<bool>, Query, description = "Only show unclaimed rewards (default: true)")
     ),
     responses(
-        (status = 200, description = "Staking payouts", body = Object),
+        (status = 200, description = "Staking payouts", body = RcStakingPayoutsResponse),
         (status = 400, description = "Invalid account address"),
         (status = 503, description = "Relay chain not configured"),
         (status = 500, description = "Internal server error")

@@ -35,7 +35,7 @@ use sp_core::crypto::{AccountId32, Ss58AddressFormat, Ss58Codec};
         ("publicKey" = Option<bool>, Query, description = "If true, treat input as a public key")
     ),
     responses(
-        (status = 200, description = "Converted account information", body = Object),
+        (status = 200, description = "Converted account information", body = AccountConvertResponse),
         (status = 400, description = "Invalid parameters"),
         (status = 500, description = "Internal server error")
     )
