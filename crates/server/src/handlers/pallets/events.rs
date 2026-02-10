@@ -7,6 +7,7 @@
 
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
+    RcPalletItemQueryParams, RcPalletQueryParams,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -506,36 +507,27 @@ pub async fn rc_pallet_events(
     let block_id = params
         .at
         .as_ref()
-        .map(|s| s.parse::<utils::BlockId>())
+        .map(|s: &String| s.parse::<utils::BlockId>())
         .transpose()?;
     let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
 
     let client_at_block = relay_client.at_block(resolved.number).await?;
     let metadata = client_at_block.metadata();
 
-    let pallet_info = extract_pallet_events(&metadata, &pallet_id)?;
-
     let at = AtResponse {
         hash: resolved.hash.clone(),
         height: resolved.number.to_string(),
     };
 
-    let items = if params.only_ids {
-        EventsItems::OnlyIds(pallet_info.events.iter().map(|e| e.name.clone()).collect())
-    } else {
-        EventsItems::Full(pallet_info.events)
-    };
+    let response = extract_events_from_metadata(
+        &metadata,
+        &pallet_id,
+        at,
+        params.only_ids,
+        RcBlockFields::default(),
+    )?;
 
-    Ok((
-        StatusCode::OK,
-        Json(PalletEventsResponse {
-            at,
-            pallet: pallet_id.to_lowercase(),
-            pallet_index: pallet_info.index.to_string(),
-            items,
-        }),
-    )
-        .into_response())
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 /// Handler for GET `/rc/pallets/{palletId}/events/{eventItemId}`
@@ -559,43 +551,28 @@ pub async fn rc_pallet_event_item(
     let block_id = params
         .at
         .as_ref()
-        .map(|s| s.parse::<utils::BlockId>())
+        .map(|s: &String| s.parse::<utils::BlockId>())
         .transpose()?;
     let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
 
     let client_at_block = relay_client.at_block(resolved.number).await?;
     let metadata = client_at_block.metadata();
 
-    let pallet_info = extract_pallet_events(&metadata, &pallet_id)?;
-
-    let event = pallet_info
-        .events
-        .iter()
-        .find(|e| e.name.to_lowercase() == event_item_id.to_lowercase())
-        .ok_or_else(|| PalletError::EventNotFound(event_item_id.clone()))?;
-
     let at = AtResponse {
         hash: resolved.hash.clone(),
         height: resolved.number.to_string(),
     };
 
-    let metadata_field = if params.metadata {
-        Some(event.clone())
-    } else {
-        None
-    };
+    let response = extract_event_item_from_metadata(
+        &metadata,
+        &pallet_id,
+        &event_item_id,
+        at,
+        params.metadata,
+        RcBlockFields::default(),
+    )?;
 
-    Ok((
-        StatusCode::OK,
-        Json(PalletEventItemResponse {
-            at,
-            pallet: pallet_id.to_lowercase(),
-            pallet_index: pallet_info.index.to_string(),
-            event_item: event.name.to_lower_camel_case(),
-            metadata: metadata_field,
-        }),
-    )
-        .into_response())
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 // ============================================================================
