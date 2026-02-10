@@ -41,7 +41,8 @@ pub fn create_app(state: AppState) -> Router {
         .merge(routes::version::routes(registry))
         .with_state(state.clone());
 
-    let v1_routes = v1_routes.layer(middleware::from_fn(
+    let v1_routes = v1_routes.layer(middleware::from_fn_with_state(
+        state.clone(),
         crate::middleware::rc_format::rc_format_middleware,
     ));
 

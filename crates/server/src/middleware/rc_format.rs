@@ -1,6 +1,13 @@
-use axum::{body::Body, extract::Request, middleware::Next, response::Response};
+use axum::{
+    body::Body,
+    extract::{Request, State},
+    middleware::Next,
+    response::Response,
+};
 use http_body_util::BodyExt;
 use serde::Deserialize;
+
+use crate::state::AppState;
 
 #[derive(Deserialize, Default)]
 struct FormatParams {
@@ -10,25 +17,11 @@ struct FormatParams {
 
 /// Middleware that transforms RC block array responses into a structured object
 /// when `format=rc` is present in the query string.
-///
-/// Transforms:
-/// ```json
-/// [
-///   { "at": {...}, "rcBlockHash": "0x...", "rcBlockNumber": "999", ...data },
-///   { "at": {...}, "rcBlockHash": "0x...", "rcBlockNumber": "999", ...data }
-/// ]
-/// ```
-/// Into:
-/// ```json
-/// {
-///   "rcBlock": { "hash": "0x...", "number": "999" },
-///   "parachainDataPerBlock": [
-///     { "at": {...}, ...data },
-///     { "at": {...}, ...data }
-///   ]
-/// }
-/// ```
-pub async fn rc_format_middleware(req: Request, next: Next) -> Response {
+pub async fn rc_format_middleware(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Response {
     let has_format_rc = req
         .uri()
         .query()
@@ -61,7 +54,7 @@ pub async fn rc_format_middleware(req: Request, next: Next) -> Response {
         Err(_) => return Response::from_parts(parts, Body::empty()),
     };
 
-    let transformed = match transform_rc_response(&bytes) {
+    let transformed = match transform_rc_response(&bytes, &state).await {
         Some(new_bytes) => new_bytes,
         None => return Response::from_parts(parts, Body::from(bytes)),
     };
@@ -69,7 +62,56 @@ pub async fn rc_format_middleware(req: Request, next: Next) -> Response {
     Response::from_parts(parts, Body::from(transformed))
 }
 
-fn transform_rc_response(bytes: &[u8]) -> Option<Vec<u8>> {
+async fn transform_rc_response(bytes: &[u8], state: &AppState) -> Option<Vec<u8>> {
+    let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+
+    let arr = value.as_array()?;
+
+    if arr.is_empty() {
+        let result = serde_json::json!({
+            "rcBlock": null,
+            "parachainDataPerBlock": []
+        });
+        return serde_json::to_vec(&result).ok();
+    }
+
+    let first = arr.first()?.as_object()?;
+    let rc_hash = first.get("rcBlockHash")?.as_str()?;
+    let rc_number = first.get("rcBlockNumber")?.as_str()?;
+
+    let parent_hash = fetch_rc_parent_hash(state, rc_hash).await;
+
+    let mut rc_block = serde_json::Map::new();
+    rc_block.insert("hash".to_string(), serde_json::json!(rc_hash));
+    if let Some(ph) = parent_hash {
+        rc_block.insert("parentHash".to_string(), serde_json::json!(ph));
+    }
+    rc_block.insert("number".to_string(), serde_json::json!(rc_number));
+
+    let parachain_data: Vec<serde_json::Value> = arr.to_vec();
+
+    let result = serde_json::json!({
+        "rcBlock": rc_block,
+        "parachainDataPerBlock": parachain_data,
+    });
+
+    serde_json::to_vec(&result).ok()
+}
+
+async fn fetch_rc_parent_hash(state: &AppState, rc_block_hash: &str) -> Option<String> {
+    let rpc_client = state.get_relay_chain_rpc_client()?;
+    let header_json: serde_json::Value = rpc_client
+        .request("chain_getHeader", subxt_rpcs::rpc_params![rc_block_hash])
+        .await
+        .ok()?;
+    header_json
+        .get("parentHash")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+#[cfg(test)]
+fn transform_rc_response_stateless(bytes: &[u8]) -> Option<Vec<u8>> {
     let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
 
     let arr = value.as_array()?;
@@ -91,21 +133,9 @@ fn transform_rc_response(bytes: &[u8]) -> Option<Vec<u8>> {
         "number": rc_number,
     });
 
-    let parachain_data: Vec<serde_json::Value> = arr
-        .iter()
-        .map(|item| {
-            let mut obj = item.clone();
-            if let Some(map) = obj.as_object_mut() {
-                map.remove("rcBlockHash");
-                map.remove("rcBlockNumber");
-            }
-            obj
-        })
-        .collect();
-
     let result = serde_json::json!({
         "rcBlock": rc_block,
-        "parachainDataPerBlock": parachain_data,
+        "parachainDataPerBlock": arr,
     });
 
     serde_json::to_vec(&result).ok()
@@ -114,8 +144,8 @@ fn transform_rc_response(bytes: &[u8]) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{Router, routing::get};
     use axum::http::StatusCode;
+    use axum::{Router, middleware, routing::get};
     use tower::ServiceExt;
 
     fn json_response(body: serde_json::Value) -> axum::response::Json<serde_json::Value> {
@@ -137,6 +167,36 @@ mod tests {
         let body = response.into_body().collect().await.unwrap().to_bytes();
         let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
         (status, value)
+    }
+
+    /// Test middleware that mirrors rc_format_middleware but without AppState.
+    /// Uses transform_rc_response_stateless (no parentHash in rcBlock).
+    async fn test_rc_format(req: Request, next: Next) -> Response {
+        let has_format_rc = req
+            .uri()
+            .query()
+            .and_then(|q| serde_urlencoded::from_str::<FormatParams>(q).ok())
+            .is_some_and(|p| p.format.as_deref() == Some("rc"));
+
+        if !has_format_rc {
+            return next.run(req).await;
+        }
+
+        let response = next.run(req).await;
+        if !response.status().is_success() {
+            return response;
+        }
+
+        let (parts, body) = response.into_parts();
+        let bytes = match body.collect().await {
+            Ok(collected) => collected.to_bytes(),
+            Err(_) => return Response::from_parts(parts, Body::empty()),
+        };
+
+        match transform_rc_response_stateless(&bytes) {
+            Some(new_bytes) => Response::from_parts(parts, Body::from(new_bytes)),
+            None => Response::from_parts(parts, Body::from(bytes)),
+        }
     }
 
     fn rc_array() -> serde_json::Value {
@@ -166,7 +226,7 @@ mod tests {
 
         let app = Router::new()
             .route("/test", get(handler))
-            .layer(axum::middleware::from_fn(rc_format_middleware));
+            .layer(middleware::from_fn(test_rc_format));
 
         let (status, value) = make_request(app, "/test?format=rc").await;
 
@@ -178,8 +238,8 @@ mod tests {
         assert_eq!(data.len(), 2);
         assert_eq!(data[0]["ahTimestamp"], "123");
         assert_eq!(data[0]["someData"], "foo");
-        assert!(data[0].get("rcBlockHash").is_none());
-        assert!(data[0].get("rcBlockNumber").is_none());
+        assert_eq!(data[0]["rcBlockHash"], "0xdef");
+        assert_eq!(data[0]["rcBlockNumber"], "999");
         assert_eq!(data[1]["ahTimestamp"], "456");
         assert_eq!(data[1]["someData"], "bar");
     }
@@ -192,7 +252,7 @@ mod tests {
 
         let app = Router::new()
             .route("/test", get(handler))
-            .layer(axum::middleware::from_fn(rc_format_middleware));
+            .layer(middleware::from_fn(test_rc_format));
 
         let (status, value) = make_request(app, "/test").await;
 
@@ -210,7 +270,7 @@ mod tests {
 
         let app = Router::new()
             .route("/test", get(handler))
-            .layer(axum::middleware::from_fn(rc_format_middleware));
+            .layer(middleware::from_fn(test_rc_format));
 
         let (status, value) = make_request(app, "/test?format=rc").await;
 
@@ -230,7 +290,7 @@ mod tests {
 
         let app = Router::new()
             .route("/test", get(handler))
-            .layer(axum::middleware::from_fn(rc_format_middleware));
+            .layer(middleware::from_fn(test_rc_format));
 
         let (status, value) = make_request(app, "/test?format=rc").await;
 
@@ -250,7 +310,7 @@ mod tests {
 
         let app = Router::new()
             .route("/test", get(handler))
-            .layer(axum::middleware::from_fn(rc_format_middleware));
+            .layer(middleware::from_fn(test_rc_format));
 
         let response = app
             .oneshot(
@@ -276,7 +336,7 @@ mod tests {
 
         let app = Router::new()
             .route("/test", get(handler))
-            .layer(axum::middleware::from_fn(rc_format_middleware));
+            .layer(middleware::from_fn(test_rc_format));
 
         let (status, value) = make_request(app, "/test?format=rc").await;
 
@@ -293,14 +353,13 @@ mod tests {
 
         let app = Router::new()
             .route("/test", get(handler))
-            .layer(axum::middleware::from_fn(rc_format_middleware));
+            .layer(middleware::from_fn(test_rc_format));
 
         let (_, value) = make_request(app, "/test?format=rc").await;
 
         let data = value["parachainDataPerBlock"].as_array().unwrap();
         assert_eq!(data[0]["ahTimestamp"], "123");
         assert_eq!(data[1]["ahTimestamp"], "456");
-        // rcBlock should not contain ahTimestamp
         assert!(value["rcBlock"].get("ahTimestamp").is_none());
     }
 
@@ -312,7 +371,7 @@ mod tests {
 
         let app = Router::new()
             .route("/test", get(handler))
-            .layer(axum::middleware::from_fn(rc_format_middleware));
+            .layer(middleware::from_fn(test_rc_format));
 
         let (status, value) =
             make_request(app, "/test?useRcBlock=true&format=rc&at=123").await;
