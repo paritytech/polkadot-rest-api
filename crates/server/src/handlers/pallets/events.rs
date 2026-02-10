@@ -342,6 +342,54 @@ fn find_pallet<'a>(
         .find(|pallet| pallet.name().to_lowercase() == pallet_id_lower)
 }
 
+fn resolve_type_name(types: &scale_info::PortableRegistry, type_id: u32) -> String {
+    if let Some(ty) = types.resolve(type_id) {
+        if let scale_info::TypeDef::Variant(v) = &ty.type_def {
+            let is_simple_enum = v.variants.iter().all(|var| var.fields.is_empty());
+            if is_simple_enum {
+                let variant_names: Vec<String> = v
+                    .variants
+                    .iter()
+                    .map(|var| format!("\"{}\"", var.name))
+                    .collect();
+                return format!("{{\"_enum\":[{}]}}", variant_names.join(","));
+            }
+        }
+
+        if !ty.path.segments.is_empty() {
+            return ty.path.segments.last().unwrap().clone();
+        }
+        match &ty.type_def {
+            scale_info::TypeDef::Primitive(p) => format!("{:?}", p).to_lowercase(),
+            scale_info::TypeDef::Compact(c) => {
+                format!("Compact<{}>", resolve_type_name(types, c.type_param.id))
+            }
+            scale_info::TypeDef::Sequence(s) => {
+                let inner = resolve_type_name(types, s.type_param.id);
+                if inner == "u8" {
+                    "Bytes".to_string()
+                } else {
+                    format!("Vec<{}>", inner)
+                }
+            }
+            scale_info::TypeDef::Array(a) => {
+                format!("[{}; {}]", resolve_type_name(types, a.type_param.id), a.len)
+            }
+            scale_info::TypeDef::Tuple(t) => {
+                let inner: Vec<String> = t
+                    .fields
+                    .iter()
+                    .map(|f| resolve_type_name(types, f.id))
+                    .collect();
+                format!("({})", inner.join(", "))
+            }
+            _ => type_id.to_string(),
+        }
+    } else {
+        type_id.to_string()
+    }
+}
+
 /// Extract events from subxt's unified Metadata.
 fn extract_events_from_metadata(
     metadata: &Metadata,
@@ -355,6 +403,8 @@ fn extract_events_from_metadata(
 
     let pallet_name = pallet.name().to_string();
     let pallet_index = pallet.call_index();
+
+    let types = metadata.types();
 
     let items = match pallet.event_variants() {
         Some(variants) => {
@@ -379,7 +429,7 @@ fn extract_events_from_metadata(
                             let args: Vec<String> = variant
                                 .fields
                                 .iter()
-                                .filter_map(|f| f.type_name.clone())
+                                .map(|f| resolve_type_name(types, f.ty.id))
                                 .collect();
 
                             EventItemMetadata {
@@ -441,6 +491,8 @@ fn extract_event_item_from_metadata(
 
     let event_name = event_variant.name.clone();
 
+    let types = metadata.types();
+
     let event_metadata = if include_metadata {
         let fields: Vec<EventField> = event_variant
             .fields
@@ -456,7 +508,7 @@ fn extract_event_item_from_metadata(
         let args: Vec<String> = event_variant
             .fields
             .iter()
-            .filter_map(|f| f.type_name.clone())
+            .map(|f| resolve_type_name(types, f.ty.id))
             .collect();
 
         Some(EventItemMetadata {
