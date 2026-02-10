@@ -1003,9 +1003,11 @@
         "endpoint": "/v1/pallets/balances/errors",
         "block_height": null,
         "account_id": null,
-        "query_params": {},
+        "query_params": {
+          "at": "11741792"
+        },
         "fixture_path": "asset-hub-polkadot/pallets_balances_errors.json",
-        "description": "Test pallets balances errors at Asset Hub Polkadot"
+        "description": "Test pallets balances errors at Asset Hub Polkadot block 11,741,792"
       },
       {
         "endpoint": "/v1/pallets/balances/errors",
@@ -1022,28 +1024,32 @@
         "block_height": null,
         "account_id": null,
         "query_params": {
+          "at": "11741792",
           "onlyIds": "true"
         },
         "fixture_path": "asset-hub-polkadot/pallets_balances_errors_onlyIds.json",
-        "description": "Test pallets balances errors onlyIds at Asset Hub Polkadot"
-      },
-      {
-        "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
-        "block_height": null,
-        "account_id": null,
-        "query_params": {},
-        "fixture_path": "asset-hub-polkadot/pallets_balances_errors_InsufficientBalance.json",
-        "description": "Test pallets balances errors InsufficientBalance at Asset Hub Polkadot"
+        "description": "Test pallets balances errors onlyIds at Asset Hub Polkadot block 11,741,792"
       },
       {
         "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
         "block_height": null,
         "account_id": null,
         "query_params": {
+          "at": "11741792"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_balances_errors_InsufficientBalance.json",
+        "description": "Test pallets balances errors InsufficientBalance at Asset Hub Polkadot block 11,741,792"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "11741792",
           "metadata": "true"
         },
         "fixture_path": "asset-hub-polkadot/pallets_balances_errors_InsufficientBalance_metadata.json",
-        "description": "Test pallets balances errors InsufficientBalance with metadata at Asset Hub Polkadot"
+        "description": "Test pallets balances errors InsufficientBalance with metadata at Asset Hub Polkadot block 11,741,792"
       },
       {
         "endpoint": "/v1/pallets/balances/errors/InsufficientBalance",
@@ -1059,9 +1065,11 @@
         "endpoint": "/v1/pallets/system/errors",
         "block_height": null,
         "account_id": null,
-        "query_params": {},
+        "query_params": {
+          "at": "11741793"
+        },
         "fixture_path": "asset-hub-polkadot/pallets_system_errors.json",
-        "description": "Test pallets system errors at Asset Hub Polkadot"
+        "description": "Test pallets system errors at Asset Hub Polkadot block 11,741,793"
       },
       {
         "endpoint": "/v1/blocks/{blockId}",
