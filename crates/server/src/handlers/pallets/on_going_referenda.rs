@@ -4,9 +4,8 @@
 //! Referenda pallet. Only relay chains (Polkadot, Kusama) support this endpoint
 //! as parachains don't have governance.
 
-use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::common::{AtResponse, ClientAtBlock, PalletError, format_account_id, resolve_block_for_pallet};
 use crate::state::AppState;
-use crate::utils;
 use axum::{
     Json,
     extract::{Query, State},
@@ -16,7 +15,6 @@ use axum::{
 use futures::future::join_all;
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
-use subxt::SubstrateConfig;
 use subxt::error::StorageError;
 
 // ============================================================================
@@ -164,31 +162,17 @@ pub async fn pallets_on_going_referenda(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     // Fetch all referenda from storage
     let referenda =
-        fetch_ongoing_referenda(&client_at_block, state.chain_info.ss58_prefix, &at.height).await?;
+        fetch_ongoing_referenda(&resolved.client_at_block, state.chain_info.ss58_prefix, &resolved.at.height).await?;
 
     Ok((
         StatusCode::OK,
         Json(OnGoingReferendaResponse {
-            at,
+            at: resolved.at,
             referenda,
             rc_block_hash: None,
             rc_block_number: None,
@@ -204,7 +188,7 @@ pub async fn pallets_on_going_referenda(
 
 /// Fetch all ongoing referenda from the Referenda pallet storage
 async fn fetch_ongoing_referenda(
-    client_at_block: &subxt::client::OnlineClientAtBlock<SubstrateConfig>,
+    client_at_block: &ClientAtBlock,
     ss58_prefix: u16,
     block_height: &str,
 ) -> Result<Vec<ReferendumInfo>, PalletError> {

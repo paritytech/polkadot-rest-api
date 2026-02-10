@@ -3,9 +3,10 @@
 //! This module provides endpoints for querying nomination pool information
 //! on Polkadot and Kusama networks.
 
-use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::common::{
+    AtResponse, ClientAtBlock, PalletError, format_account_id, resolve_block_for_pallet,
+};
 use crate::state::AppState;
-use crate::utils;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -17,7 +18,6 @@ use parity_scale_codec::Decode;
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
-use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 // ============================================================================
 // Request/Response Types
@@ -182,86 +182,72 @@ pub async fn pallets_nomination_pools_info(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     // Fetch all nomination pools info storage values
     let counter_for_bonded_pools =
-        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "CounterForBondedPools")
+        fetch_storage_value::<u32>(&resolved.client_at_block, "NominationPools", "CounterForBondedPools")
             .await
             .unwrap_or(0);
     let counter_for_metadata =
-        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "CounterForMetadata")
+        fetch_storage_value::<u32>(&resolved.client_at_block, "NominationPools", "CounterForMetadata")
             .await
             .unwrap_or(0);
     let counter_for_pool_members =
-        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "CounterForPoolMembers")
+        fetch_storage_value::<u32>(&resolved.client_at_block, "NominationPools", "CounterForPoolMembers")
             .await
             .unwrap_or(0);
     let counter_for_reverse_pool_id_lookup = fetch_storage_value::<u32>(
-        &client_at_block,
+        &resolved.client_at_block,
         "NominationPools",
         "CounterForReversePoolIdLookup",
     )
     .await
     .unwrap_or(0);
     let counter_for_reward_pools =
-        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "CounterForRewardPools")
+        fetch_storage_value::<u32>(&resolved.client_at_block, "NominationPools", "CounterForRewardPools")
             .await
             .unwrap_or(0);
     let counter_for_sub_pools_storage = fetch_storage_value::<u32>(
-        &client_at_block,
+        &resolved.client_at_block,
         "NominationPools",
         "CounterForSubPoolsStorage",
     )
     .await
     .unwrap_or(0);
     let last_pool_id =
-        fetch_storage_value::<u32>(&client_at_block, "NominationPools", "LastPoolId")
+        fetch_storage_value::<u32>(&resolved.client_at_block, "NominationPools", "LastPoolId")
             .await
             .unwrap_or(0);
     let max_pool_members =
-        fetch_storage_value::<Option<u32>>(&client_at_block, "NominationPools", "MaxPoolMembers")
+        fetch_storage_value::<Option<u32>>(&resolved.client_at_block, "NominationPools", "MaxPoolMembers")
             .await
             .flatten();
     let max_pool_members_per_pool = fetch_storage_value::<Option<u32>>(
-        &client_at_block,
+        &resolved.client_at_block,
         "NominationPools",
         "MaxPoolMembersPerPool",
     )
     .await
     .flatten();
     let max_pools =
-        fetch_storage_value::<Option<u32>>(&client_at_block, "NominationPools", "MaxPools")
+        fetch_storage_value::<Option<u32>>(&resolved.client_at_block, "NominationPools", "MaxPools")
             .await
             .flatten();
     let min_create_bond =
-        fetch_storage_value::<u128>(&client_at_block, "NominationPools", "MinCreateBond")
+        fetch_storage_value::<u128>(&resolved.client_at_block, "NominationPools", "MinCreateBond")
             .await
             .unwrap_or(0);
     let min_join_bond =
-        fetch_storage_value::<u128>(&client_at_block, "NominationPools", "MinJoinBond")
+        fetch_storage_value::<u128>(&resolved.client_at_block, "NominationPools", "MinJoinBond")
             .await
             .unwrap_or(0);
 
     Ok((
         StatusCode::OK,
         Json(NominationPoolsInfoResponse {
-            at,
+            at: resolved.at,
             counter_for_bonded_pools: counter_for_bonded_pools.to_string(),
             counter_for_metadata: counter_for_metadata.to_string(),
             counter_for_pool_members: counter_for_pool_members.to_string(),
@@ -307,30 +293,16 @@ pub async fn pallets_nomination_pools_pool(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let ss58_prefix = state.chain_info.ss58_prefix;
 
     // Fetch bonded pool - try V2 format first (with commission), then fall back to V1
-    let bonded_pool = fetch_bonded_pool(&client_at_block, pool_id, ss58_prefix).await;
+    let bonded_pool = fetch_bonded_pool(&resolved.client_at_block, pool_id, ss58_prefix).await;
 
     // Fetch reward pool - try V2 format first, then fall back to V1
-    let reward_pool = fetch_reward_pool(&client_at_block, pool_id).await;
+    let reward_pool = fetch_reward_pool(&resolved.client_at_block, pool_id).await;
 
     // Note: Sidecar returns null for both fields when pool doesn't exist (no 404)
     // We match this behavior
@@ -338,7 +310,7 @@ pub async fn pallets_nomination_pools_pool(
     Ok((
         StatusCode::OK,
         Json(NominationPoolResponse {
-            at,
+            at: resolved.at,
             bonded_pool,
             reward_pool,
             rc_block_hash: None,
@@ -356,7 +328,7 @@ pub async fn pallets_nomination_pools_pool(
 /// Generic function to fetch and decode a storage value.
 /// Uses `DecodeAsType` for type-guided decoding.
 async fn fetch_storage_value<T>(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    client_at_block: &ClientAtBlock,
     pallet: &str,
     entry: &str,
 ) -> Option<T>
@@ -374,7 +346,7 @@ where
 
 /// Fetches bonded pool details from NominationPools::BondedPools storage.
 async fn fetch_bonded_pool(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    client_at_block: &ClientAtBlock,
     pool_id: u32,
     ss58_prefix: u16,
 ) -> Option<JsonValue> {
@@ -464,7 +436,7 @@ fn bonded_pool_v1_to_json(storage: &BondedPoolStorageV1, ss58_prefix: u16) -> Js
 
 /// Fetches reward pool details from NominationPools::RewardPools storage.
 async fn fetch_reward_pool(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    client_at_block: &ClientAtBlock,
     pool_id: u32,
 ) -> Option<JsonValue> {
     let addr = subxt::dynamic::storage::<_, scale_value::Value>("NominationPools", "RewardPools");

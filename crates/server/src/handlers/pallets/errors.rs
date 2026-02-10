@@ -20,17 +20,17 @@
 
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
+    build_rc_block_fields, find_pallet_by_id_or_name, resolve_block_for_pallet,
+    validate_and_resolve_rc_block,
 };
 use crate::state::AppState;
 use crate::utils;
-use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use config::ChainType;
 use heck::ToLowerCamelCase;
 use scale_info::form::PortableForm;
 use serde::Serialize;
@@ -181,30 +181,16 @@ pub async fn get_pallet_errors(
         return handle_use_rc_block(state, pallet_id, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     // Use subxt's metadata API - it normalizes all versions (V9-V16) automatically
-    let metadata = client_at_block.metadata();
+    let metadata = resolved.client_at_block.metadata();
 
     let response = extract_errors_from_metadata(
         &metadata,
         &pallet_id,
-        at,
+        resolved.at,
         params.only_ids,
         RcBlockFields::default(),
     )?;
@@ -222,31 +208,17 @@ pub async fn get_pallet_error_item(
         return handle_error_item_use_rc_block(state, pallet_id, error_id, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     // Use subxt's metadata API - it normalizes all versions (V9-V16) automatically
-    let metadata = client_at_block.metadata();
+    let metadata = resolved.client_at_block.metadata();
 
     let response = extract_error_item_from_metadata(
         &metadata,
         &pallet_id,
         &error_id,
-        at,
+        resolved.at,
         params.metadata,
         RcBlockFields::default(),
     )?;
@@ -263,38 +235,16 @@ async fn handle_use_rc_block(
     pallet_id: String,
     params: PalletQueryParams,
 ) -> Result<Response, PalletError> {
-    if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(PalletError::UseRcBlockNotSupported);
-    }
+    // Validate and resolve RC block using the common helper
+    let rc_context = validate_and_resolve_rc_block(&state, params.at.as_ref()).await?;
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
-
-    let rc_block_id = params
-        .at
-        .as_ref()
-        .ok_or(PalletError::AtParameterRequired)?
-        .parse::<utils::BlockId>()?;
-
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().expect("checked above"),
-        state.get_relay_chain_rpc().expect("checked above"),
-        Some(rc_block_id),
-    )
-    .await?;
-
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
-
-    if ah_blocks.is_empty() {
+    if rc_context.ah_blocks.is_empty() {
         return Ok((StatusCode::OK, Json(Vec::<PalletsErrorsResponse>::new())).into_response());
     }
 
     let mut results = Vec::new();
-    let rc_block_hash = rc_resolved_block.hash.clone();
-    let rc_block_number = rc_resolved_block.number.to_string();
 
-    for ah_block in &ah_blocks {
+    for ah_block in &rc_context.ah_blocks {
         let client_at_block = state.client.at_block(ah_block.number).await?;
 
         let at = AtResponse {
@@ -303,12 +253,7 @@ async fn handle_use_rc_block(
         };
 
         let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
-
-        let rc_fields = RcBlockFields {
-            rc_block_hash: Some(rc_block_hash.clone()),
-            rc_block_number: Some(rc_block_number.clone()),
-            ah_timestamp,
-        };
+        let rc_fields = build_rc_block_fields(&rc_context.rc_resolved_block, ah_timestamp);
 
         let metadata = client_at_block.metadata();
 
@@ -327,38 +272,16 @@ async fn handle_error_item_use_rc_block(
     error_id: String,
     params: PalletItemQueryParams,
 ) -> Result<Response, PalletError> {
-    if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(PalletError::UseRcBlockNotSupported);
-    }
+    // Validate and resolve RC block using the common helper
+    let rc_context = validate_and_resolve_rc_block(&state, params.at.as_ref()).await?;
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
-
-    let rc_block_id = params
-        .at
-        .as_ref()
-        .ok_or(PalletError::AtParameterRequired)?
-        .parse::<utils::BlockId>()?;
-
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().expect("checked above"),
-        state.get_relay_chain_rpc().expect("checked above"),
-        Some(rc_block_id),
-    )
-    .await?;
-
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
-
-    if ah_blocks.is_empty() {
+    if rc_context.ah_blocks.is_empty() {
         return Ok((StatusCode::OK, Json(Vec::<PalletErrorItemResponse>::new())).into_response());
     }
 
     let mut results = Vec::new();
-    let rc_block_hash = rc_resolved_block.hash.clone();
-    let rc_block_number = rc_resolved_block.number.to_string();
 
-    for ah_block in &ah_blocks {
+    for ah_block in &rc_context.ah_blocks {
         let client_at_block = state.client.at_block(ah_block.number).await?;
 
         let at = AtResponse {
@@ -367,12 +290,7 @@ async fn handle_error_item_use_rc_block(
         };
 
         let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
-
-        let rc_fields = RcBlockFields {
-            rc_block_hash: Some(rc_block_hash.clone()),
-            rc_block_number: Some(rc_block_number.clone()),
-            ah_timestamp,
-        };
+        let rc_fields = build_rc_block_fields(&rc_context.rc_resolved_block, ah_timestamp);
 
         let metadata = client_at_block.metadata();
 
@@ -395,30 +313,6 @@ async fn handle_error_item_use_rc_block(
 // Metadata Extraction (Unified for all metadata versions)
 // ============================================================================
 
-/// Find a pallet by name (case-insensitive) or index using subxt's metadata API.
-///
-/// Note: For modern metadata (V12+), call_index == event_index == error_index.
-/// For older metadata, they may differ. We use error_index since this is
-/// the errors endpoint.
-fn find_pallet<'a>(
-    metadata: &'a Metadata,
-    pallet_id: &str,
-) -> Option<subxt_metadata::PalletMetadata<'a>> {
-    // First, try to parse as a numeric index
-    if let Ok(index) = pallet_id.parse::<u8>() {
-        // Use error_index since this is the errors endpoint
-        return metadata
-            .pallets()
-            .find(|pallet| pallet.error_index() == index);
-    }
-
-    // Otherwise, search by name (case-insensitive)
-    let pallet_id_lower = pallet_id.to_lowercase();
-    metadata
-        .pallets()
-        .find(|pallet| pallet.name().to_lowercase() == pallet_id_lower)
-}
-
 /// Extract errors from subxt's unified Metadata.
 fn extract_errors_from_metadata(
     metadata: &Metadata,
@@ -427,10 +321,11 @@ fn extract_errors_from_metadata(
     only_ids: bool,
     rc_fields: RcBlockFields,
 ) -> Result<PalletsErrorsResponse, PalletError> {
-    let pallet = find_pallet(metadata, pallet_id)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+    // Find pallet using the common helper
+    let pallet = find_pallet_by_id_or_name(metadata, pallet_id)?;
 
     let pallet_name = pallet.name().to_string();
+    // Use error_index for the errors endpoint (matches Sidecar behavior)
     let pallet_index = pallet.error_index();
 
     let error_variants = pallet.error_variants();
@@ -477,10 +372,11 @@ fn extract_error_item_from_metadata(
     include_metadata: bool,
     rc_fields: RcBlockFields,
 ) -> Result<PalletErrorItemResponse, PalletError> {
-    let pallet = find_pallet(metadata, pallet_id)
-        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+    // Find pallet using the common helper
+    let pallet = find_pallet_by_id_or_name(metadata, pallet_id)?;
 
     let pallet_name = pallet.name().to_string();
+    // Use error_index for the errors endpoint (matches Sidecar behavior)
     let pallet_index = pallet.error_index();
 
     let error_variants = pallet

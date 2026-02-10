@@ -5,28 +5,20 @@
 
 #![allow(clippy::result_large_err)]
 
-use crate::handlers::pallets::common::{AtResponse, PalletError};
+use crate::handlers::pallets::common::{
+    AtResponse, PalletError, build_rc_block_fields, find_pallet_by_id_or_name,
+    resolve_block_for_pallet, to_lower_camel_case, validate_and_resolve_rc_block,
+};
 use crate::state::AppState;
 use crate::utils;
-use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use config::ChainType;
 use serde::{Deserialize, Serialize};
 use subxt::Metadata;
-
-/// Convert first character to lowercase (matching Sidecar's camelCase behavior)
-fn to_camel_case(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
-    }
-}
 
 // ============================================================================
 // Request/Response Types
@@ -150,23 +142,13 @@ pub async fn pallets_constants(
         return handle_constants_use_rc_block(state, pallet_id, params).await;
     }
 
-    let block_id = params
-        .at
-        .as_ref()
-        .map(|s| s.parse::<utils::BlockId>())
-        .transpose()?;
-    let resolved = utils::resolve_block(&state, block_id).await?;
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     // Get client at block - Subxt normalizes all metadata versions
-    let client_at_block = state.client.at_block(resolved.number).await?;
-    let metadata = client_at_block.metadata();
+    let metadata = resolved.client_at_block.metadata();
 
     let pallet_info = extract_pallet_constants(&metadata, &pallet_id)?;
-
-    let at = AtResponse {
-        hash: resolved.hash.clone(),
-        height: resolved.number.to_string(),
-    };
 
     let items = if params.only_ids {
         ConstantsItems::OnlyIds(
@@ -183,7 +165,7 @@ pub async fn pallets_constants(
     Ok((
         StatusCode::OK,
         Json(PalletConstantsResponse {
-            at,
+            at: resolved.at,
             pallet: pallet_id.to_lowercase(),
             pallet_index: pallet_info.index.to_string(),
             items,
@@ -205,16 +187,11 @@ pub async fn pallets_constant_item(
         return handle_constant_item_use_rc_block(state, pallet_id, constant_item_id, params).await;
     }
 
-    let block_id = params
-        .at
-        .as_ref()
-        .map(|s| s.parse::<utils::BlockId>())
-        .transpose()?;
-    let resolved = utils::resolve_block(&state, block_id).await?;
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     // Get client at block - Subxt normalizes all metadata versions
-    let client_at_block = state.client.at_block(resolved.number).await?;
-    let metadata = client_at_block.metadata();
+    let metadata = resolved.client_at_block.metadata();
 
     let pallet_info = extract_pallet_constants(&metadata, &pallet_id)?;
 
@@ -227,11 +204,6 @@ pub async fn pallets_constant_item(
             item: constant_item_id.clone(),
         })?;
 
-    let at = AtResponse {
-        hash: resolved.hash.clone(),
-        height: resolved.number.to_string(),
-    };
-
     let metadata_field = if params.metadata {
         Some(constant.clone())
     } else {
@@ -241,10 +213,10 @@ pub async fn pallets_constant_item(
     Ok((
         StatusCode::OK,
         Json(PalletConstantItemResponse {
-            at,
+            at: resolved.at,
             pallet: pallet_id.to_lowercase(),
             pallet_index: pallet_info.index.to_string(),
-            constants_item: to_camel_case(&constant_item_id),
+            constants_item: to_lower_camel_case(&constant_item_id),
             metadata: metadata_field,
             rc_block_hash: None,
             rc_block_number: None,
@@ -263,41 +235,17 @@ async fn handle_constants_use_rc_block(
     pallet_id: String,
     params: ConstantsQueryParams,
 ) -> Result<Response, PalletError> {
-    if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(PalletError::UseRcBlockNotSupported);
-    }
-
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
-
-    let rc_block_id = params
-        .at
-        .as_ref()
-        .ok_or(PalletError::AtParameterRequired)?
-        .parse::<utils::BlockId>()?;
-
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
-        state
-            .get_relay_chain_rpc()
-            .expect("relay chain rpc checked above"),
-        Some(rc_block_id),
-    )
-    .await?;
-
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+    // Validate and resolve RC block using the common helper
+    let rc_context = validate_and_resolve_rc_block(&state, params.at.as_ref()).await?;
 
     // Return empty array when no AH blocks found
-    if ah_blocks.is_empty() {
+    if rc_context.ah_blocks.is_empty() {
         return Ok((StatusCode::OK, Json(Vec::<PalletConstantsResponse>::new())).into_response());
     }
 
     // Process ALL AH blocks and return array of responses
     let mut responses = Vec::new();
-    for ah_block in &ah_blocks {
+    for ah_block in &rc_context.ah_blocks {
         // Get client at block for this AH block
         let client_at_block = state.client.at_block(ah_block.number).await?;
         let metadata = client_at_block.metadata();
@@ -308,6 +256,9 @@ async fn handle_constants_use_rc_block(
             hash: ah_block.hash.clone(),
             height: ah_block.number.to_string(),
         };
+
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+        let rc_fields = build_rc_block_fields(&rc_context.rc_resolved_block, ah_timestamp);
 
         let items = if params.only_ids {
             ConstantsItems::OnlyIds(
@@ -326,9 +277,9 @@ async fn handle_constants_use_rc_block(
             pallet: pallet_id.to_lowercase(),
             pallet_index: pallet_info.index.to_string(),
             items,
-            rc_block_hash: Some(rc_resolved_block.hash.clone()),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
-            ah_timestamp: None,
+            rc_block_hash: rc_fields.rc_block_hash,
+            rc_block_number: rc_fields.rc_block_number,
+            ah_timestamp: rc_fields.ah_timestamp,
         });
     }
 
@@ -341,35 +292,11 @@ async fn handle_constant_item_use_rc_block(
     constant_item_id: String,
     params: ConstantItemQueryParams,
 ) -> Result<Response, PalletError> {
-    if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(PalletError::UseRcBlockNotSupported);
-    }
-
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
-
-    let rc_block_id = params
-        .at
-        .as_ref()
-        .ok_or(PalletError::AtParameterRequired)?
-        .parse::<utils::BlockId>()?;
-
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
-        state
-            .get_relay_chain_rpc()
-            .expect("relay chain rpc checked above"),
-        Some(rc_block_id),
-    )
-    .await?;
-
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+    // Validate and resolve RC block using the common helper
+    let rc_context = validate_and_resolve_rc_block(&state, params.at.as_ref()).await?;
 
     // Return empty array when no AH blocks found
-    if ah_blocks.is_empty() {
+    if rc_context.ah_blocks.is_empty() {
         return Ok((
             StatusCode::OK,
             Json(Vec::<PalletConstantItemResponse>::new()),
@@ -379,7 +306,7 @@ async fn handle_constant_item_use_rc_block(
 
     // Process ALL AH blocks in the RC block and return array
     let mut responses = Vec::new();
-    for ah_block in &ah_blocks {
+    for ah_block in &rc_context.ah_blocks {
         // Get client at block for this AH block
         let client_at_block = state.client.at_block(ah_block.number).await?;
         let metadata = client_at_block.metadata();
@@ -400,6 +327,9 @@ async fn handle_constant_item_use_rc_block(
             height: ah_block.number.to_string(),
         };
 
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+        let rc_fields = build_rc_block_fields(&rc_context.rc_resolved_block, ah_timestamp);
+
         let metadata_field = if params.metadata {
             Some(constant.clone())
         } else {
@@ -410,11 +340,11 @@ async fn handle_constant_item_use_rc_block(
             at,
             pallet: pallet_id.to_lowercase(),
             pallet_index: pallet_info.index.to_string(),
-            constants_item: to_camel_case(&constant_item_id),
+            constants_item: to_lower_camel_case(&constant_item_id),
             metadata: metadata_field,
-            rc_block_hash: Some(rc_resolved_block.hash.clone()),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
-            ah_timestamp: None,
+            rc_block_hash: rc_fields.rc_block_hash,
+            rc_block_number: rc_fields.rc_block_number,
+            ah_timestamp: rc_fields.ah_timestamp,
         });
     }
 
@@ -431,20 +361,8 @@ fn extract_pallet_constants(
     metadata: &Metadata,
     pallet_id: &str,
 ) -> Result<PalletConstantsInfo, PalletError> {
-    // Try to find pallet by index first, then by name (case-insensitive)
-    let pallet = if let Ok(index) = pallet_id.parse::<u8>() {
-        metadata.pallets().find(|p| p.call_index() == index)
-    } else {
-        // Try exact match first, then case-insensitive match
-        metadata.pallet_by_name(pallet_id).or_else(|| {
-            let pallet_id_lower = pallet_id.to_lowercase();
-            metadata
-                .pallets()
-                .find(|p| p.name().to_lowercase() == pallet_id_lower)
-        })
-    };
-
-    let pallet = pallet.ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+    // Find pallet using the common helper
+    let pallet = find_pallet_by_id_or_name(metadata, pallet_id)?;
 
     let constants: Vec<ConstantItemMetadata> = pallet
         .constants()
@@ -473,12 +391,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_to_camel_case() {
-        assert_eq!(to_camel_case("BlockWeights"), "blockWeights");
-        assert_eq!(to_camel_case("SS58Prefix"), "sS58Prefix");
-        assert_eq!(to_camel_case("existentialDeposit"), "existentialDeposit");
-        assert_eq!(to_camel_case(""), "");
-        assert_eq!(to_camel_case("A"), "a");
+    fn test_to_lower_camel_case() {
+        assert_eq!(to_lower_camel_case("BlockWeights"), "blockWeights");
+        assert_eq!(to_lower_camel_case("SS58Prefix"), "sS58Prefix");
+        assert_eq!(to_lower_camel_case("existentialDeposit"), "existentialDeposit");
+        assert_eq!(to_lower_camel_case(""), "");
+        assert_eq!(to_lower_camel_case("A"), "a");
     }
 
     #[test]

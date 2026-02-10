@@ -4,10 +4,12 @@
 //! Foreign assets are cross-chain assets identified by XCM MultiLocation.
 
 use crate::handlers::common::xcm_types::{Location, decode_multi_location_from_bytes};
-use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::common::{
+    AtResponse, ClientAtBlock, PalletError, build_rc_block_fields, format_account_id,
+    resolve_block_for_pallet, validate_and_resolve_rc_block,
+};
 use crate::state::AppState;
-use crate::utils;
-use crate::utils::rc_block::find_ah_blocks_in_rc_block;
+use crate::utils::fetch_block_timestamp;
 use axum::{
     Json,
     extract::{Query, State},
@@ -18,7 +20,6 @@ use config::ChainType;
 use futures::StreamExt;
 use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
-use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 // ============================================================================
 // Request/Response Types
@@ -126,30 +127,16 @@ pub async fn pallets_foreign_assets(
         return handle_use_rc_block(state, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let ss58_prefix = state.chain_info.ss58_prefix;
-    let items = fetch_all_foreign_assets(&client_at_block, ss58_prefix).await?;
+    let items = fetch_all_foreign_assets(&resolved.client_at_block, ss58_prefix).await?;
 
     Ok((
         StatusCode::OK,
         Json(PalletsForeignAssetsResponse {
-            at,
+            at: resolved.at,
             items,
             rc_block_hash: None,
             rc_block_number: None,
@@ -167,45 +154,19 @@ async fn handle_use_rc_block(
     state: AppState,
     params: ForeignAssetsQueryParams,
 ) -> Result<Response, PalletError> {
-    if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(PalletError::UseRcBlockNotSupported);
-    }
-
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
-
-    let rc_block_id = params
-        .at
-        .as_ref()
-        .ok_or(PalletError::AtParameterRequired)?
-        .parse::<utils::BlockId>()?;
-
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
-        state
-            .get_relay_chain_rpc()
-            .expect("relay chain rpc checked above"),
-        Some(rc_block_id),
-    )
-    .await?;
-
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+    // Validate and resolve RC block using the common helper
+    let rc_context = validate_and_resolve_rc_block(&state, params.at.as_ref()).await?;
 
     // Return empty array when no AH blocks found (matching Sidecar behavior)
-    if ah_blocks.is_empty() {
+    if rc_context.ah_blocks.is_empty() {
         return Ok((StatusCode::OK, Json(serde_json::json!([]))).into_response());
     }
 
-    let rc_block_number = rc_resolved_block.number.to_string();
-    let rc_block_hash = rc_resolved_block.hash.clone();
     let ss58_prefix = state.chain_info.ss58_prefix;
 
     // Process ALL AH blocks, not just the first one
     let mut results = Vec::new();
-    for ah_block in ah_blocks {
+    for ah_block in &rc_context.ah_blocks {
         let client_at_block = state.client.at_block(ah_block.number).await?;
 
         let at = AtResponse {
@@ -213,15 +174,16 @@ async fn handle_use_rc_block(
             height: ah_block.number.to_string(),
         };
 
-        let ah_timestamp = fetch_timestamp(&client_at_block).await;
+        let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+        let rc_fields = build_rc_block_fields(&rc_context.rc_resolved_block, ah_timestamp);
         let items = fetch_all_foreign_assets(&client_at_block, ss58_prefix).await?;
 
         results.push(PalletsForeignAssetsResponse {
             at,
             items,
-            rc_block_hash: Some(rc_block_hash.clone()),
-            rc_block_number: Some(rc_block_number.clone()),
-            ah_timestamp,
+            rc_block_hash: rc_fields.rc_block_hash,
+            rc_block_number: rc_fields.rc_block_number,
+            ah_timestamp: rc_fields.ah_timestamp,
         });
     }
 
@@ -235,7 +197,7 @@ async fn handle_use_rc_block(
 /// Fetches all foreign assets by iterating over ForeignAssets::Asset storage.
 /// Returns an error if the pallet doesn't exist or storage iteration fails.
 async fn fetch_all_foreign_assets(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    client_at_block: &ClientAtBlock,
     ss58_prefix: u16,
 ) -> Result<Vec<ForeignAssetItem>, PalletError> {
     let mut items = Vec::new();
@@ -386,18 +348,6 @@ fn format_asset_details(details: &AssetDetails, ss58_prefix: u16) -> serde_json:
         "approvals": details.approvals.to_string(),
         "status": details.status.as_str().to_string(),
     })
-}
-
-/// Fetches timestamp from Timestamp::Now storage.
-async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<String> {
-    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
-    let timestamp = client_at_block
-        .storage()
-        .fetch(timestamp_addr, ())
-        .await
-        .ok()?;
-    let timestamp_value = timestamp.decode().ok()?;
-    Some(timestamp_value.to_string())
 }
 
 #[cfg(test)]

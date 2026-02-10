@@ -4,21 +4,21 @@
 //! - `/pallets/asset-conversion/liquidity-pools` - List all liquidity pools
 //! - `/pallets/asset-conversion/next-available-id` - Get the next available pool asset ID
 
-use crate::handlers::pallets::common::{AtResponse, PalletError};
+use crate::handlers::pallets::common::{
+    AtResponse, ClientAtBlock, PalletError, build_rc_block_fields, resolve_block_for_pallet,
+    validate_and_resolve_rc_block,
+};
 use crate::state::AppState;
-use crate::utils;
-use crate::utils::rc_block::find_ah_blocks_in_rc_block;
+use crate::utils::fetch_block_timestamp;
 use axum::{
     Json,
     extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use config::ChainType;
 use futures::StreamExt;
 use heck::ToLowerCamelCase;
 use serde::{Deserialize, Serialize};
-use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 // ============================================================================
 // Request/Response Types
@@ -88,29 +88,15 @@ pub async fn get_next_available_id(
         return handle_next_id_with_rc_block(state, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
-
-    let pool_id = fetch_next_pool_asset_id(&client_at_block).await?;
+    let pool_id = fetch_next_pool_asset_id(&resolved.client_at_block).await?;
 
     Ok((
         StatusCode::OK,
         Json(NextAvailableIdResponse {
-            at,
+            at: resolved.at,
             pool_id,
             rc_block_hash: None,
             rc_block_number: None,
@@ -125,39 +111,17 @@ async fn handle_next_id_with_rc_block(
     state: AppState,
     params: AssetConversionQueryParams,
 ) -> Result<Response, PalletError> {
-    if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(PalletError::UseRcBlockNotSupported);
-    }
-
-    let rc_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let rc_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-
-    let rc_block_id = params
-        .at
-        .as_ref()
-        .ok_or(PalletError::AtParameterRequired)?
-        .parse::<utils::BlockId>()?;
-
-    let rc_resolved_block =
-        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc, Some(rc_block_id)).await?;
-
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+    // Validate and resolve RC block using the common helper
+    let rc_context = validate_and_resolve_rc_block(&state, params.at.as_ref()).await?;
 
     // Return empty array when no AH blocks found (matching Sidecar behavior)
-    if ah_blocks.is_empty() {
+    if rc_context.ah_blocks.is_empty() {
         return Ok((StatusCode::OK, Json(serde_json::json!([]))).into_response());
     }
 
-    let rc_block_number = rc_resolved_block.number.to_string();
-    let rc_block_hash = rc_resolved_block.hash.clone();
-
     // Process ALL AH blocks, not just the first one
     let mut results = Vec::new();
-    for ah_block in ah_blocks {
+    for ah_block in &rc_context.ah_blocks {
         let client_at_block = state.client.at_block(ah_block.number).await?;
 
         let at = AtResponse {
@@ -165,15 +129,16 @@ async fn handle_next_id_with_rc_block(
             height: ah_block.number.to_string(),
         };
 
-        let ah_timestamp = fetch_timestamp(&client_at_block).await;
+        let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+        let rc_fields = build_rc_block_fields(&rc_context.rc_resolved_block, ah_timestamp);
         let pool_id = fetch_next_pool_asset_id(&client_at_block).await?;
 
         results.push(NextAvailableIdResponse {
             at,
             pool_id,
-            rc_block_hash: Some(rc_block_hash.clone()),
-            rc_block_number: Some(rc_block_number.clone()),
-            ah_timestamp,
+            rc_block_hash: rc_fields.rc_block_hash,
+            rc_block_number: rc_fields.rc_block_number,
+            ah_timestamp: rc_fields.ah_timestamp,
         });
     }
 
@@ -195,29 +160,15 @@ pub async fn get_liquidity_pools(
         return handle_pools_with_rc_block(state, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
-
-    let pools = fetch_liquidity_pools(&client_at_block).await?;
+    let pools = fetch_liquidity_pools(&resolved.client_at_block).await?;
 
     Ok((
         StatusCode::OK,
         Json(LiquidityPoolsResponse {
-            at,
+            at: resolved.at,
             pools,
             rc_block_hash: None,
             rc_block_number: None,
@@ -232,39 +183,17 @@ async fn handle_pools_with_rc_block(
     state: AppState,
     params: AssetConversionQueryParams,
 ) -> Result<Response, PalletError> {
-    if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(PalletError::UseRcBlockNotSupported);
-    }
-
-    let rc_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let rc_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-
-    let rc_block_id = params
-        .at
-        .as_ref()
-        .ok_or(PalletError::AtParameterRequired)?
-        .parse::<utils::BlockId>()?;
-
-    let rc_resolved_block =
-        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc, Some(rc_block_id)).await?;
-
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+    // Validate and resolve RC block using the common helper
+    let rc_context = validate_and_resolve_rc_block(&state, params.at.as_ref()).await?;
 
     // Return empty array when no AH blocks found (matching Sidecar behavior)
-    if ah_blocks.is_empty() {
+    if rc_context.ah_blocks.is_empty() {
         return Ok((StatusCode::OK, Json(serde_json::json!([]))).into_response());
     }
 
-    let rc_block_number = rc_resolved_block.number.to_string();
-    let rc_block_hash = rc_resolved_block.hash.clone();
-
     // Process ALL AH blocks, not just the first one
     let mut results = Vec::new();
-    for ah_block in ah_blocks {
+    for ah_block in &rc_context.ah_blocks {
         let client_at_block = state.client.at_block(ah_block.number).await?;
 
         let at = AtResponse {
@@ -272,15 +201,16 @@ async fn handle_pools_with_rc_block(
             height: ah_block.number.to_string(),
         };
 
-        let ah_timestamp = fetch_timestamp(&client_at_block).await;
+        let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+        let rc_fields = build_rc_block_fields(&rc_context.rc_resolved_block, ah_timestamp);
         let pools = fetch_liquidity_pools(&client_at_block).await?;
 
         results.push(LiquidityPoolsResponse {
             at,
             pools,
-            rc_block_hash: Some(rc_block_hash.clone()),
-            rc_block_number: Some(rc_block_number.clone()),
-            ah_timestamp,
+            rc_block_hash: rc_fields.rc_block_hash,
+            rc_block_number: rc_fields.rc_block_number,
+            ah_timestamp: rc_fields.ah_timestamp,
         });
     }
 
@@ -294,7 +224,7 @@ async fn handle_pools_with_rc_block(
 /// Fetches the next available pool asset ID from AssetConversion::NextPoolAssetId storage.
 /// Returns an error if the pallet doesn't exist.
 async fn fetch_next_pool_asset_id(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    client_at_block: &ClientAtBlock,
 ) -> Result<Option<String>, PalletError> {
     // Use dynamic storage to fetch NextPoolAssetId
     // This is a simple value storage item (no keys)
@@ -324,7 +254,7 @@ async fn fetch_next_pool_asset_id(
 /// Fetches all liquidity pools from AssetConversion::Pools storage.
 /// Returns an error if the pallet doesn't exist.
 async fn fetch_liquidity_pools(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    client_at_block: &ClientAtBlock,
 ) -> Result<Vec<LiquidityPoolInfo>, PalletError> {
     let mut pools = Vec::new();
 
@@ -454,18 +384,6 @@ fn scale_value_to_json(value: &scale_value::Value) -> serde_json::Value {
             serde_json::Value::String(format!("{:?}", bits))
         }
     }
-}
-
-/// Fetches timestamp from Timestamp::Now storage.
-async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<String> {
-    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
-    let timestamp = client_at_block
-        .storage()
-        .fetch(timestamp_addr, ())
-        .await
-        .ok()?;
-    let timestamp_value = timestamp.decode().ok()?;
-    Some(timestamp_value.to_string())
 }
 
 // ============================================================================

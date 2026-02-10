@@ -7,14 +7,17 @@
 // which is large by design. Boxing would add indirection without significant benefit.
 #![allow(clippy::result_large_err)]
 
-use crate::handlers::pallets::common::PalletError;
+use crate::handlers::pallets::common::{
+    PalletError, build_rc_block_fields, resolve_block_for_pallet,
+    to_lower_camel_case, validate_and_resolve_rc_block,
+};
+// Re-export AtResponse for backwards compatibility with tests
+pub use crate::handlers::pallets::common::AtResponse;
 use crate::state::AppState;
 use crate::utils;
-use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json, extract::Path, extract::Query, extract::State, response::IntoResponse, response::Response,
 };
-use config::ChainType;
 use frame_metadata::decode_different::DecodeDifferent;
 use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
 use parity_scale_codec::Decode;
@@ -70,13 +73,6 @@ pub struct PalletsStorageResponse {
 pub enum StorageItems {
     Full(Vec<StorageItemMetadata>),
     OnlyIds(Vec<String>),
-}
-
-/// Block information in the response
-#[derive(Debug, Clone, Serialize)]
-pub struct AtResponse {
-    pub hash: String,
-    pub height: String,
 }
 
 /// Metadata for a single storage item (matching Sidecar format)
@@ -197,25 +193,16 @@ pub async fn get_pallets_storage(
         return handle_use_rc_block(state, pallet_id, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let resolved_block = utils::ResolvedBlock {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        number: client_at_block.block_number(),
+        hash: format!("{:#x}", resolved.client_at_block.block_hash()),
+        number: resolved.client_at_block.block_number(),
     };
 
     // Fetch raw metadata via RPC to access all metadata versions (V9-V16)
-    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_hash = format!("{:#x}", resolved.client_at_block.block_hash());
     let metadata = fetch_runtime_metadata(&state, &block_hash).await?;
 
     let response = build_storage_response(&metadata, &pallet_id, &resolved_block, params.only_ids)?;
@@ -250,42 +237,15 @@ async fn handle_use_rc_block(
     pallet_id: String,
     params: StorageQueryParams,
 ) -> Result<Response, PalletError> {
-    if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(PalletError::UseRcBlockNotSupported);
-    }
+    // Validate and resolve RC block using the common helper
+    let rc_context = validate_and_resolve_rc_block(&state, params.at.as_ref()).await?;
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
-
-    let rc_block_id = params
-        .at
-        .as_ref()
-        .ok_or(PalletError::AtParameterRequired)?
-        .parse::<utils::BlockId>()?;
-
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
-        state
-            .get_relay_chain_rpc()
-            .expect("relay chain rpc checked above"),
-        Some(rc_block_id),
-    )
-    .await?;
-
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
-
-    if ah_blocks.is_empty() {
+    if rc_context.ah_blocks.is_empty() {
         return Ok(Json(json!([])).into_response());
     }
 
-    let rc_block_number = rc_resolved_block.number.to_string();
-    let rc_block_hash = rc_resolved_block.hash.clone();
-
     let mut results = Vec::new();
-    for ah_block in ah_blocks {
+    for ah_block in &rc_context.ah_blocks {
         let ah_resolved_block = utils::ResolvedBlock {
             hash: ah_block.hash.clone(),
             number: ah_block.number,
@@ -297,29 +257,14 @@ async fn handle_use_rc_block(
         let mut response =
             build_storage_response(&metadata, &pallet_id, &ah_resolved_block, params.only_ids)?;
 
-        response.rc_block_hash = Some(rc_block_hash.clone());
-        response.rc_block_number = Some(rc_block_number.clone());
+        // Fetch timestamp
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+        let rc_fields = build_rc_block_fields(&rc_context.rc_resolved_block, ah_timestamp);
 
-        // Fetch timestamp via RPC
-        let timestamp_key = "0x0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f"; // Timestamp::Now storage key
-        let timestamp_result: Option<String> = state
-            .rpc_client
-            .request(
-                "state_getStorage",
-                rpc_params![timestamp_key, &ah_block.hash],
-            )
-            .await
-            .ok();
-
-        if let Some(timestamp_hex) = timestamp_result {
-            let hex_str = timestamp_hex.strip_prefix("0x").unwrap_or(&timestamp_hex);
-            if let Ok(timestamp_bytes) = hex::decode(hex_str) {
-                let mut cursor = &timestamp_bytes[..];
-                if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                    response.ah_timestamp = Some(timestamp_value.to_string());
-                }
-            }
-        }
+        response.rc_block_hash = rc_fields.rc_block_hash;
+        response.rc_block_number = rc_fields.rc_block_number;
+        response.ah_timestamp = rc_fields.ah_timestamp;
 
         results.push(response);
     }
@@ -341,24 +286,15 @@ pub async fn get_pallets_storage_item(
         return handle_storage_item_use_rc_block(state, pallet_id, storage_item_id, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let resolved_block = utils::ResolvedBlock {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        number: client_at_block.block_number(),
+        hash: format!("{:#x}", resolved.client_at_block.block_hash()),
+        number: resolved.client_at_block.block_number(),
     };
 
-    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_hash = format!("{:#x}", resolved.client_at_block.block_hash());
     let metadata = fetch_runtime_metadata(&state, &block_hash).await?;
 
     let response = build_storage_item_response(
@@ -383,42 +319,15 @@ async fn handle_storage_item_use_rc_block(
     storage_item_id: String,
     params: StorageItemQueryParams,
 ) -> Result<Response, PalletError> {
-    if state.chain_info.chain_type != ChainType::AssetHub {
-        return Err(PalletError::UseRcBlockNotSupported);
-    }
+    // Validate and resolve RC block using the common helper
+    let rc_context = validate_and_resolve_rc_block(&state, params.at.as_ref()).await?;
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
-
-    let rc_block_id = params
-        .at
-        .as_ref()
-        .ok_or(PalletError::AtParameterRequired)?
-        .parse::<utils::BlockId>()?;
-
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
-        state
-            .get_relay_chain_rpc()
-            .expect("relay chain rpc checked above"),
-        Some(rc_block_id),
-    )
-    .await?;
-
-    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
-
-    if ah_blocks.is_empty() {
+    if rc_context.ah_blocks.is_empty() {
         return Ok(Json(json!([])).into_response());
     }
 
-    let rc_block_number = rc_resolved_block.number.to_string();
-    let rc_block_hash = rc_resolved_block.hash.clone();
-
     let mut results = Vec::new();
-    for ah_block in ah_blocks {
+    for ah_block in &rc_context.ah_blocks {
         let ah_resolved_block = utils::ResolvedBlock {
             hash: ah_block.hash.clone(),
             number: ah_block.number,
@@ -438,29 +347,14 @@ async fn handle_storage_item_use_rc_block(
         )
         .await?;
 
-        response.rc_block_hash = Some(rc_block_hash.clone());
-        response.rc_block_number = Some(rc_block_number.clone());
+        // Fetch timestamp
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+        let rc_fields = build_rc_block_fields(&rc_context.rc_resolved_block, ah_timestamp);
 
-        // Fetch timestamp via RPC
-        let timestamp_key = "0x0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f";
-        let timestamp_result: Option<String> = state
-            .rpc_client
-            .request(
-                "state_getStorage",
-                rpc_params![timestamp_key, &ah_block.hash],
-            )
-            .await
-            .ok();
-
-        if let Some(timestamp_hex) = timestamp_result {
-            let hex_str = timestamp_hex.strip_prefix("0x").unwrap_or(&timestamp_hex);
-            if let Ok(timestamp_bytes) = hex::decode(hex_str) {
-                let mut cursor = &timestamp_bytes[..];
-                if let Ok(timestamp_value) = u64::decode(&mut cursor) {
-                    response.ah_timestamp = Some(timestamp_value.to_string());
-                }
-            }
-        }
+        response.rc_block_hash = rc_fields.rc_block_hash;
+        response.rc_block_number = rc_fields.rc_block_number;
+        response.ah_timestamp = rc_fields.ah_timestamp;
 
         results.push(response);
     }
@@ -536,7 +430,7 @@ async fn build_storage_item_response(
         },
         pallet: storage_response.pallet,
         pallet_index: storage_response.pallet_index,
-        storage_item: to_camel_case(&storage_item.name),
+        storage_item: to_lower_camel_case(&storage_item.name),
         keys: keys.to_vec(),
         value,
         metadata: metadata_field,
@@ -544,15 +438,6 @@ async fn build_storage_item_response(
         rc_block_number: None,
         ah_timestamp: None,
     })
-}
-
-/// Convert first character to lowercase (matching Sidecar's camelCase behavior)
-fn to_camel_case(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
-    }
 }
 
 /// Get the original pallet name (PascalCase) from metadata

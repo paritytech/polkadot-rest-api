@@ -15,6 +15,7 @@
 
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams,
+    camel_to_snake, snake_to_camel, to_lower_camel_case,
 };
 use crate::state::AppState;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -28,50 +29,6 @@ use axum::{
 use config::ChainType;
 use serde::Serialize;
 use subxt::Metadata;
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Convert first character to lowercase (for pallet names like "Balances" -> "balances")
-fn to_lower_first(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
-    }
-}
-
-/// Convert snake_case to camelCase (for dispatchable names like "transfer_allow_death" -> "transferAllowDeath")
-fn snake_to_camel(s: &str) -> String {
-    let mut result = String::new();
-    let mut capitalize_next = false;
-    for c in s.chars() {
-        if c == '_' {
-            capitalize_next = true;
-        } else if capitalize_next {
-            result.push(c.to_ascii_uppercase());
-            capitalize_next = false;
-        } else {
-            result.push(c);
-        }
-    }
-    result
-}
-
-/// Convert camelCase to snake_case (for looking up dispatchables by user input)
-fn camel_to_snake(s: &str) -> String {
-    let mut result = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_uppercase() && i > 0 {
-            result.push('_');
-            result.push(c.to_ascii_lowercase());
-        } else {
-            result.push(c.to_ascii_lowercase());
-        }
-    }
-    result
-}
 
 // ============================================================================
 // Response Types
@@ -266,7 +223,7 @@ pub async fn get_pallets_dispatchables(
         StatusCode::OK,
         Json(PalletsDispatchablesResponse {
             at,
-            pallet: to_lower_first(&pallet_info.name),
+            pallet: to_lower_camel_case(&pallet_info.name),
             pallet_index: pallet_info.index.to_string(),
             items,
             rc_block_hash: None,
@@ -338,7 +295,7 @@ pub async fn get_pallet_dispatchable_item(
         StatusCode::OK,
         Json(PalletDispatchableItemResponse {
             at,
-            pallet: to_lower_first(&pallet_info.name),
+            pallet: to_lower_camel_case(&pallet_info.name),
             pallet_index: pallet_info.index.to_string(),
             dispatchable_item: snake_to_camel(&dispatchable.name),
             metadata: metadata_field,
@@ -402,7 +359,7 @@ async fn handle_use_rc_block(
             StatusCode::OK,
             Json(PalletsDispatchablesResponse {
                 at,
-                pallet: to_lower_first(&pallet_id),
+                pallet: to_lower_camel_case(&pallet_id),
                 pallet_index: "0".to_string(),
                 items: DispatchablesItems::Full(vec![]),
                 rc_block_hash: Some(rc_resolved_block.hash),
@@ -446,7 +403,7 @@ async fn handle_use_rc_block(
         StatusCode::OK,
         Json(PalletsDispatchablesResponse {
             at,
-            pallet: to_lower_first(&pallet_info.name),
+            pallet: to_lower_camel_case(&pallet_info.name),
             pallet_index: pallet_info.index.to_string(),
             items,
             rc_block_hash: Some(rc_resolved_block.hash),
@@ -536,7 +493,7 @@ async fn handle_dispatchable_item_use_rc_block(
         StatusCode::OK,
         Json(PalletDispatchableItemResponse {
             at,
-            pallet: to_lower_first(&pallet_info.name),
+            pallet: to_lower_camel_case(&pallet_info.name),
             pallet_index: pallet_info.index.to_string(),
             dispatchable_item: snake_to_camel(&dispatchable.name),
             metadata: metadata_field,
@@ -768,12 +725,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_to_lower_first() {
-        assert_eq!(to_lower_first("Balances"), "balances");
-        assert_eq!(to_lower_first("System"), "system");
-        assert_eq!(to_lower_first("transferAllowDeath"), "transferAllowDeath");
-        assert_eq!(to_lower_first(""), "");
-        assert_eq!(to_lower_first("A"), "a");
+    fn test_to_lower_camel_case() {
+        assert_eq!(to_lower_camel_case("Balances"), "balances");
+        assert_eq!(to_lower_camel_case("System"), "system");
+        assert_eq!(to_lower_camel_case("transferAllowDeath"), "transferAllowDeath");
+        assert_eq!(to_lower_camel_case(""), "");
+        assert_eq!(to_lower_camel_case("A"), "a");
     }
 
     #[test]
