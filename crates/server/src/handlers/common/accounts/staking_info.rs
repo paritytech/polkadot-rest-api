@@ -1,5 +1,6 @@
 //! Common staking info utilities shared across handler modules.
 
+use crate::consts::{get_chain_display_name, is_bad_staking_block};
 use crate::handlers::runtime_queries::staking::{self, StakingStorageError};
 use crate::utils::ResolvedBlock;
 use futures::future::join_all;
@@ -38,6 +39,9 @@ pub enum StakingQueryError {
 
     #[error("Invalid address: {0}")]
     InvalidAddress(String),
+
+    #[error("{0}")]
+    BadStakingBlock(String),
 }
 
 impl From<subxt::error::OnlineClientAtBlockError> for StakingQueryError {
@@ -165,7 +169,18 @@ pub async fn query_staking_info(
     block: &ResolvedBlock,
     include_claimed_rewards: bool,
     ss58_prefix: u16,
+    spec_name: &str,
 ) -> Result<RawStakingInfo, StakingQueryError> {
+    // Check for known bad staking blocks
+    if is_bad_staking_block(spec_name, block.number) {
+        let chain_name = get_chain_display_name(spec_name);
+        return Err(StakingQueryError::BadStakingBlock(format!(
+            "Post migration, there were some interruptions to staking on {chain_name}, \
+             Block {} is in the list of known bad staking blocks in {chain_name}",
+            block.number
+        )));
+    }
+
     // Check if Staking pallet exists
     if client_at_block
         .storage()

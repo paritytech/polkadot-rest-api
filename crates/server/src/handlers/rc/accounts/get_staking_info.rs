@@ -66,12 +66,20 @@ pub async fn get_staking_info(
         utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
     let client_at_block = rc_client.at_block(resolved_block.number).await?;
 
+    // For RC endpoints, use relay chain spec_name if available
+    let rc_spec_name = state
+        .relay_chain_info
+        .as_ref()
+        .map(|info| info.spec_name.as_str())
+        .unwrap_or(&state.chain_info.spec_name);
+
     let raw_info = query_staking_info(
         &client_at_block,
         &account,
         &resolved_block,
         params.include_claimed_rewards,
         rc_ss58_prefix,
+        rc_spec_name,
     )
     .await?;
 

@@ -235,6 +235,12 @@ pub enum AccountsError {
     #[error("No active era found")]
     NoActiveEra,
 
+    #[error("{0}")]
+    BadStakingBlock(String),
+
+    #[error("Relay chain connection is required to query pre-migration era data")]
+    RelayChainConnectionRequired,
+
     #[error("The address is not a stash account")]
     NotAStashAccount,
 
@@ -299,7 +305,12 @@ impl From<crate::handlers::common::accounts::ProxyQueryError> for AccountsError 
 
 impl From<crate::handlers::common::accounts::StakingQueryError> for AccountsError {
     fn from(err: crate::handlers::common::accounts::StakingQueryError) -> Self {
-        AccountsError::StakingQueryFailed(Box::new(err))
+        match err {
+            crate::handlers::common::accounts::StakingQueryError::BadStakingBlock(msg) => {
+                AccountsError::BadStakingBlock(msg)
+            }
+            other => AccountsError::StakingQueryFailed(Box::new(other)),
+        }
     }
 }
 
@@ -318,6 +329,12 @@ impl From<StakingPayoutsQueryError> for AccountsError {
             StakingPayoutsQueryError::NoActiveEra => AccountsError::NoActiveEra,
             StakingPayoutsQueryError::InvalidEra(era) => AccountsError::InvalidEra(era),
             StakingPayoutsQueryError::InvalidDepth => AccountsError::InvalidDepth,
+            StakingPayoutsQueryError::BadStakingBlock(msg) => {
+                AccountsError::BadStakingBlock(msg)
+            }
+            StakingPayoutsQueryError::RelayChainConnectionRequired => {
+                AccountsError::RelayChainConnectionRequired
+            }
             other => AccountsError::StakingPayoutsQueryFailed(Box::new(other)),
         }
     }
@@ -336,6 +353,8 @@ impl_error_response!(AccountsError,
     AccountsError::InvalidEra(_) => BAD_REQUEST,
     AccountsError::InvalidDepth => BAD_REQUEST,
     AccountsError::NoActiveEra => BAD_REQUEST,
+    AccountsError::BadStakingBlock(_) => BAD_REQUEST,
+    AccountsError::RelayChainConnectionRequired => BAD_REQUEST,
     AccountsError::NotAStashAccount => BAD_REQUEST,
     AccountsError::InvalidHexAccountId => BAD_REQUEST,
     AccountsError::InvalidPrefix => BAD_REQUEST,

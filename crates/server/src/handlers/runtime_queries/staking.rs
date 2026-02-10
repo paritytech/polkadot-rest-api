@@ -902,7 +902,6 @@ pub async fn is_era_claimed(
         get_claimed_pages(client_at_block, era, validator),
         get_era_stakers_page_count(client_at_block, era, validator),
     );
-
     match (claimed_pages, page_count) {
         (Some(pages), Some(total)) => {
             // Fully claimed if all pages are accounted for
@@ -934,9 +933,11 @@ pub struct ValidatorExposureInfo {
     pub own: u128,
 }
 
-/// Fetch ALL exposures for an era in bulk using storage iteration.
+/// Fetch ALL exposures for a specific era in bulk using prefix-based storage iteration.
 ///
-/// This is the Sidecar-style approach that fetches all data in 1-2 RPC calls.
+/// Uses subxt's `PrefixOf` support to iterate only entries matching the given era,
+/// avoiding the need to scan all eras in storage.
+///
 /// Used as a fallback when the targeted approach (using current nominations) fails
 /// to find results, which can happen when nominations have changed since the era being queried.
 ///
@@ -963,32 +964,19 @@ pub async fn get_era_exposures_bulk(
     );
     let mut found_paged = false;
 
-    // Iterate without prefix to get all entries, then filter by era
-    if let Ok(mut iter) = client_at_block.storage().iter(overview_addr, ()).await {
+    // Use era as prefix key to iterate only entries for this specific era
+    if let Ok(mut iter) = client_at_block.storage().iter(overview_addr, (era,)).await {
         while let Some(Ok(kv)) = iter.next().await {
-            // Get raw key bytes
             let key_bytes = kv.key_bytes();
 
-            // Key format: pallet_hash(16) + storage_hash(16) + twox64(8) + era(4) + twox64(8) + validator(32)
-            // Total: 84 bytes
-            // Era is at positions 32-43 (after pallet+storage hashes, twox64 is 8 bytes, then 4 bytes for era)
+            // Key format: pallet_hash(16) + storage_hash(16) + hasher(8) + era(4) + hasher(8) + validator(32)
             // Validator is in the last 32 bytes
             if key_bytes.len() < 84 {
                 continue;
             }
 
-            // Extract era from key to filter
-            // Era position: 32 (pallet+storage) + 8 (twox64) = 40, then 4 bytes
-            let key_era =
-                u32::from_le_bytes([key_bytes[40], key_bytes[41], key_bytes[42], key_bytes[43]]);
-
-            if key_era != era {
-                continue;
-            }
-
             found_paged = true;
 
-            // Validator is in the last 32 bytes
             let mut validator_bytes = [0u8; 32];
             validator_bytes.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
 
@@ -998,7 +986,6 @@ pub async fn get_era_exposures_bulk(
                     continue;
                 }
 
-                // Store validator's own exposure info
                 validator_map.insert(
                     validator_bytes,
                     ValidatorExposureInfo {
@@ -1011,42 +998,30 @@ pub async fn get_era_exposures_bulk(
         }
     }
 
-    // If we found paged staking data, fetch the paged exposures
+    // If we found paged staking data, fetch the paged exposures for this era
     if found_paged && !validator_map.is_empty() {
         // Key type: (u32, [u8; 32], u32) for (era, validator, page)
         let paged_addr = subxt::dynamic::storage::<(u32, [u8; 32], u32), scale_value::Value>(
             "Staking",
             "ErasStakersPaged",
         );
-        if let Ok(mut iter) = client_at_block.storage().iter(paged_addr, ()).await {
+        // Use era as prefix key to iterate only pages for this specific era
+        if let Ok(mut iter) = client_at_block.storage().iter(paged_addr, (era,)).await {
             while let Some(Ok(kv)) = iter.next().await {
                 let key_bytes = kv.key_bytes();
 
-                // Key format: pallet_hash(16) + storage_hash(16) + twox64(8) + era(4) + twox64(8) + validator(32) + twox64(8) + page(4)
-                // Total: 96 bytes
+                // Key format: pallet_hash(16) + storage_hash(16) + hasher(8) + era(4) + hasher(8) + validator(32) + hasher(8) + page(4)
+                // Validator is at a fixed offset; extract from known positions
                 if key_bytes.len() < 96 {
                     continue;
                 }
 
-                // Extract era from key to filter
-                let key_era = u32::from_le_bytes([
-                    key_bytes[40],
-                    key_bytes[41],
-                    key_bytes[42],
-                    key_bytes[43],
-                ]);
-
-                if key_era != era {
-                    continue;
-                }
-
-                // Validator is at positions 52..84 (after era key part, 8 bytes twox64)
+                // Validator is at positions 52..84 (after pallet+storage hashes + era key part)
                 let mut validator_bytes = [0u8; 32];
                 validator_bytes.copy_from_slice(&key_bytes[52..84]);
 
                 let page_bytes = kv.value().bytes();
                 if let Ok(exposure_page) = ExposurePage::decode(&mut &page_bytes[..]) {
-                    // Get total exposure for this validator
                     let total = validator_map
                         .get(&validator_bytes)
                         .map(|v| v.total)
@@ -1056,7 +1031,6 @@ pub async fn get_era_exposures_bulk(
                         continue;
                     }
 
-                    // Add each nominator to the map
                     for individual in exposure_page.others {
                         nominator_map.entry(individual.who).or_default().push((
                             validator_bytes,
@@ -1077,25 +1051,17 @@ pub async fn get_era_exposures_bulk(
         "Staking",
         "ErasStakersClipped",
     );
-    if let Ok(mut iter) = client_at_block.storage().iter(clipped_addr, ()).await {
+    // Use era as prefix key to iterate only entries for this specific era
+    if let Ok(mut iter) = client_at_block.storage().iter(clipped_addr, (era,)).await {
         while let Some(Ok(kv)) = iter.next().await {
             let key_bytes = kv.key_bytes();
 
-            // Key format: pallet_hash(16) + storage_hash(16) + twox64(8) + era(4) + twox64(8) + validator(32)
-            // Total: 84 bytes
+            // Key format: pallet_hash(16) + storage_hash(16) + hasher(8) + era(4) + hasher(8) + validator(32)
+            // Validator is in the last 32 bytes
             if key_bytes.len() < 84 {
                 continue;
             }
 
-            // Extract era from key to filter
-            let key_era =
-                u32::from_le_bytes([key_bytes[40], key_bytes[41], key_bytes[42], key_bytes[43]]);
-
-            if key_era != era {
-                continue;
-            }
-
-            // Validator is in the last 32 bytes
             let mut validator_bytes = [0u8; 32];
             validator_bytes.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
 
@@ -1105,7 +1071,6 @@ pub async fn get_era_exposures_bulk(
                     continue;
                 }
 
-                // Store validator's own exposure info
                 validator_map.insert(
                     validator_bytes,
                     ValidatorExposureInfo {
@@ -1115,7 +1080,6 @@ pub async fn get_era_exposures_bulk(
                     },
                 );
 
-                // Add each nominator to the map
                 for individual in exposure.others {
                     nominator_map.entry(individual.who).or_default().push((
                         validator_bytes,

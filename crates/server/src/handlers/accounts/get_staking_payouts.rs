@@ -3,6 +3,7 @@ use super::types::{
     StakingPayoutsResponse, ValidatorPayout,
 };
 use super::utils::validate_and_parse_address;
+use crate::consts::get_migration_boundaries;
 use crate::handlers::common::accounts::{
     RawEraPayouts, RawStakingPayouts, StakingPayoutsParams, query_staking_payouts,
 };
@@ -86,18 +87,36 @@ pub async fn get_staking_payouts(
         unclaimed_only: params.unclaimed_only,
     };
 
+    // Create relay chain client for migration-aware era splitting
+    let relay_at_block = create_relay_client_for_migration(&state).await;
+
     let raw_payouts = query_staking_payouts(
         &client_at_block,
         &account,
         &resolved_block,
         &staking_params,
         state.chain_info.ss58_prefix,
+        &state.chain_info.spec_name,
+        relay_at_block.as_ref(),
     )
     .await?;
 
     let response = format_response(&raw_payouts, None, None, None);
 
     Ok(Json(response).into_response())
+}
+
+/// Create a relay chain client at a block just before the migration started.
+/// Returns None if no relay client is configured or no migration boundaries exist.
+async fn create_relay_client_for_migration(
+    state: &AppState,
+) -> Option<subxt::OnlineClientAtBlock<subxt::SubstrateConfig>> {
+    let boundaries = get_migration_boundaries(&state.chain_info.spec_name)?;
+    let relay_client = state.get_relay_chain_client()?;
+    relay_client
+        .at_block(boundaries.relay_migration_started_at as u64 - 1)
+        .await
+        .ok()
 }
 
 // ================================================================================================
@@ -196,6 +215,9 @@ async fn handle_use_rc_block(
         unclaimed_only: params.unclaimed_only,
     };
 
+    // Create relay chain client for migration-aware era splitting
+    let relay_at_block = create_relay_client_for_migration(&state).await;
+
     // Process each AH block
     let mut results = Vec::new();
     for ah_block in ah_blocks {
@@ -210,6 +232,8 @@ async fn handle_use_rc_block(
             &ah_resolved,
             &staking_params,
             state.chain_info.ss58_prefix,
+            &state.chain_info.spec_name,
+            relay_at_block.as_ref(),
         )
         .await?;
 

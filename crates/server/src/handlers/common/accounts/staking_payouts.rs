@@ -1,5 +1,6 @@
 //! Common staking payouts utilities shared across handler modules.
 
+use crate::consts::{get_chain_display_name, get_migration_boundaries, is_bad_staking_block};
 use crate::handlers::runtime_queries::staking;
 use crate::utils::ResolvedBlock;
 use sp_core::crypto::{AccountId32, Ss58Codec};
@@ -34,6 +35,12 @@ pub enum StakingPayoutsQueryError {
 
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
+
+    #[error("{0}")]
+    BadStakingBlock(String),
+
+    #[error("Relay chain connection is required to query pre-migration era data. Configure a relay chain URL via SAS_SUBSTRATE_MULTI_CHAIN_URL.")]
+    RelayChainConnectionRequired,
 }
 
 impl From<subxt::error::OnlineClientAtBlockError> for StakingPayoutsQueryError {
@@ -144,7 +151,19 @@ pub async fn query_staking_payouts(
     block: &ResolvedBlock,
     params: &StakingPayoutsParams,
     ss58_prefix: u16,
+    spec_name: &str,
+    relay_client_at_block: Option<&OnlineClientAtBlock<SubstrateConfig>>,
 ) -> Result<RawStakingPayouts, StakingPayoutsQueryError> {
+    // Check for known bad staking blocks
+    if is_bad_staking_block(spec_name, block.number) {
+        let chain_name = get_chain_display_name(spec_name);
+        return Err(StakingPayoutsQueryError::BadStakingBlock(format!(
+            "Post migration, there were some interruptions to staking on {chain_name}, \
+             Block {} is in the list of known bad staking blocks in {chain_name}",
+            block.number
+        )));
+    }
+
     // Check if Staking pallet exists
     if client_at_block
         .storage()
@@ -179,21 +198,73 @@ pub async fn query_staking_payouts(
     if target_era < min_era {
         return Err(StakingPayoutsQueryError::InvalidEra(target_era));
     }
+
     // Calculate start era based on depth
     let start_era = target_era.saturating_sub(params.depth - 1).max(min_era);
 
-    // Process each era
+    // Check if migration-aware era splitting is needed
+    let migration_boundaries = get_migration_boundaries(spec_name);
+
     let mut eras_payouts = Vec::new();
-    for era in start_era..=target_era {
-        let era_payout = process_era(
-            client_at_block,
-            account,
-            era,
-            params.unclaimed_only,
-            ss58_prefix,
-        )
-        .await;
-        eras_payouts.push(era_payout);
+
+    if let Some(boundaries) = migration_boundaries {
+        // Split era range at the migration boundary
+        let relay_last_era = boundaries.relay_chain_last_era;
+        let ah_first_era = boundaries.asset_hub_first_era;
+
+        // Pre-migration eras: [start_era, min(target_era, relay_last_era - 1)]
+        let pre_migration_end = target_era.min(relay_last_era.saturating_sub(1));
+        let has_pre_migration_eras = start_era <= pre_migration_end && start_era < relay_last_era;
+
+        // Post-migration eras: [max(start_era, ah_first_era), target_era]
+        let post_migration_start = start_era.max(ah_first_era);
+        let has_post_migration_eras = post_migration_start <= target_era;
+
+        // Process pre-migration eras from relay chain
+        if has_pre_migration_eras {
+            let rc_client = relay_client_at_block
+                .ok_or(StakingPayoutsQueryError::RelayChainConnectionRequired)?;
+
+            for era in start_era..=pre_migration_end {
+                let era_payout = process_era(
+                    rc_client,
+                    account,
+                    era,
+                    params.unclaimed_only,
+                    ss58_prefix,
+                )
+                .await;
+                eras_payouts.push(era_payout);
+            }
+        }
+
+        // Process post-migration eras from Asset Hub
+        if has_post_migration_eras {
+            for era in post_migration_start..=target_era {
+                let era_payout = process_era(
+                    client_at_block,
+                    account,
+                    era,
+                    params.unclaimed_only,
+                    ss58_prefix,
+                )
+                .await;
+                eras_payouts.push(era_payout);
+            }
+        }
+    } else {
+        // No migration boundaries — process all eras from the connected chain
+        for era in start_era..=target_era {
+            let era_payout = process_era(
+                client_at_block,
+                account,
+                era,
+                params.unclaimed_only,
+                ss58_prefix,
+            )
+            .await;
+            eras_payouts.push(era_payout);
+        }
     }
 
     Ok(RawStakingPayouts {
@@ -263,7 +334,7 @@ async fn fetch_era_data(
         return Ok(RawEraPayouts::Message {
             message: format!("Account has no nominations in era {}", era),
         });
-    }
+    }   
 
     // Calculate payouts for each validator the account nominates
     let mut payouts = Vec::new();
@@ -286,10 +357,8 @@ async fn fetch_era_data(
         let commission = fetch_validator_commission(client_at_block, era, &validator_bytes_arr)
             .await
             .unwrap_or(0);
-
         // Check if claimed
         let claimed = check_if_claimed(client_at_block, &validator_bytes_arr, era).await;
-
         // Skip if unclaimed_only is true and this is already claimed
         if unclaimed_only && claimed {
             continue;
@@ -346,37 +415,13 @@ async fn fetch_exposure_data(
     ss58_prefix: u16,
 ) -> Result<Vec<(String, u128, u128)>, String> {
     // First try the targeted approach using current nominations
-    let results =
-        fetch_exposure_data_targeted(client_at_block, account, era, account_bytes, ss58_prefix)
-            .await?;
-
-    if !results.is_empty() {
-        return Ok(results);
-    }
-
-    // Targeted approach found nothing - fall back to bulk approach
-    // This handles cases where nominations have changed since the era being queried
-    fetch_exposure_data_bulk(client_at_block, era, account_bytes, ss58_prefix).await
-}
-
-/// Targeted approach: query only the validators the account is currently nominating.
-/// Fast but may miss historical nominations.
-async fn fetch_exposure_data_targeted(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-    account: &AccountId32,
-    era: u32,
-    account_bytes: &[u8; 32],
-    ss58_prefix: u16,
-) -> Result<Vec<(String, u128, u128)>, String> {
     let mut results = Vec::new();
 
     // Get the account's nominations to find which validators to query
     // Note: This uses current nominations which may differ from historical eras
     let nominations = staking::get_nominations(client_at_block, account, ss58_prefix).await;
-
     // Also check if account is a validator
     let is_validator = staking::is_validator(client_at_block, account).await;
-
     // Collect validator addresses to query
     let mut validators_to_query: Vec<AccountId32> = Vec::new();
 
@@ -414,43 +459,6 @@ async fn fetch_exposure_data_targeted(
             }
         }
     }
-
-    Ok(results)
-}
-
-/// Bulk approach: fetch all exposures for the era and find the account.
-/// Slower but handles historical eras where nominations may have changed.
-async fn fetch_exposure_data_bulk(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-    era: u32,
-    account_bytes: &[u8; 32],
-    ss58_prefix: u16,
-) -> Result<Vec<(String, u128, u128)>, String> {
-    let (nominator_map, validator_map) =
-        staking::get_era_exposures_bulk(client_at_block, era).await;
-
-    let mut results = Vec::new();
-
-    // Check if the account is a nominator
-    if let Some(nominations) = nominator_map.get(account_bytes) {
-        for (validator_bytes, nominator_exposure, total_exposure) in nominations {
-            let validator_id =
-                AccountId32::from(*validator_bytes).to_ss58check_with_version(ss58_prefix.into());
-            if !results.iter().any(|(v, _, _)| v == &validator_id) {
-                results.push((validator_id, *nominator_exposure, *total_exposure));
-            }
-        }
-    }
-
-    // Check if the account is a validator itself
-    if let Some(validator_info) = validator_map.get(account_bytes) {
-        let validator_id =
-            AccountId32::from(*account_bytes).to_ss58check_with_version(ss58_prefix.into());
-        if !results.iter().any(|(v, _, _)| v == &validator_id) {
-            results.push((validator_id, validator_info.own, validator_info.total));
-        }
-    }
-
     Ok(results)
 }
 

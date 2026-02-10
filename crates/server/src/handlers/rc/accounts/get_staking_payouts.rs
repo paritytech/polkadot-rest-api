@@ -88,12 +88,22 @@ pub async fn get_staking_payouts(
         unclaimed_only: params.unclaimed_only,
     };
 
+    // For RC endpoints, use relay chain spec_name if available
+    let rc_spec_name = state
+        .relay_chain_info
+        .as_ref()
+        .map(|info| info.spec_name.as_str())
+        .unwrap_or(&state.chain_info.spec_name);
+
+    // RC endpoints query the relay chain directly, no migration splitting needed
     let raw_payouts = query_staking_payouts(
         &client_at_block,
         &account,
         &resolved_block,
         &staking_params,
         rc_ss58_prefix,
+        rc_spec_name,
+        None,
     )
     .await?;
 

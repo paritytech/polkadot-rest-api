@@ -70,6 +70,7 @@ pub async fn get_staking_info(
         &resolved_block,
         params.include_claimed_rewards,
         state.chain_info.ss58_prefix,
+        &state.chain_info.spec_name,
     )
     .await?;
 
@@ -200,6 +201,7 @@ async fn handle_use_rc_block(
             &ah_resolved,
             params.include_claimed_rewards,
             state.chain_info.ss58_prefix,
+            &state.chain_info.spec_name,
         )
         .await?;
 
