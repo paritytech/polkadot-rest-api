@@ -2,6 +2,8 @@ use server::{app, logging, state};
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use thiserror::Error;
+use tower::Layer;
+use tower_http::normalize_path::NormalizePathLayer;
 
 #[derive(Debug, Error)]
 enum MainError {
@@ -118,7 +120,12 @@ async fn main() -> Result<(), MainError> {
     socket.set_tcp_keepalive(&keepalive)?;
     let listener = tokio::net::TcpListener::from_std(socket.into())?;
 
-    axum::serve(listener, app).await?;
+    let app = NormalizePathLayer::trim_trailing_slash().layer(app);
+    axum::serve(
+        listener,
+        axum::ServiceExt::<axum::extract::Request>::into_make_service(app),
+    )
+    .await?;
 
     Ok(())
 }
