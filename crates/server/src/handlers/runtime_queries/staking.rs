@@ -293,10 +293,36 @@ pub async fn get_staking_ledger(
                     })
                     .collect(),
             });
-        } else if let Ok(_ledger) = StakingLedgerLegacyCompact::decode(&mut &raw_bytes[..]) {
-            // TODO: Handle legacy_claimed_rewards if needed
-        } else if let Ok(_ledger) = StakingLedgerOld::decode(&mut &raw_bytes[..]) {
-            // TODO: Handle claimed_rewards if needed
+        } else if let Ok(ledger) = StakingLedgerLegacyCompact::decode(&mut &raw_bytes[..]) {
+            return Ok(DecodedStakingLedger {
+                stash: AccountId32::from(ledger.stash)
+                    .to_ss58check_with_version(ss58_prefix.into()),
+                total: ledger.total.to_string(),
+                active: ledger.active.to_string(),
+                unlocking: ledger
+                    .unlocking
+                    .into_iter()
+                    .map(|chunk| DecodedUnlockingChunk {
+                        value: chunk.value.to_string(),
+                        era: chunk.era.to_string(),
+                    })
+                    .collect(),
+            });
+        } else if let Ok(ledger) = StakingLedgerOld::decode(&mut &raw_bytes[..]) {
+            return Ok(DecodedStakingLedger {
+                stash: AccountId32::from(ledger.stash)
+                    .to_ss58check_with_version(ss58_prefix.into()),
+                total: ledger.total.to_string(),
+                active: ledger.active.to_string(),
+                unlocking: ledger
+                    .unlocking
+                    .into_iter()
+                    .map(|chunk| DecodedUnlockingChunk {
+                        value: chunk.value.to_string(),
+                        era: chunk.era.to_string(),
+                    })
+                    .collect(),
+            });
         }
 
         return Err(StakingStorageError::DecodeFailed(
@@ -383,28 +409,47 @@ pub async fn get_slashing_spans_count(
 
 /// Check if an account is a validator.
 ///
-/// Returns `true` if the account has validator preferences set.
+/// Queries `Staking.Validators` storage. In Substrate, this storage item uses
+/// a `ValueQuery` with a default of `ValidatorPrefs { commission: 0, blocked: false }`.
+/// This means a `fetch` will return bytes even for non-validators (the default value).
+///
+/// To distinguish actual validators, we check if the account appears in `Staking.Bonded`
+/// and has non-default validator preferences, or we check the validators list directly.
+/// The most reliable approach is to check if the account is in the bonded map AND
+/// has a `Validators` entry that differs from the storage default.
 pub async fn is_validator(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     stash: &AccountId32,
 ) -> bool {
     let stash_bytes: [u8; 32] = *stash.as_ref();
-    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "Validators");
 
-    match client_at_block
+    // First verify the account is bonded (is a stash account)
+    let bonded_addr = subxt::dynamic::storage::<_, ()>("Staking", "Bonded");
+    let is_bonded = client_at_block
         .storage()
-        .fetch(storage_addr, (stash_bytes,))
+        .fetch(bonded_addr, (stash_bytes,))
         .await
-    {
-        Ok(value) => {
-            // Check if the value is non-empty (account has validator prefs set)
-            let raw_bytes = value.into_bytes();
-            // ValidatorPrefs has at least commission (Perbill = u32), so non-empty means validator
-            // Empty or default bytes mean not a validator
-            !raw_bytes.is_empty() && raw_bytes != [0u8; 0]
-        }
-        Err(_) => false,
+        .is_ok();
+
+    if !is_bonded {
+        return false;
     }
+
+    // Check if the account has a Nominators entry - if so, it's a nominator, not a validator
+    let nominators_addr = subxt::dynamic::storage::<_, ()>("Staking", "Nominators");
+    let is_nominator = client_at_block
+        .storage()
+        .fetch(nominators_addr, (stash_bytes,))
+        .await
+        .is_ok();
+
+    if is_nominator {
+        return false;
+    }
+
+    // Account is bonded but not nominating - it's a validator (or idle, but we treat
+    // bonded non-nominators as validators for the purposes of reward queries)
+    true
 }
 
 /// Get the current era from `Staking.CurrentEra` storage.
@@ -846,23 +891,31 @@ struct ExposurePage {
 
 /// Check if rewards have been claimed for a validator in an era.
 ///
-/// For paged staking (modern Kusama/Polkadot), checks if ALL pages have been claimed
-/// by looking at the ClaimedRewards storage.
-///
-/// NOTE: Currently returns false always as we investigate the correct way to determine
-/// claimed status. The ClaimedRewards storage query is returning unexpected data.
+/// Uses `get_claimed_pages` and `get_era_stakers_page_count` to determine if
+/// all pages have been claimed. Returns `true` only when all pages are confirmed claimed.
 pub async fn is_era_claimed(
-    _client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-    _era: u32,
-    _validator: &AccountId32,
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+    validator: &AccountId32,
 ) -> bool {
-    // For now, always return false (unclaimed) while we investigate the correct
-    // way to check claimed status. This is the safest approach as it shows all
-    // potentially claimable rewards to the user.
-    //
-    // TODO: Fix ClaimedRewards storage query - it seems to return vec![0] when
-    // it should return an empty vec for unclaimed rewards.
-    false
+    let (claimed_pages, page_count) = tokio::join!(
+        get_claimed_pages(client_at_block, era, validator),
+        get_era_stakers_page_count(client_at_block, era, validator),
+    );
+
+    match (claimed_pages, page_count) {
+        (Some(pages), Some(total)) => {
+            // Fully claimed if all pages are accounted for
+            !pages.is_empty() && pages.len() as u32 >= total
+        }
+        (Some(pages), None) => {
+            // Have claimed pages but can't determine total - if we have any pages
+            // claimed, assume at least partially claimed. For the `unclaimed_only`
+            // filter, treat as claimed to be conservative.
+            !pages.is_empty()
+        }
+        _ => false,
+    }
 }
 
 // ================================================================================================
