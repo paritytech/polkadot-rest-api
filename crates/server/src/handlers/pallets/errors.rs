@@ -20,6 +20,7 @@
 
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
+    RcPalletItemQueryParams, RcPalletQueryParams,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -619,6 +620,99 @@ fn simplify_type_name(type_name: &str) -> String {
         .last()
         .unwrap_or(type_name)
         .to_string()
+}
+
+// ============================================================================
+// RC (Relay Chain) Handlers
+// ============================================================================
+
+/// Handler for GET `/rc/pallets/{palletId}/errors`
+///
+/// Returns errors from the relay chain's pallet metadata.
+pub async fn rc_pallet_errors(
+    State(state): State<AppState>,
+    Path(pallet_id): Path<String>,
+    Query(params): Query<RcPalletQueryParams>,
+) -> Result<Response, PalletError> {
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
+    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+
+    let client_at_block = relay_client.at_block(resolved.number).await?;
+    let metadata = client_at_block.metadata();
+
+    let at = AtResponse {
+        hash: resolved.hash.clone(),
+        height: resolved.number.to_string(),
+    };
+
+    let response = extract_errors_from_metadata(
+        &metadata,
+        &pallet_id,
+        at,
+        params.only_ids,
+        RcBlockFields::default(),
+    )?;
+
+    Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+/// Handler for GET `/rc/pallets/{palletId}/errors/{errorItemId}`
+///
+/// Returns a specific error from the relay chain's pallet metadata.
+pub async fn rc_pallet_error_item(
+    State(state): State<AppState>,
+    Path((pallet_id, error_id)): Path<(String, String)>,
+    Query(params): Query<RcPalletItemQueryParams>,
+) -> Result<Response, PalletError> {
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
+    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+
+    let client_at_block = relay_client.at_block(resolved.number).await?;
+    let metadata = client_at_block.metadata();
+
+    let at = AtResponse {
+        hash: resolved.hash.clone(),
+        height: resolved.number.to_string(),
+    };
+
+    let response = extract_error_item_from_metadata(
+        &metadata,
+        &pallet_id,
+        &error_id,
+        at,
+        params.metadata,
+        RcBlockFields::default(),
+    )?;
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 // ============================================================================

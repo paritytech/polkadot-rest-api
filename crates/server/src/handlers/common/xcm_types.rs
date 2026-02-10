@@ -231,10 +231,30 @@ struct PluralityInner<'a> {
     part: &'a BodyPart,
 }
 
+/// Serialize a `[u8; 32]` as a `"0x..."`-prefixed hex string.
+fn serialize_hex_hash<S: Serializer>(hash: &[u8; 32], serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&format!("0x{}", hex::encode(hash)))
+}
+
+/// Serialize a `u64` block number as a comma-formatted string.
+fn serialize_block_number<S: Serializer>(n: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&format_number_with_commas(*n as u128))
+}
+
+/// Serialize a `u64` as its decimal string representation.
+fn serialize_u64_as_string<S: Serializer>(n: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&n.to_string())
+}
+
 /// XCM v4 NetworkId enum.
+///
+/// Serde's default externally-tagged representation serializes unit variants
+/// as plain strings (e.g. `"Kusama"`) and data variants as objects
+/// (e.g. `{"Ethereum": {"chainId": "1"}}`), matching the Sidecar format.
 #[derive(
     Debug,
     Clone,
+    Serialize,
     Decode,
     Encode,
     subxt::ext::scale_decode::DecodeAsType,
@@ -243,9 +263,11 @@ struct PluralityInner<'a> {
 #[decode_as_type(crate_path = "subxt::ext::scale_decode")]
 #[encode_as_type(crate_path = "subxt::ext::scale_encode")]
 pub enum NetworkId {
-    ByGenesis([u8; 32]),
+    ByGenesis(#[serde(serialize_with = "serialize_hex_hash")] [u8; 32]),
     ByFork {
+        #[serde(rename = "blockNumber", serialize_with = "serialize_block_number")]
         block_number: u64,
+        #[serde(rename = "blockHash", serialize_with = "serialize_hex_hash")]
         block_hash: [u8; 32],
     },
     Polkadot,
@@ -255,92 +277,12 @@ pub enum NetworkId {
     Wococo,
     Ethereum {
         #[codec(compact)]
+        #[serde(rename = "chainId", serialize_with = "serialize_u64_as_string")]
         chain_id: u64,
     },
     BitcoinCore,
     BitcoinCash,
     PolkadotBulletin,
-}
-
-impl Serialize for NetworkId {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(1))?;
-        match self {
-            NetworkId::ByGenesis(hash) => {
-                map.serialize_entry("ByGenesis", &format!("0x{}", hex::encode(hash)))?;
-            }
-            NetworkId::ByFork {
-                block_number,
-                block_hash,
-            } => {
-                let inner = ByForkInner {
-                    block_number: *block_number,
-                    block_hash,
-                };
-                map.serialize_entry("ByFork", &inner)?;
-            }
-            NetworkId::Polkadot => {
-                map.serialize_entry("Polkadot", &serde_json::Value::Null)?;
-            }
-            NetworkId::Kusama => {
-                map.serialize_entry("Kusama", &serde_json::Value::Null)?;
-            }
-            NetworkId::Westend => {
-                map.serialize_entry("Westend", &serde_json::Value::Null)?;
-            }
-            NetworkId::Rococo => {
-                map.serialize_entry("Rococo", &serde_json::Value::Null)?;
-            }
-            NetworkId::Wococo => {
-                map.serialize_entry("Wococo", &serde_json::Value::Null)?;
-            }
-            NetworkId::Ethereum { chain_id } => {
-                let inner = EthereumInner {
-                    chain_id: *chain_id,
-                };
-                map.serialize_entry("Ethereum", &inner)?;
-            }
-            NetworkId::BitcoinCore => {
-                map.serialize_entry("BitcoinCore", &serde_json::Value::Null)?;
-            }
-            NetworkId::BitcoinCash => {
-                map.serialize_entry("BitcoinCash", &serde_json::Value::Null)?;
-            }
-            NetworkId::PolkadotBulletin => {
-                map.serialize_entry("PolkadotBulletin", &serde_json::Value::Null)?;
-            }
-        }
-        map.end()
-    }
-}
-
-struct ByForkInner<'a> {
-    block_number: u64,
-    block_hash: &'a [u8; 32],
-}
-
-impl Serialize for ByForkInner<'_> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(2))?;
-        map.serialize_entry(
-            "blockNumber",
-            &format_number_with_commas(self.block_number as u128),
-        )?;
-        map.serialize_entry("blockHash", &format!("0x{}", hex::encode(self.block_hash)))?;
-        map.end()
-    }
-}
-
-struct EthereumInner {
-    chain_id: u64,
-}
-
-impl Serialize for EthereumInner {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(1))?;
-        map.serialize_entry("chainId", &self.chain_id.to_string())?;
-        map.end()
-    }
 }
 
 /// XCM v3 BodyId enum (used by Plurality junction).

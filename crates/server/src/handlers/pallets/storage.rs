@@ -7,9 +7,10 @@
 // which is large by design. Boxing would add indirection without significant benefit.
 #![allow(clippy::result_large_err)]
 
-use crate::handlers::pallets::common::PalletError;
+use crate::handlers::pallets::common::{PalletError, RcPalletQueryParams};
 use crate::state::AppState;
 use crate::utils;
+use crate::utils::format::to_camel_case;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json, extract::Path, extract::Query, extract::State, response::IntoResponse, response::Response,
@@ -20,7 +21,7 @@ use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
 use parity_scale_codec::Decode;
 use serde::Serialize;
 use serde_json::json;
-use subxt_rpcs::rpc_params;
+use subxt_rpcs::{RpcClient, rpc_params};
 
 // ============================================================================
 // Query Parameters
@@ -216,7 +217,7 @@ pub async fn get_pallets_storage(
 
     // Fetch raw metadata via RPC to access all metadata versions (V9-V16)
     let block_hash = format!("{:#x}", client_at_block.block_hash());
-    let metadata = fetch_runtime_metadata(&state, &block_hash).await?;
+    let metadata = fetch_runtime_metadata(&state.rpc_client, &block_hash).await?;
 
     let response = build_storage_response(&metadata, &pallet_id, &resolved_block, params.only_ids)?;
     Ok(Json(response).into_response())
@@ -224,11 +225,10 @@ pub async fn get_pallets_storage(
 
 /// Fetch raw RuntimeMetadata via RPC and decode it
 async fn fetch_runtime_metadata(
-    state: &AppState,
+    rpc_client: &RpcClient,
     block_hash: &str,
 ) -> Result<RuntimeMetadata, PalletError> {
-    let metadata_hex: String = state
-        .rpc_client
+    let metadata_hex: String = rpc_client
         .request("state_getMetadata", rpc_params![block_hash])
         .await
         .map_err(|e| PalletError::PalletNotFound(format!("Failed to fetch metadata: {}", e)))?;
@@ -292,7 +292,7 @@ async fn handle_use_rc_block(
         };
 
         // Fetch raw metadata via RPC for full version support
-        let metadata = fetch_runtime_metadata(&state, &ah_block.hash).await?;
+        let metadata = fetch_runtime_metadata(&state.rpc_client, &ah_block.hash).await?;
 
         let mut response =
             build_storage_response(&metadata, &pallet_id, &ah_resolved_block, params.only_ids)?;
@@ -359,10 +359,10 @@ pub async fn get_pallets_storage_item(
     };
 
     let block_hash = format!("{:#x}", client_at_block.block_hash());
-    let metadata = fetch_runtime_metadata(&state, &block_hash).await?;
+    let metadata = fetch_runtime_metadata(&state.rpc_client, &block_hash).await?;
 
     let response = build_storage_item_response(
-        &state,
+        &state.rpc_client,
         &metadata,
         &pallet_id,
         &storage_item_id,
@@ -424,10 +424,10 @@ async fn handle_storage_item_use_rc_block(
             number: ah_block.number,
         };
 
-        let metadata = fetch_runtime_metadata(&state, &ah_block.hash).await?;
+        let metadata = fetch_runtime_metadata(&state.rpc_client, &ah_block.hash).await?;
 
         let mut response = build_storage_item_response(
-            &state,
+            &state.rpc_client,
             &metadata,
             &pallet_id,
             &storage_item_id,
@@ -471,7 +471,7 @@ async fn handle_storage_item_use_rc_block(
 /// Build storage item response - query actual storage value
 #[allow(clippy::too_many_arguments)]
 async fn build_storage_item_response(
-    state: &AppState,
+    rpc_client: &RpcClient,
     metadata: &RuntimeMetadata,
     pallet_id: &str,
     storage_item_id: &str,
@@ -514,8 +514,7 @@ async fn build_storage_item_response(
     )?;
 
     // Query storage value via RPC
-    let value_hex: Option<String> = state
-        .rpc_client
+    let value_hex: Option<String> = rpc_client
         .request("state_getStorage", rpc_params![&storage_key, block_hash])
         .await
         .ok();
@@ -544,15 +543,6 @@ async fn build_storage_item_response(
         rc_block_number: None,
         ah_timestamp: None,
     })
-}
-
-/// Convert first character to lowercase (matching Sidecar's camelCase behavior)
-fn to_camel_case(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
-    }
 }
 
 /// Get the original pallet name (PascalCase) from metadata
@@ -1918,4 +1908,90 @@ fn build_storage_response_v16(
         rc_block_number: None,
         ah_timestamp: None,
     })
+}
+
+// ============================================================================
+// RC (Relay Chain) Handlers
+// ============================================================================
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcStorageItemQueryParams {
+    pub at: Option<String>,
+    /// Storage keys for map types (format: ?keys[]=key1&keys[]=key2)
+    #[serde(default, rename = "keys[]")]
+    pub keys: Vec<String>,
+    #[serde(default)]
+    pub metadata: bool,
+}
+
+/// Handler for GET `/rc/pallets/{palletId}/storage`
+///
+/// Returns storage items from the relay chain's pallet metadata.
+pub async fn rc_get_pallets_storage(
+    State(state): State<AppState>,
+    Path(pallet_id): Path<String>,
+    Query(params): Query<RcPalletQueryParams>,
+) -> Result<Response, PalletError> {
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<crate::utils::BlockId>())
+        .transpose()?;
+    let resolved =
+        crate::utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+
+    let block_hash = resolved.hash.clone();
+    let metadata = fetch_runtime_metadata(relay_rpc_client, &block_hash).await?;
+
+    let response = build_storage_response(&metadata, &pallet_id, &resolved, params.only_ids)?;
+    Ok(Json(response).into_response())
+}
+
+/// Handler for GET `/rc/pallets/{palletId}/storage/{storageItemId}`
+///
+/// Returns a specific storage item from the relay chain.
+pub async fn rc_get_pallets_storage_item(
+    State(state): State<AppState>,
+    Path((pallet_id, storage_item_id)): Path<(String, String)>,
+    Query(params): Query<RcStorageItemQueryParams>,
+) -> Result<Response, PalletError> {
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<crate::utils::BlockId>())
+        .transpose()?;
+    let resolved =
+        crate::utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+
+    let block_hash = resolved.hash.clone();
+    let metadata = fetch_runtime_metadata(relay_rpc_client, &block_hash).await?;
+
+    let response = build_storage_item_response(
+        relay_rpc_client,
+        &metadata,
+        &pallet_id,
+        &storage_item_id,
+        &params.keys,
+        &resolved,
+        params.metadata,
+        &block_hash,
+    )
+    .await?;
+
+    Ok(Json(response).into_response())
 }

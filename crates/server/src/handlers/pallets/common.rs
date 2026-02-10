@@ -295,6 +295,30 @@ pub struct PalletItemQueryParams {
     pub use_rc_block: bool,
 }
 
+/// Query parameters for relay chain pallet list endpoints (e.g., `/rc/pallets/{palletId}/consts`).
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcPalletQueryParams {
+    /// Block hash or number to query at. If not provided, uses the latest block.
+    pub at: Option<String>,
+
+    /// If `true`, only return the names of items without full metadata.
+    #[serde(default)]
+    pub only_ids: bool,
+}
+
+/// Query parameters for relay chain single item endpoints (e.g., `/rc/pallets/{palletId}/consts/{constantItemId}`).
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcPalletItemQueryParams {
+    /// Block hash or number to query at. If not provided, uses the latest block.
+    pub at: Option<String>,
+
+    /// If `true`, include full metadata for the item.
+    #[serde(default)]
+    pub metadata: bool,
+}
+
 // ============================================================================
 // RC Block Fields
 // ============================================================================
