@@ -14,7 +14,8 @@
 #![allow(clippy::result_large_err)]
 
 use crate::handlers::pallets::common::{
-    AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams,
+    AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcPalletItemQueryParams,
+    RcPalletQueryParams,
 };
 use crate::state::AppState;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -763,29 +764,13 @@ fn simplify_type_name(type_name: &str) -> String {
 // RC (Relay Chain) Handlers
 // ============================================================================
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RcDispatchablesQueryParams {
-    pub at: Option<String>,
-    #[serde(default)]
-    pub only_ids: bool,
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RcDispatchableItemQueryParams {
-    pub at: Option<String>,
-    #[serde(default)]
-    pub metadata: bool,
-}
-
 /// Handler for GET `/rc/pallets/{palletId}/dispatchables`
 ///
 /// Returns dispatchables from the relay chain's pallet metadata.
 pub async fn rc_pallets_dispatchables(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
-    Query(params): Query<RcDispatchablesQueryParams>,
+    Query(params): Query<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()
@@ -847,7 +832,7 @@ pub async fn rc_pallets_dispatchables(
 pub async fn rc_pallet_dispatchable_item(
     State(state): State<AppState>,
     Path((pallet_id, dispatchable_id)): Path<(String, String)>,
-    Query(params): Query<RcDispatchableItemQueryParams>,
+    Query(params): Query<RcPalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()

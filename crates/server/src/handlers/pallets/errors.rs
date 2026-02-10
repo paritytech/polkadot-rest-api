@@ -20,6 +20,7 @@
 
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
+    RcPalletItemQueryParams, RcPalletQueryParams,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -625,29 +626,13 @@ fn simplify_type_name(type_name: &str) -> String {
 // RC (Relay Chain) Handlers
 // ============================================================================
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RcErrorsQueryParams {
-    pub at: Option<String>,
-    #[serde(default)]
-    pub only_ids: bool,
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RcErrorItemQueryParams {
-    pub at: Option<String>,
-    #[serde(default)]
-    pub metadata: bool,
-}
-
 /// Handler for GET `/rc/pallets/{palletId}/errors`
 ///
 /// Returns errors from the relay chain's pallet metadata.
 pub async fn rc_pallet_errors(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
-    Query(params): Query<RcErrorsQueryParams>,
+    Query(params): Query<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()
@@ -691,7 +676,7 @@ pub async fn rc_pallet_errors(
 pub async fn rc_pallet_error_item(
     State(state): State<AppState>,
     Path((pallet_id, error_id)): Path<(String, String)>,
-    Query(params): Query<RcErrorItemQueryParams>,
+    Query(params): Query<RcPalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()

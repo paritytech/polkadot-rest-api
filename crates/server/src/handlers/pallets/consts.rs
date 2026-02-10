@@ -5,7 +5,9 @@
 
 #![allow(clippy::result_large_err)]
 
-use crate::handlers::pallets::common::{AtResponse, PalletError};
+use crate::handlers::pallets::common::{
+    AtResponse, PalletError, RcPalletItemQueryParams, RcPalletQueryParams,
+};
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::format::to_camel_case;
@@ -459,29 +461,13 @@ fn extract_pallet_constants(
 // RC (Relay Chain) Handlers
 // ============================================================================
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RcConstantsQueryParams {
-    pub at: Option<String>,
-    #[serde(default)]
-    pub only_ids: bool,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RcConstantItemQueryParams {
-    pub at: Option<String>,
-    #[serde(default)]
-    pub metadata: bool,
-}
-
 /// Handler for GET `/rc/pallets/{palletId}/consts`
 ///
 /// Returns constants from the relay chain's pallet metadata.
 pub async fn rc_pallets_constants(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
-    Query(params): Query<RcConstantsQueryParams>,
+    Query(params): Query<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()
@@ -543,7 +529,7 @@ pub async fn rc_pallets_constants(
 pub async fn rc_pallets_constant_item(
     State(state): State<AppState>,
     Path((pallet_id, constant_item_id)): Path<(String, String)>,
-    Query(params): Query<RcConstantItemQueryParams>,
+    Query(params): Query<RcPalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()

@@ -5,7 +5,9 @@
 
 #![allow(clippy::result_large_err)]
 
-use crate::handlers::pallets::common::{AtResponse, PalletError};
+use crate::handlers::pallets::common::{
+    AtResponse, PalletError, RcPalletItemQueryParams, RcPalletQueryParams,
+};
 use crate::state::AppState;
 use crate::utils;
 use axum::{
@@ -263,29 +265,13 @@ fn extract_pallet_events(
 // RC (Relay Chain) Handlers
 // ============================================================================
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RcEventsQueryParams {
-    pub at: Option<String>,
-    #[serde(default)]
-    pub only_ids: bool,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RcEventItemQueryParams {
-    pub at: Option<String>,
-    #[serde(default)]
-    pub metadata: bool,
-}
-
 /// Handler for GET `/rc/pallets/{palletId}/events`
 ///
 /// Returns events from the relay chain's pallet metadata.
 pub async fn rc_pallet_events(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
-    Query(params): Query<RcEventsQueryParams>,
+    Query(params): Query<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()
@@ -338,7 +324,7 @@ pub async fn rc_pallet_events(
 pub async fn rc_pallet_event_item(
     State(state): State<AppState>,
     Path((pallet_id, event_item_id)): Path<(String, String)>,
-    Query(params): Query<RcEventItemQueryParams>,
+    Query(params): Query<RcPalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()

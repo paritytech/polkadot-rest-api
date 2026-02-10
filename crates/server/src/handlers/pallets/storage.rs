@@ -7,7 +7,7 @@
 // which is large by design. Boxing would add indirection without significant benefit.
 #![allow(clippy::result_large_err)]
 
-use crate::handlers::pallets::common::PalletError;
+use crate::handlers::pallets::common::{PalletError, RcPalletQueryParams};
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::format::to_camel_case;
@@ -1916,14 +1916,6 @@ fn build_storage_response_v16(
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RcStorageQueryParams {
-    pub at: Option<String>,
-    #[serde(default)]
-    pub only_ids: bool,
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RcStorageItemQueryParams {
     pub at: Option<String>,
     /// Storage keys for map types (format: ?keys[]=key1&keys[]=key2)
@@ -1939,7 +1931,7 @@ pub struct RcStorageItemQueryParams {
 pub async fn rc_get_pallets_storage(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
-    Query(params): Query<RcStorageQueryParams>,
+    Query(params): Query<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
