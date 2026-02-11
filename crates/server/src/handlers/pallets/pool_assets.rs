@@ -112,8 +112,10 @@ pub async fn pallets_pool_assets_asset_info(
     let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let ss58_prefix = state.chain_info.ss58_prefix;
-    let pool_asset_info = fetch_pool_asset_info(&resolved.client_at_block, asset_id, ss58_prefix).await;
-    let pool_asset_meta_data = fetch_pool_asset_meta_data(&resolved.client_at_block, asset_id).await;
+    let pool_asset_info =
+        fetch_pool_asset_info(&resolved.client_at_block, asset_id, ss58_prefix).await;
+    let pool_asset_meta_data =
+        fetch_pool_asset_meta_data(&resolved.client_at_block, asset_id).await;
 
     if pool_asset_info.is_none() && pool_asset_meta_data.is_none() {
         return Err(PalletError::PoolAssetNotFound(asset_id.to_string()));

@@ -200,8 +200,7 @@ pub async fn pallets_nomination_pools_info(
     let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let response =
-        build_nomination_pools_info(&resolved.client_at_block, resolved.at, None, None, None)
-            .await;
+        build_nomination_pools_info(&resolved.client_at_block, resolved.at, None, None, None).await;
 
     Ok((StatusCode::OK, Json(response)).into_response())
 }

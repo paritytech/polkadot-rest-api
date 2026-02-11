@@ -305,7 +305,10 @@ pub async fn resolve_block_for_pallet(
         height: client_at_block.block_number().to_string(),
     };
 
-    Ok(ResolvedBlock { client_at_block, at })
+    Ok(ResolvedBlock {
+        client_at_block,
+        at,
+    })
 }
 
 /// Builds an `AtResponse` from a client at block.

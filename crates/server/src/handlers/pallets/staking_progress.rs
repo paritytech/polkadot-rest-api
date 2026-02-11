@@ -228,7 +228,8 @@ pub async fn pallets_staking_progress(
             let relay_client_at_block = relay_client.at_block(relay_block_number).await?;
             fetch_staking_validators(&relay_client_at_block, relay_chain_info.ss58_prefix).await?
         } else {
-            fetch_staking_validators(&resolved.client_at_block, state.chain_info.ss58_prefix).await?
+            fetch_staking_validators(&resolved.client_at_block, state.chain_info.ss58_prefix)
+                .await?
         }
     } else {
         fetch_staking_validators(&resolved.client_at_block, state.chain_info.ss58_prefix).await?
@@ -236,7 +237,8 @@ pub async fn pallets_staking_progress(
     let progress = if is_asset_hub {
         derive_session_era_progress_asset_hub(&state, &resolved.client_at_block).await?
     } else {
-        derive_session_era_progress_relay(&resolved.client_at_block, &state.chain_info.spec_name).await?
+        derive_session_era_progress_relay(&resolved.client_at_block, &state.chain_info.spec_name)
+            .await?
     };
 
     // Calculate next session estimate

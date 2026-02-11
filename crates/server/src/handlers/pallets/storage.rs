@@ -7,7 +7,9 @@
 // which is large by design. Boxing would add indirection without significant benefit.
 #![allow(clippy::result_large_err)]
 
-use crate::handlers::pallets::common::{PalletError, RcPalletQueryParams, resolve_block_for_pallet};
+use crate::handlers::pallets::common::{
+    PalletError, RcPalletQueryParams, resolve_block_for_pallet,
+};
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::format::to_camel_case;

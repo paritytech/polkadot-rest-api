@@ -182,8 +182,12 @@ pub async fn pallets_on_going_referenda(
     let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     // Fetch all referenda from storage
-    let referenda =
-        fetch_ongoing_referenda(&resolved.client_at_block, state.chain_info.ss58_prefix, &resolved.at.height).await?;
+    let referenda = fetch_ongoing_referenda(
+        &resolved.client_at_block,
+        state.chain_info.ss58_prefix,
+        &resolved.at.height,
+    )
+    .await?;
 
     Ok((
         StatusCode::OK,
