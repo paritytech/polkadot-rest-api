@@ -65,37 +65,60 @@ pub async fn rc_format_middleware(
 async fn transform_rc_response(bytes: &[u8], state: &AppState) -> Option<Vec<u8>> {
     let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
 
-    let arr = value.as_array()?;
+    match &value {
+        serde_json::Value::Array(arr) => {
+            if arr.is_empty() {
+                let result = serde_json::json!({
+                    "rcBlock": null,
+                    "parachainDataPerBlock": []
+                });
+                return serde_json::to_vec(&result).ok();
+            }
 
-    if arr.is_empty() {
-        let result = serde_json::json!({
-            "rcBlock": null,
-            "parachainDataPerBlock": []
-        });
-        return serde_json::to_vec(&result).ok();
+            let first = arr.first()?.as_object()?;
+            let rc_hash = first.get("rcBlockHash")?.as_str()?;
+            let rc_number = first.get("rcBlockNumber")?.as_str()?;
+
+            let parent_hash = fetch_rc_parent_hash(state, rc_hash).await;
+            let rc_block = build_rc_block(rc_hash, rc_number, parent_hash);
+
+            let result = serde_json::json!({
+                "rcBlock": rc_block,
+                "parachainDataPerBlock": arr,
+            });
+
+            serde_json::to_vec(&result).ok()
+        }
+        serde_json::Value::Object(obj) => {
+            let rc_hash = obj.get("rcBlockHash")?.as_str()?;
+            let rc_number = obj.get("rcBlockNumber")?.as_str()?;
+
+            let parent_hash = fetch_rc_parent_hash(state, rc_hash).await;
+            let rc_block = build_rc_block(rc_hash, rc_number, parent_hash);
+
+            let result = serde_json::json!({
+                "rcBlock": rc_block,
+                "parachainDataPerBlock": [value],
+            });
+
+            serde_json::to_vec(&result).ok()
+        }
+        _ => None,
     }
+}
 
-    let first = arr.first()?.as_object()?;
-    let rc_hash = first.get("rcBlockHash")?.as_str()?;
-    let rc_number = first.get("rcBlockNumber")?.as_str()?;
-
-    let parent_hash = fetch_rc_parent_hash(state, rc_hash).await;
-
+fn build_rc_block(
+    rc_hash: &str,
+    rc_number: &str,
+    parent_hash: Option<String>,
+) -> serde_json::Map<String, serde_json::Value> {
     let mut rc_block = serde_json::Map::new();
     rc_block.insert("hash".to_string(), serde_json::json!(rc_hash));
     if let Some(ph) = parent_hash {
         rc_block.insert("parentHash".to_string(), serde_json::json!(ph));
     }
     rc_block.insert("number".to_string(), serde_json::json!(rc_number));
-
-    let parachain_data: Vec<serde_json::Value> = arr.to_vec();
-
-    let result = serde_json::json!({
-        "rcBlock": rc_block,
-        "parachainDataPerBlock": parachain_data,
-    });
-
-    serde_json::to_vec(&result).ok()
+    rc_block
 }
 
 async fn fetch_rc_parent_hash(state: &AppState, rc_block_hash: &str) -> Option<String> {
@@ -114,31 +137,40 @@ async fn fetch_rc_parent_hash(state: &AppState, rc_block_hash: &str) -> Option<S
 fn transform_rc_response_stateless(bytes: &[u8]) -> Option<Vec<u8>> {
     let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
 
-    let arr = value.as_array()?;
+    match &value {
+        serde_json::Value::Array(arr) => {
+            if arr.is_empty() {
+                let result = serde_json::json!({
+                    "rcBlock": null,
+                    "parachainDataPerBlock": []
+                });
+                return serde_json::to_vec(&result).ok();
+            }
 
-    if arr.is_empty() {
-        let result = serde_json::json!({
-            "rcBlock": null,
-            "parachainDataPerBlock": []
-        });
-        return serde_json::to_vec(&result).ok();
+            let first = arr.first()?.as_object()?;
+            let rc_hash = first.get("rcBlockHash")?.as_str()?;
+            let rc_number = first.get("rcBlockNumber")?.as_str()?;
+
+            let result = serde_json::json!({
+                "rcBlock": { "hash": rc_hash, "number": rc_number },
+                "parachainDataPerBlock": arr,
+            });
+
+            serde_json::to_vec(&result).ok()
+        }
+        serde_json::Value::Object(obj) => {
+            let rc_hash = obj.get("rcBlockHash")?.as_str()?;
+            let rc_number = obj.get("rcBlockNumber")?.as_str()?;
+
+            let result = serde_json::json!({
+                "rcBlock": { "hash": rc_hash, "number": rc_number },
+                "parachainDataPerBlock": [value],
+            });
+
+            serde_json::to_vec(&result).ok()
+        }
+        _ => None,
     }
-
-    let first = arr.first()?.as_object()?;
-    let rc_hash = first.get("rcBlockHash")?.as_str()?;
-    let rc_number = first.get("rcBlockNumber")?.as_str()?;
-
-    let rc_block = serde_json::json!({
-        "hash": rc_hash,
-        "number": rc_number,
-    });
-
-    let result = serde_json::json!({
-        "rcBlock": rc_block,
-        "parachainDataPerBlock": arr,
-    });
-
-    serde_json::to_vec(&result).ok()
 }
 
 #[cfg(test)]
@@ -280,7 +312,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn single_object_passes_through() {
+    async fn single_object_without_rc_fields_passes_through() {
         async fn handler() -> axum::response::Json<serde_json::Value> {
             json_response(serde_json::json!({
                 "at": { "hash": "0xabc", "height": "100" },
@@ -297,6 +329,34 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert!(value.is_object());
         assert_eq!(value["balance"], "1000");
+    }
+
+    #[tokio::test]
+    async fn single_object_with_rc_fields_transforms() {
+        async fn handler() -> axum::response::Json<serde_json::Value> {
+            json_response(serde_json::json!({
+                "at": { "hash": "0xabc", "height": "100" },
+                "rcBlockHash": "0xdef",
+                "rcBlockNumber": "999",
+                "pallet": "balances",
+                "items": []
+            }))
+        }
+
+        let app = Router::new()
+            .route("/test", get(handler))
+            .layer(middleware::from_fn(test_rc_format));
+
+        let (status, value) = make_request(app, "/test?format=rc").await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(value["rcBlock"]["hash"], "0xdef");
+        assert_eq!(value["rcBlock"]["number"], "999");
+
+        let data = value["parachainDataPerBlock"].as_array().unwrap();
+        assert_eq!(data.len(), 1);
+        assert_eq!(data[0]["pallet"], "balances");
+        assert_eq!(data[0]["rcBlockHash"], "0xdef");
     }
 
     #[tokio::test]

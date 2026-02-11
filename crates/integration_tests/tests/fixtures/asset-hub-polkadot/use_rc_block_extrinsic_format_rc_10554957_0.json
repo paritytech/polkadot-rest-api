@@ -55,7 +55,7 @@
                             ]
                         },
                         "downwardMessages": [],
-                        "horizontalMessages": {}
+                        "horizontalMessages": []
                     }
                 },
                 "tip": null,
