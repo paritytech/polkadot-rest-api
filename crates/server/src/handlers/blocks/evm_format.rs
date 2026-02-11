@@ -59,7 +59,7 @@ fn convert_data_to_evm_address(data: &Value) -> Value {
 fn try_convert_to_evm_address(s: &str) -> Option<String> {
     if let Ok(account_id) = AccountId32::from_ss58check(s) {
         let bytes: &[u8] = account_id.as_ref();
-        if bytes[20..].iter().all(|&b| b == 0) {
+        if bytes[20..].iter().all(|&b| b == 0xEE ) {
             return Some(format!("0x{}", hex::encode(&bytes[..20])));
         }
     }
