@@ -3,7 +3,9 @@
 //! This module provides endpoints for querying nomination pool information
 //! on Polkadot and Kusama networks.
 
-use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::common::{
+    AtResponse, PalletError, format_account_id, resolve_block_for_pallet,
+};
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -194,24 +196,12 @@ pub async fn pallets_nomination_pools_info(
         ));
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
-
-    let response = build_nomination_pools_info(&client_at_block, at, None, None, None).await;
+    let response =
+        build_nomination_pools_info(&resolved.client_at_block, resolved.at, None, None, None)
+            .await;
 
     Ok((StatusCode::OK, Json(response)).into_response())
 }
@@ -253,30 +243,16 @@ pub async fn pallets_nomination_pools_pool(
         ));
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let ss58_prefix = state.chain_info.ss58_prefix;
 
     // Fetch bonded pool - try V2 format first (with commission), then fall back to V1
-    let bonded_pool = fetch_bonded_pool(&client_at_block, pool_id, ss58_prefix).await;
+    let bonded_pool = fetch_bonded_pool(&resolved.client_at_block, pool_id, ss58_prefix).await;
 
     // Fetch reward pool - try V2 format first, then fall back to V1
-    let reward_pool = fetch_reward_pool(&client_at_block, pool_id).await;
+    let reward_pool = fetch_reward_pool(&resolved.client_at_block, pool_id).await;
 
     // Note: Sidecar returns null for both fields when pool doesn't exist (no 404)
     // We match this behavior
@@ -284,7 +260,7 @@ pub async fn pallets_nomination_pools_pool(
     Ok((
         StatusCode::OK,
         Json(NominationPoolResponse {
-            at,
+            at: resolved.at,
             bonded_pool,
             reward_pool,
             rc_block_hash: None,

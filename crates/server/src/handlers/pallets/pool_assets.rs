@@ -5,7 +5,8 @@
 //! LP (liquidity pool) tokens created by the AssetConversion pallet.
 
 use crate::handlers::pallets::common::{
-    AssetDetails, AssetMetadataStorage, AtResponse, PalletError, format_account_id,
+    AssetDetails, AssetMetadataStorage, AtResponse, ClientAtBlock, PalletError, format_account_id,
+    resolve_block_for_pallet,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -18,7 +19,6 @@ use axum::{
 };
 use config::ChainType;
 use serde::{Deserialize, Serialize};
-use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 // ============================================================================
 // Request/Response Types
@@ -108,26 +108,12 @@ pub async fn pallets_pool_assets_asset_info(
         return handle_use_rc_block(state, asset_id, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let ss58_prefix = state.chain_info.ss58_prefix;
-    let pool_asset_info = fetch_pool_asset_info(&client_at_block, asset_id, ss58_prefix).await;
-    let pool_asset_meta_data = fetch_pool_asset_meta_data(&client_at_block, asset_id).await;
+    let pool_asset_info = fetch_pool_asset_info(&resolved.client_at_block, asset_id, ss58_prefix).await;
+    let pool_asset_meta_data = fetch_pool_asset_meta_data(&resolved.client_at_block, asset_id).await;
 
     if pool_asset_info.is_none() && pool_asset_meta_data.is_none() {
         return Err(PalletError::PoolAssetNotFound(asset_id.to_string()));
@@ -136,7 +122,7 @@ pub async fn pallets_pool_assets_asset_info(
     Ok((
         StatusCode::OK,
         Json(PalletsPoolAssetsInfoResponse {
-            at,
+            at: resolved.at,
             pool_asset_info,
             pool_asset_meta_data,
             rc_block_hash: None,
@@ -230,7 +216,7 @@ async fn handle_use_rc_block(
 
 /// Fetches pool asset details from PoolAssets::Asset storage.
 async fn fetch_pool_asset_info(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    client_at_block: &ClientAtBlock,
     asset_id: u32,
     ss58_prefix: u16,
 ) -> Option<PoolAssetInfo> {
@@ -262,7 +248,7 @@ async fn fetch_pool_asset_info(
 
 /// Fetches pool asset metadata from PoolAssets::Metadata storage.
 async fn fetch_pool_asset_meta_data(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    client_at_block: &ClientAtBlock,
     asset_id: u32,
 ) -> Option<PoolAssetMetadata> {
     // Query PoolAssets pallet with typed return
@@ -286,7 +272,7 @@ async fn fetch_pool_asset_meta_data(
 }
 
 /// Fetches timestamp from Timestamp::Now storage.
-async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<String> {
+async fn fetch_timestamp(client_at_block: &ClientAtBlock) -> Option<String> {
     let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
     let timestamp = client_at_block
         .storage()

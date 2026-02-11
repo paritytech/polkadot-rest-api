@@ -260,6 +260,66 @@ pub fn format_account_id(account: &[u8; 32], ss58_prefix: u16) -> String {
 }
 
 // ============================================================================
+// Block Resolution Utilities
+// ============================================================================
+
+/// Type alias for the Subxt client at a specific block.
+pub type ClientAtBlock = subxt::client::OnlineClientAtBlock<subxt::SubstrateConfig>;
+
+/// Result of resolving a block for pallet queries.
+pub struct ResolvedBlock {
+    /// The Subxt client positioned at the resolved block.
+    pub client_at_block: ClientAtBlock,
+    /// The `at` response containing block hash and height.
+    pub at: AtResponse,
+}
+
+/// Resolves the block from an optional `at` parameter.
+///
+/// If `at` is `None`, resolves to the current finalized block.
+/// If `at` is `Some`, parses it as either a block hash or number.
+///
+/// # Arguments
+/// * `client` - The Subxt online client
+/// * `at` - Optional block identifier (hash or number as string)
+///
+/// # Returns
+/// A `ResolvedBlock` containing the client at that block and the `AtResponse`.
+pub async fn resolve_block_for_pallet(
+    client: &subxt::OnlineClient<subxt::SubstrateConfig>,
+    at: Option<&String>,
+) -> Result<ResolvedBlock, PalletError> {
+    let client_at_block = match at {
+        None => client.at_current_block().await?,
+        Some(at_str) => {
+            let block_id = at_str.parse::<crate::utils::BlockId>()?;
+            match block_id {
+                crate::utils::BlockId::Hash(hash) => client.at_block(hash).await?,
+                crate::utils::BlockId::Number(number) => client.at_block(number).await?,
+            }
+        }
+    };
+
+    let at = AtResponse {
+        hash: format!("{:#x}", client_at_block.block_hash()),
+        height: client_at_block.block_number().to_string(),
+    };
+
+    Ok(ResolvedBlock { client_at_block, at })
+}
+
+/// Builds an `AtResponse` from a client at block.
+///
+/// This is a convenience function for cases where you already have the client
+/// and just need to construct the response.
+pub fn build_at_response(client_at_block: &ClientAtBlock) -> AtResponse {
+    AtResponse {
+        hash: format!("{:#x}", client_at_block.block_hash()),
+        height: client_at_block.block_number().to_string(),
+    }
+}
+
+// ============================================================================
 // Query Parameters
 // ============================================================================
 

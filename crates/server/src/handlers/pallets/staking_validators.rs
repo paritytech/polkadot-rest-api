@@ -1,4 +1,6 @@
-use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::common::{
+    AtResponse, PalletError, format_account_id, resolve_block_for_pallet,
+};
 use crate::handlers::pallets::constants::is_bad_staking_block;
 use crate::state::AppState;
 use crate::utils::{
@@ -96,23 +98,10 @@ pub async fn pallets_staking_validators(
         return handle_use_rc_block(state, params).await;
     }
 
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<BlockId>()?;
-            match block_id {
-                BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
-
-    let block_number = client_at_block.block_number();
+    let block_number = resolved.client_at_block.block_number();
     if is_bad_staking_block(&state.chain_info.spec_name, block_number) {
         return Err(PalletError::BadStakingBlock(format!(
             "Block {} is a known bad staking block for {}",
@@ -121,10 +110,10 @@ pub async fn pallets_staking_validators(
     }
 
     let (validators, validators_to_be_chilled) =
-        derive_staking_validators(&client_at_block, state.chain_info.ss58_prefix).await?;
+        derive_staking_validators(&resolved.client_at_block, state.chain_info.ss58_prefix).await?;
 
     let response = StakingValidatorsResponse {
-        at,
+        at: resolved.at,
         validators,
         validators_to_be_chilled,
     };

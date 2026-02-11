@@ -20,7 +20,7 @@
 
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
-    RcPalletItemQueryParams, RcPalletQueryParams,
+    RcPalletItemQueryParams, RcPalletQueryParams, resolve_block_for_pallet,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -199,30 +199,16 @@ pub async fn get_pallet_errors(
         return handle_use_rc_block(state, pallet_id, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     // Use subxt's metadata API - it normalizes all versions (V9-V16) automatically
-    let metadata = client_at_block.metadata();
+    let metadata = resolved.client_at_block.metadata();
 
     let response = extract_errors_from_metadata(
         &metadata,
         &pallet_id,
-        at,
+        resolved.at,
         params.only_ids,
         RcBlockFields::default(),
     )?;
@@ -258,31 +244,17 @@ pub async fn get_pallet_error_item(
         return handle_error_item_use_rc_block(state, pallet_id, error_id, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     // Use subxt's metadata API - it normalizes all versions (V9-V16) automatically
-    let metadata = client_at_block.metadata();
+    let metadata = resolved.client_at_block.metadata();
 
     let response = extract_error_item_from_metadata(
         &metadata,
         &pallet_id,
         &error_id,
-        at,
+        resolved.at,
         params.metadata,
         RcBlockFields::default(),
     )?;

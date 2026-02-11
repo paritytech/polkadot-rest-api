@@ -7,7 +7,7 @@
 // which is large by design. Boxing would add indirection without significant benefit.
 #![allow(clippy::result_large_err)]
 
-use crate::handlers::pallets::common::{PalletError, RcPalletQueryParams};
+use crate::handlers::pallets::common::{PalletError, RcPalletQueryParams, resolve_block_for_pallet};
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::format::to_camel_case;
@@ -217,26 +217,17 @@ pub async fn get_pallets_storage(
         return handle_use_rc_block(state, pallet_id, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let resolved_block = utils::ResolvedBlock {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        number: client_at_block.block_number(),
+        hash: resolved.at.hash.clone(),
+        number: resolved.client_at_block.block_number(),
     };
 
     // Fetch raw metadata via RPC to access all metadata versions (V9-V16)
-    let block_hash = format!("{:#x}", client_at_block.block_hash());
-    let metadata = fetch_runtime_metadata(&state.rpc_client, &block_hash).await?;
+    let block_hash = &resolved.at.hash;
+    let metadata = fetch_runtime_metadata(&state.rpc_client, block_hash).await?;
 
     let response = build_storage_response(&metadata, &pallet_id, &resolved_block, params.only_ids)?;
     Ok(Json(response).into_response())
@@ -380,25 +371,16 @@ pub async fn get_pallets_storage_item(
         return handle_storage_item_use_rc_block(state, pallet_id, storage_item_id, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let resolved_block = utils::ResolvedBlock {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        number: client_at_block.block_number(),
+        hash: resolved.at.hash.clone(),
+        number: resolved.client_at_block.block_number(),
     };
 
-    let block_hash = format!("{:#x}", client_at_block.block_hash());
-    let metadata = fetch_runtime_metadata(&state.rpc_client, &block_hash).await?;
+    let block_hash = &resolved.at.hash;
+    let metadata = fetch_runtime_metadata(&state.rpc_client, block_hash).await?;
 
     let response = build_storage_item_response(
         &state.rpc_client,
@@ -408,7 +390,7 @@ pub async fn get_pallets_storage_item(
         &params.keys,
         &resolved_block,
         params.metadata,
-        &block_hash,
+        block_hash,
     )
     .await?;
 

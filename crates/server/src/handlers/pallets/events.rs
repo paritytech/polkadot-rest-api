@@ -7,7 +7,7 @@
 
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
-    RcPalletItemQueryParams, RcPalletQueryParams,
+    RcPalletItemQueryParams, RcPalletQueryParams, resolve_block_for_pallet,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -132,28 +132,15 @@ pub async fn get_pallet_events(
         return handle_events_use_rc_block(state, pallet_id, params).await;
     }
 
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
-
-    let metadata = client_at_block.metadata();
+    let metadata = resolved.client_at_block.metadata();
 
     let response = extract_events_from_metadata(
         &metadata,
         &pallet_id,
-        at,
+        resolved.at,
         params.only_ids,
         RcBlockFields::default(),
     )?;
@@ -192,29 +179,16 @@ pub async fn get_pallet_event_item(
         return handle_event_item_use_rc_block(state, pallet_id, event_item_id, params).await;
     }
 
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
-
-    let metadata = client_at_block.metadata();
+    let metadata = resolved.client_at_block.metadata();
 
     let response = extract_event_item_from_metadata(
         &metadata,
         &pallet_id,
         &event_item_id,
-        at,
+        resolved.at,
         params.metadata,
         RcBlockFields::default(),
     )?;
