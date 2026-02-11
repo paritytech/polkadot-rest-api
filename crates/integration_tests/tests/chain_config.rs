@@ -62,16 +62,17 @@ fn test_relay_chains_have_correct_config() {
 fn test_asset_hubs_have_correct_config() {
     let configs = ChainConfigs::default();
 
+    // Asset hubs with their expected relay chain, para_id, and legacy types
     let asset_hub_configs = vec![
-        ("asset-hub-polkadot", "polkadot", 1000),
-        ("asset-hub-kusama", "kusama", 1000),
-        ("asset-hub-westend", "westend", 1000),
-        ("statemint", "polkadot", 1000),
-        ("statemine", "kusama", 1000),
-        ("westmint", "westend", 1000),
+        ("asset-hub-polkadot", "polkadot", 1000, "none"),
+        ("asset-hub-kusama", "kusama", 1000, "kusama-asset-hub"),
+        ("asset-hub-westend", "westend", 1000, "none"),
+        ("statemint", "polkadot", 1000, "none"),
+        ("statemine", "kusama", 1000, "kusama-asset-hub"),
+        ("westmint", "westend", 1000, "none"),
     ];
 
-    for (chain_name, expected_relay, expected_para_id) in asset_hub_configs {
+    for (chain_name, expected_relay, expected_para_id, expected_legacy) in asset_hub_configs {
         let config = configs.get(chain_name).unwrap();
 
         assert_eq!(
@@ -81,9 +82,9 @@ fn test_asset_hubs_have_correct_config() {
             chain_name
         );
         assert_eq!(
-            config.legacy_types, "none",
-            "{} should use no legacy types",
-            chain_name
+            config.legacy_types, expected_legacy,
+            "{} should use '{}' legacy types",
+            chain_name, expected_legacy
         );
         assert_eq!(
             config.relay_chain,
