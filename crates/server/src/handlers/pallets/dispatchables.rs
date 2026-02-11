@@ -274,7 +274,7 @@ pub async fn get_pallets_dispatchables(
             pallet_info
                 .dispatchables
                 .iter()
-                .map(|d| d.name.clone())
+                .map(|d| snake_to_camel(&d.name))
                 .collect(),
         )
     } else {
@@ -473,7 +473,7 @@ async fn handle_use_rc_block(
             pallet_info
                 .dispatchables
                 .iter()
-                .map(|d| d.name.clone())
+                .map(|d| snake_to_camel(&d.name))
                 .collect(),
         )
     } else {
@@ -858,7 +858,7 @@ pub async fn rc_pallets_dispatchables(
             pallet_info
                 .dispatchables
                 .iter()
-                .map(|d| d.name.clone())
+                .map(|d| snake_to_camel(&d.name))
                 .collect(),
         )
     } else {
