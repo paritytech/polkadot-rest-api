@@ -454,11 +454,16 @@ async fn handle_use_rc_block(
     // Use the first Asset Hub block
     let ah_block = &ah_blocks[0];
 
-    // Get client at block - Subxt normalizes all metadata versions
+    // Get client at the AH block for timestamp and historical pallet lookup
     let client_at_block = state.client.at_block(ah_block.number).await?;
-    let metadata = client_at_block.metadata();
+    let historic_metadata = client_at_block.metadata();
 
-    let pallet_info = extract_pallet_dispatchables(&metadata, &pallet_id)?;
+    let pallet_identity = find_pallet_identity(&historic_metadata, &pallet_id)?;
+
+    let current_client = state.client.at_current_block().await?;
+    let current_metadata = current_client.metadata();
+    let current_pallet_info =
+        extract_pallet_dispatchables(&current_metadata, &pallet_identity.name)?;
 
     let at = AtResponse {
         hash: ah_block.hash.clone(),
@@ -470,22 +475,22 @@ async fn handle_use_rc_block(
 
     let items = if params.only_ids {
         DispatchablesItems::OnlyIds(
-            pallet_info
+            current_pallet_info
                 .dispatchables
                 .iter()
                 .map(|d| snake_to_camel(&d.name))
                 .collect(),
         )
     } else {
-        DispatchablesItems::Full(pallet_info.dispatchables)
+        DispatchablesItems::Full(current_pallet_info.dispatchables)
     };
 
     Ok((
         StatusCode::OK,
         Json(PalletsDispatchablesResponse {
             at,
-            pallet: to_lower_first(&pallet_info.name),
-            pallet_index: pallet_info.index.to_string(),
+            pallet: to_lower_first(&pallet_identity.name),
+            pallet_index: pallet_identity.index.to_string(),
             items,
             rc_block_hash: Some(rc_resolved_block.hash),
             rc_block_number: Some(rc_resolved_block.number.to_string()),
@@ -542,15 +547,20 @@ async fn handle_dispatchable_item_use_rc_block(
     // Use the first Asset Hub block
     let ah_block = &ah_blocks[0];
 
-    // Get client at block - Subxt normalizes all metadata versions
+    // Get client at the AH block for timestamp and historical pallet lookup
     let client_at_block = state.client.at_block(ah_block.number).await?;
-    let metadata = client_at_block.metadata();
+    let historic_metadata = client_at_block.metadata();
 
-    let pallet_info = extract_pallet_dispatchables(&metadata, &pallet_id)?;
+    let pallet_identity = find_pallet_identity(&historic_metadata, &pallet_id)?;
+
+    let current_client = state.client.at_current_block().await?;
+    let current_metadata = current_client.metadata();
+    let current_pallet_info =
+        extract_pallet_dispatchables(&current_metadata, &pallet_identity.name)?;
 
     // Convert camelCase input to snake_case for lookup (Sidecar accepts both)
     let dispatchable_id_snake = camel_to_snake(&dispatchable_id);
-    let dispatchable = pallet_info
+    let dispatchable = current_pallet_info
         .dispatchables
         .iter()
         .find(|d| d.name.to_lowercase() == dispatchable_id_snake.to_lowercase())
@@ -574,8 +584,8 @@ async fn handle_dispatchable_item_use_rc_block(
         StatusCode::OK,
         Json(PalletDispatchableItemResponse {
             at,
-            pallet: to_lower_first(&pallet_info.name),
-            pallet_index: pallet_info.index.to_string(),
+            pallet: to_lower_first(&pallet_identity.name),
+            pallet_index: pallet_identity.index.to_string(),
             dispatchable_item: snake_to_camel(&dispatchable.name),
             metadata: metadata_field,
             rc_block_hash: Some(rc_resolved_block.hash),
@@ -594,6 +604,11 @@ struct PalletDispatchablesInfo {
     name: String,
     index: u8,
     dispatchables: Vec<DispatchableItemMetadata>,
+}
+
+struct PalletIdentity {
+    name: String,
+    index: u8,
 }
 
 // ============================================================================
@@ -666,6 +681,30 @@ fn extract_pallet_dispatchables(
         name: pallet.name().to_string(),
         index: pallet.call_index(),
         dispatchables,
+    })
+}
+
+/// Find pallet name and index from metadata without extracting dispatchables.
+fn find_pallet_identity(
+    metadata: &Metadata,
+    pallet_id: &str,
+) -> Result<PalletIdentity, PalletError> {
+    let pallet = if let Ok(index) = pallet_id.parse::<u8>() {
+        metadata.pallets().find(|p| p.call_index() == index)
+    } else {
+        metadata.pallet_by_name(pallet_id).or_else(|| {
+            let pallet_id_lower = pallet_id.to_lowercase();
+            metadata
+                .pallets()
+                .find(|p| p.name().to_lowercase() == pallet_id_lower)
+        })
+    };
+
+    let pallet = pallet.ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+
+    Ok(PalletIdentity {
+        name: pallet.name().to_string(),
+        index: pallet.call_index(),
     })
 }
 

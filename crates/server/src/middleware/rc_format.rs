@@ -433,8 +433,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) =
-            make_request(app, "/test?useRcBlock=true&format=rc&at=123").await;
+        let (status, value) = make_request(app, "/test?useRcBlock=true&format=rc&at=123").await;
 
         assert_eq!(status, StatusCode::OK);
         assert!(value.get("rcBlock").is_some());
