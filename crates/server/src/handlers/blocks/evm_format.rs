@@ -55,21 +55,12 @@ fn convert_data_to_evm_address(data: &Value) -> Value {
     }
 }
 
-/// Attempts to convert a string to EVM address format if it's a valid AccountId32.
+/// Attempts to convert a string to EVM address format if it's a valid SS58 AccountId32.
+/// Only converts valid SS58 addresses
 fn try_convert_to_evm_address(s: &str) -> Option<String> {
     if let Ok(account_id) = AccountId32::from_ss58check(s) {
         return Some(account_id_to_evm_hex(&account_id));
     }
-
-    let hex_str = s.strip_prefix("0x").unwrap_or(s);
-    if hex_str.len() == 64
-        && let Ok(bytes) = hex::decode(hex_str)
-        && bytes.len() == 32
-    {
-        let account_id = AccountId32::from(<[u8; 32]>::try_from(bytes).unwrap());
-        return Some(account_id_to_evm_hex(&account_id));
-    }
-
     None
 }
 
@@ -100,9 +91,10 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_array_with_addresses() {
+    fn test_convert_ss58_address() {
+        // Valid SS58 address (Alice on Polkadot)
         let data = json!([
-            "0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+            "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
             "some_other_string",
             42
         ]);
@@ -112,7 +104,7 @@ mod tests {
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 3);
-        // First element should be converted to EVM address
+        // First element (SS58) should be converted to EVM address (42 chars = 0x + 40 hex)
         assert!(arr[0].as_str().unwrap().starts_with("0x"));
         assert_eq!(arr[0].as_str().unwrap().len(), 42);
         // Second element should be unchanged
@@ -122,12 +114,32 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_nested_object() {
+    fn test_hex_strings_not_converted() {
+        // 32-byte hex strings (H256) should NOT be converted - they could be topics/hashes
+        let h256_topic = "0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        // 20-byte hex strings (H160) should NOT be converted - already EVM format
+        let h160_address = "0x0102030405060708090a0b0c0d0e0f1011121314";
+
+        let data = json!([h256_topic, h160_address]);
+
+        let result = convert_data_to_evm_address(&data);
+
+        let arr = result.as_array().unwrap();
+        // H256 should be unchanged (not truncated!)
+        assert_eq!(arr[0].as_str().unwrap(), h256_topic);
+        // H160 should be unchanged (already correct format)
+        assert_eq!(arr[1].as_str().unwrap(), h160_address);
+    }
+
+    #[test]
+    fn test_convert_nested_object_with_ss58() {
+        // Use SS58 addresses which should be converted
+        let ss58_address = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
         let data = json!({
-            "address": "0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+            "address": ss58_address,
             "nested": {
                 "value": "unchanged",
-                "another_address": "0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+                "another_address": ss58_address
             }
         });
 
@@ -135,12 +147,12 @@ mod tests {
 
         assert!(result.is_object());
         let obj = result.as_object().unwrap();
-        // Top-level address should be converted
+        // Top-level SS58 address should be converted
         assert!(obj["address"].as_str().unwrap().starts_with("0x"));
         assert_eq!(obj["address"].as_str().unwrap().len(), 42);
         // Nested value should be unchanged
         assert_eq!(obj["nested"]["value"].as_str().unwrap(), "unchanged");
-        // Nested address should be converted
+        // Nested SS58 address should be converted
         assert!(
             obj["nested"]["another_address"]
                 .as_str()
@@ -154,9 +166,11 @@ mod tests {
     fn test_non_address_strings_unchanged() {
         let data = json!([
             "hello",
-            "0x123", // Too short to be an address
+            "0x123", // Too short
             "not_an_address",
             "",
+            // H256 hash (like event topic) - must NOT be truncated
+            "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
         ]);
 
         let result = convert_data_to_evm_address(&data);
@@ -166,5 +180,10 @@ mod tests {
         assert_eq!(arr[1].as_str().unwrap(), "0x123");
         assert_eq!(arr[2].as_str().unwrap(), "not_an_address");
         assert_eq!(arr[3].as_str().unwrap(), "");
+        // H256 topic hash must remain intact
+        assert_eq!(
+            arr[4].as_str().unwrap(),
+            "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+        );
     }
 }
