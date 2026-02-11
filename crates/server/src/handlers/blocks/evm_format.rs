@@ -55,20 +55,15 @@ fn convert_data_to_evm_address(data: &Value) -> Value {
     }
 }
 
-/// Attempts to convert a string to EVM address format if it's a valid SS58 AccountId32.
-/// Only converts valid SS58 addresses
+/// Attempts to convert a string to EVM address format if it's a valid SS58 AccountId32
 fn try_convert_to_evm_address(s: &str) -> Option<String> {
     if let Ok(account_id) = AccountId32::from_ss58check(s) {
-        return Some(account_id_to_evm_hex(&account_id));
+        let bytes: &[u8] = account_id.as_ref();
+        if bytes[20..].iter().all(|&b| b == 0) {
+            return Some(format!("0x{}", hex::encode(&bytes[..20])));
+        }
     }
     None
-}
-
-/// Converts an AccountId32 to EVM hex format (0x + first 20 bytes).
-fn account_id_to_evm_hex(account_id: &AccountId32) -> String {
-    let bytes: &[u8] = account_id.as_ref();
-    let evm_bytes = &bytes[..20];
-    format!("0x{}", hex::encode(evm_bytes))
 }
 
 #[cfg(test)]
@@ -77,40 +72,71 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn test_account_id_to_evm_hex() {
-        let bytes = [
+    fn test_mapped_evm_address_converted() {
+        // A mapped EVM address: 20 bytes of EVM address + 12 zero bytes
+        let mut bytes = [0u8; 32];
+        bytes[..20].copy_from_slice(&[
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
-            0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c,
-            0x1d, 0x1e, 0x1f, 0x20,
-        ];
+            0x0f, 0x10, 0x11, 0x12, 0x13, 0x14,
+        ]);
+        // bytes[20..32] are already zeros
         let account_id = AccountId32::from(bytes);
+        let ss58 = account_id.to_ss58check();
 
-        let evm_hex = account_id_to_evm_hex(&account_id);
+        let result = try_convert_to_evm_address(&ss58);
 
-        assert_eq!(evm_hex, "0x0102030405060708090a0b0c0d0e0f1011121314");
+        assert_eq!(
+            result,
+            Some("0x0102030405060708090a0b0c0d0e0f1011121314".to_string())
+        );
     }
 
     #[test]
-    fn test_convert_ss58_address() {
-        // Valid SS58 address (Alice on Polkadot)
+    fn test_native_substrate_address_unchanged() {
+        // Native Substrate address (Alice) - has non-zero trailing bytes, should NOT be converted
+        let alice_ss58 = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
+
+        let result = try_convert_to_evm_address(alice_ss58);
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_convert_mixed_addresses() {
+        // Create a mapped EVM address for testing
+        let mut bytes = [0u8; 32];
+        bytes[..20].copy_from_slice(&[
+            0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45,
+            0x67, 0x89, 0xab, 0xcd, 0xef, 0x01,
+        ]);
+        let mapped_account = AccountId32::from(bytes);
+        let mapped_ss58 = mapped_account.to_ss58check();
+
         let data = json!([
-            "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+            mapped_ss58,
+            "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY", // Alice - native, unchanged
             "some_other_string",
             42
         ]);
 
         let result = convert_data_to_evm_address(&data);
 
-        assert!(result.is_array());
         let arr = result.as_array().unwrap();
-        assert_eq!(arr.len(), 3);
-        // First element (SS58) should be converted to EVM address (42 chars = 0x + 40 hex)
-        assert!(arr[0].as_str().unwrap().starts_with("0x"));
-        assert_eq!(arr[0].as_str().unwrap().len(), 42);
-        // Second element should be unchanged
-        assert_eq!(arr[1].as_str().unwrap(), "some_other_string");
-        // Third element should be unchanged
-        assert_eq!(arr[2].as_i64().unwrap(), 42);
+        assert_eq!(arr.len(), 4);
+        // Mapped EVM address should be converted
+        assert_eq!(
+            arr[0].as_str().unwrap(),
+            "0xabcdef0123456789abcdef0123456789abcdef01"
+        );
+        // Native Substrate address should be unchanged
+        assert_eq!(
+            arr[1].as_str().unwrap(),
+            "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"
+        );
+        // Other string unchanged
+        assert_eq!(arr[2].as_str().unwrap(), "some_other_string");
+        // Number unchanged
+        assert_eq!(arr[3].as_i64().unwrap(), 42);
     }
 
     #[test]
@@ -132,14 +158,21 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_nested_object_with_ss58() {
-        // Use SS58 addresses which should be converted
-        let ss58_address = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
+    fn test_convert_nested_object_with_mapped_evm() {
+        // Create a mapped EVM address (20 bytes + 12 zero bytes)
+        let mut bytes = [0u8; 32];
+        bytes[..20].copy_from_slice(&[
+            0xde, 0xad, 0xbe, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23,
+            0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+        ]);
+        let mapped_account = AccountId32::from(bytes);
+        let mapped_ss58 = mapped_account.to_ss58check();
+
         let data = json!({
-            "address": ss58_address,
+            "address": mapped_ss58,
             "nested": {
                 "value": "unchanged",
-                "another_address": ss58_address
+                "another_address": mapped_ss58
             }
         });
 
@@ -147,19 +180,16 @@ mod tests {
 
         assert!(result.is_object());
         let obj = result.as_object().unwrap();
-        // Top-level SS58 address should be converted
-        assert!(obj["address"].as_str().unwrap().starts_with("0x"));
-        assert_eq!(obj["address"].as_str().unwrap().len(), 42);
+        assert_eq!(
+            obj["address"].as_str().unwrap(),
+            "0xdeadbeef0123456789abcdef0123456789abcdef"
+        );
         // Nested value should be unchanged
         assert_eq!(obj["nested"]["value"].as_str().unwrap(), "unchanged");
-        // Nested SS58 address should be converted
-        assert!(
-            obj["nested"]["another_address"]
-                .as_str()
-                .unwrap()
-                .starts_with("0x")
+        assert_eq!(
+            obj["nested"]["another_address"].as_str().unwrap(),
+            "0xdeadbeef0123456789abcdef0123456789abcdef"
         );
-        assert_eq!(obj["nested"]["another_address"].as_str().unwrap().len(), 42);
     }
 
     #[test]
