@@ -746,7 +746,7 @@ pub struct StakingLedger {
 }
 
 /// Unlocking chunk with value and era when funds become available
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UnlockingChunk {
     /// Amount being unlocked
