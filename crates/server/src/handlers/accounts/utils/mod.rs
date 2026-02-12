@@ -15,9 +15,13 @@ use std::str::FromStr;
 pub struct AddressValidationError(pub String);
 
 mod assets;
+mod foreign_assets;
 mod pool_assets;
 
 pub use assets::{query_all_assets_id, query_assets};
+pub use foreign_assets::{
+    parse_foreign_asset_locations, query_all_foreign_asset_locations, query_foreign_assets,
+};
 pub use pool_assets::{query_all_pool_assets_id, query_pool_assets};
 // ================================================================================================
 // Address Validation

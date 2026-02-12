@@ -5,38 +5,27 @@
 
 #![allow(clippy::result_large_err)]
 
-use crate::handlers::pallets::common::{AtResponse, PalletError};
+use crate::handlers::pallets::common::{
+    AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
+    RcPalletItemQueryParams, RcPalletQueryParams,
+};
 use crate::state::AppState;
 use crate::utils;
+use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use config::ChainType;
 use heck::ToLowerCamelCase;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use subxt::Metadata;
 
 // ============================================================================
-// Request/Response Types
+// Response Types
 // ============================================================================
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PalletEventsQueryParams {
-    pub at: Option<String>,
-    #[serde(default)]
-    pub only_ids: bool,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PalletEventItemQueryParams {
-    pub at: Option<String>,
-    #[serde(default)]
-    pub metadata: bool,
-}
 
 /// Response for `/pallets/{palletId}/events`
 #[derive(Debug, Serialize)]
@@ -46,6 +35,15 @@ pub struct PalletEventsResponse {
     pub pallet: String,
     pub pallet_index: String,
     pub items: EventsItems,
+    /// Relay chain block hash (Asset Hub only, when `useRcBlock=true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    /// Relay chain block number (Asset Hub only, when `useRcBlock=true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    /// Asset Hub timestamp (Asset Hub only, when `useRcBlock=true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
 }
 
 /// Events items - either full metadata or just names.
@@ -66,6 +64,15 @@ pub struct PalletEventItemResponse {
     pub event_item: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<EventItemMetadata>,
+    /// Relay chain block hash (Asset Hub only, when `useRcBlock=true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    /// Relay chain block number (Asset Hub only, when `useRcBlock=true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    /// Asset Hub timestamp (Asset Hub only, when `useRcBlock=true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
 }
 
 /// Metadata for a single event.
@@ -89,15 +96,6 @@ pub struct EventField {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub type_name: Option<String>,
     pub docs: Vec<String>,
-}
-
-// ============================================================================
-// Internal Types
-// ============================================================================
-
-struct PalletEventsInfo {
-    index: u8,
-    events: Vec<EventItemMetadata>,
 }
 
 // ============================================================================
@@ -128,42 +126,39 @@ struct PalletEventsInfo {
 pub async fn get_pallet_events(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
-    Query(params): Query<PalletEventsQueryParams>,
+    Query(params): Query<PalletQueryParams>,
 ) -> Result<Response, PalletError> {
-    let block_id = params
-        .at
-        .as_ref()
-        .map(|s| s.parse::<utils::BlockId>())
-        .transpose()?;
-    let resolved = utils::resolve_block(&state, block_id).await?;
+    if params.use_rc_block {
+        return handle_events_use_rc_block(state, pallet_id, params).await;
+    }
 
-    // Get client at block - Subxt normalizes all metadata versions
-    let client_at_block = state.client.at_block(resolved.number).await?;
-    let metadata = client_at_block.metadata();
-
-    let pallet_info = extract_pallet_events(&metadata, &pallet_id)?;
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
+    };
 
     let at = AtResponse {
-        hash: resolved.hash.clone(),
-        height: resolved.number.to_string(),
+        hash: format!("{:#x}", client_at_block.block_hash()),
+        height: client_at_block.block_number().to_string(),
     };
 
-    let items = if params.only_ids {
-        EventsItems::OnlyIds(pallet_info.events.iter().map(|e| e.name.clone()).collect())
-    } else {
-        EventsItems::Full(pallet_info.events)
-    };
+    let metadata = client_at_block.metadata();
 
-    Ok((
-        StatusCode::OK,
-        Json(PalletEventsResponse {
-            at,
-            pallet: pallet_id.to_lowercase(),
-            pallet_index: pallet_info.index.to_string(),
-            items,
-        }),
-    )
-        .into_response())
+    let response = extract_events_from_metadata(
+        &metadata,
+        &pallet_id,
+        at,
+        params.only_ids,
+        RcBlockFields::default(),
+    )?;
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 /// Handler for GET `/pallets/{palletId}/events/{eventItemId}`
@@ -191,109 +186,482 @@ pub async fn get_pallet_events(
 pub async fn get_pallet_event_item(
     State(state): State<AppState>,
     Path((pallet_id, event_item_id)): Path<(String, String)>,
-    Query(params): Query<PalletEventItemQueryParams>,
+    Query(params): Query<PalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
-    let block_id = params
-        .at
-        .as_ref()
-        .map(|s| s.parse::<utils::BlockId>())
-        .transpose()?;
-    let resolved = utils::resolve_block(&state, block_id).await?;
+    if params.use_rc_block {
+        return handle_event_item_use_rc_block(state, pallet_id, event_item_id, params).await;
+    }
 
-    // Get client at block - Subxt normalizes all metadata versions
-    let client_at_block = state.client.at_block(resolved.number).await?;
-    let metadata = client_at_block.metadata();
-
-    let pallet_info = extract_pallet_events(&metadata, &pallet_id)?;
-
-    let event = pallet_info
-        .events
-        .iter()
-        .find(|e| e.name.to_lowercase() == event_item_id.to_lowercase())
-        .ok_or_else(|| PalletError::EventNotFound(event_item_id.clone()))?;
+    let client_at_block = match params.at {
+        None => state.client.at_current_block().await?,
+        Some(ref at_str) => {
+            let block_id = at_str.parse::<utils::BlockId>()?;
+            match block_id {
+                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
+                utils::BlockId::Number(number) => state.client.at_block(number).await?,
+            }
+        }
+    };
 
     let at = AtResponse {
-        hash: resolved.hash.clone(),
-        height: resolved.number.to_string(),
+        hash: format!("{:#x}", client_at_block.block_hash()),
+        height: client_at_block.block_number().to_string(),
     };
 
-    let metadata_field = if params.metadata {
-        Some(event.clone())
-    } else {
-        None
-    };
+    let metadata = client_at_block.metadata();
 
-    Ok((
-        StatusCode::OK,
-        Json(PalletEventItemResponse {
-            at,
-            pallet: pallet_id.to_lowercase(),
-            pallet_index: pallet_info.index.to_string(),
-            event_item: event.name.to_lower_camel_case(),
-            metadata: metadata_field,
-        }),
+    let response = extract_event_item_from_metadata(
+        &metadata,
+        &pallet_id,
+        &event_item_id,
+        at,
+        params.metadata,
+        RcBlockFields::default(),
+    )?;
+
+    Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+// ============================================================================
+// Relay Chain Block Handlers
+// ============================================================================
+
+async fn handle_events_use_rc_block(
+    state: AppState,
+    pallet_id: String,
+    params: PalletQueryParams,
+) -> Result<Response, PalletError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(PalletError::UseRcBlockNotSupported);
+    }
+
+    if state.get_relay_chain_client().is_none() {
+        return Err(PalletError::RelayChainNotConfigured);
+    }
+
+    let rc_block_id = params
+        .at
+        .as_ref()
+        .ok_or(PalletError::AtParameterRequired)?
+        .parse::<utils::BlockId>()?;
+
+    let rc_resolved_block = utils::resolve_block_with_rpc(
+        state.get_relay_chain_rpc_client().expect("checked above"),
+        state.get_relay_chain_rpc().expect("checked above"),
+        Some(rc_block_id),
     )
-        .into_response())
+    .await?;
+
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+
+    if ah_blocks.is_empty() {
+        return Ok((StatusCode::OK, Json(Vec::<PalletEventsResponse>::new())).into_response());
+    }
+
+    let mut results = Vec::new();
+    let rc_block_hash = rc_resolved_block.hash.clone();
+    let rc_block_number = rc_resolved_block.number.to_string();
+
+    for ah_block in &ah_blocks {
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
+
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+
+        let rc_fields = RcBlockFields {
+            rc_block_hash: Some(rc_block_hash.clone()),
+            rc_block_number: Some(rc_block_number.clone()),
+            ah_timestamp,
+        };
+
+        let metadata = client_at_block.metadata();
+
+        let response =
+            extract_events_from_metadata(&metadata, &pallet_id, at, params.only_ids, rc_fields)?;
+
+        results.push(response);
+    }
+
+    Ok((StatusCode::OK, Json(results)).into_response())
+}
+
+async fn handle_event_item_use_rc_block(
+    state: AppState,
+    pallet_id: String,
+    event_item_id: String,
+    params: PalletItemQueryParams,
+) -> Result<Response, PalletError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(PalletError::UseRcBlockNotSupported);
+    }
+
+    if state.get_relay_chain_client().is_none() {
+        return Err(PalletError::RelayChainNotConfigured);
+    }
+
+    let rc_block_id = params
+        .at
+        .as_ref()
+        .ok_or(PalletError::AtParameterRequired)?
+        .parse::<utils::BlockId>()?;
+
+    let rc_resolved_block = utils::resolve_block_with_rpc(
+        state.get_relay_chain_rpc_client().expect("checked above"),
+        state.get_relay_chain_rpc().expect("checked above"),
+        Some(rc_block_id),
+    )
+    .await?;
+
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+
+    if ah_blocks.is_empty() {
+        return Ok((StatusCode::OK, Json(Vec::<PalletEventItemResponse>::new())).into_response());
+    }
+
+    let mut results = Vec::new();
+    let rc_block_hash = rc_resolved_block.hash.clone();
+    let rc_block_number = rc_resolved_block.number.to_string();
+
+    for ah_block in &ah_blocks {
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
+
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+
+        let rc_fields = RcBlockFields {
+            rc_block_hash: Some(rc_block_hash.clone()),
+            rc_block_number: Some(rc_block_number.clone()),
+            ah_timestamp,
+        };
+
+        let metadata = client_at_block.metadata();
+
+        let response = extract_event_item_from_metadata(
+            &metadata,
+            &pallet_id,
+            &event_item_id,
+            at,
+            params.metadata,
+            rc_fields,
+        )?;
+
+        results.push(response);
+    }
+
+    Ok((StatusCode::OK, Json(results)).into_response())
 }
 
 // ============================================================================
 // Metadata Extraction - Using Subxt's normalized metadata API
 // ============================================================================
 
-/// Extract pallet events using Subxt's metadata API.
-/// Subxt normalizes all metadata versions (V9-V15+) into a unified format.
-fn extract_pallet_events(
+fn find_pallet<'a>(
+    metadata: &'a Metadata,
+    pallet_id: &str,
+) -> Option<subxt_metadata::PalletMetadata<'a>> {
+    if let Ok(index) = pallet_id.parse::<u8>() {
+        return metadata
+            .pallets()
+            .find(|pallet| pallet.call_index() == index);
+    }
+
+    let pallet_id_lower = pallet_id.to_lowercase();
+    metadata
+        .pallets()
+        .find(|pallet| pallet.name().to_lowercase() == pallet_id_lower)
+}
+
+fn resolve_type_name(types: &scale_info::PortableRegistry, type_id: u32) -> String {
+    if let Some(ty) = types.resolve(type_id) {
+        if let scale_info::TypeDef::Variant(v) = &ty.type_def {
+            let is_simple_enum = v.variants.iter().all(|var| var.fields.is_empty());
+            if is_simple_enum {
+                let variant_names: Vec<String> = v
+                    .variants
+                    .iter()
+                    .map(|var| format!("\"{}\"", var.name))
+                    .collect();
+                return format!("{{\"_enum\":[{}]}}", variant_names.join(","));
+            }
+        }
+
+        if !ty.path.segments.is_empty() {
+            return ty.path.segments.last().unwrap().clone();
+        }
+        match &ty.type_def {
+            scale_info::TypeDef::Primitive(p) => format!("{:?}", p).to_lowercase(),
+            scale_info::TypeDef::Compact(c) => {
+                format!("Compact<{}>", resolve_type_name(types, c.type_param.id))
+            }
+            scale_info::TypeDef::Sequence(s) => {
+                let inner = resolve_type_name(types, s.type_param.id);
+                if inner == "u8" {
+                    "Bytes".to_string()
+                } else {
+                    format!("Vec<{}>", inner)
+                }
+            }
+            scale_info::TypeDef::Array(a) => {
+                format!("[{}; {}]", resolve_type_name(types, a.type_param.id), a.len)
+            }
+            scale_info::TypeDef::Tuple(t) => {
+                let inner: Vec<String> = t
+                    .fields
+                    .iter()
+                    .map(|f| resolve_type_name(types, f.id))
+                    .collect();
+                format!("({})", inner.join(", "))
+            }
+            _ => type_id.to_string(),
+        }
+    } else {
+        type_id.to_string()
+    }
+}
+
+/// Extract events from subxt's unified Metadata.
+fn extract_events_from_metadata(
     metadata: &Metadata,
     pallet_id: &str,
-) -> Result<PalletEventsInfo, PalletError> {
-    // Try to find pallet by index first, then by name
-    let pallet = if let Ok(index) = pallet_id.parse::<u8>() {
-        metadata.pallets().find(|p| p.call_index() == index)
-    } else {
-        metadata.pallet_by_name(pallet_id)
+    at: AtResponse,
+    only_ids: bool,
+    rc_fields: RcBlockFields,
+) -> Result<PalletEventsResponse, PalletError> {
+    let pallet = find_pallet(metadata, pallet_id)
+        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+
+    let pallet_name = pallet.name().to_string();
+    let pallet_index = pallet.call_index();
+
+    let types = metadata.types();
+
+    let items = match pallet.event_variants() {
+        Some(variants) => {
+            if only_ids {
+                EventsItems::OnlyIds(variants.iter().map(|v| v.name.clone()).collect())
+            } else {
+                EventsItems::Full(
+                    variants
+                        .iter()
+                        .map(|variant| {
+                            let fields: Vec<EventField> = variant
+                                .fields
+                                .iter()
+                                .map(|f| EventField {
+                                    name: f.name.clone(),
+                                    ty: f.ty.id.to_string(),
+                                    type_name: f.type_name.clone(),
+                                    docs: f.docs.clone(),
+                                })
+                                .collect();
+
+                            let args: Vec<String> = variant
+                                .fields
+                                .iter()
+                                .map(|f| resolve_type_name(types, f.ty.id))
+                                .collect();
+
+                            EventItemMetadata {
+                                name: variant.name.clone(),
+                                fields,
+                                index: variant.index.to_string(),
+                                docs: variant.docs.clone(),
+                                args,
+                            }
+                        })
+                        .collect(),
+                )
+            }
+        }
+        None => {
+            if only_ids {
+                EventsItems::OnlyIds(vec![])
+            } else {
+                EventsItems::Full(vec![])
+            }
+        }
     };
 
-    let pallet = pallet.ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    // Get event variants - Subxt provides this across all metadata versions
-    let events: Vec<EventItemMetadata> = match pallet.event_variants() {
-        Some(variants) => variants
-            .iter()
-            .map(|variant| {
-                let fields: Vec<EventField> = variant
-                    .fields
-                    .iter()
-                    .map(|f| EventField {
-                        name: f.name.clone(),
-                        ty: f.ty.id.to_string(),
-                        type_name: f.type_name.clone(),
-                        docs: f.docs.clone(),
-                    })
-                    .collect();
-
-                // Build args list from field type names (for backwards compatibility)
-                let args: Vec<String> = variant
-                    .fields
-                    .iter()
-                    .filter_map(|f| f.type_name.clone())
-                    .collect();
-
-                EventItemMetadata {
-                    name: variant.name.clone(),
-                    fields,
-                    index: variant.index.to_string(),
-                    docs: variant.docs.clone(),
-                    args,
-                }
-            })
-            .collect(),
-        None => vec![], // Pallet has no events
-    };
-
-    Ok(PalletEventsInfo {
-        index: pallet.call_index(),
-        events,
+    Ok(PalletEventsResponse {
+        at,
+        pallet: pallet_name.to_lowercase(),
+        pallet_index: pallet_index.to_string(),
+        items,
+        rc_block_hash: rc_fields.rc_block_hash,
+        rc_block_number: rc_fields.rc_block_number,
+        ah_timestamp: rc_fields.ah_timestamp,
     })
+}
+
+/// Extract a single event item from subxt's unified Metadata.
+fn extract_event_item_from_metadata(
+    metadata: &Metadata,
+    pallet_id: &str,
+    event_item_id: &str,
+    at: AtResponse,
+    include_metadata: bool,
+    rc_fields: RcBlockFields,
+) -> Result<PalletEventItemResponse, PalletError> {
+    let pallet = find_pallet(metadata, pallet_id)
+        .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+
+    let pallet_name = pallet.name().to_string();
+    let pallet_index = pallet.call_index();
+
+    let event_variants = pallet
+        .event_variants()
+        .ok_or_else(|| PalletError::EventNotFound(event_item_id.to_string()))?;
+
+    let event_item_id_lower = event_item_id.to_lowercase();
+    let event_variant = event_variants
+        .iter()
+        .find(|v| v.name.to_lowercase() == event_item_id_lower)
+        .ok_or_else(|| PalletError::EventNotFound(event_item_id.to_string()))?;
+
+    let event_name = event_variant.name.clone();
+
+    let types = metadata.types();
+
+    let event_metadata = if include_metadata {
+        let fields: Vec<EventField> = event_variant
+            .fields
+            .iter()
+            .map(|f| EventField {
+                name: f.name.clone(),
+                ty: f.ty.id.to_string(),
+                type_name: f.type_name.clone(),
+                docs: f.docs.clone(),
+            })
+            .collect();
+
+        let args: Vec<String> = event_variant
+            .fields
+            .iter()
+            .map(|f| resolve_type_name(types, f.ty.id))
+            .collect();
+
+        Some(EventItemMetadata {
+            name: event_variant.name.clone(),
+            fields,
+            index: event_variant.index.to_string(),
+            docs: event_variant.docs.clone(),
+            args,
+        })
+    } else {
+        None
+    };
+
+    Ok(PalletEventItemResponse {
+        at,
+        pallet: pallet_name.to_lowercase(),
+        pallet_index: pallet_index.to_string(),
+        event_item: event_name.to_lower_camel_case(),
+        metadata: event_metadata,
+        rc_block_hash: rc_fields.rc_block_hash,
+        rc_block_number: rc_fields.rc_block_number,
+        ah_timestamp: rc_fields.ah_timestamp,
+    })
+}
+
+// ============================================================================
+// RC (Relay Chain) Handlers
+// ============================================================================
+
+/// Handler for GET `/rc/pallets/{palletId}/events`
+///
+/// Returns events from the relay chain's pallet metadata.
+pub async fn rc_pallet_events(
+    State(state): State<AppState>,
+    Path(pallet_id): Path<String>,
+    Query(params): Query<RcPalletQueryParams>,
+) -> Result<Response, PalletError> {
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s: &String| s.parse::<utils::BlockId>())
+        .transpose()?;
+    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+
+    let client_at_block = relay_client.at_block(resolved.number).await?;
+    let metadata = client_at_block.metadata();
+
+    let at = AtResponse {
+        hash: resolved.hash.clone(),
+        height: resolved.number.to_string(),
+    };
+
+    let response = extract_events_from_metadata(
+        &metadata,
+        &pallet_id,
+        at,
+        params.only_ids,
+        RcBlockFields::default(),
+    )?;
+
+    Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+/// Handler for GET `/rc/pallets/{palletId}/events/{eventItemId}`
+///
+/// Returns a specific event from the relay chain's pallet metadata.
+pub async fn rc_pallet_event_item(
+    State(state): State<AppState>,
+    Path((pallet_id, event_item_id)): Path<(String, String)>,
+    Query(params): Query<RcPalletItemQueryParams>,
+) -> Result<Response, PalletError> {
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s: &String| s.parse::<utils::BlockId>())
+        .transpose()?;
+    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+
+    let client_at_block = relay_client.at_block(resolved.number).await?;
+    let metadata = client_at_block.metadata();
+
+    let at = AtResponse {
+        hash: resolved.hash.clone(),
+        height: resolved.number.to_string(),
+    };
+
+    let response = extract_event_item_from_metadata(
+        &metadata,
+        &pallet_id,
+        &event_item_id,
+        at,
+        params.metadata,
+        RcBlockFields::default(),
+    )?;
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 // ============================================================================
@@ -307,17 +675,19 @@ mod tests {
     #[test]
     fn test_events_query_params_defaults() {
         let json = r#"{"at": "123"}"#;
-        let params: PalletEventsQueryParams = serde_json::from_str(json).unwrap();
+        let params: PalletQueryParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.at, Some("123".to_string()));
         assert!(!params.only_ids);
+        assert!(!params.use_rc_block);
     }
 
     #[test]
     fn test_event_item_query_params_defaults() {
         let json = r#"{"at": "456"}"#;
-        let params: PalletEventItemQueryParams = serde_json::from_str(json).unwrap();
+        let params: PalletItemQueryParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.at, Some("456".to_string()));
         assert!(!params.metadata);
+        assert!(!params.use_rc_block);
     }
 
     #[test]
@@ -350,11 +720,39 @@ mod tests {
             pallet: "balances".to_string(),
             pallet_index: "5".to_string(),
             items: EventsItems::OnlyIds(vec!["Transfer".to_string(), "Deposit".to_string()]),
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"pallet\":\"balances\""));
         assert!(json.contains("\"palletIndex\":\"5\""));
+        // RC block fields should not be present when None
+        assert!(!json.contains("rcBlockHash"));
+        assert!(!json.contains("rcBlockNumber"));
+        assert!(!json.contains("ahTimestamp"));
+    }
+
+    #[test]
+    fn test_pallet_events_response_with_rc_block_serialization() {
+        let response = PalletEventsResponse {
+            at: AtResponse {
+                hash: "0xabc".to_string(),
+                height: "100".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "5".to_string(),
+            items: EventsItems::OnlyIds(vec!["Transfer".to_string()]),
+            rc_block_hash: Some("0xrc123".to_string()),
+            rc_block_number: Some("5000".to_string()),
+            ah_timestamp: Some("1642694400".to_string()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"rcBlockHash\":\"0xrc123\""));
+        assert!(json.contains("\"rcBlockNumber\":\"5000\""));
+        assert!(json.contains("\"ahTimestamp\":\"1642694400\""));
     }
 
     #[test]
@@ -368,11 +766,37 @@ mod tests {
             pallet_index: "5".to_string(),
             event_item: "transfer".to_string(),
             metadata: None,
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"eventItem\":\"transfer\""));
         assert!(!json.contains("\"metadata\""));
+        assert!(!json.contains("rcBlockHash"));
+    }
+
+    #[test]
+    fn test_pallet_event_item_response_with_rc_block_serialization() {
+        let response = PalletEventItemResponse {
+            at: AtResponse {
+                hash: "0xdef".to_string(),
+                height: "200".to_string(),
+            },
+            pallet: "balances".to_string(),
+            pallet_index: "5".to_string(),
+            event_item: "transfer".to_string(),
+            metadata: None,
+            rc_block_hash: Some("0xrc456".to_string()),
+            rc_block_number: Some("6000".to_string()),
+            ah_timestamp: Some("1642694500".to_string()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"rcBlockHash\":\"0xrc456\""));
+        assert!(json.contains("\"rcBlockNumber\":\"6000\""));
+        assert!(json.contains("\"ahTimestamp\":\"1642694500\""));
     }
 
     #[test]

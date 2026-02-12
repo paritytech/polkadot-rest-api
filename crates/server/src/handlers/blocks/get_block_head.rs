@@ -3,12 +3,16 @@
 //! This module provides the handler for fetching the latest block (head).
 
 use crate::state::AppState;
+use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
     extract::{Query, State},
+    response::{IntoResponse, Response},
 };
+use config::ChainType;
 use heck::{ToSnakeCase, ToUpperCamelCase};
 use serde::Deserialize;
+use serde_json::json;
 
 use super::common::{add_docs_to_events, convert_digest_items_to_logs, extract_author};
 use super::decode::XcmDecoder;
@@ -43,6 +47,9 @@ pub struct BlockHeadQueryParams {
     /// Filter decoded XCM messages by parachain ID (only used when decodedXcmMsgs=true)
     #[serde(default)]
     pub para_id: Option<u32>,
+    /// When true, use relay chain block to find corresponding Asset Hub blocks
+    #[serde(default, rename = "useRcBlock")]
+    pub use_rc_block: bool,
 }
 
 fn default_true() -> bool {
@@ -58,6 +65,7 @@ impl Default for BlockHeadQueryParams {
             no_fees: false,
             decoded_xcm_msgs: false,
             para_id: None,
+            use_rc_block: false,
         }
     }
 }
@@ -77,6 +85,7 @@ impl Default for BlockHeadQueryParams {
 /// - `noFees` (boolean, default: false): Skip fee calculation
 /// - `decodedXcmMsgs` (boolean, default: false): Decode and include XCM messages
 /// - `paraId` (number, optional): Filter XCM messages by parachain ID
+/// - `useRcBlock` (boolean, default: false): When true, use relay chain head to find corresponding Asset Hub blocks
 #[utoipa::path(
     get,
     path = "/v1/blocks/head",
@@ -99,7 +108,10 @@ impl Default for BlockHeadQueryParams {
 pub async fn get_block_head(
     State(state): State<AppState>,
     Query(params): Query<BlockHeadQueryParams>,
-) -> Result<Json<BlockResponse>, GetBlockError> {
+) -> Result<Response, GetBlockError> {
+    if params.use_rc_block {
+        return handle_use_rc_block(state, params).await;
+    }
     let (client_at_block, is_finalized) = if params.finalized {
         let client = state
             .client
@@ -138,6 +150,98 @@ pub async fn get_block_head(
         (canonical_client, is_finalized)
     };
 
+    let response =
+        build_head_block_response(&state, &client_at_block, &params, Some(is_finalized)).await?;
+
+    Ok(Json(response).into_response())
+}
+
+async fn handle_use_rc_block(
+    state: AppState,
+    params: BlockHeadQueryParams,
+) -> Result<Response, GetBlockError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(GetBlockError::UseRcBlockNotSupported);
+    }
+
+    if state.get_relay_chain_client().is_none() {
+        return Err(GetBlockError::RelayChainNotConfigured);
+    }
+
+    // Determine which relay chain block to use (finalized or canonical head)
+    let rc_hash = if params.finalized {
+        state
+            .get_relay_chain_rpc()
+            .ok_or(GetBlockError::RelayChainNotConfigured)?
+            .chain_get_finalized_head()
+            .await
+            .map_err(GetBlockError::RpcCallFailed)?
+    } else {
+        state
+            .get_relay_chain_rpc()
+            .ok_or(GetBlockError::RelayChainNotConfigured)?
+            .chain_get_block_hash(None)
+            .await
+            .map_err(GetBlockError::RpcCallFailed)?
+            .ok_or_else(|| GetBlockError::HeaderFieldMissing("canonical head hash".to_string()))?
+    };
+
+    let rc_resolved_block = utils::resolve_block_with_rpc(
+        state
+            .get_relay_chain_rpc_client()
+            .ok_or(GetBlockError::RelayChainNotConfigured)?,
+        state
+            .get_relay_chain_rpc()
+            .ok_or(GetBlockError::RelayChainNotConfigured)?,
+        Some(utils::BlockId::Hash(rc_hash)),
+    )
+    .await?;
+
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
+        .await
+        .map_err(|e| GetBlockError::RcBlockError(Box::new(e)))?;
+
+    if ah_blocks.is_empty() {
+        return Ok(Json(json!([])).into_response());
+    }
+
+    let rc_block_number = rc_resolved_block.number.to_string();
+    let rc_block_hash = rc_resolved_block.hash.clone();
+
+    let mut results = Vec::new();
+    for ah_block in ah_blocks {
+        let client_at_block = state
+            .client
+            .at_block(ah_block.number)
+            .await
+            .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+
+        let mut response = build_head_block_response(
+            &state,
+            &client_at_block,
+            &params,
+            Some(true), // For useRcBlock, blocks are always considered finalized
+        )
+        .await?;
+
+        response.rc_block_hash = Some(rc_block_hash.clone());
+        response.rc_block_number = Some(rc_block_number.clone());
+        response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+
+        results.push(response);
+    }
+
+    Ok(Json(json!(results)).into_response())
+}
+
+/// Build block response for a specific client_at_block
+/// This is extracted from the main handler to allow reuse in useRcBlock logic
+async fn build_head_block_response(
+    state: &AppState,
+    client_at_block: &super::common::BlockClient,
+    params: &BlockHeadQueryParams,
+    finalized: Option<bool>,
+) -> Result<BlockResponse, GetBlockError> {
     let block_hash = format!("{:#x}", client_at_block.block_hash());
     let block_number = client_at_block.block_number();
 
@@ -153,18 +257,13 @@ pub async fn get_block_head(
     let logs = convert_digest_items_to_logs(&header.digest.logs);
 
     let (author_id, extrinsics_result, events_result) = tokio::join!(
-        extract_author(&state, &client_at_block, &logs, block_number),
-        extract_extrinsics(&state, &client_at_block, block_number),
-        fetch_block_events(&state, &client_at_block, block_number),
+        extract_author(state, client_at_block, &logs, block_number),
+        extract_extrinsics(state, client_at_block, block_number),
+        fetch_block_events(state, client_at_block, block_number),
     );
 
     let extrinsics = extrinsics_result?;
     let block_events = events_result?;
-
-    // The finalized status is determined by comparing block number against finalized head:
-    // - If finalized=true (default), we fetched the finalized head, so it IS finalized
-    // - If finalized=false, we fetched the canonical head and checked if it's <= finalized head
-    let finalized = Some(is_finalized);
 
     let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
         categorize_events(block_events, extrinsics.len());
@@ -178,9 +277,6 @@ pub async fn get_block_head(
         if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
             extrinsic.events = extrinsic_events.clone();
             extrinsic.success = outcome.success;
-            // Only update pays_fee from events if the extrinsic is SIGNED.
-            // Unsigned extrinsics (inherents) never pay fees, regardless of what
-            // DispatchInfo.paysFee says in the event.
             if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
                 extrinsic.pays_fee = outcome.pays_fee;
             }
@@ -195,7 +291,7 @@ pub async fn get_block_head(
         for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
             if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
                 extrinsic.info = extract_fee_info_for_extrinsic(
-                    &state,
+                    state,
                     &client_at_parent,
                     &extrinsic.raw_hex,
                     &extrinsic.events,
@@ -245,7 +341,7 @@ pub async fn get_block_head(
         None
     };
 
-    let response = BlockResponse {
+    Ok(BlockResponse {
         number: block_number.to_string(),
         hash: block_hash,
         parent_hash,
@@ -261,7 +357,5 @@ pub async fn get_block_head(
         rc_block_hash: None,
         rc_block_number: None,
         ah_timestamp: None,
-    };
-
-    Ok(Json(response))
+    })
 }

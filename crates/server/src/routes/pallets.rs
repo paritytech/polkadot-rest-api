@@ -26,42 +26,42 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
         .route_registered(
             registry,
             API_VERSION,
-            "/pallets/:pallet_id/consts",
+            "/pallets/:palletId/consts",
             "get",
             get(pallets::pallets_constants),
         )
         .route_registered(
             registry,
             API_VERSION,
-            "/pallets/:pallet_id/consts/:constant_item_id",
+            "/pallets/:palletId/consts/:constantItemId",
             "get",
             get(pallets::pallets_constant_item),
         )
         .route_registered(
             registry,
             API_VERSION,
-            "/pallets/:pallet_id/errors",
+            "/pallets/:palletId/errors",
             "get",
             get(pallets::get_pallet_errors),
         )
         .route_registered(
             registry,
             API_VERSION,
-            "/pallets/:pallet_id/errors/:error_item_id",
+            "/pallets/:palletId/errors/:errorItemId",
             "get",
             get(pallets::get_pallet_error_item),
         )
         .route_registered(
             registry,
             API_VERSION,
-            "/pallets/:pallet_id/events",
+            "/pallets/:palletId/events",
             "get",
             get(pallets::get_pallet_events),
         )
         .route_registered(
             registry,
             API_VERSION,
-            "/pallets/:pallet_id/events/:event_item_id",
+            "/pallets/:palletId/events/:eventItemId",
             "get",
             get(pallets::get_pallet_event_item),
         )
@@ -82,14 +82,14 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
         .route_registered(
             registry,
             API_VERSION,
-            "/pallets/assets/:asset_id/asset-info",
+            "/pallets/assets/:assetId/asset-info",
             "get",
             get(pallets::pallets_assets_asset_info),
         )
         .route_registered(
             registry,
             API_VERSION,
-            "/pallets/pool-assets/:asset_id/asset-info",
+            "/pallets/pool-assets/:assetId/asset-info",
             "get",
             get(pallets::pallets_pool_assets_asset_info),
         )
@@ -124,7 +124,7 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
         .route_registered(
             registry,
             API_VERSION,
-            "/pallets/nomination-pools/:pool_id",
+            "/pallets/nomination-pools/:poolId",
             "get",
             get(pallets::pallets_nomination_pools_pool),
         )
@@ -166,6 +166,83 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
                 "/rc/pallets/staking/validators",
                 "get",
                 get(pallets::rc_pallets_staking_validators),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/:palletId/consts",
+                "get",
+                get(pallets::rc_pallets_constants),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/:palletId/consts/:constantItemId",
+                "get",
+                get(pallets::rc_pallets_constant_item),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/:palletId/errors",
+                "get",
+                get(pallets::rc_pallet_errors),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/:palletId/errors/:errorItemId",
+                "get",
+                get(pallets::rc_pallet_error_item),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/:palletId/events",
+                "get",
+                get(pallets::rc_pallet_events),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/:palletId/events/:eventItemId",
+                "get",
+                get(pallets::rc_pallet_event_item),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/:palletId/dispatchables",
+                "get",
+                get(pallets::rc_pallets_dispatchables),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/:palletId/dispatchables/:dispatchableId",
+                "get",
+                get(pallets::rc_pallet_dispatchable_item),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/:palletId/storage",
+                "get",
+                get(pallets::rc_get_pallets_storage),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/:palletId/storage/:storageItemId",
+                "get",
+                get(pallets::rc_get_pallets_storage_item),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/pallets/on-going-referenda",
+                "get",
+                get(pallets::rc_pallets_on_going_referenda),
             )
     } else {
         router

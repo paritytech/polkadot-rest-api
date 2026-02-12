@@ -73,4 +73,3 @@ pub fn create_app(state: AppState) -> Router {
         .layer(RequestBodyLimitLayer::new(request_limit))
         .with_state(state)
 }
-

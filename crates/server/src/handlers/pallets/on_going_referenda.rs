@@ -7,12 +7,14 @@
 use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
 use crate::state::AppState;
 use crate::utils;
+use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
     extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use config::ChainType;
 use futures::future::join_all;
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
@@ -171,9 +173,8 @@ pub async fn pallets_on_going_referenda(
     State(state): State<AppState>,
     Query(params): Query<OnGoingReferendaQueryParams>,
 ) -> Result<Response, PalletError> {
-    // useRcBlock is not supported for this endpoint (relay chain only)
     if params.use_rc_block {
-        return Err(PalletError::UseRcBlockNotSupported);
+        return handle_use_rc_block(state, params).await;
     }
 
     // Create client at the specified block
@@ -210,6 +211,67 @@ pub async fn pallets_on_going_referenda(
         .into_response())
 }
 
+async fn handle_use_rc_block(
+    state: AppState,
+    params: OnGoingReferendaQueryParams,
+) -> Result<Response, PalletError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(PalletError::UseRcBlockNotSupported);
+    }
+
+    if state.get_relay_chain_client().is_none() {
+        return Err(PalletError::RelayChainNotConfigured);
+    }
+
+    let rc_block_id = params
+        .at
+        .as_ref()
+        .ok_or(PalletError::AtParameterRequired)?
+        .parse::<utils::BlockId>()?;
+
+    let rc_resolved_block = utils::resolve_block_with_rpc(
+        state.get_relay_chain_rpc_client().expect("checked above"),
+        state.get_relay_chain_rpc().expect("checked above"),
+        Some(rc_block_id),
+    )
+    .await?;
+
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
+
+    if ah_blocks.is_empty() {
+        return Ok((StatusCode::OK, Json(Vec::<OnGoingReferendaResponse>::new())).into_response());
+    }
+
+    let mut results = Vec::new();
+    let rc_block_hash = rc_resolved_block.hash.clone();
+    let rc_block_number = rc_resolved_block.number.to_string();
+
+    for ah_block in &ah_blocks {
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
+
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+
+        let referenda =
+            fetch_ongoing_referenda(&client_at_block, state.chain_info.ss58_prefix, &at.height)
+                .await?;
+
+        results.push(OnGoingReferendaResponse {
+            at,
+            referenda,
+            rc_block_hash: Some(rc_block_hash.clone()),
+            rc_block_number: Some(rc_block_number.clone()),
+            ah_timestamp,
+        });
+    }
+
+    Ok((StatusCode::OK, Json(results)).into_response())
+}
+
 // ============================================================================
 // Storage Fetching
 // ============================================================================
@@ -227,10 +289,7 @@ async fn fetch_ongoing_referenda(
     let count_addr = subxt::dynamic::storage::<(), u32>("Referenda", "ReferendumCount");
     let referendum_count: u32 = match client_at_block.storage().fetch(count_addr, ()).await {
         Ok(storage_val) => match storage_val.decode() {
-            Ok(count) => {
-                tracing::info!("Successfully decoded ReferendumCount: {}", count);
-                count
-            }
+            Ok(count) => count,
             Err(e) => {
                 tracing::warn!("Failed to decode ReferendumCount: {:?}", e);
                 return Err(PalletError::StorageDecodeFailed {
@@ -278,8 +337,6 @@ async fn fetch_ongoing_referenda(
             }
         }
     };
-
-    tracing::info!("ReferendumCount: {}", referendum_count);
 
     // Iterate in batches from highest ID to lowest (ongoing referenda are usually recent)
     // Use concurrent requests for better performance
@@ -331,12 +388,6 @@ async fn fetch_ongoing_referenda(
 
         id -= batch_size as i64;
     }
-
-    tracing::info!(
-        "Found {} ongoing referenda out of {} total",
-        referenda.len(),
-        referendum_count
-    );
 
     // Sort by ID in descending order to match Sidecar's ordering (highest ID first)
     referenda.sort_by(|a, b| {
@@ -414,6 +465,67 @@ fn format_id_with_comma(id: u32) -> String {
         result.push(*c);
     }
     result
+}
+
+// ============================================================================
+// RC (Relay Chain) Handler
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcOnGoingReferendaQueryParams {
+    pub at: Option<String>,
+}
+
+/// Handler for GET `/rc/pallets/on-going-referenda`
+///
+/// Returns ongoing referenda from the relay chain.
+pub async fn rc_pallets_on_going_referenda(
+    State(state): State<AppState>,
+    Query(params): Query<RcOnGoingReferendaQueryParams>,
+) -> Result<Response, PalletError> {
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc = state
+        .get_relay_chain_rpc()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_chain_info = state
+        .relay_chain_info
+        .as_ref()
+        .ok_or(PalletError::RelayChainNotConfigured)?;
+
+    let block_id = params
+        .at
+        .as_ref()
+        .map(|s| s.parse::<utils::BlockId>())
+        .transpose()?;
+    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+
+    let client_at_block = relay_client.at_block(resolved.number).await?;
+
+    let at = AtResponse {
+        hash: resolved.hash.clone(),
+        height: resolved.number.to_string(),
+    };
+
+    let referenda =
+        fetch_ongoing_referenda(&client_at_block, relay_chain_info.ss58_prefix, &at.height).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(OnGoingReferendaResponse {
+            at,
+            referenda,
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        }),
+    )
+        .into_response())
 }
 
 // ============================================================================

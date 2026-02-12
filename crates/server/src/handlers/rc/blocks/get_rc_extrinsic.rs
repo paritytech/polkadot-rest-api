@@ -148,6 +148,9 @@ pub async fn get_rc_extrinsic(
             hash: block_hash,
         },
         extrinsics: extrinsic,
+        rc_block_hash: None,
+        rc_block_number: None,
+        ah_timestamp: None,
     };
 
     Ok(Json(response))

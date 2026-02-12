@@ -73,6 +73,9 @@ pub struct ExtrinsicQueryParams {
     /// When true, skip fee calculation for extrinsics (info will be empty object)
     #[serde(default)]
     pub no_fees: bool,
+    /// When true, treat blockId as Relay Chain block and return Asset Hub extrinsics
+    #[serde(default, rename = "useRcBlock")]
+    pub use_rc_block: bool,
 }
 
 /// Path parameters for /blocks/{blockId}/extrinsics/{extrinsicIndex} and
@@ -574,6 +577,15 @@ pub struct ExtrinsicIndexResponse {
     pub at: BlockIdentifiers,
     /// The extrinsic at the requested index
     pub extrinsics: ExtrinsicInfo,
+    /// Relay Chain block hash (only present when useRcBlock=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    /// Relay Chain block number (only present when useRcBlock=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    /// Asset Hub block timestamp (only present when useRcBlock=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
 }
 
 /// Basic block information

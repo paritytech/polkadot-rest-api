@@ -5,10 +5,10 @@ use crate::handlers::common::accounts::StakingPayoutsQueryError;
 use crate::utils::{self, RcBlockError};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use serde_json::json;
 use subxt::error::{OnlineClientAtBlockError, StorageError};
 use thiserror::Error;
+use utoipa::ToSchema;
 
 // ================================================================================================
 // Error Response Helpers
@@ -264,6 +264,10 @@ pub enum AccountsError {
     #[error("At least one address is required")]
     NoAddresses,
 
+    // ---- Foreign asset errors ----
+    #[error("Invalid foreign asset multilocation: {0}")]
+    InvalidForeignAsset(String),
+
     // ---- Generic internal error ----
     #[error("Internal error: {0}")]
     InternalError(String),
@@ -338,6 +342,7 @@ impl_error_response!(AccountsError,
     AccountsError::InvalidScheme => BAD_REQUEST,
     AccountsError::TooManyAddresses => BAD_REQUEST,
     AccountsError::NoAddresses => BAD_REQUEST,
+    AccountsError::InvalidForeignAsset(_) => BAD_REQUEST,
     _ => INTERNAL_SERVER_ERROR
 );
 
@@ -961,4 +966,92 @@ pub struct AccountValidateResponse {
     /// The account ID in hex format (null if invalid)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account_id: Option<String>,
+}
+
+// ================================================================================================
+// Foreign Asset Balances Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/foreign-asset-balances endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignAssetBalancesQueryParams {
+    /// Optional Block identifier (hash or height) - defaults to latest finalized
+    pub at: Option<String>,
+
+    /// Optional When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+
+    /// Optional list of foreign asset multilocations as JSON strings to query
+    /// (queries all if omitted). Each element is a JSON-encoded XCM Location.
+    /// Format follows Express 4.x array params: ?foreignAssets[]=JSON1&foreignAssets[]=JSON2
+    #[serde(
+        default,
+        rename = "foreignAssets[]",
+        deserialize_with = "string_or_vec"
+    )]
+    pub foreign_assets: Vec<String>,
+}
+
+/// Deserializer that accepts either a single string or a sequence of strings.
+/// Needed because `serde_urlencoded` (used by axum's `Query`) deserializes a
+/// single repeated query param as a plain string, not a one-element Vec.
+fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct StringOrVec;
+
+    impl<'de> de::Visitor<'de> for StringOrVec {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or a sequence of strings")
+        }
+
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<Vec<String>, E> {
+            Ok(vec![value.to_owned()])
+        }
+
+        fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<String>, A::Error> {
+            let mut vec = Vec::new();
+            while let Some(val) = seq.next_element()? {
+                vec.push(val);
+            }
+            Ok(vec)
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVec)
+}
+
+/// Response for GET /accounts/{accountId}/foreign-asset-balances
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignAssetBalancesResponse {
+    pub at: BlockInfo,
+    pub foreign_assets: Vec<ForeignAssetBalance>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Foreign asset balance information
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignAssetBalance {
+    /// The XCM multilocation identifier for this foreign asset (serialized as JSON object)
+    pub multi_location: serde_json::Value,
+    /// Balance as string (u128 serialized as decimal string)
+    pub balance: String,
+    pub is_frozen: bool,
+    pub is_sufficient: bool,
 }

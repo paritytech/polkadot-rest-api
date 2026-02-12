@@ -99,6 +99,9 @@ async fn build_rc_block_raw_response(
         extrinsic_root,
         digest: BlockRawDigest { logs },
         extrinsics: raw_extrinsics,
+        rc_block_hash: None,
+        rc_block_number: None,
+        ah_timestamp: None,
     })
 }
 
