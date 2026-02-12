@@ -1,35 +1,55 @@
 use axum::{
+    Json,
     body::Body,
     extract::{Request, State},
+    http::StatusCode,
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use http_body_util::BodyExt;
 use serde::Deserialize;
+use serde_json::json;
 
 use crate::state::AppState;
 
 #[derive(Deserialize, Default)]
-struct FormatParams {
+#[serde(rename_all = "camelCase")]
+struct RcFormatParams {
     #[serde(default)]
     format: Option<String>,
+    #[serde(default)]
+    use_rc_block: Option<String>,
 }
 
 /// Middleware that transforms RC block array responses into a structured object
 /// when `format=rc` is present in the query string.
+///
+/// Requires `useRcBlock=true` to be present alongside `format=rc`.
+/// Returns 400 Bad Request if `format=rc` is used without `useRcBlock=true`.
 pub async fn rc_format_middleware(
     State(state): State<AppState>,
     req: Request,
     next: Next,
 ) -> Response {
-    let has_format_rc = req
+    let params = req
         .uri()
         .query()
-        .and_then(|q| serde_urlencoded::from_str::<FormatParams>(q).ok())
-        .is_some_and(|p| p.format.as_deref() == Some("rc"));
+        .and_then(|q| serde_urlencoded::from_str::<RcFormatParams>(q).ok())
+        .unwrap_or_default();
+
+    let has_format_rc = params.format.as_deref() == Some("rc");
 
     if !has_format_rc {
         return next.run(req).await;
+    }
+
+    let has_use_rc_block = params.use_rc_block.as_deref() == Some("true");
+    if !has_use_rc_block {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "format=rc requires useRcBlock=true" })),
+        )
+            .into_response();
     }
 
     let response = next.run(req).await;
@@ -203,14 +223,25 @@ mod tests {
     /// Test middleware that mirrors rc_format_middleware but without AppState.
     /// Uses transform_rc_response_stateless (no parentHash in rcBlock).
     async fn test_rc_format(req: Request, next: Next) -> Response {
-        let has_format_rc = req
+        let params = req
             .uri()
             .query()
-            .and_then(|q| serde_urlencoded::from_str::<FormatParams>(q).ok())
-            .is_some_and(|p| p.format.as_deref() == Some("rc"));
+            .and_then(|q| serde_urlencoded::from_str::<RcFormatParams>(q).ok())
+            .unwrap_or_default();
+
+        let has_format_rc = params.format.as_deref() == Some("rc");
 
         if !has_format_rc {
             return next.run(req).await;
+        }
+
+        let has_use_rc_block = params.use_rc_block.as_deref() == Some("true");
+        if !has_use_rc_block {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "format=rc requires useRcBlock=true" })),
+            )
+                .into_response();
         }
 
         let response = next.run(req).await;
@@ -259,7 +290,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) = make_request(app, "/test?format=rc").await;
+        let (status, value) = make_request(app, "/test?useRcBlock=true&format=rc").await;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(value["rcBlock"]["hash"], "0xdef");
@@ -303,7 +334,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) = make_request(app, "/test?format=rc").await;
+        let (status, value) = make_request(app, "/test?useRcBlock=true&format=rc").await;
 
         assert_eq!(status, StatusCode::OK);
         assert!(value["rcBlock"].is_null());
@@ -323,7 +354,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) = make_request(app, "/test?format=rc").await;
+        let (status, value) = make_request(app, "/test?useRcBlock=true&format=rc").await;
 
         assert_eq!(status, StatusCode::OK);
         assert!(value.is_object());
@@ -346,7 +377,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) = make_request(app, "/test?format=rc").await;
+        let (status, value) = make_request(app, "/test?useRcBlock=true&format=rc").await;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(value["rcBlock"]["hash"], "0xdef");
@@ -374,7 +405,7 @@ mod tests {
         let response = app
             .oneshot(
                 axum::http::Request::builder()
-                    .uri("/test?format=rc")
+                    .uri("/test?useRcBlock=true&format=rc")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -397,7 +428,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) = make_request(app, "/test?format=rc").await;
+        let (status, value) = make_request(app, "/test?useRcBlock=true&format=rc").await;
 
         assert_eq!(status, StatusCode::OK);
         assert!(value.is_array());
@@ -414,12 +445,28 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (_, value) = make_request(app, "/test?format=rc").await;
+        let (_, value) = make_request(app, "/test?useRcBlock=true&format=rc").await;
 
         let data = value["parachainDataPerBlock"].as_array().unwrap();
         assert_eq!(data[0]["ahTimestamp"], "123");
         assert_eq!(data[1]["ahTimestamp"], "456");
         assert!(value["rcBlock"].get("ahTimestamp").is_none());
+    }
+
+    #[tokio::test]
+    async fn format_rc_without_use_rc_block_returns_400() {
+        async fn handler() -> axum::response::Json<serde_json::Value> {
+            json_response(rc_array())
+        }
+
+        let app = Router::new()
+            .route("/test", get(handler))
+            .layer(middleware::from_fn(test_rc_format));
+
+        let (status, value) = make_request(app, "/test?format=rc").await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(value["error"], "format=rc requires useRcBlock=true");
     }
 
     #[tokio::test]
