@@ -267,7 +267,9 @@ pub fn format_account_id(account: &[u8; 32], ss58_prefix: u16) -> String {
 pub type ClientAtBlock = subxt::client::OnlineClientAtBlock<subxt::SubstrateConfig>;
 
 /// Result of resolving a block for pallet queries.
-pub struct ResolvedBlock {
+///
+/// Named `ResolvedBlockContext` to distinguish from `utils::ResolvedBlock`.
+pub struct ResolvedBlockContext {
     /// The Subxt client positioned at the resolved block.
     pub client_at_block: ClientAtBlock,
     /// The `at` response containing block hash and height.
@@ -284,11 +286,11 @@ pub struct ResolvedBlock {
 /// * `at` - Optional block identifier (hash or number as string)
 ///
 /// # Returns
-/// A `ResolvedBlock` containing the client at that block and the `AtResponse`.
+/// A `ResolvedBlockContext` containing the client at that block and the `AtResponse`.
 pub async fn resolve_block_for_pallet(
     client: &subxt::OnlineClient<subxt::SubstrateConfig>,
     at: Option<&String>,
-) -> Result<ResolvedBlock, PalletError> {
+) -> Result<ResolvedBlockContext, PalletError> {
     let client_at_block = match at {
         None => client.at_current_block().await?,
         Some(at_str) => {
@@ -305,21 +307,10 @@ pub async fn resolve_block_for_pallet(
         height: client_at_block.block_number().to_string(),
     };
 
-    Ok(ResolvedBlock {
+    Ok(ResolvedBlockContext {
         client_at_block,
         at,
     })
-}
-
-/// Builds an `AtResponse` from a client at block.
-///
-/// This is a convenience function for cases where you already have the client
-/// and just need to construct the response.
-pub fn build_at_response(client_at_block: &ClientAtBlock) -> AtResponse {
-    AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    }
 }
 
 // ============================================================================
@@ -482,4 +473,83 @@ pub struct AssetMetadataStorage {
     pub symbol: Vec<u8>,
     pub decimals: u8,
     pub is_frozen: bool,
+}
+
+// ============================================================================
+// Type Resolution Utilities
+// ============================================================================
+
+/// Resolves a type ID from the portable registry to a human-readable type name.
+///
+/// This function formats types to match Sidecar's output format:
+/// - `Vec<u8>` → `"Bytes"`
+/// - Arrays use no space: `[T;N]` not `[T; N]`
+/// - Tuples use no space: `(T,U)` not `(T, U)`
+/// - Composites and variants use the last path segment (e.g., `"MultiAddress"`)
+/// - Simple enums are formatted as `{"_enum":["Variant1","Variant2"]}`
+///
+/// # Arguments
+/// * `types` - The portable type registry from metadata
+/// * `type_id` - The type ID to resolve
+///
+/// # Returns
+/// A string representation of the type suitable for API responses.
+pub fn resolve_type_name(types: &scale_info::PortableRegistry, type_id: u32) -> String {
+    let Some(ty) = types.resolve(type_id) else {
+        return type_id.to_string();
+    };
+
+    // Check for simple enums first (variants with no fields)
+    if let scale_info::TypeDef::Variant(v) = &ty.type_def {
+        let is_simple_enum = v.variants.iter().all(|var| var.fields.is_empty());
+        if is_simple_enum {
+            let variant_names: Vec<String> = v
+                .variants
+                .iter()
+                .map(|var| format!("\"{}\"", var.name))
+                .collect();
+            return format!("{{\"_enum\":[{}]}}", variant_names.join(","));
+        }
+    }
+
+    // If type has a path, use the last segment (type name)
+    if !ty.path.segments.is_empty() {
+        return ty.path.segments.last().unwrap().clone();
+    }
+
+    // Handle types without paths based on their definition
+    match &ty.type_def {
+        scale_info::TypeDef::Primitive(p) => format!("{:?}", p).to_lowercase(),
+        scale_info::TypeDef::Compact(c) => {
+            format!("Compact<{}>", resolve_type_name(types, c.type_param.id))
+        }
+        scale_info::TypeDef::Sequence(s) => {
+            let inner = resolve_type_name(types, s.type_param.id);
+            // Match Sidecar: Vec<u8> becomes "Bytes"
+            if inner == "u8" {
+                "Bytes".to_string()
+            } else {
+                format!("Vec<{}>", inner)
+            }
+        }
+        scale_info::TypeDef::Array(a) => {
+            // Match Sidecar: no space in array format [T;N]
+            format!("[{};{}]", resolve_type_name(types, a.type_param.id), a.len)
+        }
+        scale_info::TypeDef::Tuple(t) => {
+            if t.fields.is_empty() {
+                "()".to_string()
+            } else {
+                let inner: Vec<String> = t
+                    .fields
+                    .iter()
+                    .map(|f| resolve_type_name(types, f.id))
+                    .collect();
+                // Match Sidecar: no space in tuple format (T,U)
+                format!("({})", inner.join(","))
+            }
+        }
+        scale_info::TypeDef::BitSequence(_) => "BitSequence".to_string(),
+        _ => type_id.to_string(),
+    }
 }

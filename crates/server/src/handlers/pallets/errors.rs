@@ -20,7 +20,7 @@
 
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
-    RcPalletItemQueryParams, RcPalletQueryParams, resolve_block_for_pallet,
+    RcPalletItemQueryParams, RcPalletQueryParams, resolve_block_for_pallet, resolve_type_name,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -530,7 +530,7 @@ fn variant_to_error_metadata(
         .fields
         .iter()
         .map(|f| {
-            let type_name = resolve_type_name(f.ty.id, types);
+            let type_name = resolve_type_name(types, f.ty.id);
             ErrorField {
                 name: f.name.clone().unwrap_or_default(),
                 ty: f.ty.id.to_string(),
@@ -544,7 +544,7 @@ fn variant_to_error_metadata(
         .fields
         .iter()
         .map(|f| {
-            let type_name = resolve_type_name(f.ty.id, types);
+            let type_name = resolve_type_name(types, f.ty.id);
             let simplified_type_name = simplify_type_name(&type_name);
             ErrorArg {
                 name: f.name.clone().unwrap_or_default().to_lower_camel_case(),
@@ -560,60 +560,6 @@ fn variant_to_error_metadata(
         index: variant.index.to_string(),
         docs: variant.docs.clone(),
         args,
-    }
-}
-
-/// Resolve a type ID to its human-readable name from the type registry.
-fn resolve_type_name(type_id: u32, types: &scale_info::PortableRegistry) -> String {
-    types
-        .resolve(type_id)
-        .map(|ty| format_type(ty, types))
-        .unwrap_or_else(|| type_id.to_string())
-}
-
-/// Format a type to a human-readable string.
-fn format_type(
-    ty: &scale_info::Type<PortableForm>,
-    types: &scale_info::PortableRegistry,
-) -> String {
-    use scale_info::TypeDef;
-
-    let path = ty.path.segments.join("::");
-
-    match &ty.type_def {
-        TypeDef::Composite(_) | TypeDef::Variant(_) => {
-            if path.is_empty() {
-                "Composite".to_string()
-            } else {
-                path
-            }
-        }
-        TypeDef::Sequence(seq) => {
-            let inner = resolve_type_name(seq.type_param.id, types);
-            format!("Vec<{}>", inner)
-        }
-        TypeDef::Array(arr) => {
-            let inner = resolve_type_name(arr.type_param.id, types);
-            format!("[{}; {}]", inner, arr.len)
-        }
-        TypeDef::Tuple(tuple) => {
-            if tuple.fields.is_empty() {
-                "()".to_string()
-            } else {
-                let inner: Vec<String> = tuple
-                    .fields
-                    .iter()
-                    .map(|f| resolve_type_name(f.id, types))
-                    .collect();
-                format!("({})", inner.join(", "))
-            }
-        }
-        TypeDef::Primitive(prim) => format!("{:?}", prim),
-        TypeDef::Compact(compact) => {
-            let inner = resolve_type_name(compact.type_param.id, types);
-            format!("Compact<{}>", inner)
-        }
-        TypeDef::BitSequence(_) => "BitSequence".to_string(),
     }
 }
 
