@@ -122,15 +122,10 @@ fn build_rc_block(
 }
 
 async fn fetch_rc_parent_hash(state: &AppState, rc_block_hash: &str) -> Option<String> {
-    let rpc_client = state.get_relay_chain_rpc_client()?;
-    let header_json: serde_json::Value = rpc_client
-        .request("chain_getHeader", subxt_rpcs::rpc_params![rc_block_hash])
-        .await
-        .ok()?;
-    header_json
-        .get("parentHash")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+    let relay_rpc = state.get_relay_chain_rpc()?;
+    let hash: subxt::utils::H256 = rc_block_hash.parse().ok()?;
+    let header = relay_rpc.chain_get_header(Some(hash)).await.ok()??;
+    Some(format!("{:#x}", header.parent_hash))
 }
 
 #[cfg(test)]
