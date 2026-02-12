@@ -1,7 +1,8 @@
 //! Handler for /pallets/assets/{assetId}/asset-info endpoint.
 
 use crate::handlers::pallets::common::{
-    AssetDetails, AssetMetadataStorage, AtResponse, PalletError, format_account_id,
+    AssetDetails, AssetMetadataStorage, AtResponse, ClientAtBlock, PalletError, format_account_id,
+    resolve_block_for_pallet,
 };
 use crate::state::AppState;
 use crate::utils::{
@@ -16,7 +17,6 @@ use axum::{
 };
 use config::ChainType;
 use serde::{Deserialize, Serialize};
-use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 // ============================================================================
 // Request/Response Types
@@ -106,26 +106,12 @@ pub async fn pallets_assets_asset_info(
         return handle_use_rc_block(state, asset_id, params).await;
     }
 
-    // Create client at the specified block - saves RPC calls by letting subxt resolve hash<->number internally
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<BlockId>()?;
-            match block_id {
-                BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let ss58_prefix = state.chain_info.ss58_prefix;
-    let asset_info = fetch_asset_info(&client_at_block, asset_id, ss58_prefix).await;
-    let asset_meta_data = fetch_asset_metadata(&client_at_block, asset_id).await;
+    let asset_info = fetch_asset_info(&resolved.client_at_block, asset_id, ss58_prefix).await;
+    let asset_meta_data = fetch_asset_metadata(&resolved.client_at_block, asset_id).await;
 
     if asset_info.is_none() && asset_meta_data.is_none() {
         return Err(PalletError::AssetNotFound(asset_id.to_string()));
@@ -134,7 +120,7 @@ pub async fn pallets_assets_asset_info(
     Ok((
         StatusCode::OK,
         Json(PalletsAssetsInfoResponse {
-            at,
+            at: resolved.at,
             asset_info,
             asset_meta_data,
             rc_block_hash: None,
@@ -222,7 +208,7 @@ async fn handle_use_rc_block(
 
 /// Fetches asset details from Assets::Asset storage.
 async fn fetch_asset_info(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    client_at_block: &ClientAtBlock,
     asset_id: u32,
     ss58_prefix: u16,
 ) -> Option<AssetInfo> {
@@ -254,7 +240,7 @@ async fn fetch_asset_info(
 
 /// Fetches asset metadata from Assets::Metadata storage.
 async fn fetch_asset_metadata(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    client_at_block: &ClientAtBlock,
     asset_id: u32,
 ) -> Option<AssetMetadata> {
     // Query Assets pallet with typed return

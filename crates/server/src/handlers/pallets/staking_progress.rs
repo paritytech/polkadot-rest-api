@@ -1,4 +1,6 @@
-use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::common::{
+    AtResponse, PalletError, format_account_id, resolve_block_for_pallet,
+};
 use crate::handlers::pallets::constants::{
     derive_election_lookahead, get_asset_hub_babe_params, get_babe_epoch_duration,
     is_bad_staking_block,
@@ -172,25 +174,11 @@ pub async fn pallets_staking_progress(
         return handle_use_rc_block(state, params).await;
     }
 
-    // Create client at the specified block - saves RPC calls by letting subxt resolve hash<->number internally
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<BlockId>()?;
-            match block_id {
-                BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     // Check for bad staking blocks
-    let block_number = client_at_block.block_number();
+    let block_number = resolved.client_at_block.block_number();
     if is_bad_staking_block(&state.chain_info.spec_name, block_number) {
         return Err(PalletError::BadStakingBlock(format!(
             "Block {} is a known bad staking block for {}",
@@ -199,12 +187,12 @@ pub async fn pallets_staking_progress(
     }
 
     // Fetch base staking data
-    let validator_count = fetch_validator_count(&client_at_block).await?;
-    let force_era = fetch_force_era(&client_at_block).await?;
+    let validator_count = fetch_validator_count(&resolved.client_at_block).await?;
+    let force_era = fetch_force_era(&resolved.client_at_block).await?;
 
     // Fetch unapplied slashes
     let unapplied_slashes =
-        fetch_unapplied_slashes(&client_at_block, state.chain_info.ss58_prefix).await;
+        fetch_unapplied_slashes(&resolved.client_at_block, state.chain_info.ss58_prefix).await;
 
     let is_asset_hub = state.chain_info.chain_type == ChainType::AssetHub;
 
@@ -240,15 +228,17 @@ pub async fn pallets_staking_progress(
             let relay_client_at_block = relay_client.at_block(relay_block_number).await?;
             fetch_staking_validators(&relay_client_at_block, relay_chain_info.ss58_prefix).await?
         } else {
-            fetch_staking_validators(&client_at_block, state.chain_info.ss58_prefix).await?
+            fetch_staking_validators(&resolved.client_at_block, state.chain_info.ss58_prefix)
+                .await?
         }
     } else {
-        fetch_staking_validators(&client_at_block, state.chain_info.ss58_prefix).await?
+        fetch_staking_validators(&resolved.client_at_block, state.chain_info.ss58_prefix).await?
     };
     let progress = if is_asset_hub {
-        derive_session_era_progress_asset_hub(&state, &client_at_block).await?
+        derive_session_era_progress_asset_hub(&state, &resolved.client_at_block).await?
     } else {
-        derive_session_era_progress_relay(&client_at_block, &state.chain_info.spec_name).await?
+        derive_session_era_progress_relay(&resolved.client_at_block, &state.chain_info.spec_name)
+            .await?
     };
 
     // Calculate next session estimate
@@ -260,7 +250,7 @@ pub async fn pallets_staking_progress(
 
     // Build base response (always included fields)
     let mut response = StakingProgressResponse {
-        at,
+        at: resolved.at,
         active_era: Some(progress.active_era.to_string()),
         force_era: force_era.to_json(),
         next_session_estimate: Some(next_session.to_string()),
@@ -291,7 +281,7 @@ pub async fn pallets_staking_progress(
     };
 
     // Fetch election status (may be deprecated in newer runtimes)
-    let election_status = fetch_election_status(&client_at_block).await;
+    let election_status = fetch_election_status(&resolved.client_at_block).await;
 
     // Calculate election toggle estimate
     let election_lookahead =

@@ -4,7 +4,7 @@
 //! - `/pallets/asset-conversion/liquidity-pools` - List all liquidity pools
 //! - `/pallets/asset-conversion/next-available-id` - Get the next available pool asset ID
 
-use crate::handlers::pallets::common::{AtResponse, PalletError};
+use crate::handlers::pallets::common::{AtResponse, PalletError, resolve_block_for_pallet};
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -100,29 +100,15 @@ pub async fn get_next_available_id(
         return handle_next_id_with_rc_block(state, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
-
-    let pool_id = fetch_next_pool_asset_id(&client_at_block).await?;
+    let pool_id = fetch_next_pool_asset_id(&resolved.client_at_block).await?;
 
     Ok((
         StatusCode::OK,
         Json(NextAvailableIdResponse {
-            at,
+            at: resolved.at,
             pool_id,
             rc_block_hash: None,
             rc_block_number: None,
@@ -219,29 +205,15 @@ pub async fn get_liquidity_pools(
         return handle_pools_with_rc_block(state, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
-
-    let pools = fetch_liquidity_pools(&client_at_block).await?;
+    let pools = fetch_liquidity_pools(&resolved.client_at_block).await?;
 
     Ok((
         StatusCode::OK,
         Json(LiquidityPoolsResponse {
-            at,
+            at: resolved.at,
             pools,
             rc_block_hash: None,
             rc_block_number: None,
