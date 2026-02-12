@@ -615,32 +615,30 @@ pub async fn build_block_response_generic(
 
     let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
 
-    let needs_metadata = params.event_docs || params.extrinsic_docs || params.use_evm_format;
-    let metadata = needs_metadata.then(|| client_at_block.metadata());
+    if params.event_docs || params.extrinsic_docs || params.use_evm_format {
+        let metadata = client_at_block.metadata();
 
-    if params.event_docs {
-        let metadata = metadata.as_ref().unwrap();
-        add_docs_to_events(&mut on_initialize.events, metadata);
-        add_docs_to_events(&mut on_finalize.events, metadata);
+        if params.event_docs {
+            add_docs_to_events(&mut on_initialize.events, &metadata);
+            add_docs_to_events(&mut on_finalize.events, &metadata);
 
-        for extrinsic in extrinsics_with_events.iter_mut() {
-            add_docs_to_events(&mut extrinsic.events, metadata);
+            for extrinsic in extrinsics_with_events.iter_mut() {
+                add_docs_to_events(&mut extrinsic.events, &metadata);
+            }
         }
-    }
 
-    if params.extrinsic_docs {
-        let metadata = metadata.as_ref().unwrap();
-        for extrinsic in extrinsics_with_events.iter_mut() {
-            let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
-            let method_name = extrinsic.method.method.to_snake_case();
-            extrinsic.docs =
-                Docs::for_call_subxt(metadata, &pallet_name, &method_name).map(|d| d.to_string());
+        if params.extrinsic_docs {
+            for extrinsic in extrinsics_with_events.iter_mut() {
+                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
+                let method_name = extrinsic.method.method.to_snake_case();
+                extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
+                    .map(|d| d.to_string());
+            }
         }
-    }
 
-    if params.use_evm_format {
-        let metadata = metadata.as_ref().unwrap();
-        super::evm_format::apply_evm_format(&mut extrinsics_with_events, metadata);
+        if params.use_evm_format {
+            super::evm_format::apply_evm_format(&mut extrinsics_with_events, &metadata);
+        }
     }
 
     let decoded_xcm_msgs = if params.decoded_xcm_msgs {
