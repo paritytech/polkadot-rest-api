@@ -11,5 +11,6 @@ pub mod pallets;
 pub mod paras;
 pub mod rc;
 pub mod runtime;
+pub mod runtime_queries;
 pub mod transaction;
 pub mod version;
