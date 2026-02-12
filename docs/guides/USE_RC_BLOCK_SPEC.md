@@ -1,4 +1,4 @@
-# Substrate API Sidecar: useRcBlock Query Parameters Specification
+# Polkadot REST API: useRcBlock Query Parameters Specification
 
 ## Prerequisites
 The `useRcBlock` functionality requires two connection configurations:

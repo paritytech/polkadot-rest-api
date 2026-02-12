@@ -1,6 +1,6 @@
 {
   "name": "substrate-api-sidecar-docs",
-  "description": "Modern documentation for Substrate API Sidecar",
+  "description": "Modern documentation for Polkadot REST API",
   "private": true,
   "scripts": {
     "update-spec": "curl -s http://localhost:8080/api-docs/openapi.json > openapi.json",
@@ -16,7 +16,7 @@
     "html-webpack-plugin": "^5.6.0",
     "style-loader": "^3.3.0",
     "webpack": "^5.89.0",
-    "webpack-cli": "^5.1.0",
+    "webpack-cli": "^5.1.4",
     "webpack-dev-server": "^5.2.1"
   },
   "engines": {

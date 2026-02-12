@@ -1,6 +1,6 @@
 # Advanced Configuration Guide
 
-This comprehensive guide covers all configuration options available in Substrate API Sidecar. All environment variables use the `SAS_` prefix (Substrate API Sidecar).
+This comprehensive guide covers all configuration options available in Polkadot REST API. All environment variables use the `SAS_` prefix (Substrate API Sidecar).
 
 ## Table of Contents
 
