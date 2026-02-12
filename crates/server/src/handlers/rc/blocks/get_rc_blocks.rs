@@ -55,6 +55,27 @@ pub struct RcBlocksRangeQueryParams {
 /// - `noFees` (boolean, default: false): Skip fee calculation
 /// - `decodedXcmMsgs` (boolean, default: false): Decode and include XCM messages
 /// - `paraId` (number, optional): Filter XCM messages by parachain ID
+#[utoipa::path(
+    get,
+    path = "/v1/rc/blocks",
+    tag = "rc",
+    summary = "RC get blocks by range",
+    description = "Returns relay chain blocks within a specified range (max 500 blocks).",
+    params(
+        ("range" = Option<String>, Query, description = "Block range (e.g., '100-200')"),
+        ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include extrinsic documentation"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation"),
+        ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID")
+    ),
+    responses(
+        (status = 200, description = "Relay chain blocks", body = Object),
+        (status = 400, description = "Invalid range or missing parameter"),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_blocks(
     State(state): State<AppState>,
     Query(params): Query<RcBlocksRangeQueryParams>,

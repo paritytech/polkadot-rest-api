@@ -10,3 +10,5 @@ CLAUDE.md
 metrics/grafana/data/
 
 .env
+
+docs/node_modules/

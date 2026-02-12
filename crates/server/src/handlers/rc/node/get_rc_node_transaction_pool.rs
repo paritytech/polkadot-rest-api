@@ -94,6 +94,21 @@ impl IntoResponse for GetRcNodeTransactionPoolError {
 /// Returns the relay chain's transaction pool with optional fee information.
 /// This endpoint is specifically for Asset Hub instances to query relay chain
 /// pending transactions.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/node/transaction-pool",
+    tag = "rc",
+    summary = "RC get transaction pool",
+    description = "Returns the relay chain's transaction pool with optional fee information.",
+    params(
+        ("includeFee" = Option<bool>, Query, description = "Include fee information for each transaction (default: false)")
+    ),
+    responses(
+        (status = 200, description = "Relay chain transaction pool", body = TransactionPoolResponse),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_node_transaction_pool(
     State(state): State<AppState>,
     Query(params): Query<TransactionPoolQueryParams>,

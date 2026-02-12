@@ -1,18 +1,18 @@
 //! Account-related handlers.
 
-mod get_asset_approvals;
-mod get_asset_balances;
-mod get_balance_info;
-mod get_compare;
-mod get_convert;
-mod get_foreign_asset_balances;
-mod get_pool_asset_approvals;
-mod get_pool_asset_balances;
-mod get_proxy_info;
-mod get_staking_info;
-mod get_staking_payouts;
-mod get_validate;
-mod get_vesting_info;
+pub mod get_asset_approvals;
+pub mod get_asset_balances;
+pub mod get_balance_info;
+pub mod get_compare;
+pub mod get_convert;
+pub mod get_foreign_asset_balances;
+pub mod get_pool_asset_approvals;
+pub mod get_pool_asset_balances;
+pub mod get_proxy_info;
+pub mod get_staking_info;
+pub mod get_staking_payouts;
+pub mod get_validate;
+pub mod get_vesting_info;
 mod types;
 pub mod utils;
 

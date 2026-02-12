@@ -25,6 +25,20 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
 /// Returns:
 /// - `areEqual`: Whether all addresses have the same underlying public key
 /// - `addresses`: Array of address details with ss58Format, ss58Prefix, network, publicKey
+#[utoipa::path(
+    get,
+    path = "/v1/accounts/compare",
+    tag = "accounts",
+    summary = "Compare account addresses",
+    description = "Compares multiple SS58 addresses to determine if they have the same underlying public key.",
+    params(
+        ("addresses" = String, Query, description = "Comma-separated list of SS58 addresses to compare (max 30)")
+    ),
+    responses(
+        (status = 200, description = "Comparison result", body = AccountCompareResponse),
+        (status = 400, description = "Invalid parameters")
+    )
+)]
 pub async fn get_compare(
     Query(params): Query<AccountCompareQueryParams>,
 ) -> Result<Response, AccountsError> {

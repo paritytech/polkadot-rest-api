@@ -25,6 +25,23 @@ use sp_core::crypto::AccountId32;
 /// Query Parameters:
 /// - `at` (optional): Block identifier (hash or height) - defaults to latest finalized
 /// - `useRcBlock` (optional): When true, treat 'at' as relay chain block identifier
+#[utoipa::path(
+    get,
+    path = "/v1/accounts/{accountId}/proxy-info",
+    tag = "accounts",
+    summary = "Account proxy info",
+    description = "Returns proxy information for a given account including delegated proxies and their types.",
+    params(
+        ("accountId" = String, Path, description = "SS58-encoded account address"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Proxy information", body = ProxyInfoResponse),
+        (status = 400, description = "Invalid parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_proxy_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,

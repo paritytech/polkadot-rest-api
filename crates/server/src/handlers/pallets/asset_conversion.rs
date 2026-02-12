@@ -77,9 +77,21 @@ pub struct LiquidityPoolsResponse {
 // Next Available ID Handler
 // ============================================================================
 
-/// GET /pallets/asset-conversion/next-available-id
-///
-/// Returns the next available pool asset ID from the AssetConversion pallet.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/asset-conversion/next-available-id",
+    tag = "pallets",
+    summary = "Next available pool ID",
+    description = "Returns the next available pool asset ID from the AssetConversion pallet.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Next available ID", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_next_available_id(
     State(state): State<AppState>,
     Query(params): Query<AssetConversionQueryParams>,
@@ -184,9 +196,21 @@ async fn handle_next_id_with_rc_block(
 // Liquidity Pools Handler
 // ============================================================================
 
-/// GET /pallets/asset-conversion/liquidity-pools
-///
-/// Returns all liquidity pools from the AssetConversion pallet.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/asset-conversion/liquidity-pools",
+    tag = "pallets",
+    summary = "Liquidity pools",
+    description = "Returns all liquidity pools from the AssetConversion pallet.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Liquidity pools", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_liquidity_pools(
     State(state): State<AppState>,
     Query(params): Query<AssetConversionQueryParams>,

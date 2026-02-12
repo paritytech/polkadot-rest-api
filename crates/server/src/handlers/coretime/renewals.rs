@@ -141,6 +141,21 @@ pub struct CoretimeRenewalsResponse {
 ///
 /// Query Parameters:
 /// - at: Optional block number or hash to query at (defaults to latest finalized)
+#[utoipa::path(
+    get,
+    path = "/v1/coretime/renewals",
+    tag = "coretime",
+    summary = "Get coretime potential renewals",
+    description = "Returns potential renewals on a coretime chain sorted by core index, including price, completion status, and task assignment.",
+    params(
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+    ),
+    responses(
+        (status = 200, description = "Coretime renewals", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn coretime_renewals(
     State(state): State<AppState>,
     Query(params): Query<CoretimeQueryParams>,

@@ -19,14 +19,28 @@ use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
 // Main Handler
 // ================================================================================================
 
-/// Handler for GET /blocks/{blockId}
-///
-/// Returns block information for a given block identifier (hash or number)
-///
-/// Query Parameters:
-/// - `eventDocs` (boolean, default: false): Include documentation for events
-/// - `extrinsicDocs` (boolean, default: false): Include documentation for extrinsics
-/// - `useRcBlock` (boolean, default: false): When true, treat blockId as Relay Chain block and return Asset Hub blocks
+#[utoipa::path(
+    get,
+    path = "/v1/blocks/{blockId}",
+    tag = "blocks",
+    summary = "Get block by ID",
+    description = "Returns block information for a given block identifier (hash or number), including extrinsics, events, and fees.",
+    params(
+        ("blockId" = String, Path, description = "Block height number or block hash"),
+        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation for extrinsics"),
+        ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat blockId as Relay Chain block and return Asset Hub blocks")
+    ),
+    responses(
+        (status = 200, description = "Block information", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 404, description = "Block not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_block(
     State(state): State<AppState>,
     Path(block_id): Path<String>,

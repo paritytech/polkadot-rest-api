@@ -1,8 +1,9 @@
 use crate::state::AppState;
 use axum::{extract::State, http::StatusCode, response::Json};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HealthResponse {
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -11,6 +12,16 @@ pub struct HealthResponse {
     pub uptime: Option<u64>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/health",
+    tag = "health",
+    summary = "Health check",
+    description = "Returns the health status of the API server.",
+    responses(
+        (status = 202, description = "API is healthy", body = HealthResponse)
+    )
+)]
 pub async fn get_health(State(_state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
     let response = HealthResponse {
         status: "ok".to_string(),

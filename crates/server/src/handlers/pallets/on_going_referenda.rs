@@ -154,9 +154,21 @@ struct DecidingDetails {
 // Main Handler
 // ============================================================================
 
-/// Handler for GET /pallets/on-going-referenda
-///
-/// Returns all currently active referenda from the Referenda pallet.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/on-going-referenda",
+    tag = "pallets",
+    summary = "On-going referenda",
+    description = "Returns all currently active referenda from the Referenda pallet.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Active referenda", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn pallets_on_going_referenda(
     State(state): State<AppState>,
     Query(params): Query<OnGoingReferendaQueryParams>,
@@ -468,6 +480,20 @@ pub struct RcOnGoingReferendaQueryParams {
 /// Handler for GET `/rc/pallets/on-going-referenda`
 ///
 /// Returns ongoing referenda from the relay chain.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/pallets/on-going-referenda",
+    tag = "rc",
+    summary = "RC on-going referenda",
+    description = "Returns all currently active referenda from the relay chain's Referenda pallet.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Active referenda from relay chain", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn rc_pallets_on_going_referenda(
     State(state): State<AppState>,
     Query(params): Query<RcOnGoingReferendaQueryParams>,

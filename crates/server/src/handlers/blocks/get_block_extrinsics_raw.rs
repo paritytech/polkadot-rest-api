@@ -82,6 +82,22 @@ pub struct BlockRawResponse {
 ///
 /// # Query Parameters
 /// - `useRcBlock` (boolean, default: false): When true, treat blockId as Relay Chain block and return Asset Hub blocks
+#[utoipa::path(
+    get,
+    path = "/v1/blocks/{blockId}/extrinsics-raw",
+    tag = "blocks",
+    summary = "Get raw extrinsics",
+    description = "Returns raw block data with hex-encoded extrinsics for a given block identifier. The extrinsics are returned as raw hex strings without decoding.",
+    params(
+        ("blockId" = String, Path, description = "Block height number or block hash"),
+        ("useRcBlock" = Option<bool>, Query, description = "When true, treat blockId as Relay Chain block and return Asset Hub blocks")
+    ),
+    responses(
+        (status = 200, description = "Raw block data with hex-encoded extrinsics", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_block_extrinsics_raw(
     State(state): State<AppState>,
     Path(block_id): Path<String>,

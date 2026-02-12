@@ -1,6 +1,6 @@
-mod get_rc_runtime_code;
-mod get_rc_runtime_metadata;
-mod get_rc_runtime_spec;
+pub mod get_rc_runtime_code;
+pub mod get_rc_runtime_metadata;
+pub mod get_rc_runtime_spec;
 
 pub use get_rc_runtime_code::get_rc_runtime_code;
 pub use get_rc_runtime_metadata::{

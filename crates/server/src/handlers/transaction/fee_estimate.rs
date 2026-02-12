@@ -2,13 +2,14 @@ use crate::state::AppState;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use utoipa::ToSchema;
 
 #[derive(Debug, Deserialize)]
 pub struct FeeEstimateRequest {
     pub tx: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FeeEstimateResponse {
     pub weight: Weight,
@@ -16,7 +17,7 @@ pub struct FeeEstimateResponse {
     pub partial_fee: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Weight {
     pub ref_time: String,
@@ -111,6 +112,19 @@ impl IntoResponse for FeeEstimateError {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/transaction/fee-estimate",
+    tag = "transaction",
+    summary = "Estimate transaction fee",
+    description = "Estimate the fee for a transaction.",
+    request_body(content = Object, description = "Transaction with 'tx' field containing hex-encoded transaction"),
+    responses(
+        (status = 200, description = "Fee estimate", body = FeeEstimateResponse),
+        (status = 400, description = "Invalid transaction"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn fee_estimate(
     State(state): State<AppState>,
     Json(body): Json<FeeEstimateRequest>,
@@ -118,6 +132,19 @@ pub async fn fee_estimate(
     fee_estimate_internal(&state.client, body).await
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/rc/transaction/fee-estimate",
+    tag = "rc",
+    summary = "RC fee estimate",
+    description = "Estimate the fee for a relay chain transaction.",
+    request_body(content = Object, description = "Transaction with 'tx' field"),
+    responses(
+        (status = 200, description = "Fee estimate", body = FeeEstimateResponse),
+        (status = 400, description = "Invalid transaction"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn fee_estimate_rc(
     State(state): State<AppState>,
     Json(body): Json<FeeEstimateRequest>,

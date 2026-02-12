@@ -96,9 +96,23 @@ pub struct EventField {
 // Main Handlers
 // ============================================================================
 
-/// Handler for GET `/pallets/{palletId}/events`
-///
-/// Returns all events defined in a pallet.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/{palletId}/events",
+    tag = "pallets",
+    summary = "Pallet events",
+    description = "Returns all events defined in a pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return event names")
+    ),
+    responses(
+        (status = 200, description = "Pallet events", body = Object),
+        (status = 400, description = "Invalid pallet"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_pallet_events(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
@@ -143,9 +157,24 @@ pub async fn get_pallet_events(
     extract_pallet_events(&metadata, &pallet_id, at, params.only_ids)
 }
 
-/// Handler for GET `/pallets/{palletId}/events/{eventItemId}`
-///
-/// Returns metadata for a specific event in a pallet.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/{palletId}/events/{eventItemId}",
+    tag = "pallets",
+    summary = "Pallet event details",
+    description = "Returns metadata for a specific event in a pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("eventItemId" = String, Path, description = "Name of the event"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata")
+    ),
+    responses(
+        (status = 200, description = "Event details", body = Object),
+        (status = 404, description = "Event not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_pallet_event_item(
     State(state): State<AppState>,
     Path((pallet_id, event_item_id)): Path<(String, String)>,

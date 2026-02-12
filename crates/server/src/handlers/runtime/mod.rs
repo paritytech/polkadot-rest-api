@@ -1,6 +1,6 @@
-mod get_code;
-mod get_metadata;
-mod get_spec;
+pub mod get_code;
+pub mod get_metadata;
+pub mod get_spec;
 
 pub use get_code::runtime_code;
 pub use get_metadata::runtime_metadata;

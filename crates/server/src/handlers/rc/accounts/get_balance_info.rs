@@ -28,6 +28,25 @@ use config::ChainType;
 /// - `at` (optional): Block identifier (hash or height) - defaults to latest finalized
 /// - `token` (optional): Token symbol (defaults to native token)
 /// - `denominated` (optional): When true, denominate balances using chain decimals
+#[utoipa::path(
+    get,
+    path = "/v1/rc/accounts/{accountId}/balance-info",
+    tag = "rc",
+    summary = "RC get balance info",
+    description = "Returns balance information for a given account on the relay chain.",
+    params(
+        ("accountId" = String, Path, description = "SS58-encoded account address"),
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
+        ("token" = Option<String>, Query, description = "Token symbol (defaults to native token)"),
+        ("denominated" = Option<bool>, Query, description = "Denominate balances using chain decimals")
+    ),
+    responses(
+        (status = 200, description = "Balance information", body = RcBalanceInfoResponse),
+        (status = 400, description = "Invalid account address"),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_balance_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,

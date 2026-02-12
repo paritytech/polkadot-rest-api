@@ -93,6 +93,21 @@ impl IntoResponse for GetBlockHeadHeaderError {
 /// Query Parameters:
 /// - `finalized` (boolean, default: true): When true, returns finalized head. When false, returns canonical head.
 /// - `useRcBlock` (boolean, default: false): When true, treat as Relay Chain block and return Asset Hub blocks
+#[utoipa::path(
+    get,
+    path = "/v1/blocks/head/header",
+    tag = "blocks",
+    summary = "Get head block header",
+    description = "Returns the header of the latest finalized or canonical block (lightweight, no extrinsics/events).",
+    params(
+        ("finalized" = Option<bool>, Query, description = "When true (default), returns finalized head header. When false, returns canonical head header."),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat as Relay Chain block and return Asset Hub blocks")
+    ),
+    responses(
+        (status = 200, description = "Block header information", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_blocks_head_header(
     State(state): State<AppState>,
     Query(params): Query<BlockQueryParams>,

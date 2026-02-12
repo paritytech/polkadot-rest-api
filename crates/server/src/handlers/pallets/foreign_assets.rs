@@ -109,10 +109,21 @@ struct AssetMetadataStorage {
 // Main Handler
 // ============================================================================
 
-/// Handler for GET /pallets/foreign-assets
-///
-/// Returns all foreign assets with their details and metadata.
-/// Foreign assets use XCM MultiLocation as their identifier instead of simple u32 IDs.
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/foreign-assets",
+    tag = "pallets",
+    summary = "Foreign assets",
+    description = "Returns all foreign assets with their details and metadata. Foreign assets use XCM MultiLocation as their identifier.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Foreign assets list", body = Object),
+        (status = 400, description = "Not supported on this chain"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn pallets_foreign_assets(
     State(state): State<AppState>,
     Query(params): Query<ForeignAssetsQueryParams>,

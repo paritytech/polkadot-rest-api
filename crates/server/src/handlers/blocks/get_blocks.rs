@@ -30,13 +30,25 @@ pub struct BlocksRangeQueryParams {
     pub use_evm_format: bool,
 }
 
-/// Handler for GET /blocks
-///
-/// Returns a collection of blocks given a numeric range.
-///
-/// Notes:
-/// - Range is inclusive and limited to 500 blocks (matching Sidecar).
-/// - Blocks are returned as an array of `BlockResponse`.
+#[utoipa::path(
+    get,
+    path = "/v1/blocks",
+    tag = "blocks",
+    summary = "Get blocks by range",
+    description = "Returns a collection of blocks given a numeric range. Range is inclusive and limited to 500 blocks.",
+    params(
+        ("range" = Option<String>, Query, description = "Block range in format 'start-end' (e.g. '100-200')"),
+        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation for extrinsics"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat range as Relay Chain blocks")
+    ),
+    responses(
+        (status = 200, description = "Array of block information", body = Vec<Object>),
+        (status = 400, description = "Invalid range parameter"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_blocks(
     State(state): State<AppState>,
     Query(params): Query<BlocksRangeQueryParams>,

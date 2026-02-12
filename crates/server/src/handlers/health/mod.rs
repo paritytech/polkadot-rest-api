@@ -1,3 +1,3 @@
-mod get_health;
+pub mod get_health;
 
 pub use get_health::get_health;

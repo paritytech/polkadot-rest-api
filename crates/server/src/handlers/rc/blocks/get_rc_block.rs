@@ -117,6 +117,27 @@ impl IntoResponse for GetRcBlockError {
 /// - `noFees` (boolean, default: false): Skip fee calculation
 /// - `decodedXcmMsgs` (boolean, default: false): Include decoded XCM messages
 /// - `paraId` (number, optional): Filter XCM messages by parachain ID
+#[utoipa::path(
+    get,
+    path = "/v1/rc/blocks/{blockId}",
+    tag = "rc",
+    summary = "RC get block by ID",
+    description = "Returns relay chain block information for a given block identifier.",
+    params(
+        ("blockId" = String, Path, description = "Block height number or block hash"),
+        ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include extrinsic documentation"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation"),
+        ("decodedXcmMsgs" = Option<bool>, Query, description = "Include decoded XCM messages"),
+        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID")
+    ),
+    responses(
+        (status = 200, description = "Relay chain block information", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_block(
     State(state): State<AppState>,
     Path(block_id): Path<String>,

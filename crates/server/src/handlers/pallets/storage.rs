@@ -22,6 +22,7 @@ use parity_scale_codec::Decode;
 use serde::Serialize;
 use serde_json::json;
 use subxt_rpcs::{RpcClient, rpc_params};
+use utoipa::ToSchema;
 
 // ============================================================================
 // Query Parameters
@@ -74,7 +75,7 @@ pub enum StorageItems {
 }
 
 /// Block information in the response
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AtResponse {
     pub hash: String,
     pub height: String,
@@ -189,6 +190,24 @@ fn extract_default_bytes<G>(default: &DecodeDifferent<G, Vec<u8>>) -> String {
 // Main Handler
 // ============================================================================
 
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/{palletId}/storage",
+    tag = "pallets",
+    summary = "Pallet storage items",
+    description = "Returns the list of storage items for a given pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return storage item names"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Pallet storage items", body = Object),
+        (status = 400, description = "Invalid pallet or parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_pallets_storage(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
@@ -331,7 +350,27 @@ async fn handle_use_rc_block(
 // Storage Item Handler
 // ============================================================================
 
-/// Handler for GET /pallets/{palletId}/storage/{storageItemId}
+#[utoipa::path(
+    get,
+    path = "/v1/pallets/{palletId}/storage/{storageItemId}",
+    tag = "pallets",
+    summary = "Pallet storage item value",
+    description = "Returns the value of a specific storage item in a pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("storageItemId" = String, Path, description = "Name of the storage item"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("keys" = Option<String>, Query, description = "Storage key arguments"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata for the storage item"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Storage item value", body = Object),
+        (status = 400, description = "Invalid parameters"),
+        (status = 404, description = "Storage item not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_pallets_storage_item(
     State(state): State<AppState>,
     Path((pallet_id, storage_item_id)): Path<(String, String)>,
@@ -1928,6 +1967,23 @@ pub struct RcStorageItemQueryParams {
 /// Handler for GET `/rc/pallets/{palletId}/storage`
 ///
 /// Returns storage items from the relay chain's pallet metadata.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/pallets/{palletId}/storage",
+    tag = "rc",
+    summary = "RC pallet storage items",
+    description = "Returns the list of storage items for a relay chain pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return storage item names")
+    ),
+    responses(
+        (status = 200, description = "Relay chain pallet storage items", body = Object),
+        (status = 400, description = "Invalid pallet or parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn rc_get_pallets_storage(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
@@ -1958,6 +2014,26 @@ pub async fn rc_get_pallets_storage(
 /// Handler for GET `/rc/pallets/{palletId}/storage/{storageItemId}`
 ///
 /// Returns a specific storage item from the relay chain.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/pallets/{palletId}/storage/{storageItemId}",
+    tag = "rc",
+    summary = "RC pallet storage item value",
+    description = "Returns the value of a specific storage item from a relay chain pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("storageItemId" = String, Path, description = "Name of the storage item"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("keys" = Option<String>, Query, description = "Storage key arguments"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata for the storage item")
+    ),
+    responses(
+        (status = 200, description = "Relay chain storage item value", body = Object),
+        (status = 400, description = "Invalid parameters"),
+        (status = 404, description = "Storage item not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn rc_get_pallets_storage_item(
     State(state): State<AppState>,
     Path((pallet_id, storage_item_id)): Path<(String, String)>,

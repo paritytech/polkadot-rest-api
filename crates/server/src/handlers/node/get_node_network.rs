@@ -70,9 +70,17 @@ where
     serializer.serialize_str(&value.to_string())
 }
 
-/// Handler for GET /node/network
-///
-/// Returns the node's network information
+#[utoipa::path(
+    get,
+    path = "/v1/node/network",
+    tag = "node",
+    summary = "Node network info",
+    description = "Returns the node's network information including peer count, syncing status, and local peer ID.",
+    responses(
+        (status = 200, description = "Node network information", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_node_network(
     State(state): State<AppState>,
 ) -> Result<Json<NodeNetworkResponse>, GetNodeNetworkError> {

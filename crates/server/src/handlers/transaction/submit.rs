@@ -134,27 +134,63 @@ fn is_parse_error(err: &subxt_rpcs::Error) -> bool {
         || error_str.contains("unable to decode")
 }
 
-/// Submit a signed extrinsic to the transaction pool.
+#[utoipa::path(
+    post,
+    path = "/v1/transaction",
+    tag = "transaction",
+    summary = "Submit transaction",
+    description = "Submit a signed extrinsic to the transaction pool.",
+    request_body(content = Object, description = "Signed extrinsic with 'tx' field containing hex-encoded transaction"),
+    responses(
+        (status = 200, description = "Transaction hash", body = Object),
+        (status = 400, description = "Invalid transaction"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn submit(
     State(state): State<AppState>,
     Json(body): Json<SubmitRequest>,
-    use_rc: bool,
 ) -> Result<Json<SubmitResponse>, SubmitError> {
-    // Validate tx field
+    submit_internal(&state.rpc_client, body).await
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/rc/transaction",
+    tag = "rc",
+    summary = "Submit transaction (relay chain)",
+    description = "Submit a signed extrinsic to the relay chain transaction pool. Only available on parachains.",
+    request_body(content = Object, description = "Signed extrinsic with 'tx' field containing hex-encoded transaction"),
+    responses(
+        (status = 200, description = "Transaction hash", body = Object),
+        (status = 400, description = "Invalid transaction"),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn submit_rc(
+    State(state): State<AppState>,
+    Json(body): Json<SubmitRequest>,
+) -> Result<Json<SubmitResponse>, SubmitError> {
+    let tx_str = body.tx.as_deref().unwrap_or_default();
+    let rpc_client =
+        state
+            .get_relay_chain_rpc_client()
+            .ok_or_else(|| SubmitError::RelayChainNotConfigured {
+                transaction: tx_str.to_string(),
+            })?;
+
+    submit_internal(rpc_client, body).await
+}
+
+async fn submit_internal(
+    rpc_client: &std::sync::Arc<subxt_rpcs::RpcClient>,
+    body: SubmitRequest,
+) -> Result<Json<SubmitResponse>, SubmitError> {
     let tx = body.tx.as_ref().ok_or(SubmitError::MissingTx)?;
     if tx.is_empty() {
         return Err(SubmitError::MissingTx);
     }
-
-    let rpc_client: &std::sync::Arc<subxt_rpcs::RpcClient> = if use_rc {
-        state
-            .get_relay_chain_rpc_client()
-            .ok_or_else(|| SubmitError::RelayChainNotConfigured {
-                transaction: tx.clone(),
-            })?
-    } else {
-        &state.rpc_client
-    };
 
     let hash: String = rpc_client
         .request("author_submitExtrinsic", rpc_params![tx])
@@ -162,7 +198,6 @@ pub async fn submit(
         .map_err(|e| {
             let (cause, stack) = extract_cause_and_stack(&e);
 
-            // Determine if this is a parse error or submit error based on the error content
             if is_parse_error(&e) {
                 SubmitError::ParseFailed {
                     transaction: tx.clone(),

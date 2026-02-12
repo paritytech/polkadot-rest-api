@@ -90,6 +90,21 @@ pub struct AtBlockParam {
 /// Returns:
 /// - `at`: Block number and hash at which the call was made
 /// - `code`: Runtime code Wasm blob as hex string
+#[utoipa::path(
+    get,
+    path = "/v1/rc/runtime/code",
+    tag = "rc",
+    summary = "RC get runtime code",
+    description = "Returns the Wasm code blob of the relay chain runtime at a given block.",
+    params(
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+    ),
+    responses(
+        (status = 200, description = "Relay chain runtime code", body = Object),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_runtime_code(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,

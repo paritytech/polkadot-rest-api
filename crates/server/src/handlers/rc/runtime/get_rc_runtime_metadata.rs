@@ -128,6 +128,21 @@ async fn resolve_relay_block_hash(
 ///
 /// Query parameters:
 /// - `at` (optional): Block identifier (block number or block hash). Defaults to latest block.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/runtime/metadata",
+    tag = "rc",
+    summary = "RC get runtime metadata",
+    description = "Returns the decoded runtime metadata of the relay chain in JSON format.",
+    params(
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+    ),
+    responses(
+        (status = 200, description = "Relay chain runtime metadata", body = Object),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_runtime_metadata(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
@@ -178,6 +193,21 @@ pub async fn get_rc_runtime_metadata(
 ///
 /// Query parameters:
 /// - `at` (optional): Block identifier (block number or block hash). Defaults to latest block.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/runtime/metadata/versions",
+    tag = "rc",
+    summary = "RC get metadata versions",
+    description = "Returns the available metadata versions on the relay chain at a given block.",
+    params(
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+    ),
+    responses(
+        (status = 200, description = "Available metadata versions", body = Object),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_runtime_metadata_versions(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
@@ -227,6 +257,23 @@ pub async fn get_rc_runtime_metadata_versions(
 ///
 /// Query parameters:
 /// - `at` (optional): Block identifier (block number or block hash). Defaults to latest block.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/runtime/metadata/{version}",
+    tag = "rc",
+    summary = "RC get metadata by version",
+    description = "Returns the relay chain metadata at a specific version (e.g., v14, v15).",
+    params(
+        ("version" = String, Path, description = "Metadata version in 'vX' format (e.g., v14, v15)"),
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+    ),
+    responses(
+        (status = 200, description = "Relay chain metadata at specified version", body = Object),
+        (status = 400, description = "Invalid version format"),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_runtime_metadata_versioned(
     State(state): State<AppState>,
     Path(version): Path<String>,

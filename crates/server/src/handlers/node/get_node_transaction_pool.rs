@@ -8,6 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
+use utoipa::ToSchema;
 
 use super::common::{
     FetchError, TipExtractionError, fetch_transaction_pool_simple, fetch_transaction_pool_with_fees,
@@ -89,7 +90,7 @@ pub struct TransactionPoolQueryParams {
     pub include_fee: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionPoolEntry {
     pub hash: String,
@@ -102,15 +103,26 @@ pub struct TransactionPoolEntry {
     pub partial_fee: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionPoolResponse {
     pub pool: Vec<TransactionPoolEntry>,
 }
 
-/// Handler for GET /node/transaction-pool
-///
-/// Returns the transaction pool with optional fee information.
+#[utoipa::path(
+    get,
+    path = "/v1/node/transaction-pool",
+    tag = "node",
+    summary = "Transaction pool",
+    description = "Returns the node's transaction pool with optional fee information.",
+    params(
+        ("includeFee" = Option<bool>, Query, description = "Include fee details for each transaction")
+    ),
+    responses(
+        (status = 200, description = "Transaction pool entries", body = TransactionPoolResponse),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_node_transaction_pool(
     State(state): State<AppState>,
     Query(params): Query<TransactionPoolQueryParams>,

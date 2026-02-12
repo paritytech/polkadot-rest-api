@@ -19,7 +19,7 @@ tracing-appender = "0.2"
 rolling-file = "0.2"
 thiserror = "2.0"
 tower = "0.5"
-tower-http = { version = "0.6.6", features = ["trace", "cors", "limit", "normalize-path"] }
+tower-http = { version = "0.6.6", features = ["trace", "cors", "limit", "normalize-path", "fs"] }
 socket2 = "0.6"
 config = { path = "../config" }
 subxt = { version = "0.50.0-beta.2", features = ["reconnecting-rpc-client"] }
@@ -50,6 +50,7 @@ regex = "1.10"
 tracing-loki = "0.2"
 url = "2.5"
 http-body-util = "0.1"
+utoipa = { version = "5", features = ["axum_extras"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

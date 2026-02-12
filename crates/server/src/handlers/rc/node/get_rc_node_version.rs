@@ -59,6 +59,18 @@ impl IntoResponse for GetRcNodeVersionError {
 ///
 /// Returns the relay chain node's version information. This endpoint is specifically
 /// for Asset Hub instances to query relay chain node version details.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/node/version",
+    tag = "rc",
+    summary = "RC get node version",
+    description = "Returns the relay chain node's version information.",
+    responses(
+        (status = 200, description = "Relay chain node version", body = NodeVersionResponse),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_node_version(
     State(state): State<AppState>,
 ) -> Result<Json<NodeVersionResponse>, GetRcNodeVersionError> {

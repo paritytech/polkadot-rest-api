@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use subxt::{OnlineClient, SubstrateConfig};
 use subxt_rpcs::RpcClient;
+use utoipa::ToSchema;
 
 // Re-export shared types from accounts module
 pub use crate::handlers::accounts::{
@@ -50,7 +51,7 @@ pub struct RcBalanceInfoQueryParams {
 }
 
 /// Response for GET /rc/accounts/{accountId}/balance-info
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RcBalanceInfoResponse {
     pub at: BlockInfo,
@@ -99,7 +100,7 @@ pub struct RcProxyInfoQueryParams {
 }
 
 /// Response for GET /rc/accounts/{accountId}/proxy-info
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RcProxyInfoResponse {
     pub at: BlockInfo,
@@ -125,7 +126,7 @@ pub struct RcVestingInfoQueryParams {
 }
 
 /// Response for GET /rc/accounts/{accountId}/vesting-info
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RcVestingInfoResponse {
     pub at: BlockInfo,
@@ -152,7 +153,7 @@ pub struct RcStakingInfoQueryParams {
 }
 
 /// Response for GET /rc/accounts/{accountId}/staking-info
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RcStakingInfoResponse {
     pub at: BlockInfo,
@@ -208,7 +209,7 @@ fn default_unclaimed_only() -> bool {
 }
 
 /// Response for GET /rc/accounts/{accountId}/staking-payouts
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RcStakingPayoutsResponse {
     pub at: BlockInfo,

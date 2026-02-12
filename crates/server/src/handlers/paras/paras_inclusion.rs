@@ -138,7 +138,22 @@ fn default_depth() -> String {
     DEFAULT_SEARCH_DEPTH.to_string()
 }
 
-/// Handler for GET /paras/{number}/inclusion
+#[utoipa::path(
+    get,
+    path = "/v1/paras/{number}/inclusion",
+    tag = "paras",
+    summary = "Parachain inclusion data",
+    description = "Returns inclusion information for a given parachain block, searching relay chain blocks for when the parachain block was included.",
+    params(
+        ("number" = String, Path, description = "Parachain block number"),
+        ("depth" = Option<String>, Query, description = "Search depth for relay chain blocks (max 100, default 10, must be divisible by 5)")
+    ),
+    responses(
+        (status = 200, description = "Parachain inclusion information", body = Object),
+        (status = 400, description = "Invalid parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_paras_inclusion(
     State(state): State<AppState>,
     Path(number): Path<String>,

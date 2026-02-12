@@ -50,6 +50,23 @@ impl IntoResponse for RcParaInclusionsError {
 ///
 /// Query Parameters:
 /// - `paraId` (optional): Filter results by a specific parachain ID
+#[utoipa::path(
+    get,
+    path = "/v1/rc/blocks/{blockId}/para-inclusions",
+    tag = "rc",
+    summary = "RC get parachain inclusions",
+    description = "Returns parachain inclusion information for a given relay chain block.",
+    params(
+        ("blockId" = String, Path, description = "Block height number or block hash"),
+        ("paraId" = Option<u32>, Query, description = "Filter by parachain ID")
+    ),
+    responses(
+        (status = 200, description = "Parachain inclusions", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_block_para_inclusions(
     State(state): State<AppState>,
     Path(block_id): Path<String>,

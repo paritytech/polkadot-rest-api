@@ -204,6 +204,19 @@ impl IntoResponse for MetadataBlobError {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/transaction/metadata-blob",
+    tag = "transaction",
+    summary = "Generate metadata blob",
+    description = "Generates a metadata blob for transaction signing with the CheckMetadataHash extension.",
+    request_body(content = Object, description = "Request with 'tx' field and optional 'at' block"),
+    responses(
+        (status = 200, description = "Metadata blob", body = Object),
+        (status = 400, description = "Invalid parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn metadata_blob(
     State(state): State<AppState>,
     Json(body): Json<MetadataBlobRequest>,
@@ -211,6 +224,18 @@ pub async fn metadata_blob(
     metadata_blob_internal(&state.client, &state.legacy_rpc, body).await
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/rc/transaction/metadata-blob",
+    tag = "rc",
+    summary = "RC metadata blob",
+    description = "Generates a metadata blob from the relay chain for transaction signing.",
+    request_body(content = Object, description = "Request with 'tx' field and optional 'at' block"),
+    responses(
+        (status = 200, description = "Metadata blob", body = Object),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn metadata_blob_rc(
     State(state): State<AppState>,
     Json(body): Json<MetadataBlobRequest>,

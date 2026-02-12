@@ -31,6 +31,26 @@ use sp_core::crypto::AccountId32;
 /// - `era` (optional): The era to query at (default: active_era - 1)
 /// - `unclaimedOnly` (optional): Only show unclaimed rewards (default: true)
 /// - `useRcBlock` (optional): When true, treat 'at' as relay chain block identifier
+#[utoipa::path(
+    get,
+    path = "/v1/accounts/{accountId}/staking-payouts",
+    tag = "accounts",
+    summary = "Account staking payouts",
+    description = "Returns staking payout history for a given account including era rewards and claimed status.",
+    params(
+        ("accountId" = String, Path, description = "SS58-encoded stash account address"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("depth" = Option<String>, Query, description = "Number of eras to query (default: 1)"),
+        ("era" = Option<String>, Query, description = "The era to query at (default: active_era - 1)"),
+        ("unclaimedOnly" = Option<bool>, Query, description = "Only show unclaimed rewards (default: true)"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+    ),
+    responses(
+        (status = 200, description = "Staking payout information", body = StakingPayoutsResponse),
+        (status = 400, description = "Invalid parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_staking_payouts(
     State(state): State<AppState>,
     Path(account_id): Path<String>,

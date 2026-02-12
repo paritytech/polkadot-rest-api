@@ -4,6 +4,7 @@ use axum::{Json, extract::State, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
+use utoipa::ToSchema;
 
 use super::common::{FetchError, fetch_node_version};
 
@@ -44,7 +45,7 @@ impl IntoResponse for GetNodeVersionError {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeVersionResponse {
     pub client_version: String,
@@ -52,9 +53,17 @@ pub struct NodeVersionResponse {
     pub chain: String,
 }
 
-/// Handler for GET /node/version
-///
-/// Returns the node's version information including client version, implementation name, and chain name.
+#[utoipa::path(
+    get,
+    path = "/v1/node/version",
+    tag = "node",
+    summary = "Node version",
+    description = "Returns the node's version information including client version, implementation name, and chain name.",
+    responses(
+        (status = 200, description = "Node version information", body = NodeVersionResponse),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_node_version(
     State(state): State<AppState>,
 ) -> Result<Json<NodeVersionResponse>, GetNodeVersionError> {

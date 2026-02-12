@@ -324,6 +324,21 @@ struct WorkplanWithSchedule {
 ///
 /// Query Parameters:
 /// - at: Optional block number or hash to query at (defaults to latest finalized)
+#[utoipa::path(
+    get,
+    path = "/v1/coretime/overview",
+    tag = "coretime",
+    summary = "Get coretime overview",
+    description = "Returns an overview of all cores with assignments, queue state, workload, workplan, and regions.",
+    params(
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+    ),
+    responses(
+        (status = 200, description = "Coretime overview", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn coretime_overview(
     State(state): State<AppState>,
     Query(params): Query<CoretimeQueryParams>,

@@ -26,6 +26,24 @@ use sp_core::crypto::AccountId32;
 /// - `at` (optional): Block identifier (hash or height) - defaults to latest finalized
 /// - `useRcBlock` (optional): When true, treat 'at' as relay chain block identifier
 /// - `includeClaimable` (optional): When true, calculate vested amounts
+#[utoipa::path(
+    get,
+    path = "/v1/accounts/{accountId}/vesting-info",
+    tag = "accounts",
+    summary = "Account vesting info",
+    description = "Returns vesting information for a given account including vesting schedules and locked amounts.",
+    params(
+        ("accountId" = String, Path, description = "SS58-encoded account address"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier"),
+        ("includeClaimable" = Option<bool>, Query, description = "When true, calculate vested amounts")
+    ),
+    responses(
+        (status = 200, description = "Vesting information", body = VestingInfoResponse),
+        (status = 400, description = "Invalid parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_vesting_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,

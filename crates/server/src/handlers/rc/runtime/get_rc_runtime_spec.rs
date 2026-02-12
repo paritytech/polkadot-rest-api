@@ -83,6 +83,21 @@ pub struct AtBlockParam {
 ///
 /// Query parameters:
 /// - `at` (optional): Block identifier (block number or block hash). Defaults to latest block.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/runtime/spec",
+    tag = "rc",
+    summary = "RC get runtime spec",
+    description = "Returns the runtime spec of the relay chain at a given block.",
+    params(
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+    ),
+    responses(
+        (status = 200, description = "Relay chain runtime spec", body = Object),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_runtime_spec(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,

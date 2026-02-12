@@ -30,6 +30,24 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 /// - `at` (optional): Block identifier (hash or height) - defaults to latest finalized
 /// - `useRcBlock` (optional): When true, treat 'at' as relay chain block identifier
 /// - `foreignAssets` (optional): List of multilocation JSON strings to filter by
+#[utoipa::path(
+    get,
+    path = "/v1/accounts/{accountId}/foreign-asset-balances",
+    tag = "accounts",
+    summary = "Account foreign asset balances",
+    description = "Returns foreign asset balances for a given account on Asset Hub chains. Foreign assets use XCM MultiLocation as their identifier.",
+    params(
+        ("accountId" = String, Path, description = "SS58-encoded account address"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier"),
+        ("foreignAssets" = Option<Vec<String>>, Query, description = "List of multilocation JSON strings to filter by")
+    ),
+    responses(
+        (status = 200, description = "Foreign asset balances", body = Object),
+        (status = 400, description = "Invalid account or parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_foreign_asset_balances(
     State(state): State<AppState>,
     Path(account_id): Path<String>,

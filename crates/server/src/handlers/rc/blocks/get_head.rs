@@ -142,6 +142,24 @@ impl IntoResponse for GetRcBlockHeadError {
 /// - `eventDocs` (boolean, default: false): Include documentation for events
 /// - `extrinsicDocs` (boolean, default: false): Include documentation for extrinsics
 /// - `noFees` (boolean, default: false): Skip fee calculation
+#[utoipa::path(
+    get,
+    path = "/v1/rc/blocks/head",
+    tag = "rc",
+    summary = "RC get head block",
+    description = "Returns the latest block on the relay chain.",
+    params(
+        ("finalized" = Option<bool>, Query, description = "When true returns finalized head (default: true)"),
+        ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include extrinsic documentation"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation")
+    ),
+    responses(
+        (status = 200, description = "Relay chain head block", body = Object),
+        (status = 503, description = "Relay chain not configured"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_rc_blocks_head(
     State(state): State<AppState>,
     Query(params): Query<RcBlockHeadQueryParams>,

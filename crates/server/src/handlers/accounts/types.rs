@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use subxt::error::{OnlineClientAtBlockError, StorageError};
 use thiserror::Error;
+use utoipa::ToSchema;
 
 // ================================================================================================
 // Error Response Helpers
@@ -67,7 +68,7 @@ pub struct AssetBalancesQueryParams {
 // ================================================================================================
 
 /// Response for GET /accounts/{accountId}/asset-balances
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetBalancesResponse {
     pub at: BlockInfo,
@@ -83,7 +84,7 @@ pub struct AssetBalancesResponse {
 }
 
 /// Block information
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockInfo {
     pub hash: String,
@@ -91,7 +92,7 @@ pub struct BlockInfo {
 }
 
 /// Asset balance information
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetBalance {
     pub asset_id: u32,
@@ -133,7 +134,7 @@ pub struct AssetApprovalQueryParams {
 }
 
 /// Response for GET /accounts/{accountId}/asset-approvals
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetApprovalResponse {
     pub at: BlockInfo,
@@ -368,7 +369,7 @@ pub struct BalanceInfoQueryParams {
 }
 
 /// Response for GET /accounts/{accountId}/balance-info
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceInfoResponse {
     pub at: BlockInfo,
@@ -412,7 +413,7 @@ pub struct BalanceInfoResponse {
 }
 
 /// Balance lock information
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceLock {
     /// Lock identifier
@@ -464,7 +465,7 @@ pub struct PoolAssetBalancesQueryParams {
 }
 
 /// Response for GET /accounts/{accountId}/pool-asset-balances
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PoolAssetBalancesResponse {
     pub at: BlockInfo,
@@ -480,7 +481,7 @@ pub struct PoolAssetBalancesResponse {
 }
 
 /// Pool asset balance information
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PoolAssetBalance {
     pub asset_id: u32,
@@ -513,7 +514,7 @@ pub struct PoolAssetApprovalQueryParams {
 }
 
 /// Response for GET /accounts/{accountId}/pool-asset-approvals
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PoolAssetApprovalResponse {
     pub at: BlockInfo,
@@ -558,7 +559,7 @@ pub struct AccountConvertQueryParams {
 }
 
 /// Response for GET /accounts/{accountId}/convert
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountConvertResponse {
     /// SS58 prefix used for encoding
@@ -597,7 +598,7 @@ pub struct ProxyInfoQueryParams {
 }
 
 /// Response for GET /accounts/{accountId}/proxy-info
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyInfoResponse {
     pub at: BlockInfo,
@@ -618,7 +619,7 @@ pub struct ProxyInfoResponse {
 }
 
 /// A proxy definition containing the delegate, proxy type, and delay
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyDefinition {
     /// The delegate address that can act on behalf of the account
@@ -652,7 +653,7 @@ pub struct StakingInfoQueryParams {
 }
 
 /// Response for GET /accounts/{accountId}/staking-info
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StakingInfoResponse {
     pub at: BlockInfo,
@@ -683,7 +684,7 @@ pub struct StakingInfoResponse {
 }
 
 /// Reward destination - can be "Staked", "Stash", "Controller", or { "account": "..." }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(untagged)]
 pub enum RewardDestination {
     /// Simple variant without account (Staked, Stash, Controller, None)
@@ -693,7 +694,7 @@ pub enum RewardDestination {
 }
 
 /// Nominations information for a nominator
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NominationsInfo {
     /// List of validator addresses being nominated
@@ -707,7 +708,7 @@ pub struct NominationsInfo {
 }
 
 /// Staking ledger information
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StakingLedger {
     /// Stash account address
@@ -728,7 +729,7 @@ pub struct StakingLedger {
 }
 
 /// Claimed reward status for a specific era
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaimedReward {
     /// Era index
@@ -774,7 +775,7 @@ fn default_unclaimed_only() -> bool {
 }
 
 /// Response for GET /accounts/{accountId}/staking-payouts
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StakingPayoutsResponse {
     pub at: BlockInfo,
@@ -792,7 +793,7 @@ pub struct StakingPayoutsResponse {
 }
 
 /// Payouts for a single era - can be either actual payouts or an error message
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(untagged)]
 pub enum EraPayouts {
     /// Successful payout data for an era
@@ -802,7 +803,7 @@ pub enum EraPayouts {
 }
 
 /// Actual payout data for an era
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EraPayoutsData {
     /// Era index
@@ -819,7 +820,7 @@ pub struct EraPayoutsData {
 }
 
 /// Payout information for a single validator
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ValidatorPayout {
     /// Validator stash account ID
@@ -861,7 +862,7 @@ pub struct VestingInfoQueryParams {
 }
 
 /// Response for GET /accounts/{accountId}/vesting-info
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct VestingInfoResponse {
     pub at: BlockInfo,
@@ -879,7 +880,7 @@ pub struct VestingInfoResponse {
 }
 
 /// A vesting schedule
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct VestingSchedule {
     /// Total tokens locked at start of vesting
@@ -905,7 +906,7 @@ pub struct AccountCompareQueryParams {
 }
 
 /// Response for GET /accounts/compare
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountCompareResponse {
     /// Whether all addresses have the same underlying public key
@@ -916,7 +917,7 @@ pub struct AccountCompareResponse {
 }
 
 /// Details about a single address
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AddressDetails {
     /// The original SS58 format address
@@ -948,7 +949,7 @@ pub struct AccountValidateQueryParams {
 }
 
 /// Response for GET /accounts/{accountId}/validate
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountValidateResponse {
     /// Whether the address is valid
