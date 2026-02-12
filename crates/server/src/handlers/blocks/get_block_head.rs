@@ -98,7 +98,8 @@ impl Default for BlockHeadQueryParams {
         ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
         ("noFees" = Option<bool>, Query, description = "Skip fee calculation for extrinsics"),
         ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
-        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID")
+        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID"),
+        ("useRcBlock" = Option<bool>, Query, description = "When true, use relay chain head to find corresponding Asset Hub blocks")
     ),
     responses(
         (status = 200, description = "Latest block information", body = Object),

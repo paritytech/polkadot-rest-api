@@ -59,6 +59,7 @@ use utoipa::OpenApi;
         crate::handlers::accounts::get_convert::get_convert,
         crate::handlers::accounts::get_validate::get_validate,
         crate::handlers::accounts::get_compare::get_compare,
+        crate::handlers::accounts::get_foreign_asset_balances::get_foreign_asset_balances,
         // Pallets
         crate::handlers::pallets::storage::get_pallets_storage,
         crate::handlers::pallets::storage::get_pallets_storage_item,
@@ -130,6 +131,17 @@ use utoipa::OpenApi;
         // RC - Pallets
         crate::handlers::pallets::staking_progress::rc_pallets_staking_progress,
         crate::handlers::pallets::staking_validators::rc_pallets_staking_validators,
+        crate::handlers::pallets::consts::rc_pallets_constants,
+        crate::handlers::pallets::consts::rc_pallets_constant_item,
+        crate::handlers::pallets::dispatchables::rc_pallets_dispatchables,
+        crate::handlers::pallets::dispatchables::rc_pallet_dispatchable_item,
+        crate::handlers::pallets::errors::rc_pallet_errors,
+        crate::handlers::pallets::errors::rc_pallet_error_item,
+        crate::handlers::pallets::events::rc_pallet_events,
+        crate::handlers::pallets::events::rc_pallet_event_item,
+        crate::handlers::pallets::storage::rc_get_pallets_storage,
+        crate::handlers::pallets::storage::rc_get_pallets_storage_item,
+        crate::handlers::pallets::on_going_referenda::rc_pallets_on_going_referenda,
         // RC - Transaction
         crate::handlers::transaction::submit::submit_rc,
         crate::handlers::transaction::dry_run::dry_run_rc,

@@ -1967,6 +1967,23 @@ pub struct RcStorageItemQueryParams {
 /// Handler for GET `/rc/pallets/{palletId}/storage`
 ///
 /// Returns storage items from the relay chain's pallet metadata.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/pallets/{palletId}/storage",
+    tag = "rc",
+    summary = "RC pallet storage items",
+    description = "Returns the list of storage items for a relay chain pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return storage item names")
+    ),
+    responses(
+        (status = 200, description = "Relay chain pallet storage items", body = Object),
+        (status = 400, description = "Invalid pallet or parameters"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn rc_get_pallets_storage(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
@@ -1997,6 +2014,26 @@ pub async fn rc_get_pallets_storage(
 /// Handler for GET `/rc/pallets/{palletId}/storage/{storageItemId}`
 ///
 /// Returns a specific storage item from the relay chain.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/pallets/{palletId}/storage/{storageItemId}",
+    tag = "rc",
+    summary = "RC pallet storage item value",
+    description = "Returns the value of a specific storage item from a relay chain pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("storageItemId" = String, Path, description = "Name of the storage item"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("keys" = Option<String>, Query, description = "Storage key arguments"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata for the storage item")
+    ),
+    responses(
+        (status = 200, description = "Relay chain storage item value", body = Object),
+        (status = 400, description = "Invalid parameters"),
+        (status = 404, description = "Storage item not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn rc_get_pallets_storage_item(
     State(state): State<AppState>,
     Path((pallet_id, storage_item_id)): Path<(String, String)>,

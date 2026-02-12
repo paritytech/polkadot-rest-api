@@ -500,6 +500,23 @@ fn extract_pallet_constants(
 /// Handler for GET `/rc/pallets/{palletId}/consts`
 ///
 /// Returns constants from the relay chain's pallet metadata.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/pallets/{palletId}/consts",
+    tag = "rc",
+    summary = "RC pallet constants",
+    description = "Returns all constants defined in a relay chain pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return constant names")
+    ),
+    responses(
+        (status = 200, description = "Relay chain pallet constants", body = Object),
+        (status = 400, description = "Invalid pallet"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn rc_pallets_constants(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
@@ -562,6 +579,24 @@ pub async fn rc_pallets_constants(
 /// Handler for GET `/rc/pallets/{palletId}/consts/{constantItemId}`
 ///
 /// Returns a specific constant from the relay chain's pallet metadata.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/pallets/{palletId}/consts/{constantItemId}",
+    tag = "rc",
+    summary = "RC pallet constant value",
+    description = "Returns the value and metadata of a specific constant from a relay chain pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("constantItemId" = String, Path, description = "Name of the constant"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata")
+    ),
+    responses(
+        (status = 200, description = "Relay chain constant value", body = Object),
+        (status = 404, description = "Constant not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn rc_pallets_constant_item(
     State(state): State<AppState>,
     Path((pallet_id, constant_item_id)): Path<(String, String)>,

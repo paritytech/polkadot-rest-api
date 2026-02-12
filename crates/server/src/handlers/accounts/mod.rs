@@ -5,7 +5,7 @@ pub mod get_asset_balances;
 pub mod get_balance_info;
 pub mod get_compare;
 pub mod get_convert;
-mod get_foreign_asset_balances;
+pub mod get_foreign_asset_balances;
 pub mod get_pool_asset_approvals;
 pub mod get_pool_asset_balances;
 pub mod get_proxy_info;

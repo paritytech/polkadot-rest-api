@@ -664,6 +664,23 @@ fn simplify_type_name(type_name: &str) -> String {
 /// Handler for GET `/rc/pallets/{palletId}/errors`
 ///
 /// Returns errors from the relay chain's pallet metadata.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/pallets/{palletId}/errors",
+    tag = "rc",
+    summary = "RC pallet errors",
+    description = "Returns all errors defined in a relay chain pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return error names")
+    ),
+    responses(
+        (status = 200, description = "Relay chain pallet errors", body = Object),
+        (status = 400, description = "Invalid pallet"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn rc_pallet_errors(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
@@ -708,6 +725,24 @@ pub async fn rc_pallet_errors(
 /// Handler for GET `/rc/pallets/{palletId}/errors/{errorItemId}`
 ///
 /// Returns a specific error from the relay chain's pallet metadata.
+#[utoipa::path(
+    get,
+    path = "/v1/rc/pallets/{palletId}/errors/{errorItemId}",
+    tag = "rc",
+    summary = "RC pallet error details",
+    description = "Returns metadata for a specific error in a relay chain pallet.",
+    params(
+        ("palletId" = String, Path, description = "Name or index of the pallet"),
+        ("errorItemId" = String, Path, description = "Name of the error"),
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata")
+    ),
+    responses(
+        (status = 200, description = "Relay chain error details", body = Object),
+        (status = 404, description = "Error not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn rc_pallet_error_item(
     State(state): State<AppState>,
     Path((pallet_id, error_id)): Path<(String, String)>,

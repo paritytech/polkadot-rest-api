@@ -42,7 +42,8 @@ use super::types::{
         ("extrinsicIndex" = String, Path, description = "Index of the extrinsic within the block"),
         ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
         ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
-        ("noFees" = Option<bool>, Query, description = "Skip fee calculation")
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation"),
+        ("useRcBlock" = Option<bool>, Query, description = "When true, treat blockId as Relay Chain block and return Asset Hub extrinsics")
     ),
     responses(
         (status = 200, description = "Extrinsic details", body = Object),
