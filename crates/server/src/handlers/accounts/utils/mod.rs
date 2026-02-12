@@ -3,7 +3,6 @@
 use scale_value::{Value, ValueDef};
 use sp_core::crypto::{AccountId32, Ss58Codec};
 
-
 /// Extract u128 field from named fields
 pub fn extract_u128_field(fields: &[(String, Value<()>)], field_name: &str) -> Option<u128> {
     fields
