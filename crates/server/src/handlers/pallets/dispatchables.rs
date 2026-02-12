@@ -419,10 +419,10 @@ async fn handle_use_rc_block(
     let rc_resolved_block = utils::resolve_block_with_rpc(
         state
             .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
+            .ok_or(PalletError::RelayChainNotConfigured)?,
         state
             .get_relay_chain_rpc()
-            .expect("relay chain RPC checked above"),
+            .ok_or(PalletError::RelayChainNotConfigured)?,
         Some(rc_block_id),
     )
     .await?;
@@ -430,74 +430,59 @@ async fn handle_use_rc_block(
     // Find Asset Hub blocks in the relay chain block
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
-    // If no Asset Hub blocks found, return empty response
+    // Return empty array when no AH blocks found
     if ah_blocks.is_empty() {
-        let at = AtResponse {
-            hash: rc_resolved_block.hash.clone(),
-            height: rc_resolved_block.number.to_string(),
-        };
         return Ok((
             StatusCode::OK,
-            Json(PalletsDispatchablesResponse {
-                at,
-                pallet: to_lower_first(&pallet_id),
-                pallet_index: "0".to_string(),
-                items: DispatchablesItems::Full(vec![]),
-                rc_block_hash: Some(rc_resolved_block.hash),
-                rc_block_number: Some(rc_resolved_block.number.to_string()),
-                ah_timestamp: None,
-            }),
+            Json(Vec::<PalletsDispatchablesResponse>::new()),
         )
             .into_response());
     }
 
-    // Use the first Asset Hub block
-    let ah_block = &ah_blocks[0];
-
-    // Get client at the AH block for timestamp and historical pallet lookup
-    let client_at_block = state.client.at_block(ah_block.number).await?;
-    let historic_metadata = client_at_block.metadata();
-
-    let pallet_identity = find_pallet_identity(&historic_metadata, &pallet_id)?;
-
     let current_client = state.client.at_current_block().await?;
     let current_metadata = current_client.metadata();
-    let current_pallet_info =
-        extract_pallet_dispatchables(&current_metadata, &pallet_identity.name)?;
 
-    let at = AtResponse {
-        hash: ah_block.hash.clone(),
-        height: ah_block.number.to_string(),
-    };
+    let mut responses = Vec::new();
+    for ah_block in &ah_blocks {
+        // Get client at the AH block for timestamp and historical pallet lookup
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+        let historic_metadata = client_at_block.metadata();
 
-    // Fetch timestamp using Subxt's dynamic storage API
-    let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+        let pallet_identity = find_pallet_identity(&historic_metadata, &pallet_id)?;
 
-    let items = if params.only_ids {
-        DispatchablesItems::OnlyIds(
-            current_pallet_info
-                .dispatchables
-                .iter()
-                .map(|d| snake_to_camel(&d.name))
-                .collect(),
-        )
-    } else {
-        DispatchablesItems::Full(current_pallet_info.dispatchables)
-    };
+        let pallet_info = extract_pallet_dispatchables(&current_metadata, &pallet_identity.name)?;
 
-    Ok((
-        StatusCode::OK,
-        Json(PalletsDispatchablesResponse {
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
+
+        let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+
+        let items = if params.only_ids {
+            DispatchablesItems::OnlyIds(
+                pallet_info
+                    .dispatchables
+                    .iter()
+                    .map(|d| d.name.clone())
+                    .collect(),
+            )
+        } else {
+            DispatchablesItems::Full(pallet_info.dispatchables)
+        };
+
+        responses.push(PalletsDispatchablesResponse {
             at,
             pallet: to_lower_first(&pallet_identity.name),
             pallet_index: pallet_identity.index.to_string(),
             items,
-            rc_block_hash: Some(rc_resolved_block.hash),
+            rc_block_hash: Some(rc_resolved_block.hash.clone()),
             rc_block_number: Some(rc_resolved_block.number.to_string()),
             ah_timestamp,
-        }),
-    )
-        .into_response())
+        });
+    }
+
+    Ok((StatusCode::OK, Json(responses)).into_response())
 }
 
 /// Handle requests with `useRcBlock=true` for Asset Hub chains (single dispatchable item).
@@ -528,10 +513,10 @@ async fn handle_dispatchable_item_use_rc_block(
     let rc_resolved_block = utils::resolve_block_with_rpc(
         state
             .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
+            .ok_or(PalletError::RelayChainNotConfigured)?,
         state
             .get_relay_chain_rpc()
-            .expect("relay chain RPC checked above"),
+            .ok_or(PalletError::RelayChainNotConfigured)?,
         Some(rc_block_id),
     )
     .await?;
@@ -539,61 +524,62 @@ async fn handle_dispatchable_item_use_rc_block(
     // Find Asset Hub blocks in the relay chain block
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
-    // If no Asset Hub blocks found, return error
+    // Return empty array when no AH blocks found
     if ah_blocks.is_empty() {
-        return Err(PalletError::DispatchableNotFound(dispatchable_id));
+        return Ok((
+            StatusCode::OK,
+            Json(Vec::<PalletDispatchableItemResponse>::new()),
+        )
+            .into_response());
     }
 
-    // Use the first Asset Hub block
-    let ah_block = &ah_blocks[0];
-
-    // Get client at the AH block for timestamp and historical pallet lookup
-    let client_at_block = state.client.at_block(ah_block.number).await?;
-    let historic_metadata = client_at_block.metadata();
-
-    let pallet_identity = find_pallet_identity(&historic_metadata, &pallet_id)?;
+    let dispatchable_id_snake = camel_to_snake(&dispatchable_id);
 
     let current_client = state.client.at_current_block().await?;
     let current_metadata = current_client.metadata();
-    let current_pallet_info =
-        extract_pallet_dispatchables(&current_metadata, &pallet_identity.name)?;
 
-    // Convert camelCase input to snake_case for lookup (Sidecar accepts both)
-    let dispatchable_id_snake = camel_to_snake(&dispatchable_id);
-    let dispatchable = current_pallet_info
-        .dispatchables
-        .iter()
-        .find(|d| d.name.to_lowercase() == dispatchable_id_snake.to_lowercase())
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.clone()))?;
+    let mut responses = Vec::new();
+    for ah_block in &ah_blocks {
+        // Get client at the AH block for timestamp and historical pallet lookup
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+        let historic_metadata = client_at_block.metadata();
 
-    let at = AtResponse {
-        hash: ah_block.hash.clone(),
-        height: ah_block.number.to_string(),
-    };
+        let pallet_identity = find_pallet_identity(&historic_metadata, &pallet_id)?;
 
-    // Fetch timestamp using Subxt's dynamic storage API
-    let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+        let pallet_info = extract_pallet_dispatchables(&current_metadata, &pallet_identity.name)?;
 
-    let metadata_field = if params.metadata {
-        Some(dispatchable.clone())
-    } else {
-        None
-    };
+        let dispatchable = pallet_info
+            .dispatchables
+            .iter()
+            .find(|d| d.name.to_lowercase() == dispatchable_id_snake.to_lowercase())
+            .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.clone()))?;
 
-    Ok((
-        StatusCode::OK,
-        Json(PalletDispatchableItemResponse {
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
+
+        let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+
+        let metadata_field = if params.metadata {
+            Some(dispatchable.clone())
+        } else {
+            None
+        };
+
+        responses.push(PalletDispatchableItemResponse {
             at,
             pallet: to_lower_first(&pallet_identity.name),
             pallet_index: pallet_identity.index.to_string(),
             dispatchable_item: snake_to_camel(&dispatchable.name),
             metadata: metadata_field,
-            rc_block_hash: Some(rc_resolved_block.hash),
+            rc_block_hash: Some(rc_resolved_block.hash.clone()),
             rc_block_number: Some(rc_resolved_block.number.to_string()),
             ah_timestamp,
-        }),
-    )
-        .into_response())
+        });
+    }
+
+    Ok((StatusCode::OK, Json(responses)).into_response())
 }
 
 // ============================================================================

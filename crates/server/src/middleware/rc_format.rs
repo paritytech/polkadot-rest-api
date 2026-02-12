@@ -18,7 +18,7 @@ struct RcFormatParams {
     #[serde(default)]
     format: Option<String>,
     #[serde(default)]
-    use_rc_block: Option<String>,
+    use_rc_block: Option<bool>,
     #[serde(default)]
     at: Option<String>,
 }
@@ -44,7 +44,7 @@ async fn process_rc_request(
         return Err(next.run(req).await);
     }
 
-    let has_use_rc_block = params.use_rc_block.as_deref() == Some("true");
+    let has_use_rc_block = params.use_rc_block == Some(true);
     if !has_use_rc_block {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -99,7 +99,10 @@ pub async fn rc_format_middleware(
         None => return Response::from_parts(parts, Body::from(bytes)),
     };
 
-    parts.headers.remove(axum::http::header::CONTENT_LENGTH);
+    parts.headers.insert(
+        axum::http::header::CONTENT_LENGTH,
+        axum::http::HeaderValue::from(transformed.len()),
+    );
     Response::from_parts(parts, Body::from(transformed))
 }
 
@@ -271,7 +274,10 @@ mod tests {
                     "parachainDataPerBlock": []
                 });
                 if let Ok(new_bytes) = serde_json::to_vec(&result) {
-                    parts.headers.remove(axum::http::header::CONTENT_LENGTH);
+                    parts.headers.insert(
+                        axum::http::header::CONTENT_LENGTH,
+                        axum::http::HeaderValue::from(new_bytes.len()),
+                    );
                     return Response::from_parts(parts, Body::from(new_bytes));
                 }
             }
@@ -279,7 +285,10 @@ mod tests {
 
         match wrap_rc_response(value, None) {
             Some(new_bytes) => {
-                parts.headers.remove(axum::http::header::CONTENT_LENGTH);
+                parts.headers.insert(
+                    axum::http::header::CONTENT_LENGTH,
+                    axum::http::HeaderValue::from(new_bytes.len()),
+                );
                 Response::from_parts(parts, Body::from(new_bytes))
             }
             None => Response::from_parts(parts, Body::from(bytes)),
