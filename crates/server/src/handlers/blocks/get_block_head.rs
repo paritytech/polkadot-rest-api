@@ -28,6 +28,7 @@ use super::types::{BlockResponse, GetBlockError};
 
 /// Query parameters for /blocks/head endpoint
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BlockHeadQueryParams {
     /// When true (default), returns finalized head. When false, returns canonical head.
     #[serde(default = "default_true")]
@@ -50,6 +51,9 @@ pub struct BlockHeadQueryParams {
     /// When true, use relay chain block to find corresponding Asset Hub blocks
     #[serde(default, rename = "useRcBlock")]
     pub use_rc_block: bool,
+    /// When true, convert AccountId32 addresses to EVM format for revive pallet events
+    #[serde(default)]
+    pub use_evm_format: bool,
 }
 
 fn default_true() -> bool {
@@ -66,6 +70,7 @@ impl Default for BlockHeadQueryParams {
             decoded_xcm_msgs: false,
             para_id: None,
             use_rc_block: false,
+            use_evm_format: false,
         }
     }
 }
@@ -285,10 +290,9 @@ async fn build_head_block_response(
         }
     }
 
-    // Optionally populate documentation for events and extrinsics
     let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
 
-    if params.event_docs || params.extrinsic_docs {
+    if params.event_docs || params.extrinsic_docs || params.use_evm_format {
         let metadata = client_at_block.metadata();
 
         if params.event_docs {
@@ -307,6 +311,10 @@ async fn build_head_block_response(
                 extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
                     .map(|d| d.to_string());
             }
+        }
+
+        if params.use_evm_format {
+            super::evm_format::apply_evm_format(&mut extrinsics_with_events, &metadata);
         }
     }
 

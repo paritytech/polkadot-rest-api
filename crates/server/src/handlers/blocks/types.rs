@@ -28,6 +28,8 @@ pub struct BlockBuildParams {
     pub decoded_xcm_msgs: bool,
     /// Filter decoded XCM messages by parachain ID (only used when decodedXcmMsgs=true)
     pub para_id: Option<u32>,
+    /// When true, convert AccountId32 addresses to EVM format for revive pallet events
+    pub use_evm_format: bool,
 }
 
 /// Query parameters for /blocks/{blockId} endpoint
@@ -55,6 +57,9 @@ pub struct BlockQueryParams {
     /// Filter decoded XCM messages by parachain ID (only used when decodedXcmMsgs=true)
     #[serde(default)]
     pub para_id: Option<u32>,
+    /// When true, convert AccountId32 addresses to EVM format (20 bytes) for revive pallet events
+    #[serde(default)]
+    pub use_evm_format: bool,
 }
 
 fn default_true() -> bool {
@@ -76,6 +81,9 @@ pub struct ExtrinsicQueryParams {
     /// When true, treat blockId as Relay Chain block and return Asset Hub extrinsics
     #[serde(default, rename = "useRcBlock")]
     pub use_rc_block: bool,
+    /// When true, convert AccountId32 addresses to EVM format (20 bytes) for revive pallet events
+    #[serde(default)]
+    pub use_evm_format: bool,
 }
 
 /// Path parameters for /blocks/{blockId}/extrinsics/{extrinsicIndex} and
@@ -98,6 +106,7 @@ impl Default for BlockQueryParams {
             use_rc_block: false,
             decoded_xcm_msgs: false,
             para_id: None,
+            use_evm_format: false,
         }
     }
 }
@@ -110,6 +119,7 @@ impl BlockQueryParams {
             no_fees: self.no_fees,
             decoded_xcm_msgs: self.decoded_xcm_msgs,
             para_id: self.para_id,
+            use_evm_format: self.use_evm_format,
         }
     }
 }

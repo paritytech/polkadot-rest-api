@@ -51,6 +51,7 @@ impl RcBlockQueryParams {
             no_fees: self.no_fees,
             decoded_xcm_msgs: self.decoded_xcm_msgs,
             para_id: self.para_id,
+            use_evm_format: false,
         }
     }
 }

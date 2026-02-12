@@ -615,7 +615,7 @@ pub async fn build_block_response_generic(
 
     let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
 
-    if params.event_docs || params.extrinsic_docs {
+    if params.event_docs || params.extrinsic_docs || params.use_evm_format {
         let metadata = client_at_block.metadata();
 
         if params.event_docs {
@@ -634,6 +634,10 @@ pub async fn build_block_response_generic(
                 extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
                     .map(|d| d.to_string());
             }
+        }
+
+        if params.use_evm_format {
+            super::evm_format::apply_evm_format(&mut extrinsics_with_events, &metadata);
         }
     }
 

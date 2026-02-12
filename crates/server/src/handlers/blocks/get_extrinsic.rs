@@ -190,7 +190,7 @@ async fn build_extrinsic_response(
         extrinsic.info = fee_info;
     }
 
-    if params.event_docs || params.extrinsic_docs {
+    if params.event_docs || params.extrinsic_docs || params.use_evm_format {
         let metadata = client_at_block.metadata();
 
         if params.event_docs {
@@ -199,6 +199,12 @@ async fn build_extrinsic_response(
 
         if params.extrinsic_docs {
             add_docs_to_extrinsic(&mut extrinsic, &metadata);
+        }
+
+        if params.use_evm_format {
+            let mut extrinsics_vec = vec![extrinsic];
+            super::evm_format::apply_evm_format(&mut extrinsics_vec, &metadata);
+            extrinsic = extrinsics_vec.into_iter().next().unwrap();
         }
     }
 
