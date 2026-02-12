@@ -387,20 +387,34 @@ mod tests {
     fn test_asset_hubs_config() {
         let configs = ChainConfigs::default();
 
-        let asset_hubs = vec![
+        // Asset hubs without legacy types
+        let no_legacy = vec![
             ("statemint", "Asset Hub Polkadot legacy"),
-            ("statemine", "Asset Hub Kusama legacy"),
             ("westmint", "Asset Hub Westend legacy"),
             ("asset-hub-polkadot", "Asset Hub Polkadot current"),
-            ("asset-hub-kusama", "Asset Hub Kusama current"),
             ("asset-hub-westend", "Asset Hub Westend current"),
         ];
 
-        for (chain, description) in asset_hubs {
+        for (chain, description) in no_legacy {
             let config = configs.get(chain).unwrap();
             assert_eq!(
                 config.legacy_types, "none",
                 "{} should use no legacy types",
+                description
+            );
+        }
+
+        // Kusama asset hubs use kusama-asset-hub legacy types
+        let kusama_asset_hubs = vec![
+            ("statemine", "Asset Hub Kusama legacy"),
+            ("asset-hub-kusama", "Asset Hub Kusama current"),
+        ];
+
+        for (chain, description) in kusama_asset_hubs {
+            let config = configs.get(chain).unwrap();
+            assert_eq!(
+                config.legacy_types, "kusama-asset-hub",
+                "{} should use kusama-asset-hub legacy types",
                 description
             );
         }

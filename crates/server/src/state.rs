@@ -131,6 +131,18 @@ impl AppState {
                     .set_legacy_types(frame_decode::legacy_types::polkadot::relay_chain())
                     .build()
             }
+            "kusama-relay" => {
+                // Load Kusama relay chain legacy types for historic block support
+                SubstrateConfig::builder()
+                    .set_legacy_types(frame_decode::legacy_types::kusama::relay_chain())
+                    .build()
+            }
+            "kusama-asset-hub" => {
+                // Load Kusama Asset Hub legacy types for historic block support
+                SubstrateConfig::builder()
+                    .set_legacy_types(frame_decode::legacy_types::kusama::asset_hub())
+                    .build()
+            }
             _ => {
                 // For chains without legacy types or unknown chains, use empty config
                 SubstrateConfig::new()
@@ -300,6 +312,12 @@ impl AppState {
         let relay_subxt_config = match relay_chain_config.legacy_types.as_str() {
             "polkadot" => SubstrateConfig::builder()
                 .set_legacy_types(frame_decode::legacy_types::polkadot::relay_chain())
+                .build(),
+            "kusama-relay" => SubstrateConfig::builder()
+                .set_legacy_types(frame_decode::legacy_types::kusama::relay_chain())
+                .build(),
+            "kusama-asset-hub" => SubstrateConfig::builder()
+                .set_legacy_types(frame_decode::legacy_types::kusama::asset_hub())
                 .build(),
             _ => SubstrateConfig::new(),
         };
