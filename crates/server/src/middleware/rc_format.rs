@@ -23,6 +23,62 @@ struct RcFormatParams {
     at: Option<String>,
 }
 
+/// Pre-process an RC format request: parse query params, validate, run the inner handler,
+/// and collect the response body.
+///
+/// Returns `Err(Response)` for early returns (no `format=rc`, validation failure, non-success, non-JSON).
+/// Returns `Ok((parts, bytes, at_param))` when the response body is ready for RC transformation.
+async fn process_rc_request(
+    req: Request,
+    next: Next,
+) -> Result<(axum::http::response::Parts, Vec<u8>, Option<String>), Response> {
+    let params = req
+        .uri()
+        .query()
+        .and_then(|q| serde_urlencoded::from_str::<RcFormatParams>(q).ok())
+        .unwrap_or_default();
+
+    let has_format_rc = params.format.as_deref() == Some("rc");
+
+    if !has_format_rc {
+        return Err(next.run(req).await);
+    }
+
+    let has_use_rc_block = params.use_rc_block.as_deref() == Some("true");
+    if !has_use_rc_block {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "format=rc requires useRcBlock=true" })),
+        )
+            .into_response());
+    }
+
+    let at_param = params.at;
+    let response = next.run(req).await;
+
+    if !response.status().is_success() {
+        return Err(response);
+    }
+
+    let is_json = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| ct.contains("application/json"));
+
+    if !is_json {
+        return Err(response);
+    }
+
+    let (parts, body) = response.into_parts();
+    let bytes = match body.collect().await {
+        Ok(collected) => collected.to_bytes().to_vec(),
+        Err(_) => return Err(Response::from_parts(parts, Body::empty())),
+    };
+
+    Ok((parts, bytes, at_param))
+}
+
 /// Middleware that transforms RC block array responses into a structured object
 /// when `format=rc` is present in the query string.
 ///
@@ -33,49 +89,9 @@ pub async fn rc_format_middleware(
     req: Request,
     next: Next,
 ) -> Response {
-    let params = req
-        .uri()
-        .query()
-        .and_then(|q| serde_urlencoded::from_str::<RcFormatParams>(q).ok())
-        .unwrap_or_default();
-
-    let has_format_rc = params.format.as_deref() == Some("rc");
-
-    if !has_format_rc {
-        return next.run(req).await;
-    }
-
-    let has_use_rc_block = params.use_rc_block.as_deref() == Some("true");
-    if !has_use_rc_block {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "format=rc requires useRcBlock=true" })),
-        )
-            .into_response();
-    }
-
-    let at_param = params.at;
-
-    let response = next.run(req).await;
-
-    if !response.status().is_success() {
-        return response;
-    }
-
-    let is_json = response
-        .headers()
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|ct| ct.contains("application/json"));
-
-    if !is_json {
-        return response;
-    }
-
-    let (mut parts, body) = response.into_parts();
-    let bytes = match body.collect().await {
-        Ok(collected) => collected.to_bytes(),
-        Err(_) => return Response::from_parts(parts, Body::empty()),
+    let (mut parts, bytes, at_param) = match process_rc_request(req, next).await {
+        Ok(result) => result,
+        Err(response) => return response,
     };
 
     let transformed = match transform_rc_response(&bytes, &state, at_param.as_deref()).await {
@@ -94,19 +110,19 @@ async fn transform_rc_response(
 ) -> Option<Vec<u8>> {
     let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
 
-    if let serde_json::Value::Array(arr) = &value {
-        if arr.is_empty() {
-            let rc_block_info = if let Some(at) = at_param {
-                fetch_rc_block_info(state, at).await
-            } else {
-                None
-            };
-            let result = serde_json::json!({
-                "rcBlock": rc_block_info,
-                "parachainDataPerBlock": []
-            });
-            return serde_json::to_vec(&result).ok();
-        }
+    if let serde_json::Value::Array(arr) = &value
+        && arr.is_empty()
+    {
+        let rc_block_info = if let Some(at) = at_param {
+            fetch_rc_block_info(state, at).await
+        } else {
+            None
+        };
+        let result = serde_json::json!({
+            "rcBlock": rc_block_info,
+            "parachainDataPerBlock": []
+        });
+        return serde_json::to_vec(&result).ok();
     }
 
     let rc_hash = extract_rc_hash(&value)?;
@@ -235,39 +251,12 @@ mod tests {
         (status, value)
     }
 
-    /// Test middleware that mirrors rc_format_middleware but without AppState.
-    /// Uses `wrap_rc_response` with no parentHash (no RPC available in tests).
+    /// Test middleware that reuses `process_rc_request` for query param parsing and validation,
+    /// then applies transformation without AppState (no RPC available in tests).
     async fn test_rc_format(req: Request, next: Next) -> Response {
-        let params = req
-            .uri()
-            .query()
-            .and_then(|q| serde_urlencoded::from_str::<RcFormatParams>(q).ok())
-            .unwrap_or_default();
-
-        let has_format_rc = params.format.as_deref() == Some("rc");
-
-        if !has_format_rc {
-            return next.run(req).await;
-        }
-
-        let has_use_rc_block = params.use_rc_block.as_deref() == Some("true");
-        if !has_use_rc_block {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "format=rc requires useRcBlock=true" })),
-            )
-                .into_response();
-        }
-
-        let response = next.run(req).await;
-        if !response.status().is_success() {
-            return response;
-        }
-
-        let (mut parts, body) = response.into_parts();
-        let bytes = match body.collect().await {
-            Ok(collected) => collected.to_bytes(),
-            Err(_) => return Response::from_parts(parts, Body::empty()),
+        let (mut parts, bytes, _at_param) = match process_rc_request(req, next).await {
+            Ok(result) => result,
+            Err(response) => return response,
         };
 
         let value: serde_json::Value = match serde_json::from_slice(&bytes) {
