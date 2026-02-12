@@ -7,7 +7,7 @@
 
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
-    RcPalletItemQueryParams, RcPalletQueryParams,
+    RcPalletItemQueryParams, RcPalletQueryParams, resolve_block_for_pallet, resolve_type_name,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -132,28 +132,15 @@ pub async fn get_pallet_events(
         return handle_events_use_rc_block(state, pallet_id, params).await;
     }
 
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
-
-    let metadata = client_at_block.metadata();
+    let metadata = resolved.client_at_block.metadata();
 
     let response = extract_events_from_metadata(
         &metadata,
         &pallet_id,
-        at,
+        resolved.at,
         params.only_ids,
         RcBlockFields::default(),
     )?;
@@ -192,29 +179,16 @@ pub async fn get_pallet_event_item(
         return handle_event_item_use_rc_block(state, pallet_id, event_item_id, params).await;
     }
 
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
-
-    let metadata = client_at_block.metadata();
+    let metadata = resolved.client_at_block.metadata();
 
     let response = extract_event_item_from_metadata(
         &metadata,
         &pallet_id,
         &event_item_id,
-        at,
+        resolved.at,
         params.metadata,
         RcBlockFields::default(),
     )?;
@@ -377,54 +351,6 @@ fn find_pallet<'a>(
     metadata
         .pallets()
         .find(|pallet| pallet.name().to_lowercase() == pallet_id_lower)
-}
-
-fn resolve_type_name(types: &scale_info::PortableRegistry, type_id: u32) -> String {
-    if let Some(ty) = types.resolve(type_id) {
-        if let scale_info::TypeDef::Variant(v) = &ty.type_def {
-            let is_simple_enum = v.variants.iter().all(|var| var.fields.is_empty());
-            if is_simple_enum {
-                let variant_names: Vec<String> = v
-                    .variants
-                    .iter()
-                    .map(|var| format!("\"{}\"", var.name))
-                    .collect();
-                return format!("{{\"_enum\":[{}]}}", variant_names.join(","));
-            }
-        }
-
-        if !ty.path.segments.is_empty() {
-            return ty.path.segments.last().unwrap().clone();
-        }
-        match &ty.type_def {
-            scale_info::TypeDef::Primitive(p) => format!("{:?}", p).to_lowercase(),
-            scale_info::TypeDef::Compact(c) => {
-                format!("Compact<{}>", resolve_type_name(types, c.type_param.id))
-            }
-            scale_info::TypeDef::Sequence(s) => {
-                let inner = resolve_type_name(types, s.type_param.id);
-                if inner == "u8" {
-                    "Bytes".to_string()
-                } else {
-                    format!("Vec<{}>", inner)
-                }
-            }
-            scale_info::TypeDef::Array(a) => {
-                format!("[{}; {}]", resolve_type_name(types, a.type_param.id), a.len)
-            }
-            scale_info::TypeDef::Tuple(t) => {
-                let inner: Vec<String> = t
-                    .fields
-                    .iter()
-                    .map(|f| resolve_type_name(types, f.id))
-                    .collect();
-                format!("({})", inner.join(", "))
-            }
-            _ => type_id.to_string(),
-        }
-    } else {
-        type_id.to_string()
-    }
 }
 
 /// Extract events from subxt's unified Metadata.

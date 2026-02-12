@@ -20,7 +20,7 @@
 
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
-    RcPalletItemQueryParams, RcPalletQueryParams,
+    RcPalletItemQueryParams, RcPalletQueryParams, resolve_block_for_pallet, resolve_type_name,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -199,30 +199,16 @@ pub async fn get_pallet_errors(
         return handle_use_rc_block(state, pallet_id, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     // Use subxt's metadata API - it normalizes all versions (V9-V16) automatically
-    let metadata = client_at_block.metadata();
+    let metadata = resolved.client_at_block.metadata();
 
     let response = extract_errors_from_metadata(
         &metadata,
         &pallet_id,
-        at,
+        resolved.at,
         params.only_ids,
         RcBlockFields::default(),
     )?;
@@ -258,31 +244,17 @@ pub async fn get_pallet_error_item(
         return handle_error_item_use_rc_block(state, pallet_id, error_id, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     // Use subxt's metadata API - it normalizes all versions (V9-V16) automatically
-    let metadata = client_at_block.metadata();
+    let metadata = resolved.client_at_block.metadata();
 
     let response = extract_error_item_from_metadata(
         &metadata,
         &pallet_id,
         &error_id,
-        at,
+        resolved.at,
         params.metadata,
         RcBlockFields::default(),
     )?;
@@ -558,7 +530,7 @@ fn variant_to_error_metadata(
         .fields
         .iter()
         .map(|f| {
-            let type_name = resolve_type_name(f.ty.id, types);
+            let type_name = resolve_type_name(types, f.ty.id);
             ErrorField {
                 name: f.name.clone().unwrap_or_default(),
                 ty: f.ty.id.to_string(),
@@ -572,7 +544,7 @@ fn variant_to_error_metadata(
         .fields
         .iter()
         .map(|f| {
-            let type_name = resolve_type_name(f.ty.id, types);
+            let type_name = resolve_type_name(types, f.ty.id);
             let simplified_type_name = simplify_type_name(&type_name);
             ErrorArg {
                 name: f.name.clone().unwrap_or_default().to_lower_camel_case(),
@@ -588,60 +560,6 @@ fn variant_to_error_metadata(
         index: variant.index.to_string(),
         docs: variant.docs.clone(),
         args,
-    }
-}
-
-/// Resolve a type ID to its human-readable name from the type registry.
-fn resolve_type_name(type_id: u32, types: &scale_info::PortableRegistry) -> String {
-    types
-        .resolve(type_id)
-        .map(|ty| format_type(ty, types))
-        .unwrap_or_else(|| type_id.to_string())
-}
-
-/// Format a type to a human-readable string.
-fn format_type(
-    ty: &scale_info::Type<PortableForm>,
-    types: &scale_info::PortableRegistry,
-) -> String {
-    use scale_info::TypeDef;
-
-    let path = ty.path.segments.join("::");
-
-    match &ty.type_def {
-        TypeDef::Composite(_) | TypeDef::Variant(_) => {
-            if path.is_empty() {
-                "Composite".to_string()
-            } else {
-                path
-            }
-        }
-        TypeDef::Sequence(seq) => {
-            let inner = resolve_type_name(seq.type_param.id, types);
-            format!("Vec<{}>", inner)
-        }
-        TypeDef::Array(arr) => {
-            let inner = resolve_type_name(arr.type_param.id, types);
-            format!("[{}; {}]", inner, arr.len)
-        }
-        TypeDef::Tuple(tuple) => {
-            if tuple.fields.is_empty() {
-                "()".to_string()
-            } else {
-                let inner: Vec<String> = tuple
-                    .fields
-                    .iter()
-                    .map(|f| resolve_type_name(f.id, types))
-                    .collect();
-                format!("({})", inner.join(", "))
-            }
-        }
-        TypeDef::Primitive(prim) => format!("{:?}", prim),
-        TypeDef::Compact(compact) => {
-            let inner = resolve_type_name(compact.type_param.id, types);
-            format!("Compact<{}>", inner)
-        }
-        TypeDef::BitSequence(_) => "BitSequence".to_string(),
     }
 }
 

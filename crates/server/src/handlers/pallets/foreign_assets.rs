@@ -4,7 +4,9 @@
 //! Foreign assets are cross-chain assets identified by XCM MultiLocation.
 
 use crate::handlers::common::xcm_types::{Location, decode_multi_location_from_bytes};
-use crate::handlers::pallets::common::{AtResponse, PalletError, format_account_id};
+use crate::handlers::pallets::common::{
+    AtResponse, ClientAtBlock, PalletError, format_account_id, resolve_block_for_pallet,
+};
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -18,7 +20,6 @@ use config::ChainType;
 use futures::StreamExt;
 use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
-use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 // ============================================================================
 // Request/Response Types
@@ -137,30 +138,16 @@ pub async fn pallets_foreign_assets(
         return handle_use_rc_block(state, params).await;
     }
 
-    // Create client at the specified block
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
-
-    let at = AtResponse {
-        hash: format!("{:#x}", client_at_block.block_hash()),
-        height: client_at_block.block_number().to_string(),
-    };
+    // Resolve block using the common helper
+    let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let ss58_prefix = state.chain_info.ss58_prefix;
-    let items = fetch_all_foreign_assets(&client_at_block, ss58_prefix).await?;
+    let items = fetch_all_foreign_assets(&resolved.client_at_block, ss58_prefix).await?;
 
     Ok((
         StatusCode::OK,
         Json(PalletsForeignAssetsResponse {
-            at,
+            at: resolved.at,
             items,
             rc_block_hash: None,
             rc_block_number: None,
@@ -246,7 +233,7 @@ async fn handle_use_rc_block(
 /// Fetches all foreign assets by iterating over ForeignAssets::Asset storage.
 /// Returns an error if the pallet doesn't exist or storage iteration fails.
 async fn fetch_all_foreign_assets(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    client_at_block: &ClientAtBlock,
     ss58_prefix: u16,
 ) -> Result<Vec<ForeignAssetItem>, PalletError> {
     let mut items = Vec::new();
@@ -400,7 +387,7 @@ fn format_asset_details(details: &AssetDetails, ss58_prefix: u16) -> serde_json:
 }
 
 /// Fetches timestamp from Timestamp::Now storage.
-async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<String> {
+async fn fetch_timestamp(client_at_block: &ClientAtBlock) -> Option<String> {
     let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
     let timestamp = client_at_block
         .storage()

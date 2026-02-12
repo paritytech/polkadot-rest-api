@@ -274,7 +274,7 @@ pub async fn get_pallets_dispatchables(
             pallet_info
                 .dispatchables
                 .iter()
-                .map(|d| d.name.clone())
+                .map(|d| snake_to_camel(&d.name))
                 .collect(),
         )
     } else {
@@ -473,7 +473,7 @@ async fn handle_use_rc_block(
             pallet_info
                 .dispatchables
                 .iter()
-                .map(|d| d.name.clone())
+                .map(|d| snake_to_camel(&d.name))
                 .collect(),
         )
     } else {
@@ -670,6 +670,11 @@ fn extract_pallet_dispatchables(
 }
 
 /// Resolve a type ID to its human-readable name using the type registry.
+///
+/// This function extends the common `resolve_type_name` with special handling
+/// for Composite and Variant types that is specific to dispatchables:
+/// - Variants with pallet paths use PascalCase formatting
+/// - Non-pallet variants use the last path segment
 fn resolve_type_name(metadata: &Metadata, type_id: u32) -> String {
     let types = metadata.types();
     let Some(ty) = types.resolve(type_id) else {
@@ -709,13 +714,18 @@ fn resolve_type_name(metadata: &Metadata, type_id: u32) -> String {
                     .unwrap_or_else(|| "Enum".to_string())
             }
         }
+        // For all other types, delegate to the common implementation
         TypeDef::Sequence(seq) => {
             let inner = resolve_type_name(metadata, seq.type_param.id);
-            format!("Vec<{}>", inner)
+            if inner == "u8" {
+                "Bytes".to_string()
+            } else {
+                format!("Vec<{}>", inner)
+            }
         }
         TypeDef::Array(arr) => {
             let inner = resolve_type_name(metadata, arr.type_param.id);
-            format!("[{}; {}]", inner, arr.len)
+            format!("[{};{}]", inner, arr.len)
         }
         TypeDef::Tuple(tuple) => {
             if tuple.fields.is_empty() {
@@ -726,29 +736,10 @@ fn resolve_type_name(metadata: &Metadata, type_id: u32) -> String {
                     .iter()
                     .map(|f| resolve_type_name(metadata, f.id))
                     .collect();
-                format!("({})", fields.join(", "))
+                format!("({})", fields.join(","))
             }
         }
-        TypeDef::Primitive(prim) => {
-            use scale_info::TypeDefPrimitive;
-            match prim {
-                TypeDefPrimitive::Bool => "bool".to_string(),
-                TypeDefPrimitive::Char => "char".to_string(),
-                TypeDefPrimitive::Str => "str".to_string(),
-                TypeDefPrimitive::U8 => "u8".to_string(),
-                TypeDefPrimitive::U16 => "u16".to_string(),
-                TypeDefPrimitive::U32 => "u32".to_string(),
-                TypeDefPrimitive::U64 => "u64".to_string(),
-                TypeDefPrimitive::U128 => "u128".to_string(),
-                TypeDefPrimitive::U256 => "u256".to_string(),
-                TypeDefPrimitive::I8 => "i8".to_string(),
-                TypeDefPrimitive::I16 => "i16".to_string(),
-                TypeDefPrimitive::I32 => "i32".to_string(),
-                TypeDefPrimitive::I64 => "i64".to_string(),
-                TypeDefPrimitive::I128 => "i128".to_string(),
-                TypeDefPrimitive::I256 => "i256".to_string(),
-            }
-        }
+        TypeDef::Primitive(prim) => format!("{:?}", prim).to_lowercase(),
         TypeDef::Compact(compact) => {
             let inner = resolve_type_name(metadata, compact.type_param.id);
             format!("Compact<{}>", inner)
@@ -785,9 +776,15 @@ fn path_to_pascal_case(segments: &[String]) -> String {
 /// e.g., "AccountIdLookupOf<T>" -> "AccountIdLookupOf"
 ///       "Vec<T::AccountId>" -> "Vec<AccountId>"
 ///       "T::Balance" -> "Balance"
+///       "Vec<u8>" -> "Bytes" (to match Sidecar)
 fn simplify_type_name(type_name: &str) -> String {
     // First remove T:: prefix (including inside generics)
     let without_prefix = type_name.replace("T::", "");
+
+    // Match Sidecar: Vec<u8> becomes Bytes
+    if without_prefix == "Vec<u8>" {
+        return "Bytes".to_string();
+    }
 
     // Only strip <T> suffix specifically, not other generic parameters
     if without_prefix.ends_with("<T>") {
@@ -858,7 +855,7 @@ pub async fn rc_pallets_dispatchables(
             pallet_info
                 .dispatchables
                 .iter()
-                .map(|d| d.name.clone())
+                .map(|d| snake_to_camel(&d.name))
                 .collect(),
         )
     } else {
@@ -1003,7 +1000,8 @@ mod tests {
             "MultiAddress<AccountId32, ()>"
         );
         assert_eq!(simplify_type_name("u128"), "u128");
-        assert_eq!(simplify_type_name("Vec<u8>"), "Vec<u8>");
+        // Vec<u8> becomes Bytes to match Sidecar
+        assert_eq!(simplify_type_name("Vec<u8>"), "Bytes");
         assert_eq!(simplify_type_name("Vec<T::AccountId>"), "Vec<AccountId>");
         assert_eq!(simplify_type_name("T::Balance"), "Balance");
         assert_eq!(
