@@ -19,6 +19,8 @@ struct RcFormatParams {
     format: Option<String>,
     #[serde(default)]
     use_rc_block: Option<String>,
+    #[serde(default)]
+    at: Option<String>,
 }
 
 /// Middleware that transforms RC block array responses into a structured object
@@ -52,6 +54,8 @@ pub async fn rc_format_middleware(
             .into_response();
     }
 
+    let at_param = params.at;
+
     let response = next.run(req).await;
 
     if !response.status().is_success() {
@@ -74,7 +78,7 @@ pub async fn rc_format_middleware(
         Err(_) => return Response::from_parts(parts, Body::empty()),
     };
 
-    let transformed = match transform_rc_response(&bytes, &state).await {
+    let transformed = match transform_rc_response(&bytes, &state, at_param.as_deref()).await {
         Some(new_bytes) => new_bytes,
         None => return Response::from_parts(parts, Body::from(bytes)),
     };
@@ -83,8 +87,28 @@ pub async fn rc_format_middleware(
     Response::from_parts(parts, Body::from(transformed))
 }
 
-async fn transform_rc_response(bytes: &[u8], state: &AppState) -> Option<Vec<u8>> {
+async fn transform_rc_response(
+    bytes: &[u8],
+    state: &AppState,
+    at_param: Option<&str>,
+) -> Option<Vec<u8>> {
     let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+
+    if let serde_json::Value::Array(arr) = &value {
+        if arr.is_empty() {
+            let rc_block_info = if let Some(at) = at_param {
+                fetch_rc_block_info(state, at).await
+            } else {
+                None
+            };
+            let result = serde_json::json!({
+                "rcBlock": rc_block_info,
+                "parachainDataPerBlock": []
+            });
+            return serde_json::to_vec(&result).ok();
+        }
+    }
+
     let rc_hash = extract_rc_hash(&value)?;
     let parent_hash = fetch_rc_parent_hash(state, rc_hash).await;
     wrap_rc_response(value, parent_hash)
@@ -103,14 +127,6 @@ fn extract_rc_hash(value: &serde_json::Value) -> Option<&str> {
 fn wrap_rc_response(value: serde_json::Value, parent_hash: Option<String>) -> Option<Vec<u8>> {
     match &value {
         serde_json::Value::Array(arr) => {
-            if arr.is_empty() {
-                let result = serde_json::json!({
-                    "rcBlock": null,
-                    "parachainDataPerBlock": []
-                });
-                return serde_json::to_vec(&result).ok();
-            }
-
             let first = arr.first()?.as_object()?;
             let rc_hash = first.get("rcBlockHash")?.as_str()?;
             let rc_number = first.get("rcBlockNumber")?.as_str()?;
@@ -161,6 +177,34 @@ async fn fetch_rc_parent_hash(state: &AppState, rc_block_hash: &str) -> Option<S
     let hash: subxt::utils::H256 = rc_block_hash.parse().ok()?;
     let header = relay_rpc.chain_get_header(Some(hash)).await.ok()??;
     Some(format!("{:#x}", header.parent_hash))
+}
+
+/// Fetch full RC block info (hash, parentHash, number) from an `at` parameter.
+async fn fetch_rc_block_info(
+    state: &AppState,
+    at: &str,
+) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let relay_rpc = state.get_relay_chain_rpc()?;
+
+    let hash: subxt::utils::H256 = if at.starts_with("0x") {
+        at.parse().ok()?
+    } else {
+        let number: u32 = at.parse().ok()?;
+        relay_rpc
+            .chain_get_block_hash(Some(number.into()))
+            .await
+            .ok()??
+    };
+
+    let header = relay_rpc.chain_get_header(Some(hash)).await.ok()??;
+    let mut rc_block = serde_json::Map::new();
+    rc_block.insert("hash".to_string(), json!(format!("{:#x}", hash)));
+    rc_block.insert(
+        "parentHash".to_string(),
+        json!(format!("{:#x}", header.parent_hash)),
+    );
+    rc_block.insert("number".to_string(), json!(header.number.to_string()));
+    Some(rc_block)
 }
 
 #[cfg(test)]
@@ -230,6 +274,19 @@ mod tests {
             Ok(v) => v,
             Err(_) => return Response::from_parts(parts, Body::from(bytes)),
         };
+
+        if let serde_json::Value::Array(arr) = &value {
+            if arr.is_empty() {
+                let result = serde_json::json!({
+                    "rcBlock": null,
+                    "parachainDataPerBlock": []
+                });
+                if let Ok(new_bytes) = serde_json::to_vec(&result) {
+                    parts.headers.remove(axum::http::header::CONTENT_LENGTH);
+                    return Response::from_parts(parts, Body::from(new_bytes));
+                }
+            }
+        }
 
         match wrap_rc_response(value, None) {
             Some(new_bytes) => {
