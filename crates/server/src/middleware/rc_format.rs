@@ -48,7 +48,7 @@ pub async fn rc_format_middleware(
         return response;
     }
 
-    let (parts, body) = response.into_parts();
+    let (mut parts, body) = response.into_parts();
     let bytes = match body.collect().await {
         Ok(collected) => collected.to_bytes(),
         Err(_) => return Response::from_parts(parts, Body::empty()),
@@ -59,6 +59,7 @@ pub async fn rc_format_middleware(
         None => return Response::from_parts(parts, Body::from(bytes)),
     };
 
+    parts.headers.remove(axum::http::header::CONTENT_LENGTH);
     Response::from_parts(parts, Body::from(transformed))
 }
 
