@@ -115,9 +115,12 @@ fn build_rc_block(
 ) -> serde_json::Map<String, serde_json::Value> {
     let mut rc_block = serde_json::Map::new();
     rc_block.insert("hash".to_string(), serde_json::json!(rc_hash));
-    if let Some(ph) = parent_hash {
-        rc_block.insert("parentHash".to_string(), serde_json::json!(ph));
-    }
+    rc_block.insert(
+        "parentHash".to_string(),
+        parent_hash
+            .map(|ph| serde_json::json!(ph))
+            .unwrap_or(serde_json::Value::Null),
+    );
     rc_block.insert("number".to_string(), serde_json::json!(rc_number));
     rc_block
 }
