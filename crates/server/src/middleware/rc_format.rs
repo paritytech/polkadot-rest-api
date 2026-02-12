@@ -85,7 +85,22 @@ pub async fn rc_format_middleware(
 
 async fn transform_rc_response(bytes: &[u8], state: &AppState) -> Option<Vec<u8>> {
     let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let rc_hash = extract_rc_hash(&value)?;
+    let parent_hash = fetch_rc_parent_hash(state, rc_hash).await;
+    wrap_rc_response(value, parent_hash)
+}
 
+/// Extract `rcBlockHash` from the first element (array) or the object itself.
+fn extract_rc_hash(value: &serde_json::Value) -> Option<&str> {
+    match value {
+        serde_json::Value::Array(arr) => arr.first()?.as_object()?.get("rcBlockHash")?.as_str(),
+        serde_json::Value::Object(obj) => obj.get("rcBlockHash")?.as_str(),
+        _ => None,
+    }
+}
+
+/// Wrap a JSON response in the `{ rcBlock, parachainDataPerBlock }` structure.
+fn wrap_rc_response(value: serde_json::Value, parent_hash: Option<String>) -> Option<Vec<u8>> {
     match &value {
         serde_json::Value::Array(arr) => {
             if arr.is_empty() {
@@ -99,8 +114,6 @@ async fn transform_rc_response(bytes: &[u8], state: &AppState) -> Option<Vec<u8>
             let first = arr.first()?.as_object()?;
             let rc_hash = first.get("rcBlockHash")?.as_str()?;
             let rc_number = first.get("rcBlockNumber")?.as_str()?;
-
-            let parent_hash = fetch_rc_parent_hash(state, rc_hash).await;
             let rc_block = build_rc_block(rc_hash, rc_number, parent_hash);
 
             let result = serde_json::json!({
@@ -113,8 +126,6 @@ async fn transform_rc_response(bytes: &[u8], state: &AppState) -> Option<Vec<u8>
         serde_json::Value::Object(obj) => {
             let rc_hash = obj.get("rcBlockHash")?.as_str()?;
             let rc_number = obj.get("rcBlockNumber")?.as_str()?;
-
-            let parent_hash = fetch_rc_parent_hash(state, rc_hash).await;
             let rc_block = build_rc_block(rc_hash, rc_number, parent_hash);
 
             let result = serde_json::json!({
@@ -153,46 +164,6 @@ async fn fetch_rc_parent_hash(state: &AppState, rc_block_hash: &str) -> Option<S
 }
 
 #[cfg(test)]
-fn transform_rc_response_stateless(bytes: &[u8]) -> Option<Vec<u8>> {
-    let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
-
-    match &value {
-        serde_json::Value::Array(arr) => {
-            if arr.is_empty() {
-                let result = serde_json::json!({
-                    "rcBlock": null,
-                    "parachainDataPerBlock": []
-                });
-                return serde_json::to_vec(&result).ok();
-            }
-
-            let first = arr.first()?.as_object()?;
-            let rc_hash = first.get("rcBlockHash")?.as_str()?;
-            let rc_number = first.get("rcBlockNumber")?.as_str()?;
-
-            let result = serde_json::json!({
-                "rcBlock": { "hash": rc_hash, "number": rc_number },
-                "parachainDataPerBlock": arr,
-            });
-
-            serde_json::to_vec(&result).ok()
-        }
-        serde_json::Value::Object(obj) => {
-            let rc_hash = obj.get("rcBlockHash")?.as_str()?;
-            let rc_number = obj.get("rcBlockNumber")?.as_str()?;
-
-            let result = serde_json::json!({
-                "rcBlock": { "hash": rc_hash, "number": rc_number },
-                "parachainDataPerBlock": [value],
-            });
-
-            serde_json::to_vec(&result).ok()
-        }
-        _ => None,
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use axum::http::StatusCode;
@@ -221,7 +192,7 @@ mod tests {
     }
 
     /// Test middleware that mirrors rc_format_middleware but without AppState.
-    /// Uses transform_rc_response_stateless (no parentHash in rcBlock).
+    /// Uses `wrap_rc_response` with no parentHash (no RPC available in tests).
     async fn test_rc_format(req: Request, next: Next) -> Response {
         let params = req
             .uri()
@@ -249,14 +220,22 @@ mod tests {
             return response;
         }
 
-        let (parts, body) = response.into_parts();
+        let (mut parts, body) = response.into_parts();
         let bytes = match body.collect().await {
             Ok(collected) => collected.to_bytes(),
             Err(_) => return Response::from_parts(parts, Body::empty()),
         };
 
-        match transform_rc_response_stateless(&bytes) {
-            Some(new_bytes) => Response::from_parts(parts, Body::from(new_bytes)),
+        let value: serde_json::Value = match serde_json::from_slice(&bytes) {
+            Ok(v) => v,
+            Err(_) => return Response::from_parts(parts, Body::from(bytes)),
+        };
+
+        match wrap_rc_response(value, None) {
+            Some(new_bytes) => {
+                parts.headers.remove(axum::http::header::CONTENT_LENGTH);
+                Response::from_parts(parts, Body::from(new_bytes))
+            }
             None => Response::from_parts(parts, Body::from(bytes)),
         }
     }
