@@ -39,7 +39,9 @@ pub enum StakingPayoutsQueryError {
     #[error("{0}")]
     BadStakingBlock(String),
 
-    #[error("Relay chain connection is required to query pre-migration era data. Configure a relay chain URL via SAS_SUBSTRATE_MULTI_CHAIN_URL.")]
+    #[error(
+        "Relay chain connection is required to query pre-migration era data. Configure a relay chain URL via SAS_SUBSTRATE_MULTI_CHAIN_URL."
+    )]
     RelayChainConnectionRequired,
 }
 
@@ -226,14 +228,8 @@ pub async fn query_staking_payouts(
                 .ok_or(StakingPayoutsQueryError::RelayChainConnectionRequired)?;
 
             for era in start_era..=pre_migration_end {
-                let era_payout = process_era(
-                    rc_client,
-                    account,
-                    era,
-                    params.unclaimed_only,
-                    ss58_prefix,
-                )
-                .await;
+                let era_payout =
+                    process_era(rc_client, account, era, params.unclaimed_only, ss58_prefix).await;
                 eras_payouts.push(era_payout);
             }
         }
@@ -326,23 +322,82 @@ async fn fetch_era_data(
         }
     };
 
-    // Get exposure data
+    // Get exposure data using targeted approach (current nominations)
     let exposure_data =
         fetch_exposure_data(client_at_block, account, era, &account_bytes, ss58_prefix).await?;
 
-    if exposure_data.is_empty() {
-        return Ok(RawEraPayouts::Message {
-            message: format!("Account has no nominations in era {}", era),
-        });
-    }   
+    // Calculate payouts from targeted exposure
+    let mut payouts = build_payouts(
+        &exposure_data,
+        client_at_block,
+        era,
+        &account_bytes,
+        &individual_points,
+        total_era_reward_points,
+        total_era_payout,
+        unclaimed_only,
+    )
+    .await?;
 
-    // Calculate payouts for each validator the account nominates
+    // If targeted approach yielded no payouts, fall back to bulk exposure scan.
+    // This handles historical eras where the account's nominations may have changed.
+    if payouts.is_empty() {
+        let bulk_exposure =
+            fetch_exposure_data_bulk(client_at_block, &account_bytes, era, ss58_prefix).await;
+
+        if !bulk_exposure.is_empty() {
+            payouts = build_payouts(
+                &bulk_exposure,
+                client_at_block,
+                era,
+                &account_bytes,
+                &individual_points,
+                total_era_reward_points,
+                total_era_payout,
+                unclaimed_only,
+            )
+            .await?;
+        } else if exposure_data.is_empty() {
+            return Ok(RawEraPayouts::Message {
+                message: format!("Account has no nominations in era {}", era),
+            });
+        }
+    }
+
+    Ok(RawEraPayouts::Payouts(RawEraPayoutsData {
+        era,
+        total_era_reward_points,
+        total_era_payout,
+        payouts,
+    }))
+}
+
+// ================================================================================================
+// Payout Building
+// ================================================================================================
+
+/// Build payout entries from exposure data.
+///
+/// For each exposure entry, looks up the validator's reward points, commission,
+/// and claimed status, then calculates the payout amount.
+#[allow(clippy::too_many_arguments)]
+async fn build_payouts(
+    exposure_data: &[(String, u128, u128)],
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+    account_bytes: &[u8; 32],
+    individual_points: &std::collections::HashMap<[u8; 32], u32>,
+    total_era_reward_points: u32,
+    total_era_payout: u128,
+    unclaimed_only: bool,
+) -> Result<Vec<RawValidatorPayout>, String> {
     let mut payouts = Vec::new();
+
     for (validator_id, nominator_exposure, total_exposure) in exposure_data {
         // Get validator's reward points
-        let validator_bytes = AccountId32::from_ss58check(&validator_id)
+        let validator_account = AccountId32::from_ss58check(validator_id)
             .map_err(|_| format!("Invalid validator address: {}", validator_id))?;
-        let validator_bytes_arr: [u8; 32] = *validator_bytes.as_ref();
+        let validator_bytes_arr: [u8; 32] = *validator_account.as_ref();
 
         let validator_points = individual_points
             .get(&validator_bytes_arr)
@@ -365,48 +420,40 @@ async fn fetch_era_data(
         }
 
         // Calculate payout
-        let account_bytes_ref: &[u8; 32] = account.as_ref();
-        let is_validator = account_bytes_ref == &validator_bytes_arr;
+        let is_validator = account_bytes == &validator_bytes_arr;
         let nominator_payout = calculate_payout(
             total_era_reward_points,
             total_era_payout,
             validator_points,
             commission,
-            nominator_exposure,
-            total_exposure,
+            *nominator_exposure,
+            *total_exposure,
             is_validator,
         );
 
         payouts.push(RawValidatorPayout {
-            validator_id,
+            validator_id: validator_id.clone(),
             nominator_staking_payout: nominator_payout,
             claimed,
             total_validator_reward_points: validator_points,
             validator_commission: commission,
-            total_validator_exposure: total_exposure,
-            nominator_exposure,
+            total_validator_exposure: *total_exposure,
+            nominator_exposure: *nominator_exposure,
         });
     }
 
-    Ok(RawEraPayouts::Payouts(RawEraPayoutsData {
-        era,
-        total_era_reward_points,
-        total_era_payout,
-        payouts,
-    }))
+    Ok(payouts)
 }
 
 // ================================================================================================
 // Storage Fetching Functions
 // ================================================================================================
 
-/// Fetch exposure data for an account in an era.
+/// Fetch exposure data for an account in an era using the targeted approach.
 /// Returns Vec<(validator_id, nominator_exposure, total_exposure)>
 ///
-/// Strategy:
-/// 1. First try targeted approach using current nominations (fast)
-/// 2. If no results, fall back to bulk approach (slower but handles historical eras
-///    where nominations may have changed)
+/// Uses current nominations to determine which validators to query. This is fast
+/// but may miss historical nominations that have since changed.
 async fn fetch_exposure_data(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
@@ -414,7 +461,6 @@ async fn fetch_exposure_data(
     account_bytes: &[u8; 32],
     ss58_prefix: u16,
 ) -> Result<Vec<(String, u128, u128)>, String> {
-    // First try the targeted approach using current nominations
     let mut results = Vec::new();
 
     // Get the account's nominations to find which validators to query
@@ -459,7 +505,47 @@ async fn fetch_exposure_data(
             }
         }
     }
+
     Ok(results)
+}
+
+/// Fetch exposure data for an account in an era using the bulk approach.
+/// Iterates ALL validators' exposure for the era and finds the account's entries.
+///
+/// This is slower than the targeted approach but correctly handles historical eras
+/// where the account's nominations may have changed since the queried era.
+async fn fetch_exposure_data_bulk(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    account_bytes: &[u8; 32],
+    era: u32,
+    ss58_prefix: u16,
+) -> Vec<(String, u128, u128)> {
+    let mut results = Vec::new();
+
+    let (nominator_map, validator_map) =
+        staking::get_era_exposures_bulk(client_at_block, era).await;
+
+    // Check if account appears as a nominator in this era
+    if let Some(entries) = nominator_map.get(account_bytes) {
+        for (validator_bytes, nominator_exposure, total_exposure) in entries {
+            let validator_account = AccountId32::from(*validator_bytes);
+            let validator_ss58 = validator_account.to_ss58check_with_version(ss58_prefix.into());
+            if !results.iter().any(|(v, _, _)| v == &validator_ss58) {
+                results.push((validator_ss58, *nominator_exposure, *total_exposure));
+            }
+        }
+    }
+
+    // Check if account is a validator with own stake in this era
+    if let Some(info) = validator_map.get(account_bytes) {
+        let validator_account = AccountId32::from(info.validator_bytes);
+        let validator_ss58 = validator_account.to_ss58check_with_version(ss58_prefix.into());
+        if !results.iter().any(|(v, _, _)| v == &validator_ss58) {
+            results.push((validator_ss58, info.own, info.total));
+        }
+    }
+
+    results
 }
 
 /// Find an account's exposure within a specific validator's stakers.

@@ -329,9 +329,7 @@ impl From<StakingPayoutsQueryError> for AccountsError {
             StakingPayoutsQueryError::NoActiveEra => AccountsError::NoActiveEra,
             StakingPayoutsQueryError::InvalidEra(era) => AccountsError::InvalidEra(era),
             StakingPayoutsQueryError::InvalidDepth => AccountsError::InvalidDepth,
-            StakingPayoutsQueryError::BadStakingBlock(msg) => {
-                AccountsError::BadStakingBlock(msg)
-            }
+            StakingPayoutsQueryError::BadStakingBlock(msg) => AccountsError::BadStakingBlock(msg),
             StakingPayoutsQueryError::RelayChainConnectionRequired => {
                 AccountsError::RelayChainConnectionRequired
             }
