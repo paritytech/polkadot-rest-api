@@ -72,7 +72,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -143,7 +143,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -217,7 +217,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -362,7 +362,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -433,7 +433,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -508,7 +508,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -579,7 +579,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -638,7 +638,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -719,7 +719,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -814,7 +814,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -1752,7 +1752,7 @@ paths:
         schema:
           type: boolean
           default: false
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -1845,7 +1845,7 @@ paths:
         schema:
           type: boolean
           default: false
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -1903,7 +1903,7 @@ paths:
         schema:
           type: boolean
           default: false
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -1983,7 +1983,7 @@ paths:
         schema:
           type: boolean
           default: false
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -2083,7 +2083,7 @@ paths:
         schema:
           type: boolean
           default: false
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -2137,7 +2137,7 @@ paths:
         schema:
           type: boolean
           default: false
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -2188,7 +2188,7 @@ paths:
         schema:
           type: boolean
           default: false
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -2722,7 +2722,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -2766,7 +2766,7 @@ paths:
           schema:
             type: boolean
             description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-        - name: useRcBlockFormat
+        - name: format
           in: query
           description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
           required: false
@@ -2816,7 +2816,7 @@ paths:
           schema:
             type: boolean
             description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-        - name: useRcBlockFormat
+        - name: format
           in: query
           description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
           required: false
@@ -2866,7 +2866,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -2905,7 +2905,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -2951,7 +2951,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -2991,7 +2991,7 @@ paths:
           schema:
             type: boolean
             description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-        - name: useRcBlockFormat
+        - name: format
           in: query
           description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
           required: false
@@ -3043,7 +3043,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -3114,7 +3114,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -3177,7 +3177,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -3248,7 +3248,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -3312,7 +3312,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -3383,7 +3383,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -3447,7 +3447,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -3518,7 +3518,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -4564,7 +4564,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -4648,7 +4648,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -4706,7 +4706,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -4757,7 +4757,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -4812,7 +4812,7 @@ paths:
         schema:
           type: boolean
           description: When set to 'true', uses relay chain block mode with the 'at' parameter.
-      - name: useRcBlockFormat
+      - name: format
         in: query
         description: Controls the response format when using 'useRcBlock=true'. When set to 'object', wraps the response in an object containing relay chain block info ('rcBlock') and the parachain data array ('parachainDataPerBlock'). When set to 'array' or omitted, returns the standard array format. Only valid when 'useRcBlock=true' is specified.
         required: false
@@ -5253,7 +5253,7 @@ components:
   schemas:
     RcBlockInfo:
       type: object
-      description: Relay chain block information used when useRcBlockFormat=object.
+      description: Relay chain block information used when format=object.
       properties:
         hash:
           type: string
@@ -5269,7 +5269,7 @@ components:
           format: unsignedInteger
     RcBlockObjectResponse:
       type: object
-      description: Response wrapper when using useRcBlockFormat=object. Contains relay chain block info and an array of parachain data.
+      description: Response wrapper when using format=object. Contains relay chain block info and an array of parachain data.
       properties:
         rcBlock:
           $ref: '#/components/schemas/RcBlockInfo'

@@ -24,14 +24,14 @@ The `useRcBlock` parameter is a boolean parameter that works in conjunction with
 
 **Block Finalization Note**: The `useRcBlock` parameter does not make any assumptions about whether the block you pass is finalized or a best block. It is recommended to ensure the block you are passing is finalized if block finalization is important for your use case.
 
-### useRcBlockFormat Parameter
-The `useRcBlockFormat` parameter controls the response format when using `useRcBlock=true`. This parameter is only valid when `useRcBlock=true` is specified.
+### format Parameter
+The `format` parameter controls the response format when using `useRcBlock=true`. This parameter is only valid when `useRcBlock=true` is specified.
 
 **Values:**
 - `array` (default): Returns the standard array format with enhanced metadata
 - `object`: Wraps the response in an object containing relay chain block info and the parachain data array
 
-**Validation**: Using `useRcBlockFormat` without `useRcBlock=true` will return a `400 Bad Request` error.
+**Validation**: Using `format=object` without `useRcBlock=true` will return a `400 Bad Request` error.
 
 ## Implementation: useRcBlock Query Parameter
 
@@ -50,9 +50,9 @@ GET /accounts/{accountId}/balance-info?at=0x123abc&useRcBlock=true
 GET /blocks/head?useRcBlock=true
 GET /blocks/12345?at=12345&useRcBlock=true
 
-# With useRcBlockFormat=object for wrapped response format
-GET /pallets/staking/progress?at=1000000&useRcBlock=true&useRcBlockFormat=object
-GET /accounts/{accountId}/balance-info?at=0x123abc&useRcBlock=true&useRcBlockFormat=object
+# With format=object for wrapped response format
+GET /pallets/staking/progress?at=1000000&useRcBlock=true&format=object
+GET /accounts/{accountId}/balance-info?at=0x123abc&useRcBlock=true&format=object
 ```
 
 ### Response Format Changes
@@ -78,7 +78,7 @@ Returns array format with additional metadata:
 
 Or empty array `[]` if no corresponding Asset Hub block exists.
 
-**With useRcBlock=true&useRcBlockFormat=object:**
+**With useRcBlock=true&format=object:**
 Returns object format wrapping the data with relay chain block info:
 ```json
 {
@@ -136,7 +136,7 @@ When `useRcBlock=true` is used, responses include additional context fields:
 - `rcBlockNumber`: The relay chain block number
 - `ahTimestamp`: The Asset Hub block timestamp
 - Array format (default) prepares for future elastic scaling scenarios
-- Object format (`useRcBlockFormat=object`) provides relay chain block metadata wrapper with `rcBlock` info (hash, parentHash, number) and `parachainDataPerBlock` array
+- Object format (`format=object`) provides relay chain block metadata wrapper with `rcBlock` info (hash, parentHash, number) and `parachainDataPerBlock` array
 
 ### Backward Compatibility
 - Defaults to `false`, maintaining existing functionality when not specified
@@ -153,8 +153,8 @@ The `validateUseRcBlock` middleware ensures:
 1. **Boolean validation**: `useRcBlock` must be "true" or "false" string
 2. **Asset Hub requirement**: Only works when connected to Asset Hub
 3. **Relay chain availability**: Requires relay chain API configuration via `SAS_SUBSTRATE_MULTI_CHAIN_URL`
-4. **useRcBlockFormat dependency**: `useRcBlockFormat` requires `useRcBlock=true` to be specified
-5. **useRcBlockFormat values**: Must be either "array" or "object" string
+4. **format dependency**: `format=object` requires `useRcBlock=true` to be specified
+5. **format values**: Must be either "array" or "object" string
 
 ## Multi-Block and Elastic Scaling Scenarios
 
