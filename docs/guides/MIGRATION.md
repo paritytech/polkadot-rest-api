@@ -24,15 +24,6 @@ All API endpoints are now versioned under the `/v1` prefix.
 
 Update all client URLs by prepending `/v1` to existing paths.
 
-### Historical data with `?at=`
-
-The following endpoints now return historical data when using the `?at=` query parameter. Sidecar's implementation returned current state regardless of the `at` parameter:
-  - `/v1/pallets/assets/{assetId}/asset-info`
-  - `/v1/pallets/asset-conversion/liquidity-pools`
-  - `/v1/pallets/asset-conversion/next-available-id`
-  - `/v1/pallets/pool-assets/{assetId}/asset-info`
-  - `/v1/pallets/foreign-assets`
-
 ### Coretime endpoint changes
 
 - **Renamed field**: `palletVersion` → `storageVersion` in `coretime/info`, to match current naming. See [commit](https://github.com/paritytech/polkadot-sdk/commit/4fe55f0bcb8edccaad73b33b804c349a756f7d3c).
@@ -45,7 +36,55 @@ The following endpoints now return historical data when using the `?at=` query p
 
 | Parameter | Sidecar | Polkadot REST API | Notes |
 |-----------|---------|-------------------|-------|
-| `useRcBlockFormat` | Supported (`array` or `object`) | Not supported | Use `useRcBlock=true` only; response is always an array when multiple AH blocks found |
+| `useRcBlockFormat` | Supported (`array` or `object`) | Use `format=rc` instead | Sidecar's `useRcBlockFormat=object` is equivalent to `format=rc` combined with `useRcBlock=true`. Sidecar's `useRcBlockFormat=array` (or omitting the parameter) is the default behavior — no extra parameter needed. |
+
+**Migration example:**
+
+```
+# Sidecar — object format
+GET /blocks/12345?useRcBlock=true&useRcBlockFormat=object
+
+# Polkadot REST API — equivalent
+GET /v1/blocks/12345?useRcBlock=true&format=rc
+```
+
+Both produce the same response structure:
+
+```json
+{
+  "rcBlock": {
+    "hash": "0x...",
+    "parentHash": "0x...",
+    "number": "12345"
+  },
+  "parachainDataPerBlock": [
+    { /* Asset Hub block data with rcBlockHash, rcBlockNumber, ahTimestamp */ }
+  ]
+}
+```
+
+```
+# Sidecar — array format (default)
+GET /blocks/12345?useRcBlock=true
+
+# Polkadot REST API — equivalent (same, no extra parameter)
+GET /v1/blocks/12345?useRcBlock=true
+```
+
+Both return an array of Asset Hub blocks (or `[]` if none found).
+
+---
+
+## Fixes
+
+### Historical data with `?at=`
+
+The following endpoints now return historical data when using the `?at=` query parameter. Sidecar's implementation returned current state regardless of the `at` parameter:
+  - `/v1/pallets/assets/{assetId}/asset-info`
+  - `/v1/pallets/asset-conversion/liquidity-pools`
+  - `/v1/pallets/asset-conversion/next-available-id`
+  - `/v1/pallets/pool-assets/{assetId}/asset-info`
+  - `/v1/pallets/foreign-assets`
 
 ---
 
@@ -161,8 +200,8 @@ Both projects use environment variables with the `SAS_` prefix. Most variables a
 | | Sidecar | Polkadot REST API |
 |---|---------|-------------------|
 | **Runtime** | Node.js (v18+) | Rust binary (no runtime needed) |
-| **Install** | `npm install @substrate/api-sidecar` | `cargo build --release --package server` |
-| **Start** | `substrate-api-sidecar` | `cargo run --release --bin polkadot-rest-api` |
+| **Install** | `npm install @substrate/api-sidecar` | `cargo install polkadot-rest-api` |
+| **Start** | `substrate-api-sidecar` | `polkadot-rest-api` |
 | **Docker** | `docker-compose up` | `docker-compose up` |
 
 ---
