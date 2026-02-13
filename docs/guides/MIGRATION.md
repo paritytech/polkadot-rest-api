@@ -36,7 +36,7 @@ Update all client URLs by prepending `/v1` to existing paths.
 
 | Parameter | Sidecar | Polkadot REST API | Notes |
 |-----------|---------|-------------------|-------|
-| `useRcBlockFormat` | Supported (`array` or `object`) | Use `format=rc` instead | Sidecar's `useRcBlockFormat=object` is equivalent to `format=rc` combined with `useRcBlock=true`. Sidecar's `useRcBlockFormat=array` (or omitting the parameter) is the default behavior — no extra parameter needed. |
+| `useRcBlockFormat` | Supported (`array` or `object`) | Use `format=object` instead | Sidecar's `useRcBlockFormat=object` is equivalent to `format=object` combined with `useRcBlock=true`. Sidecar's `useRcBlockFormat=array` (or omitting the parameter) is the default behavior — no extra parameter needed. |
 
 **Migration example:**
 
@@ -45,7 +45,7 @@ Update all client URLs by prepending `/v1` to existing paths.
 GET /blocks/12345?useRcBlock=true&useRcBlockFormat=object
 
 # Polkadot REST API — equivalent
-GET /v1/blocks/12345?useRcBlock=true&format=rc
+GET /v1/blocks/12345?useRcBlock=true&format=object
 ```
 
 Both produce the same response structure:
