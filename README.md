@@ -1,5 +1,7 @@
 # Polkadot REST API
 
+> **Note:** This project is in active development. A beta release is coming soon.
+
 ## Implementation Details
 
 ### Logging
