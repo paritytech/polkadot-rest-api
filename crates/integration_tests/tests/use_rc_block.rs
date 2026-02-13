@@ -6,6 +6,106 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+/// Helper to assert that a useRcBlock endpoint returns an empty array for
+/// a Relay Chain block that contains no Asset Hub blocks.
+async fn assert_use_rc_block_empty(client: &TestClient, endpoint: &str) -> Result<()> {
+    let (status, json) = client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .with_context(|| format!("Failed to fetch {}", endpoint))?;
+
+    assert!(
+        status.is_success(),
+        "Endpoint {} returned status {}",
+        endpoint,
+        status
+    );
+
+    let array = json.as_array().with_context(|| {
+        format!(
+            "Expected array for {}, got: {}",
+            endpoint,
+            serde_json::to_string_pretty(&json).unwrap_or_default()
+        )
+    })?;
+
+    assert!(
+        array.is_empty(),
+        "Expected empty array for {}, got {} element(s)",
+        endpoint,
+        array.len()
+    );
+
+    println!("{} {} -> []", "✓".green(), endpoint);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_use_rc_block_pallets_empty_response() -> Result<()> {
+    init_tracing();
+
+    let api_url = env::var("API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let local_client = TestClient::new(api_url);
+
+    local_client
+        .wait_for_ready(API_READY_TIMEOUT_SECONDS)
+        .await
+        .context("Local API is not ready")?;
+
+    // RC block 25000001 does not include any Asset Hub blocks
+    let rc_block = 25000001;
+
+    println!(
+        "\n{} Testing pallet endpoints return empty array for RC block {} (no AH blocks)",
+        "Testing".cyan().bold(),
+        rc_block.to_string().yellow()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    let endpoints = vec![
+        format!(
+            "/pallets/balances/dispatchables?useRcBlock=true&at={}",
+            rc_block
+        ),
+        format!(
+            "/pallets/balances/dispatchables/transferAllowDeath?useRcBlock=true&at={}",
+            rc_block
+        ),
+        format!("/pallets/balances/storage?useRcBlock=true&at={}", rc_block),
+        format!(
+            "/pallets/balances/storage/totalIssuance?useRcBlock=true&at={}",
+            rc_block
+        ),
+        format!("/pallets/balances/consts?useRcBlock=true&at={}", rc_block),
+        format!(
+            "/pallets/balances/consts/existentialDeposit?useRcBlock=true&at={}",
+            rc_block
+        ),
+        format!("/pallets/balances/errors?useRcBlock=true&at={}", rc_block),
+        format!(
+            "/pallets/balances/errors/InsufficientBalance?useRcBlock=true&at={}",
+            rc_block
+        ),
+        format!("/pallets/balances/events?useRcBlock=true&at={}", rc_block),
+        format!(
+            "/pallets/balances/events/Transfer?useRcBlock=true&at={}",
+            rc_block
+        ),
+    ];
+
+    for endpoint in &endpoints {
+        assert_use_rc_block_empty(&local_client, endpoint).await?;
+    }
+
+    println!("{}", "═".repeat(80).bright_white());
+    println!(
+        "{} All {} pallet endpoints returned empty array as expected",
+        "✓".green().bold(),
+        endpoints.len()
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn test_use_rc_block_empty_response() -> Result<()> {
     init_tracing();

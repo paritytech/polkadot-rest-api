@@ -419,10 +419,10 @@ async fn handle_use_rc_block(
     let rc_resolved_block = utils::resolve_block_with_rpc(
         state
             .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
+            .ok_or(PalletError::RelayChainNotConfigured)?,
         state
             .get_relay_chain_rpc()
-            .expect("relay chain RPC checked above"),
+            .ok_or(PalletError::RelayChainNotConfigured)?,
         Some(rc_block_id),
     )
     .await?;
@@ -430,69 +430,59 @@ async fn handle_use_rc_block(
     // Find Asset Hub blocks in the relay chain block
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
-    // If no Asset Hub blocks found, return empty response
+    // Return empty array when no AH blocks found
     if ah_blocks.is_empty() {
-        let at = AtResponse {
-            hash: rc_resolved_block.hash.clone(),
-            height: rc_resolved_block.number.to_string(),
-        };
         return Ok((
             StatusCode::OK,
-            Json(PalletsDispatchablesResponse {
-                at,
-                pallet: to_lower_first(&pallet_id),
-                pallet_index: "0".to_string(),
-                items: DispatchablesItems::Full(vec![]),
-                rc_block_hash: Some(rc_resolved_block.hash),
-                rc_block_number: Some(rc_resolved_block.number.to_string()),
-                ah_timestamp: None,
-            }),
+            Json(Vec::<PalletsDispatchablesResponse>::new()),
         )
             .into_response());
     }
 
-    // Use the first Asset Hub block
-    let ah_block = &ah_blocks[0];
+    let current_client = state.client.at_current_block().await?;
+    let current_metadata = current_client.metadata();
 
-    // Get client at block - Subxt normalizes all metadata versions
-    let client_at_block = state.client.at_block(ah_block.number).await?;
-    let metadata = client_at_block.metadata();
+    let mut responses = Vec::new();
+    for ah_block in &ah_blocks {
+        // Get client at the AH block for timestamp and historical pallet lookup
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+        let historic_metadata = client_at_block.metadata();
 
-    let pallet_info = extract_pallet_dispatchables(&metadata, &pallet_id)?;
+        let pallet_identity = find_pallet_identity(&historic_metadata, &pallet_id)?;
 
-    let at = AtResponse {
-        hash: ah_block.hash.clone(),
-        height: ah_block.number.to_string(),
-    };
+        let pallet_info = extract_pallet_dispatchables(&current_metadata, &pallet_identity.name)?;
 
-    // Fetch timestamp using Subxt's dynamic storage API
-    let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
 
-    let items = if params.only_ids {
-        DispatchablesItems::OnlyIds(
-            pallet_info
-                .dispatchables
-                .iter()
-                .map(|d| snake_to_camel(&d.name))
-                .collect(),
-        )
-    } else {
-        DispatchablesItems::Full(pallet_info.dispatchables)
-    };
+        let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
-    Ok((
-        StatusCode::OK,
-        Json(PalletsDispatchablesResponse {
+        let items = if params.only_ids {
+            DispatchablesItems::OnlyIds(
+                pallet_info
+                    .dispatchables
+                    .iter()
+                    .map(|d| snake_to_camel(&d.name))
+                    .collect(),
+            )
+        } else {
+            DispatchablesItems::Full(pallet_info.dispatchables)
+        };
+
+        responses.push(PalletsDispatchablesResponse {
             at,
-            pallet: to_lower_first(&pallet_info.name),
-            pallet_index: pallet_info.index.to_string(),
+            pallet: to_lower_first(&pallet_identity.name),
+            pallet_index: pallet_identity.index.to_string(),
             items,
-            rc_block_hash: Some(rc_resolved_block.hash),
+            rc_block_hash: Some(rc_resolved_block.hash.clone()),
             rc_block_number: Some(rc_resolved_block.number.to_string()),
             ah_timestamp,
-        }),
-    )
-        .into_response())
+        });
+    }
+
+    Ok((StatusCode::OK, Json(responses)).into_response())
 }
 
 /// Handle requests with `useRcBlock=true` for Asset Hub chains (single dispatchable item).
@@ -523,10 +513,10 @@ async fn handle_dispatchable_item_use_rc_block(
     let rc_resolved_block = utils::resolve_block_with_rpc(
         state
             .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
+            .ok_or(PalletError::RelayChainNotConfigured)?,
         state
             .get_relay_chain_rpc()
-            .expect("relay chain RPC checked above"),
+            .ok_or(PalletError::RelayChainNotConfigured)?,
         Some(rc_block_id),
     )
     .await?;
@@ -534,56 +524,62 @@ async fn handle_dispatchable_item_use_rc_block(
     // Find Asset Hub blocks in the relay chain block
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
-    // If no Asset Hub blocks found, return error
+    // Return empty array when no AH blocks found
     if ah_blocks.is_empty() {
-        return Err(PalletError::DispatchableNotFound(dispatchable_id));
+        return Ok((
+            StatusCode::OK,
+            Json(Vec::<PalletDispatchableItemResponse>::new()),
+        )
+            .into_response());
     }
 
-    // Use the first Asset Hub block
-    let ah_block = &ah_blocks[0];
-
-    // Get client at block - Subxt normalizes all metadata versions
-    let client_at_block = state.client.at_block(ah_block.number).await?;
-    let metadata = client_at_block.metadata();
-
-    let pallet_info = extract_pallet_dispatchables(&metadata, &pallet_id)?;
-
-    // Convert camelCase input to snake_case for lookup (Sidecar accepts both)
     let dispatchable_id_snake = camel_to_snake(&dispatchable_id);
-    let dispatchable = pallet_info
-        .dispatchables
-        .iter()
-        .find(|d| d.name.to_lowercase() == dispatchable_id_snake.to_lowercase())
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.clone()))?;
 
-    let at = AtResponse {
-        hash: ah_block.hash.clone(),
-        height: ah_block.number.to_string(),
-    };
+    let current_client = state.client.at_current_block().await?;
+    let current_metadata = current_client.metadata();
 
-    // Fetch timestamp using Subxt's dynamic storage API
-    let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+    let mut responses = Vec::new();
+    for ah_block in &ah_blocks {
+        // Get client at the AH block for timestamp and historical pallet lookup
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+        let historic_metadata = client_at_block.metadata();
 
-    let metadata_field = if params.metadata {
-        Some(dispatchable.clone())
-    } else {
-        None
-    };
+        let pallet_identity = find_pallet_identity(&historic_metadata, &pallet_id)?;
 
-    Ok((
-        StatusCode::OK,
-        Json(PalletDispatchableItemResponse {
+        let pallet_info = extract_pallet_dispatchables(&current_metadata, &pallet_identity.name)?;
+
+        let dispatchable = pallet_info
+            .dispatchables
+            .iter()
+            .find(|d| d.name.to_lowercase() == dispatchable_id_snake.to_lowercase())
+            .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.clone()))?;
+
+        let at = AtResponse {
+            hash: ah_block.hash.clone(),
+            height: ah_block.number.to_string(),
+        };
+
+        let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+
+        let metadata_field = if params.metadata {
+            Some(dispatchable.clone())
+        } else {
+            None
+        };
+
+        responses.push(PalletDispatchableItemResponse {
             at,
-            pallet: to_lower_first(&pallet_info.name),
-            pallet_index: pallet_info.index.to_string(),
+            pallet: to_lower_first(&pallet_identity.name),
+            pallet_index: pallet_identity.index.to_string(),
             dispatchable_item: snake_to_camel(&dispatchable.name),
             metadata: metadata_field,
-            rc_block_hash: Some(rc_resolved_block.hash),
+            rc_block_hash: Some(rc_resolved_block.hash.clone()),
             rc_block_number: Some(rc_resolved_block.number.to_string()),
             ah_timestamp,
-        }),
-    )
-        .into_response())
+        });
+    }
+
+    Ok((StatusCode::OK, Json(responses)).into_response())
 }
 
 // ============================================================================
@@ -596,21 +592,24 @@ struct PalletDispatchablesInfo {
     dispatchables: Vec<DispatchableItemMetadata>,
 }
 
+struct PalletIdentity {
+    name: String,
+    index: u8,
+}
+
 // ============================================================================
 // Metadata Extraction - Using Subxt's normalized metadata API
 // ============================================================================
 
-/// Extract pallet dispatchables using Subxt's metadata API.
-/// Subxt normalizes all metadata versions (V9-V16) into a unified format.
-fn extract_pallet_dispatchables(
+/// Find pallet name and index from metadata by index (u8) or name (case-insensitive),
+/// without extracting dispatchables.
+fn find_pallet_identity(
     metadata: &Metadata,
     pallet_id: &str,
-) -> Result<PalletDispatchablesInfo, PalletError> {
-    // Try to find pallet by index first, then by name (case-insensitive)
+) -> Result<PalletIdentity, PalletError> {
     let pallet = if let Ok(index) = pallet_id.parse::<u8>() {
         metadata.pallets().find(|p| p.call_index() == index)
     } else {
-        // Try exact match first, then case-insensitive match
         metadata.pallet_by_name(pallet_id).or_else(|| {
             let pallet_id_lower = pallet_id.to_lowercase();
             metadata
@@ -620,6 +619,22 @@ fn extract_pallet_dispatchables(
     };
 
     let pallet = pallet.ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+
+    Ok(PalletIdentity {
+        name: pallet.name().to_string(),
+        index: pallet.call_index(),
+    })
+}
+
+fn extract_pallet_dispatchables(
+    metadata: &Metadata,
+    pallet_id: &str,
+) -> Result<PalletDispatchablesInfo, PalletError> {
+    let identity = find_pallet_identity(metadata, pallet_id)?;
+
+    let pallet = metadata
+        .pallet_by_name(&identity.name)
+        .ok_or_else(|| PalletError::PalletNotFound(identity.name.clone()))?;
 
     // Get call variants from the pallet (if available)
     let dispatchables: Vec<DispatchableItemMetadata> = match pallet.call_variants() {
@@ -663,8 +678,8 @@ fn extract_pallet_dispatchables(
     };
 
     Ok(PalletDispatchablesInfo {
-        name: pallet.name().to_string(),
-        index: pallet.call_index(),
+        name: identity.name,
+        index: identity.index,
         dispatchables,
     })
 }

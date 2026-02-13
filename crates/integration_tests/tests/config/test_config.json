@@ -1183,6 +1183,172 @@
         },
         "fixture_path": "asset-hub-polkadot/pallets_nomination_pools_1_use_rc_block_29698001.json",
         "description": "Test pallets nomination-pools pool 1 with useRcBlock=true at RC block 29,698,001"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 10554957,
+        "account_id": null,
+        "query_params": {
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/use_rc_block_format_rc_10554957.json",
+        "description": "Test /blocks/{blockId} with useRcBlock=true&format=rc at RC block 10,554,957"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}/header",
+        "block_height": 10293194,
+        "account_id": null,
+        "query_params": {
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/use_rc_block_header_format_rc_10293194.json",
+        "description": "Test /blocks/{blockId}/header with useRcBlock=true&format=rc at RC block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}/extrinsics-raw",
+        "block_height": 10554957,
+        "account_id": null,
+        "query_params": {
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/use_rc_block_extrinsics_raw_format_rc_10554957.json",
+        "description": "Test /blocks/{blockId}/extrinsics-raw with useRcBlock=true&format=rc at RC block 10,554,957"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}/extrinsics/{extrinsicIndex}",
+        "block_height": 10554957,
+        "account_id": null,
+        "extrinsic_index": 0,
+        "query_params": {
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/use_rc_block_extrinsic_format_rc_10554957_0.json",
+        "description": "Test /blocks/{blockId}/extrinsics/{extrinsicIndex} with useRcBlock=true&format=rc at RC block 10,554,957, extrinsic 0"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/events",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "10293194",
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_balances_events_use_rc_block_format_rc_10293194.json",
+        "description": "Test pallets balances events with useRcBlock=true&format=rc at RC block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/events/Transfer",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "10293194",
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_balances_events_Transfer_use_rc_block_format_rc_10293194.json",
+        "description": "Test pallets balances events Transfer with useRcBlock=true&format=rc at RC block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/pallets/on-going-referenda",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "29698001",
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_on_going_referenda_use_rc_block_format_rc_29698001.json",
+        "description": "Test pallets on-going-referenda with useRcBlock=true&format=rc at RC block 29,698,001"
+      },
+      {
+        "endpoint": "/v1/pallets/nomination-pools/info",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "29698001",
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_nomination_pools_info_use_rc_block_format_rc_29698001.json",
+        "description": "Test pallets nomination-pools info with useRcBlock=true&format=rc at RC block 29,698,001"
+      },
+      {
+        "endpoint": "/v1/pallets/nomination-pools/{poolId}",
+        "block_height": null,
+        "account_id": null,
+        "pool_id": "1",
+        "query_params": {
+          "at": "29698001",
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_nomination_pools_1_use_rc_block_format_rc_29698001.json",
+        "description": "Test pallets nomination-pools pool 1 with useRcBlock=true&format=rc at RC block 29,698,001"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/consts",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "10293194",
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_balances_consts_use_rc_block_format_rc_10293194.json",
+        "description": "Test pallets balances consts with useRcBlock=true&format=rc at RC block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/consts/ExistentialDeposit",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "10293194",
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_balances_consts_ExistentialDeposit_use_rc_block_format_rc_10293194.json",
+        "description": "Test pallets balances consts ExistentialDeposit with useRcBlock=true&format=rc at RC block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "10293194",
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_use_rc_block_format_rc_10293194.json",
+        "description": "Test pallets balances dispatchables with useRcBlock=true&format=rc at RC block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/pallets/balances/dispatchables/transfer_allow_death",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "10293194",
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_transfer_allow_death_use_rc_block_format_rc_10293194.json",
+        "description": "Test pallets balances dispatchables transfer_allow_death with useRcBlock=true&format=rc at RC block 10,293,194"
+      },
+      {
+        "endpoint": "/v1/pallets/staking/validators",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "29698001",
+          "useRcBlock": "true",
+          "format": "rc"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_staking_validators_use_rc_block_format_rc_29698001.json",
+        "description": "Test pallets staking/validators with useRcBlock=true&format=rc at RC block 29,698,001"
       }
     ],
     "asset-hub-kusama": [

@@ -10,13 +10,24 @@ pub fn create_app(state: AppState) -> Router {
     let metrics_enabled = state.config.metrics.enabled;
     let registry = &state.route_registry;
 
+    let rc_routes = Router::new()
+        .merge(routes::accounts::accounts_routes(registry))
+        .merge(routes::blocks::blocks_routes(registry))
+        .merge(routes::pallets::routes(
+            registry,
+            &state.chain_info.chain_type,
+        ))
+        .with_state(state.clone())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::rc_format::rc_format_middleware,
+        ));
+
     // Create v1 API router with route registration
     // All routes are mounted unconditionally - runtime metadata validation happens in handlers
     let v1_routes = Router::new()
         .route("/", get(routes::root::root_handler))
-        .merge(routes::accounts::accounts_routes(registry))
         .merge(routes::ahm::routes(registry))
-        .merge(routes::blocks::blocks_routes(registry))
         .merge(routes::capabilities::routes(registry))
         .merge(routes::coretime::routes(
             registry,
@@ -24,10 +35,6 @@ pub fn create_app(state: AppState) -> Router {
         ))
         .merge(routes::health::routes(registry))
         .merge(routes::node::routes(registry))
-        .merge(routes::pallets::routes(
-            registry,
-            &state.chain_info.chain_type,
-        ))
         .merge(routes::paras::routes(
             registry,
             &state.chain_info.chain_type,
@@ -39,7 +46,8 @@ pub fn create_app(state: AppState) -> Router {
             &state.chain_info.chain_type,
         ))
         .merge(routes::version::routes(registry))
-        .with_state(state.clone());
+        .with_state(state.clone())
+        .merge(rc_routes);
 
     // Apply metrics middleware if enabled (needs to be after with_state)
     let v1_routes = if metrics_enabled {
