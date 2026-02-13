@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for GET /rc/blocks/{blockId}/para-inclusions endpoint.
 //!
 //! This endpoint returns parachain inclusion information for a given relay chain block.

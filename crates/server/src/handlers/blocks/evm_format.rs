@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! EVM address format conversion utilities.
 //!
 //! This module provides functionality to convert AccountId32 addresses to EVM format

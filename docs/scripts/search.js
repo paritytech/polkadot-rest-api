@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Search functionality for Polkadot REST API Documentation
 // Handles search input, filtering, and results rendering
 

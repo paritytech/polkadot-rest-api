@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::types::BlockHash;
 use config::Hasher;
 use parity_scale_codec::{Decode, Encode};

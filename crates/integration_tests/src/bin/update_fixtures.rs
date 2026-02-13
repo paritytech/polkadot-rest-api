@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Script to update test fixtures with real blockchain data
 //!
 //! This script reads test cases from test_config.json and uses the `endpoint` field

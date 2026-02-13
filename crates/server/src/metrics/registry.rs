@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use lazy_static::lazy_static;
 use prometheus::{Counter, Encoder, HistogramOpts, HistogramVec, Registry, TextEncoder};
 use std::sync::{Mutex, Once};

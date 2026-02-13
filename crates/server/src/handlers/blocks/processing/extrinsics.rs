@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Extrinsic extraction and processing.
 //!
 //! This module handles extracting extrinsics from blocks, including:

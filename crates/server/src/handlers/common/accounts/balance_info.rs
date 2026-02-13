@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Shared utilities for balance info queries.
 //!
 //! This module provides common functionality for querying account balance information

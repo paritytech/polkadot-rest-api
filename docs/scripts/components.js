@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // UI Components for Polkadot REST API Documentation
 // Handles rendering of API documentation components
 

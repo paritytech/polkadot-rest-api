@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for /pallets/assets/{assetId}/asset-info endpoint.
 
 use crate::handlers::pallets::common::{

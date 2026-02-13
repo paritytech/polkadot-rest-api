@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for /pallets/pool-assets/{assetId}/asset-info endpoint.
 //!
 //! This endpoint is nearly identical to /pallets/assets/{assetId}/asset-info

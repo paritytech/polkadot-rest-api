@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use anyhow::Result;
 use futures::future::join_all;
 use integration_tests::{client::TestClient, constants::API_READY_TIMEOUT_SECONDS};

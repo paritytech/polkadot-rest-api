@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::{logging::http_logger_middleware, openapi::ApiDoc, routes, state::AppState};
 use axum::{Router, middleware, response::Redirect, routing::get};
 use tower_http::{

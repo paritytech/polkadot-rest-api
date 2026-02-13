@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Numeric extraction utilities for JSON values.
 //!
 //! This module provides functions to extract numeric values from various JSON

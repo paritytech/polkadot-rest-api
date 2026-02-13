@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Fee extraction for extrinsics.
 //!
 //! This module handles extracting fee information for signed extrinsics using

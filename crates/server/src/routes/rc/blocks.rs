@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::handlers::rc;
 use crate::handlers::rc::blocks as rc_blocks;
 use crate::routes::{API_VERSION, RegisterRoute, RouteRegistry};

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handlers for coretime-related endpoints.
 //!
 //! This module provides endpoints for querying coretime data from the Broker pallet,

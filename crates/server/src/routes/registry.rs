@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Route registry for dynamic endpoint introspection.
 //!
 //! This module provides a registry that tracks all registered routes,

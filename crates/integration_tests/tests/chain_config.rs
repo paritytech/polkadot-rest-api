@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Integration tests for chain config validation
 use config::{ChainConfig, ChainConfigs, ChainType, Hasher};
 

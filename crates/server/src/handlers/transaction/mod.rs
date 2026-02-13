@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Transaction-related handlers.
 //!
 //! This module provides handlers for transaction submission, dry-run, fee estimation,

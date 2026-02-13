@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::handlers::accounts::{AccountsError, ForeignAssetBalance};
 use crate::handlers::common::xcm_types::{BLAKE2_128_HASH_LEN, Location};
 use futures::StreamExt;

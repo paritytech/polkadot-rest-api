@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Formatting utilities for hex encoding and address conversion.
 
 use sp_core::crypto::{AccountId32, Ss58Codec};

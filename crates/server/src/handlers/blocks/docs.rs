@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Documentation extraction from runtime metadata.
 //!
 //! This module provides zero-copy access to documentation strings for events and calls

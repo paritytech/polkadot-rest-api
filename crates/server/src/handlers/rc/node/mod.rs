@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 pub mod get_rc_node_network;
 pub mod get_rc_node_transaction_pool;
 pub mod get_rc_node_version;
