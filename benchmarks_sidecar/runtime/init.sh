@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright (C) 2026 Parity Technologies (UK) Ltd.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 
 # Sidecar Runtime/spec endpoint benchmark
 # Usage: ./init.sh [scenario] [hardware_profile]

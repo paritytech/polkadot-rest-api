@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Type-aware JSON visitor for decoding extrinsic arguments.
 //!
 //! This module provides `ScaleVisitor`, a generic visitor that decodes SCALE values

@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright (C) 2026 Parity Technologies (UK) Ltd.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 
 # Script to parse sidecar-benchmarks.txt and generate individual benchmark files
 # Usage: ./parse_sidecar_benchmarks.sh <sidecar_benchmarks_file> <output_dir>

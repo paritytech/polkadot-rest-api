@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for GET /blocks/{blockId}/extrinsics/{extrinsicIndex} endpoint.
 //!
 //! This module provides the handler for fetching a specific extrinsic by its index

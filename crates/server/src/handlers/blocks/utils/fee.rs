@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Fee information transformation utilities.
 //!
 //! This module provides functions for transforming fee-related data from

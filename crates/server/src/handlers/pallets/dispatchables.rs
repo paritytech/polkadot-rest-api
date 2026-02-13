@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for the `/pallets/{palletId}/dispatchables` endpoint.
 //!
 //! This endpoint returns the dispatchables (extrinsics/calls) defined in a pallet's metadata.

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use super::types::{AccountsError, AssetBalancesQueryParams, AssetBalancesResponse, BlockInfo};
 use super::utils::validate_and_parse_address;
 use crate::handlers::accounts::utils::{query_all_assets_id, query_assets};

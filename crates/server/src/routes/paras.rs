@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Routes for parachain-related endpoints.
 //!
 //! These routes are only available when connected to a parachain node,

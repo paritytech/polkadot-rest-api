@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Test fixtures and helpers for mocking subxt clients with real metadata.
 //!
 //! This module provides utilities for creating mock RPC clients that can be used

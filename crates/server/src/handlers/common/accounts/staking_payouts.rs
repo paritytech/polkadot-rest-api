@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Common staking payouts utilities shared across handler modules.
 
 use crate::consts::{get_chain_display_name, get_migration_boundaries, is_bad_staking_block};

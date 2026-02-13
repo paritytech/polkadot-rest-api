@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for the `/pallets/{palletId}/events` endpoints.
 //!
 //! This module provides endpoints for querying event metadata from pallets.

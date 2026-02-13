@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use super::types::{AccountValidateQueryParams, AccountValidateResponse, AccountsError};
 use super::utils::get_network_name;
 use axum::{

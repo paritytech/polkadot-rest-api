@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::state::AppState;
 use crate::utils::{self, ResolvedBlock, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{

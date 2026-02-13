@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::handlers::node::common::{
     FetchError, TipExtractionError, fetch_transaction_pool_simple, fetch_transaction_pool_with_fees,
 };

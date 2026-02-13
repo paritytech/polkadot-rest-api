@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, format_account_id, resolve_block_for_pallet,
 };

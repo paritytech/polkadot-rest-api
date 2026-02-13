@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Common logic shared between node/* and rc/node/* handlers
 //!
 //! This module contains the core business logic that is identical between

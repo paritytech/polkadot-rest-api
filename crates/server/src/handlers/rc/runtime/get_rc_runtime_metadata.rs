@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::handlers::runtime::{RuntimeMetadataResponse, VERSION_REGEX, convert_metadata};
 use crate::state::{AppState, RelayChainError, SubstrateLegacyRpc};
 use crate::utils;

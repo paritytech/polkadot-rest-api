@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Main application entry point for Polkadot REST API Documentation
 // Coordinates the loading, parsing, and rendering of the documentation
 

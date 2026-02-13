@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for /pallets/foreign-assets endpoint.
 //!
 //! Returns information about all foreign assets on Asset Hub chains.

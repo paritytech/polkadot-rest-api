@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Shared types for block-related handlers.
 //!
 //! This module contains all the types used by `/blocks/*` endpoints including

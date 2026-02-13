@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for /coretime/regions endpoint.
 //!
 //! Returns all regions registered on a coretime chain (parachain with Broker pallet).

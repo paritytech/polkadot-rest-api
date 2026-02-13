@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::consts::{get_asset_hub_spec_name, get_migration_boundaries};
 use crate::state::AppState;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
