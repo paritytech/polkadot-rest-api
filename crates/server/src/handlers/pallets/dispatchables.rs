@@ -601,17 +601,15 @@ struct PalletIdentity {
 // Metadata Extraction - Using Subxt's normalized metadata API
 // ============================================================================
 
-/// Extract pallet dispatchables using Subxt's metadata API.
-/// Subxt normalizes all metadata versions (V9-V16) into a unified format.
-fn extract_pallet_dispatchables(
+/// Find pallet name and index from metadata by index (u8) or name (case-insensitive),
+/// without extracting dispatchables.
+fn find_pallet_identity(
     metadata: &Metadata,
     pallet_id: &str,
-) -> Result<PalletDispatchablesInfo, PalletError> {
-    // Try to find pallet by index first, then by name (case-insensitive)
+) -> Result<PalletIdentity, PalletError> {
     let pallet = if let Ok(index) = pallet_id.parse::<u8>() {
         metadata.pallets().find(|p| p.call_index() == index)
     } else {
-        // Try exact match first, then case-insensitive match
         metadata.pallet_by_name(pallet_id).or_else(|| {
             let pallet_id_lower = pallet_id.to_lowercase();
             metadata
@@ -621,6 +619,22 @@ fn extract_pallet_dispatchables(
     };
 
     let pallet = pallet.ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
+
+    Ok(PalletIdentity {
+        name: pallet.name().to_string(),
+        index: pallet.call_index(),
+    })
+}
+
+fn extract_pallet_dispatchables(
+    metadata: &Metadata,
+    pallet_id: &str,
+) -> Result<PalletDispatchablesInfo, PalletError> {
+    let identity = find_pallet_identity(metadata, pallet_id)?;
+
+    let pallet = metadata
+        .pallet_by_name(&identity.name)
+        .ok_or_else(|| PalletError::PalletNotFound(identity.name.clone()))?;
 
     // Get call variants from the pallet (if available)
     let dispatchables: Vec<DispatchableItemMetadata> = match pallet.call_variants() {
@@ -664,33 +678,9 @@ fn extract_pallet_dispatchables(
     };
 
     Ok(PalletDispatchablesInfo {
-        name: pallet.name().to_string(),
-        index: pallet.call_index(),
+        name: identity.name,
+        index: identity.index,
         dispatchables,
-    })
-}
-
-/// Find pallet name and index from metadata without extracting dispatchables.
-fn find_pallet_identity(
-    metadata: &Metadata,
-    pallet_id: &str,
-) -> Result<PalletIdentity, PalletError> {
-    let pallet = if let Ok(index) = pallet_id.parse::<u8>() {
-        metadata.pallets().find(|p| p.call_index() == index)
-    } else {
-        metadata.pallet_by_name(pallet_id).or_else(|| {
-            let pallet_id_lower = pallet_id.to_lowercase();
-            metadata
-                .pallets()
-                .find(|p| p.name().to_lowercase() == pallet_id_lower)
-        })
-    };
-
-    let pallet = pallet.ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    Ok(PalletIdentity {
-        name: pallet.name().to_string(),
-        index: pallet.call_index(),
     })
 }
 
