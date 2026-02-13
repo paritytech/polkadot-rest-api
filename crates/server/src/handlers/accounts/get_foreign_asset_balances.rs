@@ -53,7 +53,7 @@ pub async fn get_foreign_asset_balances(
     Path(account_id): Path<String>,
     Query(params): Query<ForeignAssetBalancesQueryParams>,
 ) -> Result<Response, AccountsError> {
-    let account = validate_and_parse_address(&account_id)?;
+    let account = validate_and_parse_address(&account_id, state.chain_info.ss58_prefix)?;
 
     if params.use_rc_block {
         return handle_use_rc_block(state, account, params).await;

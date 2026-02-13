@@ -54,7 +54,9 @@ pub async fn get_staking_payouts(
     Path(account_id): Path<String>,
     Query(params): Query<RcStakingPayoutsQueryParams>,
 ) -> Result<Response, AccountsError> {
-    let account = validate_and_parse_address(&account_id)?;
+    // Get the relay chain ss58_prefix for address validation
+    let rc_ss58_prefix = get_relay_chain_ss58_prefix(&state)?;
+    let account = validate_and_parse_address(&account_id, rc_ss58_prefix)?;
 
     // Get the relay chain client and info
     let (rc_client, rc_rpc_client, rc_rpc) = get_relay_chain_access(&state)?;
@@ -86,8 +88,24 @@ pub async fn get_staking_payouts(
         unclaimed_only: params.unclaimed_only,
     };
 
-    let raw_payouts =
-        query_staking_payouts(&client_at_block, &account, &resolved_block, &staking_params).await?;
+    // For RC endpoints, use relay chain spec_name if available
+    let rc_spec_name = state
+        .relay_chain_info
+        .as_ref()
+        .map(|info| info.spec_name.as_str())
+        .unwrap_or(&state.chain_info.spec_name);
+
+    // RC endpoints query the relay chain directly, no migration splitting needed
+    let raw_payouts = query_staking_payouts(
+        &client_at_block,
+        &account,
+        &resolved_block,
+        &staking_params,
+        rc_ss58_prefix,
+        rc_spec_name,
+        None,
+    )
+    .await?;
 
     let response = format_response(&raw_payouts);
 
@@ -97,6 +115,19 @@ pub async fn get_staking_payouts(
 // ================================================================================================
 // Relay Chain Access
 // ================================================================================================
+
+/// Get the SS58 prefix for the relay chain
+fn get_relay_chain_ss58_prefix(state: &AppState) -> Result<u16, AccountsError> {
+    if state.chain_info.chain_type == ChainType::Relay {
+        return Ok(state.chain_info.ss58_prefix);
+    }
+
+    state
+        .relay_chain_info
+        .as_ref()
+        .map(|info| info.ss58_prefix)
+        .ok_or(AccountsError::RelayChainNotAvailable)
+}
 
 /// Get access to relay chain client and RPC
 fn get_relay_chain_access(state: &AppState) -> Result<RelayChainAccess<'_>, AccountsError> {
@@ -131,7 +162,7 @@ fn format_response(raw: &RawStakingPayouts) -> RcStakingPayoutsResponse {
         .iter()
         .map(|era_payout| match era_payout {
             RawEraPayouts::Payouts(data) => EraPayouts::Payouts(EraPayoutsData {
-                era: data.era,
+                era: data.era.to_string(),
                 total_era_reward_points: data.total_era_reward_points.to_string(),
                 total_era_payout: data.total_era_payout.to_string(),
                 payouts: data

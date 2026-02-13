@@ -2,7 +2,6 @@ use super::types::{
     AccountsError, AssetApprovalQueryParams, AssetApprovalResponse, BlockInfo, DecodedAssetApproval,
 };
 use super::utils::validate_and_parse_address;
-use crate::handlers::accounts::utils::extract_u128_field;
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
@@ -11,10 +10,21 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use config::ChainType;
-use scale_value::{Composite, Value, ValueDef};
+use parity_scale_codec::Decode;
 use serde_json::json;
 use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
+
+// ================================================================================================
+// SCALE Decode Types for Assets::Approvals storage
+// ================================================================================================
+
+/// Asset approval structure
+#[derive(Debug, Clone, Decode)]
+struct AssetApproval {
+    amount: u128,
+    deposit: u128,
+}
 
 // ================================================================================================
 // Main Handler
@@ -53,9 +63,9 @@ pub async fn get_asset_approvals(
     Path(account_id): Path<String>,
     Query(params): Query<AssetApprovalQueryParams>,
 ) -> Result<Response, AccountsError> {
-    let account = validate_and_parse_address(&account_id)?;
+    let account = validate_and_parse_address(&account_id, state.chain_info.ss58_prefix)?;
 
-    let delegate = validate_and_parse_address(&params.delegate)
+    let delegate = validate_and_parse_address(&params.delegate, state.chain_info.ss58_prefix)
         .map_err(|_| AccountsError::InvalidDelegateAddress(params.delegate.clone()))?;
 
     if params.use_rc_block {
@@ -99,30 +109,31 @@ async fn query_asset_approval(
     asset_id: u32,
     block: &utils::ResolvedBlock,
 ) -> Result<AssetApprovalResponse, AccountsError> {
-    let storage_query = ("Assets", "Approvals");
+    // Build the storage address for Assets::Approvals(asset_id, owner, delegate)
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Assets", "Approvals");
 
-    let approvals_exists = client_at_block.storage().entry(storage_query).is_ok();
-
-    if !approvals_exists {
+    // Check if the pallet exists by trying to create the storage entry
+    if client_at_block
+        .storage()
+        .entry(("Assets", "Approvals"))
+        .is_err()
+    {
         return Err(AccountsError::PalletNotAvailable("Assets".to_string()));
     }
 
-    let storage_entry = client_at_block.storage().entry(storage_query)?;
-
     // Storage key for Approvals: (asset_id, owner, delegate)
-    let owner_bytes: &[u8; 32] = owner.as_ref();
-    let delegate_bytes: &[u8; 32] = delegate.as_ref();
-    let key = vec![
-        Value::u128(asset_id as u128),
-        Value::from_bytes(owner_bytes),
-        Value::from_bytes(delegate_bytes),
-    ];
+    let owner_bytes: [u8; 32] = *owner.as_ref();
+    let delegate_bytes: [u8; 32] = *delegate.as_ref();
 
-    let storage_value = storage_entry.try_fetch(key).await?;
+    let storage_value = client_at_block
+        .storage()
+        .fetch(storage_addr, (asset_id, owner_bytes, delegate_bytes))
+        .await;
 
-    let (amount, deposit) = if let Some(value) = storage_value {
-        // Decode the approval
-        let decoded = decode_asset_approval(&value).await?;
+    let (amount, deposit) = if let Ok(value) = storage_value {
+        // Get raw bytes and decode
+        let raw_bytes = value.into_bytes();
+        let decoded = decode_asset_approval(&raw_bytes)?;
         match decoded {
             Some(approval) => (
                 Some(approval.amount.to_string()),
@@ -151,86 +162,20 @@ async fn query_asset_approval(
 // Asset Approval Decoding
 // ================================================================================================
 
-/// Decode asset approval from storage value
-async fn decode_asset_approval(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
-) -> Result<Option<DecodedAssetApproval>, AccountsError> {
-    // Decode as scale_value::Value to inspect structure
-    let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        AccountsError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode storage value",
-        ))
-    })?;
-
-    // Handle Option wrapper
-    let approval_value = match &decoded.value {
-        ValueDef::Variant(variant) => {
-            if variant.name == "Some" {
-                // Extract the inner value from the composite
-                match &variant.values {
-                    Composite::Unnamed(values) => {
-                        if let Some(inner) = values.first() {
-                            inner
-                        } else {
-                            return Ok(None);
-                        }
-                    }
-                    Composite::Named(fields) => {
-                        if let Some((_, inner)) = fields.first() {
-                            inner
-                        } else {
-                            return Ok(None);
-                        }
-                    }
-                }
-            } else {
-                // None variant
-                return Ok(None);
-            }
-        }
-        _ => &decoded,
-    };
-
-    // Now decode the actual approval structure
-    match &approval_value.value {
-        ValueDef::Composite(composite) => decode_approval_composite(composite),
-        _ => Ok(None),
+/// Decode asset approval from raw SCALE bytes
+fn decode_asset_approval(raw_bytes: &[u8]) -> Result<Option<DecodedAssetApproval>, AccountsError> {
+    // Decode as AssetApproval struct
+    if let Ok(approval) = AssetApproval::decode(&mut &raw_bytes[..]) {
+        return Ok(Some(DecodedAssetApproval {
+            amount: approval.amount,
+            deposit: approval.deposit,
+        }));
     }
-}
 
-/// Decode approval from a composite structure
-fn decode_approval_composite(
-    composite: &Composite<()>,
-) -> Result<Option<DecodedAssetApproval>, AccountsError> {
-    match composite {
-        Composite::Named(fields) => {
-            // Extract amount and deposit fields
-            let amount = extract_u128_field(fields, "amount").unwrap_or(0);
-            let deposit = extract_u128_field(fields, "deposit").unwrap_or(0);
-
-            Ok(Some(DecodedAssetApproval { amount, deposit }))
-        }
-        Composite::Unnamed(values) => {
-            // Some runtimes might use unnamed struct (tuple-like)
-            // Approval is typically (amount, deposit) in order
-            let amount = values.first().and_then(|v| match &v.value {
-                ValueDef::Primitive(scale_value::Primitive::U128(val)) => Some(*val),
-                _ => None,
-            });
-            let deposit = values.get(1).and_then(|v| match &v.value {
-                ValueDef::Primitive(scale_value::Primitive::U128(val)) => Some(*val),
-                _ => None,
-            });
-
-            match (amount, deposit) {
-                (Some(amt), Some(dep)) => Ok(Some(DecodedAssetApproval {
-                    amount: amt,
-                    deposit: dep,
-                })),
-                _ => Ok(None),
-            }
-        }
-    }
+    // If decoding fails, return an error
+    Err(AccountsError::DecodeFailed(
+        parity_scale_codec::Error::from("Failed to decode asset approval: unknown format"),
+    ))
 }
 
 // ================================================================================================

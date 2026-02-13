@@ -1,10 +1,33 @@
 //! Common vesting info utilities shared across handler modules.
 
 use crate::utils::ResolvedBlock;
-use scale_value::{Composite, Value, ValueDef};
+use parity_scale_codec::Decode;
 use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
+
+// ================================================================================================
+// SCALE Decode Types for Vesting::Vesting storage
+// ================================================================================================
+
+/// Vesting schedule structure with compact fields
+#[derive(Debug, Clone, Decode)]
+struct VestingScheduleCompact {
+    #[codec(compact)]
+    locked: u128,
+    #[codec(compact)]
+    per_block: u128,
+    #[codec(compact)]
+    starting_block: u32,
+}
+
+/// Vesting schedule structure with non-compact fields (older runtimes)
+#[derive(Debug, Clone, Decode)]
+struct VestingScheduleNonCompact {
+    locked: u128,
+    per_block: u128,
+    starting_block: u64,
+}
 
 // ================================================================================================
 // Error Types
@@ -94,14 +117,12 @@ pub async fn query_vesting_info(
     account: &AccountId32,
     block: &ResolvedBlock,
 ) -> Result<RawVestingInfo, VestingQueryError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Vesting", "Vesting",
-    );
-
     // Check if Vesting pallet exists
-    let vesting_exists = client_at_block.storage().entry(storage_query).is_ok();
-
-    if !vesting_exists {
+    if client_at_block
+        .storage()
+        .entry(("Vesting", "Vesting"))
+        .is_err()
+    {
         return Err(VestingQueryError::VestingPalletNotAvailable);
     }
 
@@ -135,83 +156,69 @@ async fn query_vesting_schedules(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
 ) -> Result<Vec<RawVestingSchedule>, VestingQueryError> {
-    let storage_query = subxt::storage::dynamic::<Vec<scale_value::Value>, scale_value::Value>(
-        "Vesting", "Vesting",
-    );
-    let storage_entry = client_at_block.storage().entry(storage_query)?;
-
-    // Vesting::Vesting takes a single AccountId key
+    // Build the storage address for Vesting::Vesting(account)
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Vesting", "Vesting");
     let account_bytes: [u8; 32] = *account.as_ref();
-    let key = vec![Value::from_bytes(account_bytes)];
-    let storage_value = storage_entry.try_fetch(key).await?;
 
-    if let Some(value) = storage_value {
-        decode_vesting_schedules(&value).await
+    let storage_value = client_at_block
+        .storage()
+        .fetch(storage_addr, (account_bytes,))
+        .await;
+
+    if let Ok(value) = storage_value {
+        let raw_bytes = value.into_bytes();
+        decode_vesting_schedules(&raw_bytes)
     } else {
         Ok(Vec::new())
     }
 }
 
-async fn decode_vesting_schedules(
-    value: &subxt::storage::StorageValue<'_, scale_value::Value>,
+/// Decode vesting schedules from raw SCALE bytes
+fn decode_vesting_schedules(
+    raw_bytes: &[u8],
 ) -> Result<Vec<RawVestingSchedule>, VestingQueryError> {
-    let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        VestingQueryError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode vesting schedules",
-        ))
-    })?;
-
-    let mut schedules = Vec::new();
-
-    // Vesting schedules can be a single schedule or a BoundedVec of schedules
-    match &decoded.value {
-        // Vec/BoundedVec of schedules
-        ValueDef::Composite(Composite::Unnamed(items)) => {
-            for item in items {
-                if let Some(schedule) = decode_single_schedule(item) {
-                    schedules.push(schedule);
-                }
-            }
-        }
-        // Single schedule (for older runtimes)
-        ValueDef::Composite(Composite::Named(fields)) => {
-            if let Some(schedule) = decode_schedule_from_fields(fields) {
-                schedules.push(schedule);
-            }
-        }
-        _ => {}
+    // Try decoding as Vec<VestingScheduleCompact> (modern runtime)
+    if let Ok(schedules) = Vec::<VestingScheduleCompact>::decode(&mut &raw_bytes[..]) {
+        return Ok(schedules
+            .into_iter()
+            .map(|s| RawVestingSchedule {
+                locked: s.locked,
+                per_block: s.per_block,
+                starting_block: s.starting_block as u64,
+            })
+            .collect());
     }
 
-    Ok(schedules)
-}
-
-fn decode_single_schedule(value: &Value<()>) -> Option<RawVestingSchedule> {
-    match &value.value {
-        ValueDef::Composite(Composite::Named(fields)) => decode_schedule_from_fields(fields),
-        _ => None,
+    // Try decoding as Vec<VestingScheduleNonCompact> (older runtime)
+    if let Ok(schedules) = Vec::<VestingScheduleNonCompact>::decode(&mut &raw_bytes[..]) {
+        return Ok(schedules
+            .into_iter()
+            .map(|s| RawVestingSchedule {
+                locked: s.locked,
+                per_block: s.per_block,
+                starting_block: s.starting_block,
+            })
+            .collect());
     }
-}
 
-fn decode_schedule_from_fields(fields: &[(String, Value<()>)]) -> Option<RawVestingSchedule> {
-    let locked = extract_u128_field(fields, "locked")?;
-    let per_block = extract_u128_field(fields, "perBlock")
-        .or_else(|| extract_u128_field(fields, "per_block"))?;
-    let starting_block = extract_u128_field(fields, "startingBlock")
-        .or_else(|| extract_u128_field(fields, "starting_block"))? as u64;
+    // Try decoding as single VestingScheduleCompact
+    if let Ok(schedule) = VestingScheduleCompact::decode(&mut &raw_bytes[..]) {
+        return Ok(vec![RawVestingSchedule {
+            locked: schedule.locked,
+            per_block: schedule.per_block,
+            starting_block: schedule.starting_block as u64,
+        }]);
+    }
 
-    Some(RawVestingSchedule {
-        locked,
-        per_block,
-        starting_block,
-    })
-}
+    // Try decoding as single VestingScheduleNonCompact
+    if let Ok(schedule) = VestingScheduleNonCompact::decode(&mut &raw_bytes[..]) {
+        return Ok(vec![RawVestingSchedule {
+            locked: schedule.locked,
+            per_block: schedule.per_block,
+            starting_block: schedule.starting_block,
+        }]);
+    }
 
-fn extract_u128_field(fields: &[(String, Value<()>)], field_name: &str) -> Option<u128> {
-    fields
-        .iter()
-        .find(|(name, _)| name == field_name)
-        .and_then(|(_, value)| match &value.value {
-            ValueDef::Primitive(scale_value::Primitive::U128(val)) => Some(*val),
-            _ => None,
-        })
+    // If all decoding attempts fail, return empty (no vesting)
+    Ok(Vec::new())
 }

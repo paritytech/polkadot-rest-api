@@ -2,24 +2,74 @@
 // Pool Assets Data Fetching
 // ================================================================================================
 
-use crate::handlers::accounts::{
-    AccountsError, PoolAssetBalance,
-    utils::{extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field},
-};
+use crate::handlers::accounts::{AccountsError, PoolAssetBalance};
 use parity_scale_codec::Decode;
-use scale_value::{Composite, Value, ValueDef};
 use sp_core::crypto::AccountId32;
-use subxt::{OnlineClientAtBlock, SubstrateConfig, storage::StorageValue};
+use subxt::{OnlineClientAtBlock, SubstrateConfig};
+
+// ================================================================================================
+// SCALE Decode Types for PoolAssets::Account storage
+// ================================================================================================
+
+/// Account status for a pool asset account (modern runtimes)
+#[derive(Debug, Clone, Decode)]
+enum PoolAccountStatus {
+    Liquid,
+    Frozen,
+    Blocked,
+}
+
+impl PoolAccountStatus {
+    fn is_frozen(&self) -> bool {
+        matches!(self, PoolAccountStatus::Frozen | PoolAccountStatus::Blocked)
+    }
+}
+
+/// Existence reason for a pool asset account (modern runtimes)
+#[derive(Debug, Clone, Decode)]
+#[allow(dead_code)] // Fields needed for SCALE decoding
+enum PoolExistenceReason {
+    Consumer,
+    Sufficient,
+    DepositHeld(u128),
+    DepositRefunded,
+    DepositFrom([u8; 32], u128),
+}
+
+impl PoolExistenceReason {
+    fn is_sufficient(&self) -> bool {
+        matches!(self, PoolExistenceReason::Sufficient)
+    }
+}
+
+/// Modern PoolAssetAccount structure (current runtimes with status/reason fields)
+#[derive(Debug, Clone, Decode)]
+struct PoolAssetAccountModern {
+    balance: u128,
+    status: PoolAccountStatus,
+    reason: PoolExistenceReason,
+    // extra field is typically () - ignored
+}
+
+/// Legacy PoolAssetBalance structure (older runtimes with is_frozen/sufficient booleans)
+#[derive(Debug, Clone, Decode)]
+struct PoolAssetAccountLegacy {
+    balance: u128,
+    is_frozen: bool,
+    sufficient: bool,
+    // extra field is typically () - ignored
+}
 
 /// Fetch all pool asset IDs from storage
 pub async fn query_all_pool_assets_id(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    let storage_query = ("PoolAssets", "Asset");
+    // Use Vec<u8> as return type since we only need raw bytes to extract asset IDs from keys
+    let storage_query = subxt::storage::dynamic::<Vec<u32>, Vec<u8>>("PoolAssets", "Asset");
     let storage_entry = client_at_block.storage().entry(storage_query)?;
     let mut asset_ids = Vec::new();
 
-    let mut values = storage_entry.iter(Vec::<scale_value::Value>::new()).await?;
+    let mut values = storage_entry.iter(Vec::<u32>::new()).await?;
     while let Some(result) = values.next().await {
         let entry = result?;
         // Extract asset ID from storage key
@@ -48,26 +98,25 @@ pub async fn query_pool_assets(
     account: &AccountId32,
     assets: &[u32],
 ) -> Result<Vec<PoolAssetBalance>, AccountsError> {
-    let storage_query = ("PoolAssets", "Account");
-    let storage_entry = client_at_block.storage().entry(storage_query)?;
-
-    // Encode the storage key: (asset_id, account_id)
-    // Convert AccountId32 to [u8; 32] for encoding
-    let account_bytes: &[u8; 32] = account.as_ref();
+    // Use dynamic storage to fetch raw bytes for each (asset_id, account_id) key
+    let account_bytes: [u8; 32] = *account.as_ref();
 
     let mut balances = Vec::new();
 
     for asset_id in assets {
-        let key = vec![
-            Value::u128(*asset_id as u128),
-            Value::from_bytes(account_bytes),
-        ];
-        let storage_value = storage_entry.try_fetch(key).await?;
+        // Build the storage address for PoolAssets::Account(asset_id, account_id)
+        let storage_addr = subxt::dynamic::storage::<_, ()>("PoolAssets", "Account");
 
-        if let Some(value) = storage_value {
-            // Decode the storage value
-            let decoded = decode_pool_asset_balance(&value).await?;
-            if let Some(decoded_balance) = decoded {
+        let storage_value = client_at_block
+            .storage()
+            .fetch(storage_addr, (*asset_id, account_bytes))
+            .await;
+
+        if let Ok(value) = storage_value {
+            // Get raw bytes from the storage value
+            let raw_bytes = value.into_bytes();
+            // Decode the storage value from raw bytes
+            if let Some(decoded_balance) = decode_pool_asset_balance(&raw_bytes)? {
                 balances.push(PoolAssetBalance {
                     asset_id: *asset_id,
                     balance: decoded_balance.balance,
@@ -93,102 +142,30 @@ pub struct DecodedPoolAssetBalance {
     pub is_sufficient: bool,
 }
 
-/// Decode pool asset balance from storage value, handling multiple runtime versions
-pub async fn decode_pool_asset_balance(
-    value: &StorageValue<'_, scale_value::Value>,
+/// Decode pool asset balance from raw SCALE bytes, handling multiple runtime versions
+fn decode_pool_asset_balance(
+    raw_bytes: &[u8],
 ) -> Result<Option<DecodedPoolAssetBalance>, AccountsError> {
-    // Decode as scale_value::Value to inspect structure
-    let decoded: Value<()> = value.decode_as().map_err(|_e| {
-        AccountsError::DecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode storage value",
-        ))
-    })?;
-
-    // Handle Option wrapper (post-v9160)
-    let balance_value = match &decoded.value {
-        ValueDef::Variant(variant) => {
-            // This is an Option enum
-            if variant.name == "Some" {
-                // Extract the inner value from the composite
-                match &variant.values {
-                    Composite::Unnamed(values) => {
-                        if let Some(inner) = values.first() {
-                            inner
-                        } else {
-                            // Empty Some variant, return None
-                            return Ok(None);
-                        }
-                    }
-                    Composite::Named(fields) => {
-                        if let Some((_, inner)) = fields.first() {
-                            inner
-                        } else {
-                            return Ok(None);
-                        }
-                    }
-                }
-            } else {
-                // None variant
-                return Ok(None);
-            }
-        }
-        _ => &decoded,
-    };
-
-    // Now decode the actual balance structure
-    match &balance_value.value {
-        ValueDef::Composite(composite) => decode_pool_balance_composite(composite),
-        _ => {
-            // Fallback: return zero balance
-            Ok(Some(DecodedPoolAssetBalance {
-                balance: "0".to_string(),
-                is_frozen: false,
-                is_sufficient: false,
-            }))
-        }
+    // Try modern format first (balance, status, reason)
+    if let Ok(account) = PoolAssetAccountModern::decode(&mut &raw_bytes[..]) {
+        return Ok(Some(DecodedPoolAssetBalance {
+            balance: account.balance.to_string(),
+            is_frozen: account.status.is_frozen(),
+            is_sufficient: account.reason.is_sufficient(),
+        }));
     }
-}
 
-/// Decode pool balance from a composite structure
-fn decode_pool_balance_composite(
-    composite: &Composite<()>,
-) -> Result<Option<DecodedPoolAssetBalance>, AccountsError> {
-    match composite {
-        Composite::Named(fields) => {
-            // Extract fields by name
-            let balance = extract_u128_field(fields, "balance").unwrap_or(0);
-            let is_frozen = extract_bool_field(fields, "isFrozen")
-                .or_else(|| extract_bool_field(fields, "is_frozen"))
-                .unwrap_or(false);
-
-            // Handle different runtime versions for isSufficient
-            let is_sufficient =
-                if let Some(reason_value) = fields.iter().find(|(name, _)| name == "reason") {
-                    // Post-v9160: reason enum
-                    extract_is_sufficient_from_reason(&reason_value.1)
-                } else if let Some(sufficient) = extract_bool_field(fields, "sufficient") {
-                    // v9160: sufficient boolean
-                    sufficient
-                } else {
-                    // Pre-v9160: isSufficient boolean
-                    extract_bool_field(fields, "isSufficient")
-                        .or_else(|| extract_bool_field(fields, "is_sufficient"))
-                        .unwrap_or_default()
-                };
-
-            Ok(Some(DecodedPoolAssetBalance {
-                balance: balance.to_string(),
-                is_frozen,
-                is_sufficient,
-            }))
-        }
-        Composite::Unnamed(_) => {
-            // Fallback: return zero balance
-            Ok(Some(DecodedPoolAssetBalance {
-                balance: "0".to_string(),
-                is_frozen: false,
-                is_sufficient: false,
-            }))
-        }
+    // Fall back to legacy format (balance, is_frozen, sufficient)
+    if let Ok(account) = PoolAssetAccountLegacy::decode(&mut &raw_bytes[..]) {
+        return Ok(Some(DecodedPoolAssetBalance {
+            balance: account.balance.to_string(),
+            is_frozen: account.is_frozen,
+            is_sufficient: account.sufficient,
+        }));
     }
+
+    // If neither format works, return an error
+    Err(AccountsError::DecodeFailed(
+        parity_scale_codec::Error::from("Failed to decode pool asset account: unknown format"),
+    ))
 }

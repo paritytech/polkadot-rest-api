@@ -338,6 +338,8 @@ async fn handle_constants_use_rc_block(
             height: ah_block.number.to_string(),
         };
 
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+
         let items = if params.only_ids {
             ConstantsItems::OnlyIds(
                 pallet_info
@@ -357,7 +359,7 @@ async fn handle_constants_use_rc_block(
             items,
             rc_block_hash: Some(rc_resolved_block.hash.clone()),
             rc_block_number: Some(rc_resolved_block.number.to_string()),
-            ah_timestamp: None,
+            ah_timestamp,
         });
     }
 
@@ -429,6 +431,8 @@ async fn handle_constant_item_use_rc_block(
             height: ah_block.number.to_string(),
         };
 
+        let ah_timestamp = utils::fetch_block_timestamp(&client_at_block).await;
+
         let metadata_field = if params.metadata {
             Some(constant.clone())
         } else {
@@ -443,7 +447,7 @@ async fn handle_constant_item_use_rc_block(
             metadata: metadata_field,
             rc_block_hash: Some(rc_resolved_block.hash.clone()),
             rc_block_number: Some(rc_resolved_block.number.to_string()),
-            ah_timestamp: None,
+            ah_timestamp,
         });
     }
 

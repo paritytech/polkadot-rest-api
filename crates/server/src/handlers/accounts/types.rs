@@ -235,6 +235,12 @@ pub enum AccountsError {
     #[error("No active era found")]
     NoActiveEra,
 
+    #[error("{0}")]
+    BadStakingBlock(String),
+
+    #[error("Relay chain connection is required to query pre-migration era data")]
+    RelayChainConnectionRequired,
+
     #[error("The address is not a stash account")]
     NotAStashAccount,
 
@@ -299,7 +305,12 @@ impl From<crate::handlers::common::accounts::ProxyQueryError> for AccountsError 
 
 impl From<crate::handlers::common::accounts::StakingQueryError> for AccountsError {
     fn from(err: crate::handlers::common::accounts::StakingQueryError) -> Self {
-        AccountsError::StakingQueryFailed(Box::new(err))
+        match err {
+            crate::handlers::common::accounts::StakingQueryError::BadStakingBlock(msg) => {
+                AccountsError::BadStakingBlock(msg)
+            }
+            other => AccountsError::StakingQueryFailed(Box::new(other)),
+        }
     }
 }
 
@@ -318,6 +329,10 @@ impl From<StakingPayoutsQueryError> for AccountsError {
             StakingPayoutsQueryError::NoActiveEra => AccountsError::NoActiveEra,
             StakingPayoutsQueryError::InvalidEra(era) => AccountsError::InvalidEra(era),
             StakingPayoutsQueryError::InvalidDepth => AccountsError::InvalidDepth,
+            StakingPayoutsQueryError::BadStakingBlock(msg) => AccountsError::BadStakingBlock(msg),
+            StakingPayoutsQueryError::RelayChainConnectionRequired => {
+                AccountsError::RelayChainConnectionRequired
+            }
             other => AccountsError::StakingPayoutsQueryFailed(Box::new(other)),
         }
     }
@@ -336,6 +351,8 @@ impl_error_response!(AccountsError,
     AccountsError::InvalidEra(_) => BAD_REQUEST,
     AccountsError::InvalidDepth => BAD_REQUEST,
     AccountsError::NoActiveEra => BAD_REQUEST,
+    AccountsError::BadStakingBlock(_) => BAD_REQUEST,
+    AccountsError::RelayChainConnectionRequired => BAD_REQUEST,
     AccountsError::NotAStashAccount => BAD_REQUEST,
     AccountsError::InvalidHexAccountId => BAD_REQUEST,
     AccountsError::InvalidPrefix => BAD_REQUEST,
@@ -720,12 +737,23 @@ pub struct StakingLedger {
     /// Active staked balance
     pub active: String,
 
-    /// Total amount being unlocked
-    pub unlocking: String,
+    /// Unlocking chunks with value and era
+    pub unlocking: Vec<UnlockingChunk>,
 
     /// Claimed rewards per era (only when includeClaimedRewards=true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claimed_rewards: Option<Vec<ClaimedReward>>,
+}
+
+/// Unlocking chunk with value and era when funds become available
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlockingChunk {
+    /// Amount being unlocked
+    pub value: String,
+
+    /// Era when funds become available
+    pub era: String,
 }
 
 /// Claimed reward status for a specific era
@@ -807,7 +835,7 @@ pub enum EraPayouts {
 #[serde(rename_all = "camelCase")]
 pub struct EraPayoutsData {
     /// Era index
-    pub era: u32,
+    pub era: String,
 
     /// Total reward points for the era
     pub total_era_reward_points: String,
