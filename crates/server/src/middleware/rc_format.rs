@@ -26,7 +26,7 @@ struct RcFormatParams {
 /// Pre-process an RC format request: parse query params, validate, run the inner handler,
 /// and collect the response body.
 ///
-/// Returns `Err(Response)` for early returns (no `format=rc`, validation failure, non-success, non-JSON).
+/// Returns `Err(Response)` for early returns (no `format=object`, validation failure, non-success, non-JSON).
 /// Returns `Ok((parts, bytes, at_param))` when the response body is ready for RC transformation.
 async fn process_rc_request(
     req: Request,
@@ -38,7 +38,7 @@ async fn process_rc_request(
         .and_then(|q| serde_urlencoded::from_str::<RcFormatParams>(q).ok())
         .unwrap_or_default();
 
-    let has_format_rc = params.format.as_deref() == Some("rc");
+    let has_format_rc = params.format.as_deref() == Some("object");
 
     if !has_format_rc {
         return Err(next.run(req).await);
@@ -48,7 +48,7 @@ async fn process_rc_request(
     if !has_use_rc_block {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "format=rc requires useRcBlock=true" })),
+            Json(json!({ "error": "format=object requires useRcBlock=true" })),
         )
             .into_response());
     }
@@ -80,10 +80,10 @@ async fn process_rc_request(
 }
 
 /// Middleware that transforms RC block array responses into a structured object
-/// when `format=rc` is present in the query string.
+/// when `format=object` is present in the query string.
 ///
-/// Requires `useRcBlock=true` to be present alongside `format=rc`.
-/// Returns 400 Bad Request if `format=rc` is used without `useRcBlock=true`.
+/// Requires `useRcBlock=true` to be present alongside `format=object`.
+/// Returns 400 Bad Request if `format=object` is used without `useRcBlock=true`.
 pub async fn rc_format_middleware(
     State(state): State<AppState>,
     req: Request,
@@ -324,7 +324,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) = make_request(app, "/test?useRcBlock=true&format=rc").await;
+        let (status, value) = make_request(app, "/test?useRcBlock=true&format=object").await;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(value["rcBlock"]["hash"], "0xdef");
@@ -368,7 +368,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) = make_request(app, "/test?useRcBlock=true&format=rc").await;
+        let (status, value) = make_request(app, "/test?useRcBlock=true&format=object").await;
 
         assert_eq!(status, StatusCode::OK);
         assert!(value["rcBlock"].is_null());
@@ -388,7 +388,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) = make_request(app, "/test?useRcBlock=true&format=rc").await;
+        let (status, value) = make_request(app, "/test?useRcBlock=true&format=object").await;
 
         assert_eq!(status, StatusCode::OK);
         assert!(value.is_object());
@@ -411,7 +411,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) = make_request(app, "/test?useRcBlock=true&format=rc").await;
+        let (status, value) = make_request(app, "/test?useRcBlock=true&format=object").await;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(value["rcBlock"]["hash"], "0xdef");
@@ -439,7 +439,7 @@ mod tests {
         let response = app
             .oneshot(
                 axum::http::Request::builder()
-                    .uri("/test?useRcBlock=true&format=rc")
+                    .uri("/test?useRcBlock=true&format=object")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -462,7 +462,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) = make_request(app, "/test?useRcBlock=true&format=rc").await;
+        let (status, value) = make_request(app, "/test?useRcBlock=true&format=object").await;
 
         assert_eq!(status, StatusCode::OK);
         assert!(value.is_array());
@@ -479,7 +479,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (_, value) = make_request(app, "/test?useRcBlock=true&format=rc").await;
+        let (_, value) = make_request(app, "/test?useRcBlock=true&format=object").await;
 
         let data = value["parachainDataPerBlock"].as_array().unwrap();
         assert_eq!(data[0]["ahTimestamp"], "123");
@@ -497,10 +497,10 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) = make_request(app, "/test?format=rc").await;
+        let (status, value) = make_request(app, "/test?format=object").await;
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(value["error"], "format=rc requires useRcBlock=true");
+        assert_eq!(value["error"], "format=object requires useRcBlock=true");
     }
 
     #[tokio::test]
@@ -513,7 +513,7 @@ mod tests {
             .route("/test", get(handler))
             .layer(middleware::from_fn(test_rc_format));
 
-        let (status, value) = make_request(app, "/test?useRcBlock=true&format=rc&at=123").await;
+        let (status, value) = make_request(app, "/test?useRcBlock=true&format=object&at=123").await;
 
         assert_eq!(status, StatusCode::OK);
         assert!(value.get("rcBlock").is_some());
