@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use server::{app, logging, state};
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;

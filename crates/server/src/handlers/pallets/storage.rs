@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for `/pallets/{palletId}/storage` and `/pallets/{palletId}/storage/{storageItemId}` endpoints.
 //!
 //! Returns storage item metadata for a pallet, matching Sidecar's response format.

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for GET /rc/blocks/{blockId} endpoint.
 //!
 //! Returns block information for a specific block by height or hash on the relay chain.

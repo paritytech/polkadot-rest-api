@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright (C) 2026 Parity Technologies (UK) Ltd.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 
 # Generate benchmark results in benchmark-action format from wrk output
 # Usage: ./generate_benchmark_result.sh <benchmark_results_directory>

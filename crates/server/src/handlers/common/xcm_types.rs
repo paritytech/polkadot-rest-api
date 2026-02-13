@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Shared XCM type definitions for typed SCALE encoding/decoding.
 //!
 //! These types represent XCM v4 Location and its components. They implement

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // OpenAPI JSON Parser for Polkadot REST API Documentation
 // Handles parsing, processing, and structuring of the OpenAPI specification
 

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for the `/pallets/{palletId}/errors` endpoint.
 //!
 //! This endpoint returns the errors defined in a pallet's metadata.

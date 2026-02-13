@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // API Explorer for Interactive Testing - Polkadot REST API Documentation
 // Handles "Try it out" functionality for API endpoints
 

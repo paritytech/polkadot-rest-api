@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use super::types::{AccountsError, RcProxyInfoQueryParams, RcProxyInfoResponse, RelayChainAccess};
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{RawProxyInfo, query_proxy_info};

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for GET /rc/blocks/{blockId}/header
 //!
 //! Returns the header of a specific relay chain block by block hash or block number.

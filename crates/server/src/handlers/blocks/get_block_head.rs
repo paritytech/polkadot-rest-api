@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for GET /blocks/head endpoint.
 //!
 //! This module provides the handler for fetching the latest block (head).

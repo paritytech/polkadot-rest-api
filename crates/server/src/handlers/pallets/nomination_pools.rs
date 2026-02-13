@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for the `/pallets/nomination-pools` endpoints.
 //!
 //! This module provides endpoints for querying nomination pool information

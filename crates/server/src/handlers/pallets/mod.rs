@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handlers for pallets-related endpoints.
 //!
 //! These endpoints provide access to pallet metadata including

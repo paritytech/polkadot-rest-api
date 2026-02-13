@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::handlers::blocks::common::{
     BlockClient, add_docs_to_events, convert_digest_items_to_logs, extract_author_with_prefix,
     get_canonical_hash_at_number_with_rpc, get_finalized_block_number_with_rpc, parse_range,

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Guide content for Polkadot REST API Documentation
 // This file imports markdown files and converts them to HTML
 

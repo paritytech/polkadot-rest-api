@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 pub mod get_block_header;
 pub mod get_head;
 pub mod get_head_header;

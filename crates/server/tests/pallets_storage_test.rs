@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Integration tests for /pallets/{palletId}/storage endpoint
 //!
 //! These tests verify the response format matches Sidecar's output exactly.

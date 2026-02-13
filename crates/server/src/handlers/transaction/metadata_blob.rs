@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for POST /transaction/metadata-blob
 //!
 //! Generates a minimal metadata proof for a specific extrinsic, implementing

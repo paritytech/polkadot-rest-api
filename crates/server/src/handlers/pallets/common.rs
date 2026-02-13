@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Common types and utilities shared across pallet endpoints.
 //!
 //! This module provides shared error types, response types, and SCALE decode types

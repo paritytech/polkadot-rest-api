@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for `/runtime/metadata` endpoint.
 //!
 //! Returns the decoded runtime metadata in JSON format matching sidecar's output.

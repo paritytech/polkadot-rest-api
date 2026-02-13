@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use super::types::{
     AccountsError, BlockInfo, ClaimedReward, NominationsInfo, RewardDestination,
     StakingInfoQueryParams, StakingInfoResponse, StakingLedger, UnlockingChunk,
