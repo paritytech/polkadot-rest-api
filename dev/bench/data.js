@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1770984487995,
+  "lastUpdate": 1770986232520,
   "repoUrl": "https://github.com/paritytech/polkadot-rest-api",
   "entries": {
     "Benchmark": [
@@ -134022,6 +134022,342 @@ window.BENCHMARK_DATA = {
           {
             "name": "version - Throughput",
             "value": 26870.79,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "eugypalu@gmail.com",
+            "name": "Eugenio Paluello",
+            "username": "eugypalu"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "30be286f8f9510b9d8469a97007aaf69f8e1955b",
+          "message": "feat: add useRcBlockFormat (#195)\n\nCo-authored-by: Alberto Nicolas Penayo <74352651+bee344@users.noreply.github.com>",
+          "timestamp": "2026-02-13T13:15:03+01:00",
+          "tree_id": "6545df63ed8a273d61d8e86da971fdc9070b14ba",
+          "url": "https://github.com/paritytech/polkadot-rest-api/commit/30be286f8f9510b9d8469a97007aaf69f8e1955b"
+        },
+        "date": 1770986225837,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "ahm - Avg Latency",
+            "value": 1.78,
+            "unit": "ms"
+          },
+          {
+            "name": "ahm - P50 Latency",
+            "value": 1.74,
+            "unit": "ms"
+          },
+          {
+            "name": "ahm - P90 Latency",
+            "value": 2.79,
+            "unit": "ms"
+          },
+          {
+            "name": "ahm - P99 Latency",
+            "value": 3.93,
+            "unit": "ms"
+          },
+          {
+            "name": "ahm - Throughput",
+            "value": 26297.56,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks - Avg Latency",
+            "value": 818.32,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks - P50 Latency",
+            "value": 638.25,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks - P90 Latency",
+            "value": 1.11,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks - P99 Latency",
+            "value": 2.28,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks - Throughput",
+            "value": 59.45,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks - Avg Latency",
+            "value": 361.21,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks - P50 Latency",
+            "value": 353.18,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks - P90 Latency",
+            "value": 374,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks - P99 Latency",
+            "value": 588.58,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks - Throughput",
+            "value": 132.45,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "health - Avg Latency",
+            "value": 1.76,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P50 Latency",
+            "value": 1.74,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P90 Latency",
+            "value": 2.76,
+            "unit": "ms"
+          },
+          {
+            "name": "health - P99 Latency",
+            "value": 3.79,
+            "unit": "ms"
+          },
+          {
+            "name": "health - Throughput",
+            "value": 26407.34,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node - Avg Latency",
+            "value": 254.4,
+            "unit": "ms"
+          },
+          {
+            "name": "node - P50 Latency",
+            "value": 239.83,
+            "unit": "ms"
+          },
+          {
+            "name": "node - P90 Latency",
+            "value": 274.79,
+            "unit": "ms"
+          },
+          {
+            "name": "node - P99 Latency",
+            "value": 653.19,
+            "unit": "ms"
+          },
+          {
+            "name": "node - Throughput",
+            "value": 190.39,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node - Avg Latency",
+            "value": 132.57,
+            "unit": "ms"
+          },
+          {
+            "name": "node - P50 Latency",
+            "value": 128.54,
+            "unit": "ms"
+          },
+          {
+            "name": "node - P90 Latency",
+            "value": 154.82,
+            "unit": "ms"
+          },
+          {
+            "name": "node - P99 Latency",
+            "value": 169.41,
+            "unit": "ms"
+          },
+          {
+            "name": "node - Throughput",
+            "value": 361.34,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node - Avg Latency",
+            "value": 121.44,
+            "unit": "ms"
+          },
+          {
+            "name": "node - P50 Latency",
+            "value": 118.33,
+            "unit": "ms"
+          },
+          {
+            "name": "node - P90 Latency",
+            "value": 127.84,
+            "unit": "ms"
+          },
+          {
+            "name": "node - P99 Latency",
+            "value": 191.92,
+            "unit": "ms"
+          },
+          {
+            "name": "node - Throughput",
+            "value": 394.8,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "rc - Avg Latency",
+            "value": 1.71,
+            "unit": "ms"
+          },
+          {
+            "name": "rc - P50 Latency",
+            "value": 1.68,
+            "unit": "ms"
+          },
+          {
+            "name": "rc - P90 Latency",
+            "value": 2.64,
+            "unit": "ms"
+          },
+          {
+            "name": "rc - P99 Latency",
+            "value": 3.67,
+            "unit": "ms"
+          },
+          {
+            "name": "rc - Throughput",
+            "value": 27252.33,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "rc - Avg Latency",
+            "value": 2.11,
+            "unit": "ms"
+          },
+          {
+            "name": "rc - P50 Latency",
+            "value": 1.7,
+            "unit": "ms"
+          },
+          {
+            "name": "rc - P90 Latency",
+            "value": 2.67,
+            "unit": "ms"
+          },
+          {
+            "name": "rc - P99 Latency",
+            "value": 3.86,
+            "unit": "ms"
+          },
+          {
+            "name": "rc - Throughput",
+            "value": 26880.5,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "rc - Avg Latency",
+            "value": 1.72,
+            "unit": "ms"
+          },
+          {
+            "name": "rc - P50 Latency",
+            "value": 1.69,
+            "unit": "ms"
+          },
+          {
+            "name": "rc - P90 Latency",
+            "value": 2.65,
+            "unit": "ms"
+          },
+          {
+            "name": "rc - P99 Latency",
+            "value": 3.69,
+            "unit": "ms"
+          },
+          {
+            "name": "rc - Throughput",
+            "value": 27120.11,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "runtime - Avg Latency",
+            "value": 362.81,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - P50 Latency",
+            "value": 356.42,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - P90 Latency",
+            "value": 381.32,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - P99 Latency",
+            "value": 461.98,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - Throughput",
+            "value": 131.76,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "version - Avg Latency",
+            "value": 1.69,
+            "unit": "ms"
+          },
+          {
+            "name": "version - P50 Latency",
+            "value": 1.66,
+            "unit": "ms"
+          },
+          {
+            "name": "version - P90 Latency",
+            "value": 2.66,
+            "unit": "ms"
+          },
+          {
+            "name": "version - P99 Latency",
+            "value": 3.66,
+            "unit": "ms"
+          },
+          {
+            "name": "version - Throughput",
+            "value": 27485.02,
             "unit": "req/sec",
             "extra": "biggerIsBetter"
           }
