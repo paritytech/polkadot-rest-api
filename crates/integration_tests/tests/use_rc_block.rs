@@ -63,16 +63,34 @@ async fn test_use_rc_block_pallets_empty_response() -> Result<()> {
     println!("{}", "═".repeat(80).bright_white());
 
     let endpoints = vec![
-        format!("/pallets/balances/dispatchables?useRcBlock=true&at={}", rc_block),
-        format!("/pallets/balances/dispatchables/transferAllowDeath?useRcBlock=true&at={}", rc_block),
+        format!(
+            "/pallets/balances/dispatchables?useRcBlock=true&at={}",
+            rc_block
+        ),
+        format!(
+            "/pallets/balances/dispatchables/transferAllowDeath?useRcBlock=true&at={}",
+            rc_block
+        ),
         format!("/pallets/balances/storage?useRcBlock=true&at={}", rc_block),
-        format!("/pallets/balances/storage/totalIssuance?useRcBlock=true&at={}", rc_block),
+        format!(
+            "/pallets/balances/storage/totalIssuance?useRcBlock=true&at={}",
+            rc_block
+        ),
         format!("/pallets/balances/consts?useRcBlock=true&at={}", rc_block),
-        format!("/pallets/balances/consts/existentialDeposit?useRcBlock=true&at={}", rc_block),
+        format!(
+            "/pallets/balances/consts/existentialDeposit?useRcBlock=true&at={}",
+            rc_block
+        ),
         format!("/pallets/balances/errors?useRcBlock=true&at={}", rc_block),
-        format!("/pallets/balances/errors/InsufficientBalance?useRcBlock=true&at={}", rc_block),
+        format!(
+            "/pallets/balances/errors/InsufficientBalance?useRcBlock=true&at={}",
+            rc_block
+        ),
         format!("/pallets/balances/events?useRcBlock=true&at={}", rc_block),
-        format!("/pallets/balances/events/Transfer?useRcBlock=true&at={}", rc_block),
+        format!(
+            "/pallets/balances/events/Transfer?useRcBlock=true&at={}",
+            rc_block
+        ),
     ];
 
     for endpoint in &endpoints {
