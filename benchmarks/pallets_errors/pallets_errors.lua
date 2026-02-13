@@ -4,7 +4,7 @@
 
 local util = require("util")
 
--- Multiple pallets with historical blocks (matching Sidecar)
+-- Multiple pallets at two block heights (matching Sidecar)
 local endpoints = {
     'System/errors?at=11900000',
     'Scheduler/errors?at=11900000',
@@ -20,6 +20,25 @@ local endpoints = {
     'Democracy/errors?at=11900000',
     'TechnicalCommittee/errors?at=11900000',
     'Council/errors?at=11900000',
+    'PhragmenElection/errors?at=11900000',
+    'Treasury/errors?at=11900000',
+    'Claims/errors?at=11900000',
+    'System/errors?at=6000000',
+    'Scheduler/errors?at=6000000',
+    'Babe/errors?at=6000000',
+    'Indices/errors?at=6000000',
+    'Balances/errors?at=6000000',
+    'Authorship/errors?at=6000000',
+    'Staking/errors?at=6000000',
+    'Session/errors?at=6000000',
+    'Grandpa/errors?at=6000000',
+    'ImOnline/errors?at=6000000',
+    'Democracy/errors?at=6000000',
+    'TechnicalCommittee/errors?at=6000000',
+    'Council/errors?at=6000000',
+    'PhragmenElection/errors?at=6000000',
+    'Treasury/errors?at=6000000',
+    'Claims/errors?at=6000000',
 }
 
 local counter = 1

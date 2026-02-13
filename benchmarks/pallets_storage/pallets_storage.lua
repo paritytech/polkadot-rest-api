@@ -4,7 +4,7 @@
 
 local util = require("util")
 
--- Multiple pallets with historical blocks (matching Sidecar)
+-- Multiple pallets at two block heights (matching Sidecar)
 local endpoints = {
     'System/storage?at=11900000',
     'Scheduler/storage?at=11900000',
@@ -20,6 +20,31 @@ local endpoints = {
     'Session/storage?at=11900000',
     'Grandpa/storage?at=11900000',
     'ImOnline/storage?at=11900000',
+    'Democracy/storage?at=11900000',
+    'TechnicalCommittee/storage?at=11900000',
+    'Council/storage?at=11900000',
+    'PhragmenElection/storage?at=11900000',
+    'Treasury/storage?at=11900000',
+    'Claims/storage?at=11900000',
+    'System/storage?at=6000000',
+    'Scheduler/storage?at=6000000',
+    'Babe/storage?at=6000000',
+    'Timestamp/storage?at=6000000',
+    'Indices/storage?at=6000000',
+    'Balances/storage?at=6000000',
+    'TransactionPayment/storage?at=6000000',
+    'Authorship/storage?at=6000000',
+    'Staking/storage?at=6000000',
+    'Offences/storage?at=6000000',
+    'Session/storage?at=6000000',
+    'Grandpa/storage?at=6000000',
+    'ImOnline/storage?at=6000000',
+    'Democracy/storage?at=6000000',
+    'TechnicalCommittee/storage?at=6000000',
+    'Council/storage?at=6000000',
+    'PhragmenElection/storage?at=6000000',
+    'Treasury/storage?at=6000000',
+    'Claims/storage?at=6000000',
 }
 
 local counter = 1
