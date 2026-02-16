@@ -202,7 +202,6 @@ pub async fn query_balance_info(
     // Fetch existential deposit from runtime constants (sync - reads from metadata)
     let existential_deposit = fetch_existential_deposit(client_at_block)?;
 
-    // Query System::Account and Balances::Locks concurrently
     let (account_data_result, locks_result) = tokio::join!(
         query_account_data(client_at_block, account),
         query_balance_locks(client_at_block, account)
