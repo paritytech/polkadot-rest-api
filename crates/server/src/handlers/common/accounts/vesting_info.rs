@@ -13,23 +13,15 @@ use thiserror::Error;
 // SCALE Decode Types for Vesting::Vesting storage
 // ================================================================================================
 
-/// Vesting schedule structure with compact fields
+/// Vesting schedule structure matching Polkadot SDK's VestingInfo type.
+/// See: polkadot-sdk/substrate/frame/vesting/src/vesting_info.rs
+///
+/// Fields are NOT compact-encoded in the actual runtime.
 #[derive(Debug, Clone, Decode)]
-struct VestingScheduleCompact {
-    #[codec(compact)]
+struct VestingSchedule {
     locked: u128,
-    #[codec(compact)]
     per_block: u128,
-    #[codec(compact)]
     starting_block: u32,
-}
-
-/// Vesting schedule structure with non-compact fields (older runtimes)
-#[derive(Debug, Clone, Decode)]
-struct VestingScheduleNonCompact {
-    locked: u128,
-    per_block: u128,
-    starting_block: u64,
 }
 
 // ================================================================================================
@@ -176,12 +168,15 @@ async fn query_vesting_schedules(
     }
 }
 
-/// Decode vesting schedules from raw SCALE bytes
+/// Decode vesting schedules from raw SCALE bytes.
+///
+/// The storage type is `BoundedVec<VestingInfo<Balance, BlockNumber>, MaxVestingSchedules>`
+/// which encodes as a Vec with a compact length prefix followed by the VestingInfo structs.
 fn decode_vesting_schedules(
     raw_bytes: &[u8],
 ) -> Result<Vec<RawVestingSchedule>, VestingQueryError> {
-    // Try decoding as Vec<VestingScheduleCompact> (modern runtime)
-    if let Ok(schedules) = Vec::<VestingScheduleCompact>::decode(&mut &raw_bytes[..]) {
+    // Try decoding as Vec<VestingSchedule> - matches Polkadot SDK's VestingInfo type
+    if let Ok(schedules) = Vec::<VestingSchedule>::decode(&mut &raw_bytes[..]) {
         return Ok(schedules
             .into_iter()
             .map(|s| RawVestingSchedule {
@@ -192,20 +187,8 @@ fn decode_vesting_schedules(
             .collect());
     }
 
-    // Try decoding as Vec<VestingScheduleNonCompact> (older runtime)
-    if let Ok(schedules) = Vec::<VestingScheduleNonCompact>::decode(&mut &raw_bytes[..]) {
-        return Ok(schedules
-            .into_iter()
-            .map(|s| RawVestingSchedule {
-                locked: s.locked,
-                per_block: s.per_block,
-                starting_block: s.starting_block,
-            })
-            .collect());
-    }
-
-    // Try decoding as single VestingScheduleCompact
-    if let Ok(schedule) = VestingScheduleCompact::decode(&mut &raw_bytes[..]) {
+    // Try decoding as single VestingSchedule (legacy support)
+    if let Ok(schedule) = VestingSchedule::decode(&mut &raw_bytes[..]) {
         return Ok(vec![RawVestingSchedule {
             locked: schedule.locked,
             per_block: schedule.per_block,
@@ -213,15 +196,6 @@ fn decode_vesting_schedules(
         }]);
     }
 
-    // Try decoding as single VestingScheduleNonCompact
-    if let Ok(schedule) = VestingScheduleNonCompact::decode(&mut &raw_bytes[..]) {
-        return Ok(vec![RawVestingSchedule {
-            locked: schedule.locked,
-            per_block: schedule.per_block,
-            starting_block: schedule.starting_block,
-        }]);
-    }
-
-    // If all decoding attempts fail, return empty (no vesting)
+    // If decoding fails, return empty (no vesting)
     Ok(Vec::new())
 }
