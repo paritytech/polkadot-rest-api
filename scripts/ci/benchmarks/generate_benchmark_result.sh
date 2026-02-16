@@ -18,7 +18,8 @@ FIRST=true
 # Process all benchmark result files
 for result in "$RESULTS_DIR"/benchmark_*.txt; do
     if [ -f "$result" ]; then
-        ENDPOINT=$(basename "$result" | cut -d_ -f2 | cut -d. -f1)
+        ENDPOINT=$(basename "$result" .txt)
+        ENDPOINT=${ENDPOINT#benchmark_}
         
         # Extract metrics from wrk output
         RPS=$(grep "Requests/sec:" "$result" | awk '{print $2}' || echo "0")

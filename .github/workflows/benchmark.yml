@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -140,22 +137,10 @@ jobs:
           chmod +x ./scripts/ci/benchmarks/parse_sidecar_benchmarks.sh
           ./scripts/ci/benchmarks/parse_sidecar_benchmarks.sh sidecar-benchmarks.txt artifacts_sidecar
 
-      - name: Generate comparison report
-        run: |
-          ./scripts/ci/benchmarks/compare_results.sh artifacts artifacts_sidecar > artifacts/comparison_report.txt
-          cat artifacts/comparison_report.txt
-
       - name: Generate comparison JSON for GitHub Pages
         run: |
           ./scripts/ci/benchmarks/generate_comparison_json.sh artifacts artifacts_sidecar > artifacts/comparison_results.json
           cat artifacts/comparison_results.json
-
-      - name: Upload comparison report
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-comparison-report
-          path: artifacts/comparison_report.txt
-          retention-days: 90
 
       - name: Store comparison result on GitHub Pages
         uses: benchmark-action/github-action-benchmark@4e0b38bc48375986542b13c0d8976b7b80c60c00

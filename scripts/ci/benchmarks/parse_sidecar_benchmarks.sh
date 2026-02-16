@@ -20,63 +20,56 @@ fi
 mkdir -p "$OUTPUT_DIR"
 
 # Function to convert endpoint path to filename
-# Uses explicit mapping for known endpoints, falls back to automatic conversion
+# Uses explicit mapping for all known endpoints, falls back to automatic conversion
 endpoint_to_filename() {
     local endpoint=$1
-    
-    # Explicit mapping for endpoints that have local benchmarks
+
+    # Explicit mapping for all sidecar endpoints to local benchmark names
     case "$endpoint" in
-        "/node/version")
-            echo "node_version"
-            return
-            ;;
-        "/runtime/spec")
-            echo "runtime"
-            return
-            ;;
-        "/node/network")
-            echo "node_network"
-            return
-            ;;
-        "/node/transaction-pool")
-            echo "node_transaction_pool"
-            return
-            ;;
+        "/accounts/{accountId}/balance-info")           echo "accounts_balance_info" ; return ;;
+        "/accounts/{accountId}/vesting-info")            echo "accounts_vesting_info" ; return ;;
+        "/accounts/{accountId}/staking-info")            echo "accounts_staking_info" ; return ;;
+        "/accounts/{accountId}/staking-payouts")         echo "accounts_staking_payouts" ; return ;;
+        "/accounts/{accountId}/validate")                echo "accounts_validate" ; return ;;
+        "/accounts/{accountId}/convert")                 echo "accounts_convert" ; return ;;
+        "/blocks/{blockId}")                             echo "blocks" ; return ;;
+        "/blocks/{blockId}/header")                      echo "blocks_header" ; return ;;
+        "/blocks/{blockId}/extrinsics/{extrinsicIndex}") echo "blocks_extrinsics" ; return ;;
+        "/blocks/head")                                  echo "blocks_head" ; return ;;
+        "/blocks/head/header")                           echo "blocks_head_header" ; return ;;
+        "/pallets/staking/progress")                     echo "pallets_staking_progress" ; return ;;
+        "/pallets/{palletId}/storage")                   echo "pallets_storage" ; return ;;
+        "/pallets/{palletId}/storage/{storageItemId}")   echo "pallets_storage_item" ; return ;;
+        "/pallets/{palletId}/errors")                    echo "pallets_errors" ; return ;;
+        "/pallets/{palletId}/errors/{errorItemId}")      echo "pallets_errors_item" ; return ;;
+        "/pallets/nomination-pools/info")                echo "pallets_nomination_pools_info" ; return ;;
+        "/pallets/nomination-pools/{poolId}")            echo "pallets_nomination_pools_id" ; return ;;
+        "/pallets/staking/validators")                   echo "pallets_staking_validators" ; return ;;
+        "/paras")                                        echo "paras" ; return ;;
+        "/paras/leases/current")                         echo "paras_leases_current" ; return ;;
+        "/paras/auctions/current")                       echo "paras_auctions_current" ; return ;;
+        "/paras/crowdloans")                             echo "paras_crowdloans" ; return ;;
+        "/paras/{paraId}/crowdloan-info")                echo "paras_crowdloan_info" ; return ;;
+        "/paras/{paraId}/lease-info")                    echo "paras_lease_info" ; return ;;
+        "/node/network")                                 echo "node_network" ; return ;;
+        "/node/transaction-pool")                        echo "node_transaction_pool" ; return ;;
+        "/node/version")                                 echo "node_version" ; return ;;
+        "/runtime/spec")                                 echo "runtime" ; return ;;
+        "/transaction/material")                         echo "transaction_material" ; return ;;
     esac
-    
-    # Automatic conversion for other endpoints
+
+    # Fallback: automatic conversion using underscores
     # Remove leading slash
     endpoint=${endpoint#/}
     # Replace {param} with nothing
     endpoint=$(echo "$endpoint" | sed 's/{[^}]*}//g')
-    # Replace / with -
-    endpoint=$(echo "$endpoint" | sed 's/\//-/g')
-    # Remove multiple consecutive dashes
-    endpoint=$(echo "$endpoint" | sed 's/--*/-/g')
-    # Remove leading/trailing dashes
-    endpoint=$(echo "$endpoint" | sed 's/^-\|-$//g')
-    
-    # Handle special cases for duplicate names
-    case "$endpoint" in
-        "pallets-storage")
-            # Check if this is the nested version by looking at the original endpoint
-            if [[ "$1" == *"/storage/"* ]]; then
-                echo "pallets-storage-item"
-            else
-                echo "pallets-storage"
-            fi
-            return
-            ;;
-        "pallets-errors")
-            if [[ "$1" == *"/errors/"* ]]; then
-                echo "pallets-errors-item"
-            else
-                echo "pallets-errors"
-            fi
-            return
-            ;;
-    esac
-    
+    # Replace / and - with _
+    endpoint=$(echo "$endpoint" | sed 's/[\/\-]/_/g')
+    # Remove multiple consecutive underscores
+    endpoint=$(echo "$endpoint" | sed 's/__*/_/g')
+    # Remove leading/trailing underscores
+    endpoint=$(echo "$endpoint" | sed 's/^_//;s/_$//')
+
     echo "$endpoint"
 }
 

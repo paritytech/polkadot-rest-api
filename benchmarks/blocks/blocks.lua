@@ -1,19 +1,96 @@
 -- Blocks endpoint benchmark script
--- Tests the /blocks/:blockId endpoint for latency and throughput
+-- Tests the /v1/blocks/{blockId} endpoint for latency and throughput
+-- Aligned with Sidecar benchmark parameters
 
 local util = require("util")
 
--- Generate random block IDs in a realistic range
--- Adjust this range based on your chain's block height
+-- Historical blocks covering significant events (matching Sidecar)
+local blocks = {
+    '28831',      -- Sudo setKey(0, -> 1)
+    '29258',      -- sudo.sudo(forceTransfer)
+    '188836',     -- sudo.sudoUncheckedWeight runtime upgrade(v5)
+    '197681',     -- sudo.sudo(forceTransfer)
+    '199405',     -- sudo.sudoUncheckedWeight runtime upgrade(v6)
+    '200732',     -- sudo.sudo(batch assign indices)
+    '214264',     -- sudo.sudoUncheckedWeight runtime upgrade(v7)
+    '214576',     -- proxy sudo batch of transfers
+    '243601',     -- proxy sudo batch of transfers
+    '244358',     -- sudo.sudoUncheckedWeight runtime upgrade(v8)
+    '287352',     -- sudo.sudo forceTransfer
+    '300532',     -- proxy.addProxy for `Any` from sudo
+    '301569',     -- proxy sudo mint claim
+    '302396',     -- proxy sudo set vested claim
+    '303079',     -- sudo.sudoUncheckedWeight runtime upgrade(v9)
+    '304468',     -- proxy sudo set balance(W3F)(failed)
+    '313396',     -- proxy sudo set storage
+    '314201',     -- sudo.sudoUncheckedWeight runtime upgrade(v10)
+    '314326',     -- proxy sudo set balance(W3F)
+    '325148',     -- scheduler dispatched
+    '326556',     -- sudo.sudo force new era always
+    '341469',     -- proxy sudo force transfer
+    '342400',     -- sudo.sudoUncheckedWeight runtime upgrade(v11)
+    '342477',     -- sudo.sudo schedule regular validator set increases
+    '442600',     -- scheduler dispatched
+    '443963',     -- sudo.sudoUncheckedWeight runtime upgrade(v12)
+    '444722',     -- proxy sudo batch of transfers
+    '516904',     -- sudo.sudo batch of transfers
+    '528470',     -- sudo.sudoUncheckedWeight runtime upgrade(v13)
+    '543510',     -- sudo.sudo force transfer
+    '645697',     -- proxy sudo batch of transfers
+    '744556',     -- proxy sudo batch of transfers
+    '746085',     -- sudo.sudoUncheckedWeight runtime upgrade(v15)
+    '746605',     -- sudo.sudoAs add governance proxy
+    '786421',     -- sudo force transfer
+    '787923',     -- sudo.sudoUncheckedWeight runtime upgrade(v16)
+    '790128',     -- proxy sudo batch of transfers
+    '799302',     -- runtime upgraded no more sudo
+    '799310',     -- after v17
+    '943438',     -- democracy.vote
+    '1603025',    -- staking.withdrawUnbonded
+    '6800002',    -- blocks.transfer
+    '11873016',   -- vesting.vest
+    -- High-load blocks (250-524 extrinsics)
+    '18687076',   -- 414 extrinsics
+    '18687064',   -- 404 extrinsics
+    '18687053',   -- 402 extrinsics
+    '18687063',   -- 435 extrinsics
+    '18687111',   -- 460 extrinsics
+    '18687104',   -- 274 extrinsics
+    '18687099',   -- 288 extrinsics
+    '18687162',   -- 436 extrinsics
+    '18687150',   -- 409 extrinsics
+    '18687146',   -- 358 extrinsics
+    '18687186',   -- 416 extrinsics
+    '18687181',   -- 306 extrinsics
+    '18687219',   -- 458 extrinsics
+    '18687214',   -- 292 extrinsics
+    '18687212',   -- 341 extrinsics
+    '18687264',   -- 401 extrinsics
+    '18687255',   -- 437 extrinsics
+    '18687246',   -- 276 extrinsics
+    '18687338',   -- 488 extrinsics
+    '18687370',   -- 512 extrinsics
+    '18687387',   -- 484 extrinsics
+    '18687436',   -- 352 extrinsics
+    '18687425',   -- 372 extrinsics
+    '18687507',   -- 402 extrinsics
+    '18687526',   -- 266 extrinsics
+    '18687604',   -- 348 extrinsics
+    '18687639',   -- 489 extrinsics
+    '18687630',   -- 524 extrinsics
+    '18687692',   -- 377 extrinsics
+    '18687712',   -- 349 extrinsics
+}
+
+local counter = 1
+
 request = function()
-    local block_id = math.random(1000000, 5000000)
-    return wrk.format("GET", "/v1/blocks/" .. block_id)
+    local block = blocks[counter]
+    counter = counter + 1
+    if counter > #blocks then
+        counter = 1
+    end
+    return wrk.format("GET", "/v1/blocks/" .. block)
 end
 
--- No delay between requests for maximum throughput
-delay = function()
-    -- No delay by default
-end
-
--- Signal completion with statistics
 done = util.done()

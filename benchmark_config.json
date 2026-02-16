@@ -61,7 +61,7 @@
   ],
   "benchmarks": {
     "health": {
-      "endpoint": "/health",
+      "endpoint": "/v1/health",
       "use_standard_scenarios": true
     },
     "runtime": {
@@ -73,15 +73,51 @@
       "use_standard_scenarios": true
     },
     "blocks": {
-      "endpoint": "/blocks/:blockId",
+      "endpoint": "/v1/blocks/:blockId",
+      "use_standard_scenarios": true
+    },
+    "blocks_head": {
+      "endpoint": "/v1/blocks/head",
       "use_standard_scenarios": true
     },
     "blocks_head_header": {
-      "endpoint": "/blocks/head/header",
+      "endpoint": "/v1/blocks/head/header",
+      "use_standard_scenarios": true
+    },
+    "blocks_header": {
+      "endpoint": "/v1/blocks/:blockId/header",
+      "use_standard_scenarios": true
+    },
+    "blocks_extrinsics": {
+      "endpoint": "/v1/blocks/:blockId/extrinsics/:extrinsicIndex",
       "use_standard_scenarios": true
     },
     "ahm_info": {
       "endpoint": "/v1/ahm-info",
+      "use_standard_scenarios": true
+    },
+    "accounts_balance_info": {
+      "endpoint": "/v1/accounts/:accountId/balance-info",
+      "use_standard_scenarios": true
+    },
+    "accounts_convert": {
+      "endpoint": "/v1/accounts/:accountId/convert",
+      "use_standard_scenarios": true
+    },
+    "accounts_staking_info": {
+      "endpoint": "/v1/accounts/:accountId/staking-info",
+      "use_standard_scenarios": true
+    },
+    "accounts_staking_payouts": {
+      "endpoint": "/v1/accounts/:accountId/staking-payouts",
+      "use_standard_scenarios": true
+    },
+    "accounts_validate": {
+      "endpoint": "/v1/accounts/:accountId/validate",
+      "use_standard_scenarios": true
+    },
+    "accounts_vesting_info": {
+      "endpoint": "/v1/accounts/:accountId/vesting-info",
       "use_standard_scenarios": true
     },
     "node_network": {
@@ -106,6 +142,238 @@
     },
     "rc_node_transaction_pool": {
       "endpoint": "/v1/rc/node/transaction-pool",
+      "use_standard_scenarios": true
+    },
+    "pallets_errors": {
+      "endpoint": "/v1/pallets/:palletId/errors",
+      "use_standard_scenarios": true
+    },
+    "pallets_errors_item": {
+      "endpoint": "/v1/pallets/:palletId/errors/:errorItemId",
+      "use_standard_scenarios": true
+    },
+    "pallets_storage": {
+      "endpoint": "/v1/pallets/:palletId/storage",
+      "use_standard_scenarios": true
+    },
+    "pallets_storage_item": {
+      "endpoint": "/v1/pallets/:palletId/storage/:storageItemId",
+      "use_standard_scenarios": true
+    },
+    "pallets_staking_progress": {
+      "endpoint": "/v1/pallets/staking/progress",
+      "use_standard_scenarios": true
+    },
+    "pallets_staking_validators": {
+      "endpoint": "/v1/pallets/staking/validators",
+      "use_standard_scenarios": true
+    },
+    "pallets_nomination_pools_info": {
+      "endpoint": "/v1/pallets/nomination-pools/info",
+      "use_standard_scenarios": true
+    },
+    "pallets_nomination_pools_id": {
+      "endpoint": "/v1/pallets/nomination-pools/:poolId",
+      "use_standard_scenarios": true
+    },
+    "paras": {
+      "endpoint": "/v1/paras",
+      "use_standard_scenarios": true
+    },
+    "paras_auctions_current": {
+      "endpoint": "/v1/paras/auctions/current",
+      "use_standard_scenarios": true
+    },
+    "paras_crowdloans": {
+      "endpoint": "/v1/paras/crowdloans",
+      "use_standard_scenarios": true
+    },
+    "paras_crowdloan_info": {
+      "endpoint": "/v1/paras/:paraId/crowdloan-info",
+      "use_standard_scenarios": true
+    },
+    "paras_leases_current": {
+      "endpoint": "/v1/paras/leases/current",
+      "use_standard_scenarios": true
+    },
+    "paras_lease_info": {
+      "endpoint": "/v1/paras/:paraId/lease-info",
+      "use_standard_scenarios": true
+    },
+    "transaction_material": {
+      "endpoint": "/v1/transaction/material",
+      "use_standard_scenarios": true
+    },
+    "capabilities": {
+      "endpoint": "/v1/capabilities",
+      "use_standard_scenarios": true
+    },
+    "accounts_proxy_info": {
+      "endpoint": "/v1/accounts/:accountId/proxy-info",
+      "use_standard_scenarios": true
+    },
+    "accounts_asset_balances": {
+      "endpoint": "/v1/accounts/:accountId/asset-balances",
+      "use_standard_scenarios": true
+    },
+    "accounts_asset_approvals": {
+      "endpoint": "/v1/accounts/:accountId/asset-approvals",
+      "use_standard_scenarios": true
+    },
+    "accounts_pool_asset_balances": {
+      "endpoint": "/v1/accounts/:accountId/pool-asset-balances",
+      "use_standard_scenarios": true
+    },
+    "accounts_pool_asset_approvals": {
+      "endpoint": "/v1/accounts/:accountId/pool-asset-approvals",
+      "use_standard_scenarios": true
+    },
+    "blocks_extrinsics_raw": {
+      "endpoint": "/v1/blocks/:blockId/extrinsics-raw",
+      "use_standard_scenarios": true
+    },
+    "blocks_para_inclusions": {
+      "endpoint": "/v1/blocks/:blockId/para-inclusions",
+      "use_standard_scenarios": true
+    },
+    "runtime_code": {
+      "endpoint": "/v1/runtime/code",
+      "use_standard_scenarios": true
+    },
+    "runtime_metadata": {
+      "endpoint": "/v1/runtime/metadata",
+      "use_standard_scenarios": true
+    },
+    "runtime_metadata_versions": {
+      "endpoint": "/v1/runtime/metadata/versions",
+      "use_standard_scenarios": true
+    },
+    "runtime_metadata_version": {
+      "endpoint": "/v1/runtime/metadata/:version",
+      "use_standard_scenarios": true
+    },
+    "transaction_material_version": {
+      "endpoint": "/v1/transaction/material/:metadataVersion",
+      "use_standard_scenarios": true
+    },
+    "pallets_dispatchables": {
+      "endpoint": "/v1/pallets/:palletId/dispatchables",
+      "use_standard_scenarios": true
+    },
+    "pallets_dispatchables_item": {
+      "endpoint": "/v1/pallets/:palletId/dispatchables/:dispatchableId",
+      "use_standard_scenarios": true
+    },
+    "pallets_consts": {
+      "endpoint": "/v1/pallets/:palletId/consts",
+      "use_standard_scenarios": true
+    },
+    "pallets_consts_item": {
+      "endpoint": "/v1/pallets/:palletId/consts/:constantItemId",
+      "use_standard_scenarios": true
+    },
+    "pallets_assets_asset_info": {
+      "endpoint": "/v1/pallets/assets/:assetId/asset-info",
+      "use_standard_scenarios": true
+    },
+    "pallets_pool_assets_asset_info": {
+      "endpoint": "/v1/pallets/pool-assets/:assetId/asset-info",
+      "use_standard_scenarios": true
+    },
+    "pallets_asset_conversion_liquidity_pools": {
+      "endpoint": "/v1/pallets/asset-conversion/liquidity-pools",
+      "use_standard_scenarios": true
+    },
+    "pallets_asset_conversion_next_available_id": {
+      "endpoint": "/v1/pallets/asset-conversion/next-available-id",
+      "use_standard_scenarios": true
+    },
+    "coretime_info": {
+      "endpoint": "/v1/coretime/info",
+      "use_standard_scenarios": true
+    },
+    "coretime_leases": {
+      "endpoint": "/v1/coretime/leases",
+      "use_standard_scenarios": true
+    },
+    "coretime_regions": {
+      "endpoint": "/v1/coretime/regions",
+      "use_standard_scenarios": true
+    },
+    "coretime_renewals": {
+      "endpoint": "/v1/coretime/renewals",
+      "use_standard_scenarios": true
+    },
+    "coretime_reservations": {
+      "endpoint": "/v1/coretime/reservations",
+      "use_standard_scenarios": true
+    },
+    "paras_inclusion": {
+      "endpoint": "/v1/paras/:number/inclusion",
+      "use_standard_scenarios": true
+    },
+    "rc_accounts_balance_info": {
+      "endpoint": "/v1/rc/accounts/:accountId/balance-info",
+      "use_standard_scenarios": true
+    },
+    "rc_accounts_proxy_info": {
+      "endpoint": "/v1/rc/accounts/:accountId/proxy-info",
+      "use_standard_scenarios": true
+    },
+    "rc_accounts_staking_info": {
+      "endpoint": "/v1/rc/accounts/:accountId/staking-info",
+      "use_standard_scenarios": true
+    },
+    "rc_accounts_vesting_info": {
+      "endpoint": "/v1/rc/accounts/:accountId/vesting-info",
+      "use_standard_scenarios": true
+    },
+    "rc_accounts_staking_payouts": {
+      "endpoint": "/v1/rc/accounts/:accountId/staking-payouts",
+      "use_standard_scenarios": true
+    },
+    "rc_blocks": {
+      "endpoint": "/v1/rc/blocks/:blockId",
+      "use_standard_scenarios": true
+    },
+    "rc_blocks_head": {
+      "endpoint": "/v1/rc/blocks/head",
+      "use_standard_scenarios": true
+    },
+    "rc_blocks_head_header": {
+      "endpoint": "/v1/rc/blocks/head/header",
+      "use_standard_scenarios": true
+    },
+    "rc_blocks_header": {
+      "endpoint": "/v1/rc/blocks/:blockId/header",
+      "use_standard_scenarios": true
+    },
+    "rc_blocks_extrinsics": {
+      "endpoint": "/v1/rc/blocks/:blockId/extrinsics/:extrinsicIndex",
+      "use_standard_scenarios": true
+    },
+    "rc_blocks_extrinsics_raw": {
+      "endpoint": "/v1/rc/blocks/:blockId/extrinsics-raw",
+      "use_standard_scenarios": true
+    },
+    "rc_blocks_para_inclusions": {
+      "endpoint": "/v1/rc/blocks/:blockId/para-inclusions",
+      "use_standard_scenarios": true
+    },
+    "rc_pallets_staking_progress": {
+      "endpoint": "/v1/rc/pallets/staking/progress",
+      "use_standard_scenarios": true
+    },
+    "rc_pallets_staking_validators": {
+      "endpoint": "/v1/rc/pallets/staking/validators",
+      "use_standard_scenarios": true
+    },
+    "rc_transaction_material": {
+      "endpoint": "/v1/rc/transaction/material",
+      "use_standard_scenarios": true
+    },
+    "rc_transaction_material_version": {
+      "endpoint": "/v1/rc/transaction/material/:metadataVersion",
       "use_standard_scenarios": true
     }
   }
