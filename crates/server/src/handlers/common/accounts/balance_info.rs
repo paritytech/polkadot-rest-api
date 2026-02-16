@@ -199,14 +199,17 @@ pub async fn query_balance_info(
     // Get token decimals
     let token_decimals = get_default_token_decimals(spec_name);
 
-    // Fetch existential deposit from runtime constants
+    // Fetch existential deposit from runtime constants (sync - reads from metadata)
     let existential_deposit = fetch_existential_deposit(client_at_block)?;
 
-    // Query System::Account for account info
-    let account_data = query_account_data(client_at_block, account).await?;
+    // Query System::Account and Balances::Locks concurrently
+    let (account_data_result, locks_result) = tokio::join!(
+        query_account_data(client_at_block, account),
+        query_balance_locks(client_at_block, account)
+    );
 
-    // Query Balances::Locks for balance locks
-    let locks = query_balance_locks(client_at_block, account).await?;
+    let account_data = account_data_result?;
+    let locks = locks_result?;
 
     // Calculate transferable balance using the dynamically fetched ED
     let transferable = calculate_transferable(existential_deposit, &account_data);
