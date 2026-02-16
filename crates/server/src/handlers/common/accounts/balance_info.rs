@@ -385,9 +385,8 @@ fn decode_balance_locks(raw_bytes: &[u8]) -> Result<Vec<DecodedBalanceLock>, Bal
         return Ok(locks
             .into_iter()
             .map(|lock| {
-                let id = String::from_utf8_lossy(&lock.id)
-                    .trim_end_matches('\0')
-                    .to_string();
+                // Format lock ID as hex with 0x prefix to match Sidecar format
+                let id = format!("0x{}", hex::encode(lock.id));
                 DecodedBalanceLock {
                     id,
                     amount: lock.amount,
