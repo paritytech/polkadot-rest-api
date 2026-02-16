@@ -152,6 +152,9 @@ pub enum BalanceQueryError {
 
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
+
+    #[error("Failed to fetch ExistentialDeposit constant from runtime")]
+    ExistentialDepositFetchFailed,
 }
 
 impl From<subxt::error::OnlineClientAtBlockError> for BalanceQueryError {
@@ -196,14 +199,17 @@ pub async fn query_balance_info(
     // Get token decimals
     let token_decimals = get_default_token_decimals(spec_name);
 
+    // Fetch existential deposit from runtime constants
+    let existential_deposit = fetch_existential_deposit(client_at_block)?;
+
     // Query System::Account for account info
     let account_data = query_account_data(client_at_block, account).await?;
 
     // Query Balances::Locks for balance locks
     let locks = query_balance_locks(client_at_block, account).await?;
 
-    // Calculate transferable balance
-    let transferable = calculate_transferable(spec_name, &account_data);
+    // Calculate transferable balance using the dynamically fetched ED
+    let transferable = calculate_transferable(existential_deposit, &account_data);
 
     Ok(RawBalanceInfo {
         block: block.clone(),
@@ -256,6 +262,20 @@ pub fn get_default_existential_deposit(spec_name: &str) -> u128 {
         "westend" | "westmint" => 1_000_000_000_000, // 1 WND on Westend
         _ => 1_000_000_000_000,                     // Default
     }
+}
+
+/// Fetch the ExistentialDeposit constant from the Balances pallet at a specific block.
+///
+/// This queries the runtime constants dynamically rather than using hardcoded values,
+/// ensuring accuracy across different chains and runtime upgrades.
+pub fn fetch_existential_deposit(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Result<u128, BalanceQueryError> {
+    let addr = subxt::dynamic::constant::<u128>("Balances", "ExistentialDeposit");
+    client_at_block
+        .constants()
+        .entry(addr)
+        .map_err(|_| BalanceQueryError::ExistentialDepositFetchFailed)
 }
 
 // ================================================================================================
@@ -382,17 +402,26 @@ fn decode_balance_locks(raw_bytes: &[u8]) -> Result<Vec<DecodedBalanceLock>, Bal
 // Transferable Calculation
 // ================================================================================================
 
-/// Calculate the transferable balance based on the account data
-pub fn calculate_transferable(spec_name: &str, account_data: &DecodedAccountData) -> String {
-    // For newer runtimes with frozen field:
-    // transferable = free - max(maybeED, frozen - reserved)
-    // where maybeED = 0 if frozen == 0 && reserved == 0, else existential_deposit
-
+/// Calculate the transferable balance based on the account data and existential deposit.
+///
+/// For modern runtimes with the `frozen` field:
+/// `transferable = free - max(maybeED, frozen - reserved)`
+/// where `maybeED = 0` if `frozen == 0 && reserved == 0`, else `existential_deposit`
+///
+/// # Arguments
+/// * `existential_deposit` - The chain's existential deposit, fetched dynamically from runtime constants
+/// * `account_data` - The decoded account data containing free, reserved, and frozen balances
+pub fn calculate_transferable(
+    existential_deposit: u128,
+    account_data: &DecodedAccountData,
+) -> String {
     if let Some(frozen) = account_data.frozen {
-        let ed = get_default_existential_deposit(spec_name);
-
         let no_frozen_reserved = frozen == 0 && account_data.reserved == 0;
-        let maybe_ed = if no_frozen_reserved { 0 } else { ed };
+        let maybe_ed = if no_frozen_reserved {
+            0
+        } else {
+            existential_deposit
+        };
 
         let frozen_reserve_diff = frozen.saturating_sub(account_data.reserved);
         let max_deduction = std::cmp::max(maybe_ed, frozen_reserve_diff);
