@@ -118,10 +118,17 @@ pub struct DecodedProxyDefinition {
 ///
 /// This is the shared function used by both `/accounts/:accountId/proxy-info`
 /// and `/rc/accounts/:accountId/proxy-info` endpoints.
+///
+/// # Arguments
+/// * `client_at_block` - The subxt client at a specific block
+/// * `account` - The account to query proxy info for
+/// * `block` - The resolved block information
+/// * `ss58_prefix` - The SS58 prefix to use for encoding delegate addresses
 pub async fn query_proxy_info(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     block: &ResolvedBlock,
+    ss58_prefix: u16,
 ) -> Result<RawProxyInfo, ProxyQueryError> {
     // Check if Proxy pallet exists
     if client_at_block
@@ -143,7 +150,7 @@ pub async fn query_proxy_info(
 
     let (delegated_accounts, deposit_held) = if let Ok(value) = storage_value {
         let raw_bytes = value.into_bytes();
-        decode_proxy_info(&raw_bytes)?
+        decode_proxy_info(&raw_bytes, ss58_prefix)?
     } else {
         (Vec::new(), "0".to_string())
     };
@@ -166,6 +173,7 @@ pub async fn query_proxy_info(
 /// The storage value is a tuple: (Vec<ProxyDefinition>, Balance)
 fn decode_proxy_info(
     raw_bytes: &[u8],
+    ss58_prefix: u16,
 ) -> Result<(Vec<DecodedProxyDefinition>, String), ProxyQueryError> {
     // Decode as ProxiesStorageValue
     if let Ok(proxies) = ProxiesStorageValue::decode(&mut &raw_bytes[..]) {
@@ -175,7 +183,7 @@ fn decode_proxy_info(
             .map(|def| {
                 let account_id = AccountId32::from(def.delegate);
                 DecodedProxyDefinition {
-                    delegate: account_id.to_ss58check(),
+                    delegate: account_id.to_ss58check_with_version(ss58_prefix.into()),
                     proxy_type: proxy_type_name(def.proxy_type),
                     delay: def.delay.to_string(),
                 }

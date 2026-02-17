@@ -64,7 +64,8 @@ pub async fn get_proxy_info(
         utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
     let client_at_block = rc_client.at_block(resolved_block.number).await?;
 
-    let raw_info = query_proxy_info(&client_at_block, &account, &resolved_block).await?;
+    let raw_info =
+        query_proxy_info(&client_at_block, &account, &resolved_block, rc_ss58_prefix).await?;
 
     let response = format_response(&raw_info);
 

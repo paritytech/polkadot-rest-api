@@ -64,7 +64,13 @@ pub async fn get_proxy_info(
     let resolved_block = utils::resolve_block(&state, block_id).await?;
     let client_at_block = state.client.at_block(resolved_block.number).await?;
 
-    let raw_info = query_proxy_info(&client_at_block, &account, &resolved_block).await?;
+    let raw_info = query_proxy_info(
+        &client_at_block,
+        &account,
+        &resolved_block,
+        state.chain_info.ss58_prefix,
+    )
+    .await?;
 
     let response = format_response(&raw_info, None, None, None);
 
@@ -151,7 +157,13 @@ async fn handle_use_rc_block(
             number: ah_block.number,
         };
         let client_at_block = state.client.at_block(ah_resolved.number).await?;
-        let raw_info = query_proxy_info(&client_at_block, &account, &ah_resolved).await?;
+        let raw_info = query_proxy_info(
+            &client_at_block,
+            &account,
+            &ah_resolved,
+            state.chain_info.ss58_prefix,
+        )
+        .await?;
 
         let response = format_response(
             &raw_info,
