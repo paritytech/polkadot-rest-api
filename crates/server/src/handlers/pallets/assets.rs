@@ -9,8 +9,8 @@ use crate::handlers::pallets::common::{
 };
 use crate::state::AppState;
 use crate::utils::{
-    BlockId, ResolvedBlock, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
-    resolve_block_with_rpc,
+    BlockId, DEFAULT_CONCURRENCY, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
+    resolve_block_with_rpc, run_with_concurrency,
 };
 use axum::{
     Json,
@@ -171,38 +171,59 @@ async fn handle_use_rc_block(
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
     if ah_blocks.is_empty() {
-        return Ok(build_empty_rc_response(&rc_resolved_block));
+        return Ok((
+            StatusCode::OK,
+            Json(Vec::<PalletsAssetsInfoResponse>::new()),
+        )
+            .into_response());
     }
 
-    let ah_block = &ah_blocks[0];
-    let client_at_block = state.client.at_block(ah_block.number).await?;
-
-    let at = AtResponse {
-        hash: ah_block.hash.clone(),
-        height: ah_block.number.to_string(),
-    };
-
-    let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
     let ss58_prefix = state.chain_info.ss58_prefix;
-    let asset_info = fetch_asset_info(&client_at_block, asset_id, ss58_prefix).await;
-    let asset_meta_data = fetch_asset_metadata(&client_at_block, asset_id).await;
+    let rc_hash = rc_resolved_block.hash.clone();
+    let rc_number = rc_resolved_block.number.to_string();
 
-    if asset_info.is_none() && asset_meta_data.is_none() {
-        return Err(PalletError::AssetNotFound(asset_id.to_string()));
-    }
+    let futures = ah_blocks.iter().map(|ah_block| {
+        let state = state.clone();
+        let rc_hash = rc_hash.clone();
+        let rc_number = rc_number.clone();
+        let ah_block_hash = ah_block.hash.clone();
+        let ah_block_number = ah_block.number;
 
-    Ok((
-        StatusCode::OK,
-        Json(PalletsAssetsInfoResponse {
-            at,
-            asset_info,
-            asset_meta_data,
-            rc_block_hash: Some(rc_resolved_block.hash),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
-            ah_timestamp,
-        }),
-    )
-        .into_response())
+        async move {
+            let client_at_block = state.client.at_block(ah_block_number).await?;
+
+            let at = AtResponse {
+                hash: ah_block_hash,
+                height: ah_block_number.to_string(),
+            };
+
+            let (ah_timestamp, asset_info, asset_meta_data) = tokio::join!(
+                fetch_block_timestamp(&client_at_block),
+                fetch_asset_info(&client_at_block, asset_id, ss58_prefix),
+                fetch_asset_metadata(&client_at_block, asset_id)
+            );
+
+            if asset_info.is_none() && asset_meta_data.is_none() {
+                return Err(PalletError::AssetNotFoundAtBlock {
+                    asset_id: asset_id.to_string(),
+                    block_number: ah_block_number.to_string(),
+                });
+            }
+
+            Ok(PalletsAssetsInfoResponse {
+                at,
+                asset_info,
+                asset_meta_data,
+                rc_block_hash: Some(rc_hash),
+                rc_block_number: Some(rc_number),
+                ah_timestamp,
+            })
+        }
+    });
+
+    let responses = run_with_concurrency(DEFAULT_CONCURRENCY, futures).await?;
+
+    Ok((StatusCode::OK, Json(responses)).into_response())
 }
 
 // ============================================================================
@@ -263,25 +284,4 @@ async fn fetch_asset_metadata(
         decimals: metadata.decimals.to_string(),
         is_frozen: metadata.is_frozen,
     })
-}
-
-/// Builds an empty response when no AH blocks are found in the RC block.
-fn build_empty_rc_response(rc_resolved_block: &ResolvedBlock) -> Response {
-    let at = AtResponse {
-        hash: rc_resolved_block.hash.clone(),
-        height: rc_resolved_block.number.to_string(),
-    };
-
-    (
-        StatusCode::OK,
-        Json(PalletsAssetsInfoResponse {
-            at,
-            asset_info: None,
-            asset_meta_data: None,
-            rc_block_hash: Some(rc_resolved_block.hash.clone()),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
-            ah_timestamp: None,
-        }),
-    )
-        .into_response()
 }
