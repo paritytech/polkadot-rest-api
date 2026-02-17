@@ -87,6 +87,12 @@ pub enum PalletError {
     #[error("Asset not found: {0}")]
     AssetNotFound(String),
 
+    #[error("Asset {asset_id} not found at block {block_number}")]
+    AssetNotFoundAtBlock {
+        asset_id: String,
+        block_number: String,
+    },
+
     #[error("Nomination pool not found: {0}")]
     PoolNotFound(String),
 
@@ -200,6 +206,7 @@ impl IntoResponse for PalletError {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
             PalletError::AssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::AssetNotFoundAtBlock { .. } => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::PoolNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::PoolAssetNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::EventNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),

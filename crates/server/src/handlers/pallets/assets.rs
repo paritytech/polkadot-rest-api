@@ -204,7 +204,10 @@ async fn handle_use_rc_block(
             );
 
             if asset_info.is_none() && asset_meta_data.is_none() {
-                return Err(PalletError::AssetNotFound(asset_id.to_string()));
+                return Err(PalletError::AssetNotFoundAtBlock {
+                    asset_id: asset_id.to_string(),
+                    block_number: ah_block_number.to_string(),
+                });
             }
 
             Ok(PalletsAssetsInfoResponse {
