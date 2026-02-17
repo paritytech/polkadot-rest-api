@@ -9,7 +9,8 @@ use crate::handlers::pallets::common::{
 };
 use crate::state::AppState;
 use crate::utils::{
-    BlockId, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block, resolve_block_with_rpc,
+    BlockId, DEFAULT_CONCURRENCY, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
+    resolve_block_with_rpc, run_with_concurrency,
 };
 use axum::{
     Json,
@@ -178,32 +179,46 @@ async fn handle_use_rc_block(
     }
 
     let ss58_prefix = state.chain_info.ss58_prefix;
-    let mut responses = Vec::new();
-    for ah_block in &ah_blocks {
-        let client_at_block = state.client.at_block(ah_block.number).await?;
+    let rc_hash = rc_resolved_block.hash.clone();
+    let rc_number = rc_resolved_block.number.to_string();
 
-        let at = AtResponse {
-            hash: ah_block.hash.clone(),
-            height: ah_block.number.to_string(),
-        };
+    let futures = ah_blocks.iter().map(|ah_block| {
+        let state = state.clone();
+        let rc_hash = rc_hash.clone();
+        let rc_number = rc_number.clone();
+        let ah_block_hash = ah_block.hash.clone();
+        let ah_block_number = ah_block.number;
 
-        let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
-        let asset_info = fetch_asset_info(&client_at_block, asset_id, ss58_prefix).await;
-        let asset_meta_data = fetch_asset_metadata(&client_at_block, asset_id).await;
+        async move {
+            let client_at_block = state.client.at_block(ah_block_number).await?;
 
-        if asset_info.is_none() && asset_meta_data.is_none() {
-            return Err(PalletError::AssetNotFound(asset_id.to_string()));
+            let at = AtResponse {
+                hash: ah_block_hash,
+                height: ah_block_number.to_string(),
+            };
+
+            let (ah_timestamp, asset_info, asset_meta_data) = tokio::join!(
+                fetch_block_timestamp(&client_at_block),
+                fetch_asset_info(&client_at_block, asset_id, ss58_prefix),
+                fetch_asset_metadata(&client_at_block, asset_id)
+            );
+
+            if asset_info.is_none() && asset_meta_data.is_none() {
+                return Err(PalletError::AssetNotFound(asset_id.to_string()));
+            }
+
+            Ok(PalletsAssetsInfoResponse {
+                at,
+                asset_info,
+                asset_meta_data,
+                rc_block_hash: Some(rc_hash),
+                rc_block_number: Some(rc_number),
+                ah_timestamp,
+            })
         }
+    });
 
-        responses.push(PalletsAssetsInfoResponse {
-            at,
-            asset_info,
-            asset_meta_data,
-            rc_block_hash: Some(rc_resolved_block.hash.clone()),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
-            ah_timestamp,
-        });
-    }
+    let responses = run_with_concurrency(DEFAULT_CONCURRENCY, futures).await?;
 
     Ok((StatusCode::OK, Json(responses)).into_response())
 }
