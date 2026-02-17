@@ -1372,6 +1372,14 @@
         },
         "fixture_path": "asset-hub-polkadot/pallets_staking_validators_use_rc_block_format_rc_29698001.json",
         "description": "Test pallets staking/validators with useRcBlock=true&format=object at RC block 29,698,001"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 12273189,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/blocks_12273189.json",
+        "description": "Test block endpoint at Asset Hub Polkadot block 12,273,189 (ChargeAssetTxPayment signed extension)"
       }
     ],
     "asset-hub-kusama": [

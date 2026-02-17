@@ -21,7 +21,29 @@ use super::super::decode::{GetTypeName, JsonVisitor};
 use super::super::types::{
     ExtrinsicInfo, GetBlockError, MethodInfo, MultiAddress, SignatureInfo, SignerId,
 };
-use super::super::utils::extract_numeric_string;
+
+// ================================================================================================
+// Signed Extension Types
+// ================================================================================================
+
+/// CheckNonce signed extension - contains the account nonce
+/// SCALE encoded as a compact u32
+#[derive(parity_scale_codec::Decode)]
+struct CheckNonce(#[codec(compact)] u32);
+
+/// ChargeTransactionPayment signed extension - contains the tip amount
+/// SCALE encoded as a compact u128
+#[derive(parity_scale_codec::Decode)]
+struct ChargeTransactionPayment(#[codec(compact)] u128);
+
+/// ChargeAssetTxPayment signed extension - contains tip and optional asset_id
+/// Used on Asset Hub and other chains that support paying fees in non-native assets
+#[derive(parity_scale_codec::Decode)]
+struct ChargeAssetTxPayment {
+    #[codec(compact)]
+    tip: u128,
+    // asset_id is Option<AssetId> but we don't need it for tip extraction
+}
 
 /// Extract extrinsics from a block using subxt with explicit ss58_prefix
 ///
@@ -245,22 +267,36 @@ async fn extract_extrinsics_impl(
 
                 match ext_name {
                     "CheckNonce" => {
-                        // Decode using decode_unchecked_as which takes any DecodeAsType
-                        if let Ok(n) = ext.decode_unchecked_as::<scale_value::Value>()
-                            && let Ok(json_val) = serde_json::to_value(&n)
+                        // Decode nonce directly using explicit type
+                        let bytes = ext.bytes();
+                        if let Ok(nonce) =
+                            <CheckNonce as parity_scale_codec::Decode>::decode(&mut &bytes[..])
                         {
-                            // The value might be nested in an object, so we need to extract it
-                            // If extraction fails, nonce_value remains None (serialized as null)
-                            nonce_value = extract_numeric_string(&json_val);
+                            nonce_value = Some(nonce.0.to_string());
                         }
                     }
-                    "ChargeTransactionPayment" | "ChargeAssetTxPayment" => {
-                        // Decode using decode_unchecked_as which takes any DecodeAsType
-                        if let Ok(t) = ext.decode_unchecked_as::<scale_value::Value>()
-                            && let Ok(json_val) = serde_json::to_value(&t)
+                    "ChargeTransactionPayment" => {
+                        // Decode tip directly using explicit type
+                        let bytes = ext.bytes();
+                        if let Ok(payment) =
+                            <ChargeTransactionPayment as parity_scale_codec::Decode>::decode(
+                                &mut &bytes[..],
+                            )
                         {
-                            tip_value =
-                                Some(extract_numeric_string(&json_val).unwrap_or("0".to_string()));
+                            tip_value = Some(payment.0.to_string());
+                        } else {
+                            tip_value = Some("0".to_string());
+                        }
+                    }
+                    "ChargeAssetTxPayment" => {
+                        // Decode tip from ChargeAssetTxPayment struct
+                        let bytes = ext.bytes();
+                        if let Ok(payment) =
+                            <ChargeAssetTxPayment as parity_scale_codec::Decode>::decode(
+                                &mut &bytes[..],
+                            )
+                        {
+                            tip_value = Some(payment.tip.to_string());
                         } else {
                             tip_value = Some("0".to_string());
                         }
