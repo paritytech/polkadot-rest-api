@@ -10,8 +10,8 @@ use crate::handlers::pallets::constants::{
 };
 use crate::state::AppState;
 use crate::utils::{
-    BlockId, ResolvedBlock, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
-    resolve_block_with_rpc,
+    BlockId, DEFAULT_CONCURRENCY, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
+    resolve_block_with_rpc, run_with_concurrency,
 };
 use axum::{
     Json,
@@ -525,142 +525,141 @@ async fn handle_use_rc_block(
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
     if ah_blocks.is_empty() {
-        return Ok(build_empty_rc_response(&rc_resolved_block));
+        return Ok((StatusCode::OK, Json(Vec::<StakingProgressResponse>::new())).into_response());
     }
 
-    let ah_block = &ah_blocks[0];
-    let client_at_block = state.client.at_block(ah_block.number).await?;
+    let rc_hash = rc_resolved_block.hash.clone();
+    let rc_number = rc_resolved_block.number.to_string();
+    let spec_name = state.chain_info.spec_name.clone();
+    let ss58_prefix = state.chain_info.ss58_prefix;
 
-    let at = AtResponse {
-        hash: ah_block.hash.clone(),
-        height: ah_block.number.to_string(),
-    };
+    let futures =
+        ah_blocks.iter().map(|ah_block| {
+            let state = state.clone();
+            let rc_hash = rc_hash.clone();
+            let rc_number = rc_number.clone();
+            let spec_name = spec_name.clone();
+            let ah_block_hash = ah_block.hash.clone();
+            let ah_block_number = ah_block.number;
 
-    // Check for bad staking blocks
-    if is_bad_staking_block(&state.chain_info.spec_name, ah_block.number) {
-        return Err(PalletError::BadStakingBlock(format!(
-            "Block {} is a known bad staking block for {}",
-            ah_block.number, state.chain_info.spec_name
-        )));
-    }
+            async move {
+                let client_at_block = state.client.at_block(ah_block_number).await?;
 
-    // Fetch timestamp for Asset Hub
-    let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+                let at = AtResponse {
+                    hash: ah_block_hash,
+                    height: ah_block_number.to_string(),
+                };
 
-    // Fetch base staking data
-    let validator_count = fetch_validator_count(&client_at_block).await?;
-    let force_era = fetch_force_era(&client_at_block).await?;
-    let validators =
-        fetch_staking_validators(&client_at_block, state.chain_info.ss58_prefix).await?;
+                // Check for bad staking blocks
+                if is_bad_staking_block(&spec_name, ah_block_number) {
+                    return Err(PalletError::BadStakingBlock(format!(
+                        "Block {} is a known bad staking block for {}",
+                        ah_block_number, spec_name
+                    )));
+                }
 
-    // Fetch unapplied slashes
-    let unapplied_slashes =
-        fetch_unapplied_slashes(&client_at_block, state.chain_info.ss58_prefix).await;
+                // Fetch data in parallel where possible
+                let (
+                    ah_timestamp,
+                    validator_count,
+                    force_era,
+                    validators,
+                    unapplied_slashes,
+                    progress,
+                ) = tokio::try_join!(
+                    async { Ok::<_, PalletError>(fetch_block_timestamp(&client_at_block).await) },
+                    fetch_validator_count(&client_at_block),
+                    fetch_force_era(&client_at_block),
+                    fetch_staking_validators(&client_at_block, ss58_prefix),
+                    async {
+                        Ok::<_, PalletError>(
+                            fetch_unapplied_slashes(&client_at_block, ss58_prefix).await,
+                        )
+                    },
+                    derive_session_era_progress_asset_hub(&state, &client_at_block)
+                )?;
 
-    // Derive session and era progress for Asset Hub
-    let progress = derive_session_era_progress_asset_hub(&state, &client_at_block).await?;
+                // Calculate estimates
+                let current_block_number = ah_block_number;
+                let next_session = progress
+                    .session_length
+                    .saturating_sub(progress.session_progress)
+                    .saturating_add(current_block_number);
 
-    // Calculate estimates
-    let current_block_number = ah_block.number;
-    let next_session = progress
-        .session_length
-        .saturating_sub(progress.session_progress)
-        .saturating_add(current_block_number);
+                let mut response = StakingProgressResponse {
+                    at,
+                    active_era: Some(progress.active_era.to_string()),
+                    force_era: force_era.to_json(),
+                    next_session_estimate: Some(next_session.to_string()),
+                    unapplied_slashes,
+                    next_active_era_estimate: None,
+                    election_status: None,
+                    ideal_validator_count: None,
+                    validator_set: Some(validators),
+                    rc_block_hash: Some(rc_hash),
+                    rc_block_number: Some(rc_number),
+                    ah_timestamp,
+                };
 
-    let mut response = StakingProgressResponse {
-        at,
-        active_era: Some(progress.active_era.to_string()),
-        force_era: force_era.to_json(),
-        next_session_estimate: Some(next_session.to_string()),
-        unapplied_slashes,
-        next_active_era_estimate: None,
-        election_status: None,
-        ideal_validator_count: None,
-        validator_set: Some(validators),
-        rc_block_hash: Some(rc_resolved_block.hash),
-        rc_block_number: Some(rc_resolved_block.number.to_string()),
-        ah_timestamp,
-    };
+                if force_era.is_force_none() {
+                    response.validator_set = None;
+                    return Ok(response);
+                }
 
-    if force_era.is_force_none() {
-        response.validator_set = None;
-        return Ok((StatusCode::OK, Json(response)).into_response());
-    }
+                let next_active_era = if force_era.is_force_always() {
+                    next_session
+                } else {
+                    progress
+                        .era_length
+                        .saturating_sub(progress.era_progress)
+                        .saturating_add(current_block_number)
+                };
 
-    let next_active_era = if force_era.is_force_always() {
-        next_session
-    } else {
-        progress
-            .era_length
-            .saturating_sub(progress.era_progress)
-            .saturating_add(current_block_number)
-    };
+                let election_status = fetch_election_status(&client_at_block).await;
+                let election_lookahead =
+                    derive_election_lookahead(&spec_name, progress.session_length);
 
-    let election_status = fetch_election_status(&client_at_block).await;
-    let election_lookahead =
-        derive_election_lookahead(&state.chain_info.spec_name, progress.session_length);
+                let next_current_era = if next_active_era
+                    .saturating_sub(current_block_number)
+                    .saturating_sub(progress.session_length)
+                    > 0
+                {
+                    next_active_era.saturating_sub(progress.session_length)
+                } else {
+                    next_active_era
+                        .saturating_add(progress.era_length)
+                        .saturating_sub(progress.session_length)
+                };
 
-    let next_current_era = if next_active_era
-        .saturating_sub(current_block_number)
-        .saturating_sub(progress.session_length)
-        > 0
-    {
-        next_active_era.saturating_sub(progress.session_length)
-    } else {
-        next_active_era
-            .saturating_add(progress.era_length)
-            .saturating_sub(progress.session_length)
-    };
+                let toggle_estimate = if election_lookahead == 0 {
+                    None
+                } else if election_status
+                    .as_ref()
+                    .map(|s| s.is_close())
+                    .unwrap_or(true)
+                {
+                    Some(next_current_era.saturating_sub(election_lookahead))
+                } else {
+                    Some(next_current_era)
+                };
 
-    let toggle_estimate = if election_lookahead == 0 {
-        None
-    } else if election_status
-        .as_ref()
-        .map(|s| s.is_close())
-        .unwrap_or(true)
-    {
-        Some(next_current_era.saturating_sub(election_lookahead))
-    } else {
-        Some(next_current_era)
-    };
+                response.next_active_era_estimate = Some(next_active_era.to_string());
+                response.ideal_validator_count = Some(validator_count.to_string());
+                response.election_status = Some(match election_status {
+                    Some(status) => ElectionStatusResponse::Active {
+                        status: status.to_json(),
+                        toggle_estimate: toggle_estimate.map(|t| t.to_string()),
+                    },
+                    None => ElectionStatusResponse::Deprecated("Deprecated, see docs".to_string()),
+                });
 
-    response.next_active_era_estimate = Some(next_active_era.to_string());
-    response.ideal_validator_count = Some(validator_count.to_string());
-    response.election_status = Some(match election_status {
-        Some(status) => ElectionStatusResponse::Active {
-            status: status.to_json(),
-            toggle_estimate: toggle_estimate.map(|t| t.to_string()),
-        },
-        None => ElectionStatusResponse::Deprecated("Deprecated, see docs".to_string()),
-    });
+                Ok(response)
+            }
+        });
 
-    Ok((StatusCode::OK, Json(response)).into_response())
-}
+    let responses = run_with_concurrency(DEFAULT_CONCURRENCY, futures).await?;
 
-fn build_empty_rc_response(rc_resolved_block: &ResolvedBlock) -> Response {
-    let at = AtResponse {
-        hash: rc_resolved_block.hash.clone(),
-        height: rc_resolved_block.number.to_string(),
-    };
-
-    (
-        StatusCode::OK,
-        Json(StakingProgressResponse {
-            at,
-            active_era: None,
-            force_era: json!(null),
-            next_session_estimate: None,
-            unapplied_slashes: vec![],
-            next_active_era_estimate: None,
-            election_status: None,
-            ideal_validator_count: None,
-            validator_set: None,
-            rc_block_hash: Some(rc_resolved_block.hash.clone()),
-            rc_block_number: Some(rc_resolved_block.number.to_string()),
-            ah_timestamp: None,
-        }),
-    )
-        .into_response()
+    Ok((StatusCode::OK, Json(responses)).into_response())
 }
 
 async fn fetch_validator_count(

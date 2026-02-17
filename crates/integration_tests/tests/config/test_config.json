@@ -1185,6 +1185,29 @@
         "description": "Test pallets nomination-pools pool 1 with useRcBlock=true at RC block 29,698,001"
       },
       {
+        "endpoint": "/v1/pallets/assets/{assetId}/asset-info",
+        "block_height": null,
+        "account_id": null,
+        "asset_id": "1984",
+        "query_params": {
+          "at": "29698001",
+          "useRcBlock": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_assets_1984_asset_info_use_rc_block_29698001.json",
+        "description": "Test pallets assets asset-info for USDT (asset 1984) with useRcBlock=true at RC block 29,698,001"
+      },
+      {
+        "endpoint": "/v1/pallets/staking/progress",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "29698001",
+          "useRcBlock": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_staking_progress_use_rc_block_29698001.json",
+        "description": "Test pallets staking progress with useRcBlock=true at RC block 29,698,001"
+      },
+      {
         "endpoint": "/v1/blocks/{blockId}",
         "block_height": 10554957,
         "account_id": null,
