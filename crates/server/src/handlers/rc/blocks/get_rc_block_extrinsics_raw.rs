@@ -7,8 +7,9 @@
 //! from the relay chain. Unlike the main /blocks/{blockId}/extrinsics-raw endpoint,
 //! this queries the relay chain connection instead of the primary chain.
 
+use crate::handlers::blocks::common::convert_digest_items_to_logs;
 use crate::handlers::blocks::get_block_extrinsics_raw::{BlockRawDigest, BlockRawResponse};
-use crate::handlers::blocks::types::{DigestItemDiscriminant, DigestLog, GetBlockError};
+use crate::handlers::blocks::types::GetBlockError;
 use crate::state::AppState;
 use crate::utils;
 use axum::{
@@ -16,7 +17,8 @@ use axum::{
     extract::{Path, State},
     response::{IntoResponse, Response},
 };
-use serde_json::json;
+use serde_json::Value;
+use subxt_rpcs::rpc_params;
 
 /// Handler for GET /rc/blocks/{blockId}/extrinsics-raw
 ///
@@ -57,6 +59,10 @@ async fn build_rc_block_raw_response(
         .get_relay_chain_client()
         .ok_or_else(|| GetBlockError::RelayChainNotConfigured)?;
 
+    let relay_rpc_client = state
+        .get_relay_chain_rpc_client()
+        .ok_or_else(|| GetBlockError::RelayChainNotConfigured)?;
+
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
 
     let client_at_block = match &block_id_parsed {
@@ -64,36 +70,22 @@ async fn build_rc_block_raw_response(
         utils::BlockId::Hash(h) => relay_client.at_block(*h).await?,
     };
 
-    let (header, extrinsics) = tokio::try_join!(
-        async {
-            client_at_block.block_header().await.map_err(|e| {
-                GetBlockError::ExtrinsicsFetchFailed(format!("Header fetch failed: {}", e))
-            })
-        },
-        async {
-            client_at_block
-                .extrinsics()
-                .fetch()
-                .await
-                .map_err(|e| GetBlockError::ExtrinsicsFetchFailed(e.to_string()))
-        }
-    )?;
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
 
-    let raw_extrinsics: Vec<String> = extrinsics
-        .iter()
-        .filter_map(|ext_result| {
-            ext_result
-                .ok()
-                .map(|ext| format!("0x{}", hex::encode(ext.bytes())))
-        })
-        .collect();
+    let header = client_at_block
+        .block_header()
+        .await
+        .map_err(|e| GetBlockError::ExtrinsicsFetchFailed(format!("Header fetch failed: {}", e)))?;
+
+    // Use chain_getBlock RPC directly to get raw extrinsics without decoding
+    let raw_extrinsics = fetch_raw_extrinsics_via_rpc(relay_rpc_client, &block_hash).await?;
 
     let parent_hash = format!("{:#x}", header.parent_hash);
     let number = format!("0x{:08x}", header.number);
     let state_root = format!("{:#x}", header.state_root);
     let extrinsic_root = format!("{:#x}", header.extrinsics_root);
 
-    let logs = decode_digest_logs_from_header(&header);
+    let logs = convert_digest_items_to_logs(&header.digest.logs);
 
     Ok(BlockRawResponse {
         parent_hash,
@@ -108,54 +100,31 @@ async fn build_rc_block_raw_response(
     })
 }
 
-fn decode_digest_logs_from_header(
-    header: &subxt::config::substrate::SubstrateHeader<subxt::utils::H256>,
-) -> Vec<DigestLog> {
-    header
-        .digest
-        .logs
-        .iter()
-        .map(|log| {
-            use subxt::config::substrate::DigestItem;
+/// Fetch raw extrinsics from the relay chain using chain_getBlock RPC
+async fn fetch_raw_extrinsics_via_rpc(
+    rpc_client: &subxt_rpcs::RpcClient,
+    block_hash: &str,
+) -> Result<Vec<String>, GetBlockError> {
+    let block_json: Value = rpc_client
+        .request("chain_getBlock", rpc_params![block_hash])
+        .await
+        .map_err(GetBlockError::BlockFetchFailed)?;
 
-            match log {
-                DigestItem::PreRuntime(engine_id, data) => DigestLog {
-                    log_type: DigestItemDiscriminant::PreRuntime.as_str().to_string(),
-                    index: (DigestItemDiscriminant::PreRuntime as u8).to_string(),
-                    value: json!([
-                        format!("0x{}", hex::encode(engine_id)),
-                        format!("0x{}", hex::encode(data))
-                    ]),
-                },
-                DigestItem::Consensus(engine_id, data) => DigestLog {
-                    log_type: DigestItemDiscriminant::Consensus.as_str().to_string(),
-                    index: (DigestItemDiscriminant::Consensus as u8).to_string(),
-                    value: json!([
-                        format!("0x{}", hex::encode(engine_id)),
-                        format!("0x{}", hex::encode(data))
-                    ]),
-                },
-                DigestItem::Seal(engine_id, data) => DigestLog {
-                    log_type: DigestItemDiscriminant::Seal.as_str().to_string(),
-                    index: (DigestItemDiscriminant::Seal as u8).to_string(),
-                    value: json!([
-                        format!("0x{}", hex::encode(engine_id)),
-                        format!("0x{}", hex::encode(data))
-                    ]),
-                },
-                DigestItem::RuntimeEnvironmentUpdated => DigestLog {
-                    log_type: DigestItemDiscriminant::RuntimeEnvironmentUpdated
-                        .as_str()
-                        .to_string(),
-                    index: (DigestItemDiscriminant::RuntimeEnvironmentUpdated as u8).to_string(),
-                    value: serde_json::Value::Null,
-                },
-                DigestItem::Other(data) => DigestLog {
-                    log_type: DigestItemDiscriminant::Other.as_str().to_string(),
-                    index: (DigestItemDiscriminant::Other as u8).to_string(),
-                    value: json!(format!("0x{}", hex::encode(data))),
-                },
-            }
-        })
-        .collect()
+    extract_raw_extrinsics_from_json(&block_json)
+}
+
+/// Extract raw extrinsics from the chain_getBlock JSON response
+fn extract_raw_extrinsics_from_json(block_json: &Value) -> Result<Vec<String>, GetBlockError> {
+    let extrinsics = block_json
+        .get("block")
+        .and_then(|b| b.get("extrinsics"))
+        .and_then(|e| e.as_array())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsics".to_string()))?;
+
+    let raw_extrinsics: Vec<String> = extrinsics
+        .iter()
+        .filter_map(|e| e.as_str().map(|s| s.to_string()))
+        .collect();
+
+    Ok(raw_extrinsics)
 }
