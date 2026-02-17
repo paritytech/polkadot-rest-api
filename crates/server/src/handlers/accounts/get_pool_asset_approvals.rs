@@ -10,7 +10,7 @@ use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, Query, State, rejection::QueryRejection},
     response::{IntoResponse, Response},
 };
 use config::ChainType;
@@ -65,8 +65,26 @@ struct PoolAssetApproval {
 pub async fn get_pool_asset_approvals(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
-    Query(params): Query<PoolAssetApprovalQueryParams>,
+    uri: axum::http::Uri,
+    query: Result<Query<PoolAssetApprovalQueryParams>, QueryRejection>,
 ) -> Result<Response, AccountsError> {
+    let Query(params) = query.map_err(|_| {
+        let qs = uri.query().unwrap_or("");
+        let has_asset_id = qs.contains("assetId=");
+        let has_delegate = qs.contains("delegate=");
+        match (has_asset_id, has_delegate) {
+            (false, false) => AccountsError::MissingQueryParam(
+                "Missing required query parameters: 'assetId', 'delegate'",
+            ),
+            (false, true) => {
+                AccountsError::MissingQueryParam("Missing required query parameter: 'assetId'")
+            }
+            (true, false) => {
+                AccountsError::MissingQueryParam("Missing required query parameter: 'delegate'")
+            }
+            _ => AccountsError::MissingQueryParam("Invalid query parameters"),
+        }
+    })?;
     let account = validate_and_parse_address(&account_id, state.chain_info.ss58_prefix)?;
 
     let delegate = validate_and_parse_address(&params.delegate, state.chain_info.ss58_prefix)

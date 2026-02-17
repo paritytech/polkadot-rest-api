@@ -240,44 +240,92 @@ async fn test_pool_asset_approvals_missing_required_params() -> Result<()> {
     );
     println!("{}", "═".repeat(80).bright_white());
 
-    // Test missing assetId
+    // Test missing both assetId and delegate
+    let endpoint_no_params = format!("/accounts/{}/pool-asset-approvals", account_id);
+    let (status_both, json_both) = local_client
+        .get_json(&format!("/v1{}", endpoint_no_params))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert_eq!(
+        status_both.as_u16(),
+        400,
+        "Expected 400 Bad Request for missing both params"
+    );
+    let error_both = json_both
+        .as_object()
+        .and_then(|o| o.get("error"))
+        .and_then(|e| e.as_str())
+        .expect("Response should have an 'error' string field");
+    assert!(
+        error_both.contains("assetId") && error_both.contains("delegate"),
+        "Error should mention both missing fields, got: {}",
+        error_both
+    );
+    println!(
+        "{} Missing both params returns 400: {}",
+        "✓".green(),
+        error_both
+    );
+
+    // Test missing assetId only
     let endpoint_no_asset = format!(
         "/accounts/{}/pool-asset-approvals?delegate=15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5",
         account_id
     );
-    let response_no_asset = local_client
-        .get(&format!("/v1{}", endpoint_no_asset))
+    let (status_no_asset, json_no_asset) = local_client
+        .get_json(&format!("/v1{}", endpoint_no_asset))
         .await
         .context("Failed to fetch from local API")?;
 
     assert_eq!(
-        response_no_asset.status.as_u16(),
+        status_no_asset.as_u16(),
         400,
         "Expected 400 for missing assetId"
     );
+    let error_no_asset = json_no_asset
+        .as_object()
+        .and_then(|o| o.get("error"))
+        .and_then(|e| e.as_str())
+        .expect("Response should have an 'error' string field");
     assert!(
-        response_no_asset.body.contains("assetId"),
-        "Should mention missing assetId"
+        error_no_asset.contains("assetId"),
+        "Error should mention missing assetId, got: {}",
+        error_no_asset
     );
-    println!("{} Missing assetId returns 400", "✓".green());
+    println!(
+        "{} Missing assetId returns 400: {}",
+        "✓".green(),
+        error_no_asset
+    );
 
-    // Test missing delegate
+    // Test missing delegate only
     let endpoint_no_delegate = format!("/accounts/{}/pool-asset-approvals?assetId=0", account_id);
-    let response_no_delegate = local_client
-        .get(&format!("/v1{}", endpoint_no_delegate))
+    let (status_no_delegate, json_no_delegate) = local_client
+        .get_json(&format!("/v1{}", endpoint_no_delegate))
         .await
         .context("Failed to fetch from local API")?;
 
     assert_eq!(
-        response_no_delegate.status.as_u16(),
+        status_no_delegate.as_u16(),
         400,
         "Expected 400 for missing delegate"
     );
+    let error_no_delegate = json_no_delegate
+        .as_object()
+        .and_then(|o| o.get("error"))
+        .and_then(|e| e.as_str())
+        .expect("Response should have an 'error' string field");
     assert!(
-        response_no_delegate.body.contains("delegate"),
-        "Should mention missing delegate"
+        error_no_delegate.contains("delegate"),
+        "Error should mention missing delegate, got: {}",
+        error_no_delegate
     );
-    println!("{} Missing delegate returns 400", "✓".green());
+    println!(
+        "{} Missing delegate returns 400: {}",
+        "✓".green(),
+        error_no_delegate
+    );
 
     println!(
         "{} Required parameter validation passed!",
