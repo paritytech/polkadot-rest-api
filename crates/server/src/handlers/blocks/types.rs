@@ -369,54 +369,6 @@ impl IntoResponse for GetBlockHeaderError {
     }
 }
 
-// ================================================================================================
-// Internal Enums
-// ================================================================================================
-
-/// SCALE encoding discriminants for the DigestItem enum from sp_runtime::generic
-///
-/// These discriminants match the SCALE encoding of substrate's DigestItem enum.
-/// Reference: sp_runtime::generic::DigestItem
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum DigestItemDiscriminant {
-    /// ChangesTrieRoot has been removed but was 2
-    /// ChangesTrieSignal has been removed but was 3
-    Other = 0,
-    Consensus = 4,
-    Seal = 5,
-    PreRuntime = 6,
-    RuntimeEnvironmentUpdated = 8,
-}
-
-impl TryFrom<u8> for DigestItemDiscriminant {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Other),
-            4 => Ok(Self::Consensus),
-            5 => Ok(Self::Seal),
-            6 => Ok(Self::PreRuntime),
-            8 => Ok(Self::RuntimeEnvironmentUpdated),
-            _ => Err(()),
-        }
-    }
-}
-
-impl DigestItemDiscriminant {
-    /// Convert discriminant to string representation for JSON serialization
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Other => "Other",
-            Self::Consensus => "Consensus",
-            Self::Seal => "Seal",
-            Self::PreRuntime => "PreRuntime",
-            Self::RuntimeEnvironmentUpdated => "RuntimeEnvironmentUpdated",
-        }
-    }
-}
-
 /// MultiAddress type for decoding Substrate address variants
 /// This represents the different ways an address can be encoded in Substrate
 #[derive(scale_decode::DecodeAsType)]
