@@ -563,3 +563,267 @@ pub fn resolve_type_name(types: &scale_info::PortableRegistry, type_id: u32) -> 
         _ => type_id.to_string(),
     }
 }
+
+pub fn expand_type_definition(types: &scale_info::PortableRegistry, type_id: u32) -> String {
+    expand_type_definition_inner(types, type_id, 0)
+}
+
+/// Inner recursive function with depth tracking to prevent infinite recursion.
+fn expand_type_definition_inner(
+    types: &scale_info::PortableRegistry,
+    type_id: u32,
+    depth: usize,
+) -> String {
+    // Prevent infinite recursion for self-referential types
+    const MAX_DEPTH: usize = 10;
+    if depth > MAX_DEPTH {
+        return type_id.to_string();
+    }
+
+    let Some(ty) = types.resolve(type_id) else {
+        return type_id.to_string();
+    };
+
+    // Get the type name from path if available
+    let type_name = if !ty.path.segments.is_empty() {
+        Some(ty.path.segments.last().unwrap().as_str())
+    } else {
+        None
+    };
+
+    // Handle special well-known types that should NOT be expanded
+    if let Some(name) = type_name {
+        match name {
+            // Account types - don't expand
+            "AccountId32" => return "AccountId32".to_string(),
+            // Hash types - don't expand
+            "H256" | "H160" | "H512" => return name.to_string(),
+            // These are primitives in disguise
+            "PerU16" | "Perbill" | "Permill" | "Percent" => return name.to_string(),
+            // Vote type - keep as name (commonly used in governance)
+            "Vote" => return "Vote".to_string(),
+            _ => {}
+        }
+    }
+
+    // Check if this is a framework type that should use full path-based name
+    // (e.g., frame_support::dispatch::PostDispatchInfo -> FrameSupportDispatchPostDispatchInfo)
+    // But NOT frame_support::traits::* which should be expanded
+    if ty.path.segments.len() >= 2 {
+        let first_segment = ty.path.segments.first().unwrap().as_str();
+        let second_segment = ty.path.segments.get(1).map(|s| s.as_str());
+
+        // Framework types from sp_* should use full name
+        // frame_support types should use full name EXCEPT for traits/*
+        let should_use_full_name = first_segment.starts_with("sp_")
+            || (first_segment.starts_with("frame_") && second_segment != Some("traits"));
+
+        if should_use_full_name {
+            // Convert path to PascalCase concatenated name
+            // e.g., frame_support::dispatch::PostDispatchInfo -> FrameSupportDispatchPostDispatchInfo
+            let full_name: String = ty
+                .path
+                .segments
+                .iter()
+                .map(|s| {
+                    // Convert snake_case to PascalCase
+                    s.split('_')
+                        .map(|part| {
+                            let mut chars = part.chars();
+                            match chars.next() {
+                                None => String::new(),
+                                Some(first) => {
+                                    first.to_uppercase().chain(chars).collect::<String>()
+                                }
+                            }
+                        })
+                        .collect::<String>()
+                })
+                .collect();
+            return full_name;
+        }
+    }
+
+    match &ty.type_def {
+        scale_info::TypeDef::Primitive(p) => format!("{:?}", p).to_lowercase(),
+
+        scale_info::TypeDef::Compact(c) => {
+            let inner = expand_type_definition_inner(types, c.type_param.id, depth + 1);
+            format!("Compact<{}>", inner)
+        }
+
+        scale_info::TypeDef::Sequence(s) => {
+            let inner = expand_type_definition_inner(types, s.type_param.id, depth + 1);
+            // Match Sidecar: Vec<u8> becomes "Bytes"
+            if inner == "u8" {
+                "Bytes".to_string()
+            } else {
+                format!("Vec<{}>", inner)
+            }
+        }
+
+        scale_info::TypeDef::Array(a) => {
+            let inner = expand_type_definition_inner(types, a.type_param.id, depth + 1);
+            // Match Sidecar: no space in array format [T;N]
+            format!("[{};{}]", inner, a.len)
+        }
+
+        scale_info::TypeDef::Tuple(t) => {
+            if t.fields.is_empty() {
+                "()".to_string()
+            } else {
+                let inner: Vec<String> = t
+                    .fields
+                    .iter()
+                    .map(|f| expand_type_definition_inner(types, f.id, depth + 1))
+                    .collect();
+                // Match Sidecar: no space in tuple format (T,U)
+                format!("({})", inner.join(","))
+            }
+        }
+
+        scale_info::TypeDef::Composite(c) => {
+            // Handle Option and Result specially - they have type params
+            if let Some(name) = type_name
+                && name == "Option"
+                && !ty.type_params.is_empty()
+            {
+                let inner_id = ty.type_params[0].ty.map(|t| t.id).unwrap_or(0);
+                let inner = expand_type_definition_inner(types, inner_id, depth + 1);
+                return format!("Option<{}>", inner);
+            }
+
+            // For structs, expand to JSON object format
+            if c.fields.is_empty() {
+                // Empty struct or unit type
+                if let Some(name) = type_name {
+                    return name.to_string();
+                }
+                return "()".to_string();
+            }
+
+            // Check if fields are named (struct) or unnamed (tuple struct)
+            let is_named = c.fields.iter().any(|f| f.name.is_some());
+
+            if is_named {
+                // Named struct: {"field1":"type1","field2":"type2"}
+                let fields: Vec<String> = c
+                    .fields
+                    .iter()
+                    .map(|f| {
+                        let field_name = f.name.as_deref().unwrap_or("_");
+                        let field_type = expand_type_definition_inner(types, f.ty.id, depth + 1);
+                        format!("\"{}\":\"{}\"", field_name, field_type)
+                    })
+                    .collect();
+                format!("{{{}}}", fields.join(","))
+            } else if c.fields.len() == 1 {
+                // Newtype wrapper - expand the inner type
+                expand_type_definition_inner(types, c.fields[0].ty.id, depth + 1)
+            } else {
+                // Tuple struct
+                let inner: Vec<String> = c
+                    .fields
+                    .iter()
+                    .map(|f| expand_type_definition_inner(types, f.ty.id, depth + 1))
+                    .collect();
+                format!("({})", inner.join(","))
+            }
+        }
+
+        scale_info::TypeDef::Variant(v) => {
+            // Handle Option specially
+            if let Some(name) = type_name {
+                if name == "Option" && v.variants.len() == 2 {
+                    // Find the Some variant and get its inner type
+                    if let Some(some_variant) = v.variants.iter().find(|var| var.name == "Some")
+                        && !some_variant.fields.is_empty()
+                    {
+                        let inner = expand_type_definition_inner(
+                            types,
+                            some_variant.fields[0].ty.id,
+                            depth + 1,
+                        );
+                        return format!("Option<{}>", inner);
+                    }
+                }
+
+                // Handle Result specially
+                if name == "Result" && v.variants.len() == 2 {
+                    let ok_type = v
+                        .variants
+                        .iter()
+                        .find(|var| var.name == "Ok")
+                        .and_then(|var| var.fields.first())
+                        .map(|f| expand_type_definition_inner(types, f.ty.id, depth + 1))
+                        .unwrap_or_else(|| "()".to_string());
+                    let err_type = v
+                        .variants
+                        .iter()
+                        .find(|var| var.name == "Err")
+                        .and_then(|var| var.fields.first())
+                        .map(|f| expand_type_definition_inner(types, f.ty.id, depth + 1))
+                        .unwrap_or_else(|| "()".to_string());
+                    return format!("Result<{},{}>", ok_type, err_type);
+                }
+            }
+
+            // Check if it's a simple enum (all variants have no fields)
+            let is_simple_enum = v.variants.iter().all(|var| var.fields.is_empty());
+
+            if is_simple_enum {
+                // Simple enum: {"_enum":["Variant1","Variant2"]}
+                let variant_names: Vec<String> = v
+                    .variants
+                    .iter()
+                    .map(|var| format!("\"{}\"", var.name))
+                    .collect();
+                format!("{{\"_enum\":[{}]}}", variant_names.join(","))
+            } else {
+                // Complex enum: {"_enum":{"Variant1":"type_or_struct","Variant2":"type"}}
+                let variants: Vec<String> = v
+                    .variants
+                    .iter()
+                    .map(|var| {
+                        let variant_value = if var.fields.is_empty() {
+                            "null".to_string()
+                        } else if var.fields.len() == 1 && var.fields[0].name.is_none() {
+                            // Single unnamed field - just the type
+                            expand_type_definition_inner(types, var.fields[0].ty.id, depth + 1)
+                        } else {
+                            // Multiple fields or named fields - struct format
+                            let is_named = var.fields.iter().any(|f| f.name.is_some());
+                            if is_named {
+                                let fields: Vec<String> = var
+                                    .fields
+                                    .iter()
+                                    .map(|f| {
+                                        let field_name = f.name.as_deref().unwrap_or("_");
+                                        let field_type =
+                                            expand_type_definition_inner(types, f.ty.id, depth + 1);
+                                        format!("\\\"{}\\\":\\\"{}\\\"", field_name, field_type)
+                                    })
+                                    .collect();
+                                format!("{{{}}}", fields.join(","))
+                            } else {
+                                // Tuple variant
+                                let inner: Vec<String> = var
+                                    .fields
+                                    .iter()
+                                    .map(|f| {
+                                        expand_type_definition_inner(types, f.ty.id, depth + 1)
+                                    })
+                                    .collect();
+                                format!("({})", inner.join(","))
+                            }
+                        };
+                        format!("\"{}\":\"{}\"", var.name, variant_value)
+                    })
+                    .collect();
+                format!("{{\"_enum\":{{{}}}}}", variants.join(","))
+            }
+        }
+
+        scale_info::TypeDef::BitSequence(_) => "BitSequence".to_string(),
+    }
+}

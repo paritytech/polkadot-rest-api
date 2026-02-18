@@ -10,7 +10,7 @@
 
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
-    RcPalletItemQueryParams, RcPalletQueryParams, resolve_block_for_pallet, resolve_type_name,
+    RcPalletItemQueryParams, RcPalletQueryParams, expand_type_definition, resolve_block_for_pallet,
 };
 use crate::state::AppState;
 use crate::utils;
@@ -395,7 +395,7 @@ fn extract_events_from_metadata(
                             let args: Vec<String> = variant
                                 .fields
                                 .iter()
-                                .map(|f| resolve_type_name(types, f.ty.id))
+                                .map(|f| expand_type_definition(types, f.ty.id))
                                 .collect();
 
                             EventItemMetadata {
@@ -474,7 +474,7 @@ fn extract_event_item_from_metadata(
         let args: Vec<String> = event_variant
             .fields
             .iter()
-            .map(|f| resolve_type_name(types, f.ty.id))
+            .map(|f| expand_type_definition(types, f.ty.id))
             .collect();
 
         Some(EventItemMetadata {

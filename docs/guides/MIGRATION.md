@@ -31,6 +31,7 @@ Update all client URLs by prepending `/v1` to existing paths.
 - **Numeric fields**: All u16 and u32 fields are now returned as numbers instead of strings. This is an intentional divergence to provide more accurate JSON types, while maintaining safety for large values (u128 is still returned as a string).
 - **HTTP status codes**: Error responses (e.g., pallet missing at a requested block) now return 400 or 404 instead of 500.
 - **Price fix**: `/v1/coretime/info` — The `currentCorePrice` calculation has been corrected. The previous calculation was faulty. See [PR #175](https://github.com/paritytech/polkadot-rest-api/pull/175).
+- **Field name**: In events endpoint, `args` type definitions, struct fields with `_alias` metadata (e.g., `hash_` aliased to `hash`) return the serialized name directly
 
 ### Query parameter changes
 
