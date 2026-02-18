@@ -187,7 +187,9 @@ fn test_pallets_storage_response_serialization() {
 /// Test that pallet name is lowercase (Sidecar compatibility)
 #[test]
 fn test_pallet_name_is_lowercase() {
-    use polkadot_rest_api::handlers::pallets::storage::{AtResponse, PalletsStorageResponse, StorageItems};
+    use polkadot_rest_api::handlers::pallets::storage::{
+        AtResponse, PalletsStorageResponse, StorageItems,
+    };
 
     let response = PalletsStorageResponse {
         at: AtResponse {
@@ -212,7 +214,9 @@ fn test_pallet_name_is_lowercase() {
 /// Test that palletIndex is a string (Sidecar compatibility)
 #[test]
 fn test_pallet_index_is_string() {
-    use polkadot_rest_api::handlers::pallets::storage::{AtResponse, PalletsStorageResponse, StorageItems};
+    use polkadot_rest_api::handlers::pallets::storage::{
+        AtResponse, PalletsStorageResponse, StorageItems,
+    };
 
     let response = PalletsStorageResponse {
         at: AtResponse {
@@ -310,7 +314,9 @@ fn test_sidecar_fixture_system_account() {
 /// Test StorageItems::OnlyIds serialization
 #[test]
 fn test_storage_items_only_ids_serialization() {
-    use polkadot_rest_api::handlers::pallets::storage::{AtResponse, PalletsStorageResponse, StorageItems};
+    use polkadot_rest_api::handlers::pallets::storage::{
+        AtResponse, PalletsStorageResponse, StorageItems,
+    };
 
     let response = PalletsStorageResponse {
         at: AtResponse {

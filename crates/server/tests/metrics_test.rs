@@ -44,7 +44,9 @@ fn test_metrics_initialization() {
 
 #[test]
 fn test_http_metrics_increment() {
-    use polkadot_rest_api::metrics::registry::{HTTP_REQUEST_ERROR, HTTP_REQUEST_SUCCESS, HTTP_REQUESTS};
+    use polkadot_rest_api::metrics::registry::{
+        HTTP_REQUEST_ERROR, HTTP_REQUEST_SUCCESS, HTTP_REQUESTS,
+    };
 
     // Initialize metrics with test prefix
     metrics::init("test");

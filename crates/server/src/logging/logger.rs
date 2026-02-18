@@ -48,7 +48,7 @@ pub struct LoggingConfig<'a> {
 ///
 /// # Examples
 /// ```no_run
-/// use server::logging::{self, LoggingConfig, init_with_config, LoggingError};
+/// use polkadot_rest_api::logging::{self, LoggingConfig, init_with_config, LoggingError};
 ///
 /// // Console only
 /// logging::init_with_config(LoggingConfig {
@@ -73,7 +73,7 @@ pub struct LoggingConfig<'a> {
 ///     write_max_files: 5,
 ///     loki_url: Some("http://localhost:3100"),
 /// })?;
-/// # Ok::<(), server::logging::LoggingError>(())
+/// # Ok::<(), polkadot_rest_api::logging::LoggingError>(())
 /// ```
 ///
 /// # Loki Integration
