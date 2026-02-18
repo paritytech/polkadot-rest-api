@@ -573,24 +573,37 @@ async fn run_reward_destination_variants_test(endpoint_type: EndpointType) -> Re
         .get("rewardDestination")
         .expect("rewardDestination required");
 
-    // rewardDestination can be either a string (Simple variant) or an object with account (Account variant)
-    if reward_dest.is_string() {
-        let dest_str = reward_dest.as_str().unwrap();
-        println!(
-            "  {} Reward destination (simple): {}",
-            "+".green(),
-            dest_str
+    // rewardDestination is always an object: { "staked": null }, { "stash": null }, { "controller": null }, { "none": null }, or { "account": "..." }
+    assert!(
+        reward_dest.is_object(),
+        "rewardDestination should be an object, got: {:?}",
+        reward_dest
+    );
+    let dest_obj = reward_dest.as_object().unwrap();
+    let valid_keys = ["staked", "stash", "controller", "none", "account"];
+    let has_valid_key = dest_obj.keys().any(|k| valid_keys.contains(&k.as_str()));
+    assert!(
+        has_valid_key,
+        "rewardDestination should have one of {:?}, got: {:?}",
+        valid_keys, dest_obj
+    );
+    if let Some(account) = dest_obj.get("account") {
+        assert!(
+            account.is_string(),
+            "rewardDestination.account should be a string"
         );
-    } else if reward_dest.is_object() {
-        let dest_obj = reward_dest.as_object().unwrap();
-        if dest_obj.contains_key("account") {
-            let account = dest_obj.get("account").unwrap().as_str().unwrap();
-            println!(
-                "  {} Reward destination (account): {}",
-                "+".green(),
-                account
-            );
-        }
+        println!(
+            "  {} Reward destination (account): {}",
+            "+".green(),
+            account.as_str().unwrap()
+        );
+    } else {
+        let key = dest_obj.keys().next().unwrap();
+        assert!(
+            dest_obj.get(key).unwrap().is_null(),
+            "Simple reward destination variant value should be null"
+        );
+        println!("  {} Reward destination ({}): null", "+".green(), key);
     }
 
     println!(

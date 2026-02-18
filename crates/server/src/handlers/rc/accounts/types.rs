@@ -168,10 +168,9 @@ pub struct RcStakingInfoResponse {
     pub reward_destination: RewardDestination,
 
     /// Number of slashing spans
-    pub num_slashing_spans: u32,
+    pub num_slashing_spans: String,
 
-    /// Nominations info (None if not a nominator)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Nominations info (null if not a nominator)
     pub nominations: Option<NominationsInfo>,
 
     /// Staking ledger

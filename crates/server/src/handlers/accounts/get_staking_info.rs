@@ -93,10 +93,16 @@ fn format_response(
     ah_timestamp: Option<String>,
 ) -> StakingInfoResponse {
     let reward_destination = match &raw.reward_destination {
-        DecodedRewardDestination::Simple(name) => RewardDestination::Simple(name.clone()),
-        DecodedRewardDestination::Account { account } => RewardDestination::Account {
-            account: account.clone(),
+        DecodedRewardDestination::Simple(name) => match name.as_str() {
+            "Staked" => RewardDestination::Staked(()),
+            "Stash" => RewardDestination::Stash(()),
+            "Controller" => RewardDestination::Controller(()),
+            "None" => RewardDestination::None(()),
+            _ => RewardDestination::Staked(()),
         },
+        DecodedRewardDestination::Account { account } => {
+            RewardDestination::Account(account.clone())
+        }
     };
 
     let nominations = raw.nominations.as_ref().map(|n| NominationsInfo {
@@ -142,7 +148,7 @@ fn format_response(
         },
         controller: raw.controller.clone(),
         reward_destination,
-        num_slashing_spans: raw.num_slashing_spans,
+        num_slashing_spans: raw.num_slashing_spans.to_string(),
         nominations,
         staking,
         rc_block_hash,

@@ -137,10 +137,16 @@ fn get_relay_chain_access(state: &AppState) -> Result<RelayChainAccess<'_>, Acco
 
 fn format_response(raw: &RawStakingInfo) -> RcStakingInfoResponse {
     let reward_destination = match &raw.reward_destination {
-        DecodedRewardDestination::Simple(name) => RewardDestination::Simple(name.clone()),
-        DecodedRewardDestination::Account { account } => RewardDestination::Account {
-            account: account.clone(),
+        DecodedRewardDestination::Simple(name) => match name.as_str() {
+            "Staked" => RewardDestination::Staked(()),
+            "Stash" => RewardDestination::Stash(()),
+            "Controller" => RewardDestination::Controller(()),
+            "None" => RewardDestination::None(()),
+            _ => RewardDestination::Staked(()),
         },
+        DecodedRewardDestination::Account { account } => {
+            RewardDestination::Account(account.clone())
+        }
     };
 
     let nominations = raw.nominations.as_ref().map(|n| NominationsInfo {
@@ -186,7 +192,7 @@ fn format_response(raw: &RawStakingInfo) -> RcStakingInfoResponse {
         },
         controller: raw.controller.clone(),
         reward_destination,
-        num_slashing_spans: raw.num_slashing_spans,
+        num_slashing_spans: raw.num_slashing_spans.to_string(),
         nominations,
         staking,
     }
