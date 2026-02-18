@@ -690,10 +690,9 @@ pub struct StakingInfoResponse {
     pub reward_destination: RewardDestination,
 
     /// Number of slashing spans
-    pub num_slashing_spans: u32,
+    pub num_slashing_spans: String,
 
     /// Nomination info (null if not a nominator)
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub nominations: Option<NominationsInfo>,
 
     /// Staking ledger information
@@ -708,14 +707,20 @@ pub struct StakingInfoResponse {
     pub ah_timestamp: Option<String>,
 }
 
-/// Reward destination - can be "Staked", "Stash", "Controller", or { "account": "..." }
+/// Reward destination - e.g. { "staked": null }, { "stash": null }, { "account": "..." }
 #[derive(Debug, Serialize, ToSchema)]
-#[serde(untagged)]
+#[serde(rename_all = "camelCase")]
 pub enum RewardDestination {
-    /// Simple variant without account (Staked, Stash, Controller, None)
-    Simple(String),
-    /// Account variant with specific address
-    Account { account: String },
+    /// Rewards are automatically re-staked
+    Staked(()),
+    /// Rewards are sent to the stash account
+    Stash(()),
+    /// Rewards are sent to the controller account
+    Controller(()),
+    /// No reward destination
+    None(()),
+    /// Rewards are sent to a specific account
+    Account(String),
 }
 
 /// Nominations information for a nominator
