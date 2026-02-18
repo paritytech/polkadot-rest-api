@@ -3,7 +3,7 @@
 
 use crate::routes::RouteRegistry;
 use crate::utils::QueryFeeDetailsCache;
-use config::{ChainType, SidecarConfig};
+use polkadot_rest_api_config::{ChainType, SidecarConfig};
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,7 +22,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum StateError {
     #[error("Failed to load configuration")]
-    ConfigLoadFailed(#[from] config::ConfigError),
+    ConfigLoadFailed(#[from] polkadot_rest_api_config::ConfigError),
 
     #[error("Failed to connect to substrate node at {url}")]
     ConnectionFailed {
@@ -87,9 +87,9 @@ pub struct AppState {
     /// Cache for tracking queryFeeDetails availability per spec version
     pub fee_details_cache: Arc<QueryFeeDetailsCache>,
     /// All chain configurations loaded from chain_config.json
-    pub chain_configs: Arc<config::ChainConfigs>,
+    pub chain_configs: Arc<polkadot_rest_api_config::ChainConfigs>,
     /// Complete configuration with optional relay chain
-    pub chain_config: Arc<config::Config>,
+    pub chain_config: Arc<polkadot_rest_api_config::Config>,
     /// Registry of all available routes for introspection
     pub route_registry: RouteRegistry,
     /// Relay Chain RPC client (only present when multi-chain is configured with a relay chain)
@@ -117,7 +117,7 @@ impl AppState {
         let chain_info = get_chain_info(&legacy_rpc).await?;
 
         // Load all chain configurations
-        let chain_configs = Arc::new(config::ChainConfigs::default());
+        let chain_configs = Arc::new(polkadot_rest_api_config::ChainConfigs::default());
 
         // Get configuration for the connected chain (or use defaults)
         let chain_chain_config = chain_configs
@@ -197,12 +197,14 @@ impl AppState {
 
         // Create Config struct with chain and optional relay chain
         let full_config = if let Some(rc_config) = relay_chain_config {
-            Arc::new(config::Config::with_relay_chain(
+            Arc::new(polkadot_rest_api_config::Config::with_relay_chain(
                 chain_chain_config,
                 rc_config,
             ))
         } else {
-            Arc::new(config::Config::single_chain(chain_chain_config))
+            Arc::new(polkadot_rest_api_config::Config::single_chain(
+                chain_chain_config,
+            ))
         };
 
         let relay_chain_rpc = relay_rpc_client
@@ -276,13 +278,13 @@ impl AppState {
     async fn connect_relay_chain(
         relay_url: &str,
         _relay_chain_name: &str,
-        chain_configs: &config::ChainConfigs,
+        chain_configs: &polkadot_rest_api_config::ChainConfigs,
     ) -> Result<
         (
             Arc<OnlineClient<SubstrateConfig>>,
             Arc<RpcClient>,
             ChainInfo,
-            config::ChainConfig,
+            polkadot_rest_api_config::ChainConfig,
         ),
         StateError,
     > {
@@ -308,7 +310,7 @@ impl AppState {
                     "No configuration found for relay chain '{}', using defaults",
                     relay_chain_info.spec_name
                 );
-                config::ChainConfig::default()
+                polkadot_rest_api_config::ChainConfig::default()
             });
 
         // Configure SubstrateConfig with appropriate legacy types
@@ -459,7 +461,7 @@ impl AppState {
 
 /// Determine SS58 address format prefix based on chain type and spec name
 fn get_ss58_prefix(chain_type: &ChainType, spec_name: &str) -> u16 {
-    use config::{KnownAssetHub, KnownRelayChain};
+    use polkadot_rest_api_config::{KnownAssetHub, KnownRelayChain};
 
     match chain_type {
         ChainType::Relay => {

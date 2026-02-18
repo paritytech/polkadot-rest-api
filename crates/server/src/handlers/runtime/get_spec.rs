@@ -283,7 +283,7 @@ mod tests {
     use super::*;
     use crate::state::AppState;
     use crate::test_fixtures::{TEST_BLOCK_HASH, TEST_BLOCK_NUMBER, mock_rpc_client_builder};
-    use config::SidecarConfig;
+    use polkadot_rest_api_config::SidecarConfig;
     use serde_json::json;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;

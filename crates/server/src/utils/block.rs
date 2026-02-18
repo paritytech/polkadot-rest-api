@@ -388,7 +388,7 @@ mod tests {
     // ===== resolve_block tests =====
 
     use crate::state::AppState;
-    use config::SidecarConfig;
+    use polkadot_rest_api_config::SidecarConfig;
     use serde_json::json;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json;

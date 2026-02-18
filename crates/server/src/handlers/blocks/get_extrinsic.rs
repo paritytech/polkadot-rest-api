@@ -13,7 +13,7 @@ use axum::{
     extract::{Path, Query, State},
     response::{IntoResponse, Response},
 };
-use config::ChainType;
+use polkadot_rest_api_config::ChainType;
 use serde_json::json;
 
 use super::common::{add_docs_to_events, add_docs_to_extrinsic, associate_events_with_extrinsics};

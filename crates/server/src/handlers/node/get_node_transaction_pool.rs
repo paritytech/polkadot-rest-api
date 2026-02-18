@@ -145,7 +145,7 @@ mod tests {
     use crate::state::AppState;
     use crate::test_fixtures::mock_rpc_client_builder;
     use axum::extract::{Query, State};
-    use config::SidecarConfig;
+    use polkadot_rest_api_config::SidecarConfig;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
     use subxt_rpcs::client::{MockRpcClient, RpcClient};

@@ -36,9 +36,9 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use config::ChainType;
 use futures::StreamExt;
 use parity_scale_codec::Decode;
+use polkadot_rest_api_config::ChainType;
 use primitive_types::H256;
 use scale_decode::DecodeAsType;
 use serde::Serialize;

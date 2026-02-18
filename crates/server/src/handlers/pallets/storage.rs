@@ -20,10 +20,10 @@ use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json, extract::Path, extract::Query, extract::State, response::IntoResponse, response::Response,
 };
-use config::ChainType;
 use frame_metadata::decode_different::DecodeDifferent;
 use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
 use parity_scale_codec::Decode;
+use polkadot_rest_api_config::ChainType;
 use serde::Serialize;
 use serde_json::json;
 use subxt_rpcs::{RpcClient, rpc_params};

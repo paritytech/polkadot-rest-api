@@ -7,8 +7,8 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
-edition = "2025"
+version = "1.0.0-beta.0"
+edition = "2024"
 authors = ["Parity Technologies <admin@parity.io>"]
 license = "GPL-3.0-or-later"
 repository = "https://github.com/paritytech/polkadot-rest-api"

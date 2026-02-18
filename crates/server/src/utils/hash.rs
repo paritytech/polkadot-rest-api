@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::types::BlockHash;
-use config::Hasher;
 use parity_scale_codec::{Decode, Encode};
+use polkadot_rest_api_config::Hasher;
 use sp_core::H256;
 use sp_runtime::generic::{Digest, DigestItem};
 use thiserror::Error;
@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_hasher_blake2_256() {
-        use config::Hasher;
+        use polkadot_rest_api_config::Hasher;
 
         let data = b"test data for hashing";
         let hash = Hasher::Blake2_256.hash(data);
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn test_hasher_keccak256() {
-        use config::Hasher;
+        use polkadot_rest_api_config::Hasher;
 
         let data = b"test data for hashing";
         let hash = Hasher::Keccak256.hash(data);
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn test_hasher_produces_consistent_results() {
-        use config::Hasher;
+        use polkadot_rest_api_config::Hasher;
 
         let data = b"consistent data";
         let hash1 = Hasher::Blake2_256.hash(data);

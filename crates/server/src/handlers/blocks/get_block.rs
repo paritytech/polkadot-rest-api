@@ -12,7 +12,7 @@ use axum::{
     extract::{Path, Query, State},
     response::{IntoResponse, Response},
 };
-use config::ChainType;
+use polkadot_rest_api_config::ChainType;
 use serde_json::json;
 
 use super::common::{BlockBuildContext, build_block_response_generic};
@@ -186,7 +186,7 @@ pub(crate) async fn build_block_response_for_hash(
 mod tests {
     use super::*;
     use crate::state::AppState;
-    use config::SidecarConfig;
+    use polkadot_rest_api_config::SidecarConfig;
     use serde_json::json;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;

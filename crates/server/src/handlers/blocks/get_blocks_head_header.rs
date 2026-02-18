@@ -11,7 +11,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use config::ChainType;
+use polkadot_rest_api_config::ChainType;
 use serde::Deserialize;
 use serde_json::json;
 use subxt::error::OnlineClientAtBlockError;
