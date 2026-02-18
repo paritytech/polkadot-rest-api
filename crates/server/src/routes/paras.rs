@@ -7,7 +7,7 @@
 //! not when connected to a relay chain.
 
 use axum::{Router, routing::get};
-use config::ChainType;
+use polkadot_rest_api_config::ChainType;
 
 use crate::{
     handlers::paras,

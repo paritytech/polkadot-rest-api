@@ -19,9 +19,9 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use config::ChainType;
 use hex;
 use parity_scale_codec::Decode;
+use polkadot_rest_api_config::ChainType;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};

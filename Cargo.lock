@@ -854,21 +854,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "config"
-version = "0.1.0"
-dependencies = [
- "clap",
- "dotenv",
- "envy",
- "serde",
- "serde_json",
- "serial_test",
- "tempfile",
- "thiserror 2.0.17",
- "url",
-]
-
-[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2243,9 +2228,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "colored",
- "config",
  "futures",
  "jsonrpsee",
+ "polkadot-rest-api-config",
  "reqwest",
  "serde",
  "serde_json",
@@ -3032,6 +3017,71 @@ name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
+
+[[package]]
+name = "polkadot-rest-api"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "frame-decode",
+ "frame-metadata 23.0.1",
+ "futures",
+ "heck",
+ "hex",
+ "http-body-util",
+ "lazy_static",
+ "merkleized-metadata",
+ "parity-scale-codec",
+ "polkadot-rest-api-config",
+ "primitive-types 0.13.1",
+ "prometheus",
+ "regex",
+ "rolling-file",
+ "rustc-hex",
+ "scale-decode",
+ "scale-info",
+ "scale-info-legacy",
+ "scale-type-resolver",
+ "scale-value",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "socket2",
+ "sp-consensus-babe",
+ "sp-core",
+ "sp-crypto-hashing",
+ "sp-runtime",
+ "ss58-registry",
+ "staging-xcm",
+ "subxt",
+ "subxt-metadata",
+ "subxt-rpcs",
+ "thiserror 2.0.17",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-appender",
+ "tracing-loki",
+ "tracing-subscriber",
+ "url",
+ "utoipa",
+]
+
+[[package]]
+name = "polkadot-rest-api-config"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "dotenv",
+ "envy",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "thiserror 2.0.17",
+ "url",
+]
 
 [[package]]
 name = "polkavm-common"
@@ -3998,56 +4048,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.114",
-]
-
-[[package]]
-name = "server"
-version = "0.1.0"
-dependencies = [
- "axum",
- "config",
- "frame-decode",
- "frame-metadata 23.0.1",
- "futures",
- "heck",
- "hex",
- "http-body-util",
- "lazy_static",
- "merkleized-metadata",
- "parity-scale-codec",
- "primitive-types 0.13.1",
- "prometheus",
- "regex",
- "rolling-file",
- "rustc-hex",
- "scale-decode",
- "scale-info",
- "scale-info-legacy",
- "scale-type-resolver",
- "scale-value",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "socket2",
- "sp-consensus-babe",
- "sp-core",
- "sp-crypto-hashing",
- "sp-runtime",
- "ss58-registry",
- "staging-xcm",
- "subxt",
- "subxt-metadata",
- "subxt-rpcs",
- "thiserror 2.0.17",
- "tokio",
- "tower",
- "tower-http",
- "tracing",
- "tracing-appender",
- "tracing-loki",
- "tracing-subscriber",
- "url",
- "utoipa",
 ]
 
 [[package]]

@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 /// Test that DeprecationInfo::NotDeprecated serializes correctly
 #[test]
 fn test_deprecation_info_not_deprecated_serialization() {
-    use server::handlers::pallets::storage::DeprecationInfo;
+    use polkadot_rest_api::handlers::pallets::storage::DeprecationInfo;
 
     let info = DeprecationInfo::NotDeprecated(None);
     let serialized = serde_json::to_value(&info).unwrap();
@@ -22,7 +22,7 @@ fn test_deprecation_info_not_deprecated_serialization() {
 /// Test that DeprecationInfo::Deprecated serializes correctly with note and since
 #[test]
 fn test_deprecation_info_deprecated_with_note_serialization() {
-    use server::handlers::pallets::storage::DeprecationInfo;
+    use polkadot_rest_api::handlers::pallets::storage::DeprecationInfo;
 
     let info = DeprecationInfo::Deprecated {
         note: Some("This is deprecated".to_string()),
@@ -45,7 +45,7 @@ fn test_deprecation_info_deprecated_with_note_serialization() {
 /// Test that DeprecationInfo::Deprecated serializes correctly without optional fields
 #[test]
 fn test_deprecation_info_deprecated_without_optional_fields() {
-    use server::handlers::pallets::storage::DeprecationInfo;
+    use polkadot_rest_api::handlers::pallets::storage::DeprecationInfo;
 
     let info = DeprecationInfo::Deprecated {
         note: None,
@@ -60,7 +60,7 @@ fn test_deprecation_info_deprecated_without_optional_fields() {
 /// Test StorageTypeInfo::Plain serialization
 #[test]
 fn test_storage_type_info_plain_serialization() {
-    use server::handlers::pallets::storage::StorageTypeInfo;
+    use polkadot_rest_api::handlers::pallets::storage::StorageTypeInfo;
 
     let info = StorageTypeInfo::Plain {
         plain: "123".to_string(),
@@ -73,7 +73,7 @@ fn test_storage_type_info_plain_serialization() {
 /// Test StorageTypeInfo::Map serialization
 #[test]
 fn test_storage_type_info_map_serialization() {
-    use server::handlers::pallets::storage::{MapTypeInfo, StorageTypeInfo};
+    use polkadot_rest_api::handlers::pallets::storage::{MapTypeInfo, StorageTypeInfo};
 
     let info = StorageTypeInfo::Map {
         map: MapTypeInfo {
@@ -99,7 +99,7 @@ fn test_storage_type_info_map_serialization() {
 /// Test StorageItemMetadata serialization matches Sidecar format
 #[test]
 fn test_storage_item_metadata_serialization() {
-    use server::handlers::pallets::storage::{
+    use polkadot_rest_api::handlers::pallets::storage::{
         DeprecationInfo, MapTypeInfo, StorageItemMetadata, StorageTypeInfo,
     };
 
@@ -137,7 +137,7 @@ fn test_storage_item_metadata_serialization() {
 /// Test PalletsStorageResponse serialization matches Sidecar format
 #[test]
 fn test_pallets_storage_response_serialization() {
-    use server::handlers::pallets::storage::{
+    use polkadot_rest_api::handlers::pallets::storage::{
         AtResponse, DeprecationInfo, MapTypeInfo, PalletsStorageResponse, StorageItemMetadata,
         StorageItems, StorageTypeInfo,
     };
@@ -187,7 +187,9 @@ fn test_pallets_storage_response_serialization() {
 /// Test that pallet name is lowercase (Sidecar compatibility)
 #[test]
 fn test_pallet_name_is_lowercase() {
-    use server::handlers::pallets::storage::{AtResponse, PalletsStorageResponse, StorageItems};
+    use polkadot_rest_api::handlers::pallets::storage::{
+        AtResponse, PalletsStorageResponse, StorageItems,
+    };
 
     let response = PalletsStorageResponse {
         at: AtResponse {
@@ -212,7 +214,9 @@ fn test_pallet_name_is_lowercase() {
 /// Test that palletIndex is a string (Sidecar compatibility)
 #[test]
 fn test_pallet_index_is_string() {
-    use server::handlers::pallets::storage::{AtResponse, PalletsStorageResponse, StorageItems};
+    use polkadot_rest_api::handlers::pallets::storage::{
+        AtResponse, PalletsStorageResponse, StorageItems,
+    };
 
     let response = PalletsStorageResponse {
         at: AtResponse {
@@ -237,7 +241,7 @@ fn test_pallet_index_is_string() {
 /// Test multiple hashers (for DoubleMap/NMap)
 #[test]
 fn test_multiple_hashers_serialization() {
-    use server::handlers::pallets::storage::{MapTypeInfo, StorageTypeInfo};
+    use polkadot_rest_api::handlers::pallets::storage::{MapTypeInfo, StorageTypeInfo};
 
     let info = StorageTypeInfo::Map {
         map: MapTypeInfo {
@@ -310,7 +314,9 @@ fn test_sidecar_fixture_system_account() {
 /// Test StorageItems::OnlyIds serialization
 #[test]
 fn test_storage_items_only_ids_serialization() {
-    use server::handlers::pallets::storage::{AtResponse, PalletsStorageResponse, StorageItems};
+    use polkadot_rest_api::handlers::pallets::storage::{
+        AtResponse, PalletsStorageResponse, StorageItems,
+    };
 
     let response = PalletsStorageResponse {
         at: AtResponse {

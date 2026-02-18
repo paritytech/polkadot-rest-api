@@ -13,7 +13,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
 # Build release binary
-RUN cargo build --release --package server
+RUN cargo build --release --package polkadot-rest-api
 
 # ---------------------------------
 

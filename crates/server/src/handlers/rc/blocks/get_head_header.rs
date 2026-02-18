@@ -142,7 +142,7 @@ mod tests {
     use crate::state::{AppState, ChainInfo};
     use crate::test_fixtures::mock_rpc_client_builder;
     use axum::extract::State;
-    use config::SidecarConfig;
+    use polkadot_rest_api_config::SidecarConfig;
     use std::sync::Arc;
     use subxt_rpcs::LegacyRpcMethods;
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
@@ -163,7 +163,7 @@ mod tests {
         let relay_rpc_client = Arc::new(RpcClient::new(relay_mock_client));
         let legacy_rpc = Arc::new(LegacyRpcMethods::new((*rpc_client).clone()));
         let chain_info = ChainInfo {
-            chain_type: config::ChainType::AssetHub,
+            chain_type: polkadot_rest_api_config::ChainType::AssetHub,
             spec_name: "statemint".to_string(),
             spec_version: 1,
             ss58_prefix: 0,
@@ -184,8 +184,10 @@ mod tests {
             relay_chain_rpc: Some(Arc::new(LegacyRpcMethods::new((*relay_rpc_client).clone()))),
             relay_chain_info: None,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
-            chain_configs: Arc::new(config::ChainConfigs::default()),
-            chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
+            chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
+            chain_config: Arc::new(polkadot_rest_api_config::Config::single_chain(
+                polkadot_rest_api_config::ChainConfig::default(),
+            )),
             route_registry: RouteRegistry::new(),
             lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }

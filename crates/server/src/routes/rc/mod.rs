@@ -9,7 +9,7 @@ pub mod runtime;
 use crate::routes::RouteRegistry;
 use crate::state::AppState;
 use axum::Router;
-use config::ChainType;
+use polkadot_rest_api_config::ChainType;
 
 pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppState> {
     let router = Router::new();

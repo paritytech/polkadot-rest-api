@@ -134,15 +134,15 @@ If you need a new tag, add it to the `tags(...)` block in `openapi.rs`.
 ### 5. Build and verify
 
 ```bash
-cargo build --package server
-cargo test --package server
+cargo build --package polkadot-rest-api
+cargo test --package polkadot-rest-api
 ```
 
 If you get `could not find __path_<fn_name>`, check:
 1. Is the module `pub mod` in its parent `mod.rs`?
 2. Does the path in `openapi.rs` point to the **actual submodule**, not the re-exported name?
 
-**The sync test will catch you if you forget.** A test in `openapi.rs` (`openapi_paths_match_registered_routes`) automatically compares the route registry against the OpenAPI spec. It runs as part of `cargo test --package server` and will fail with a message like:
+**The sync test will catch you if you forget.** A test in `openapi.rs` (`openapi_paths_match_registered_routes`) automatically compares the route registry against the OpenAPI spec. It runs as part of `cargo test --package polkadot-rest-api` and will fail with a message like:
 
 ```
 Routes registered but MISSING from OpenAPI spec:
@@ -158,7 +158,7 @@ This means a route exists in `routes/*.rs` but has no matching `#[utoipa::path]`
 - [ ] Full submodule path added to `paths(...)` in `openapi.rs`
 - [ ] `path =` matches the actual route registered in `routes/*.rs`
 - [ ] `tag =` uses an existing tag (or you added a new one)
-- [ ] `cargo build --package server` compiles
+- [ ] `cargo build --package polkadot-rest-api` compiles
 - [ ] Swagger UI at `/docs` shows the new endpoint
 
 ## Architecture notes

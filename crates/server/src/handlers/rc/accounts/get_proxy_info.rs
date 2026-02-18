@@ -11,7 +11,7 @@ use axum::{
     extract::{Path, Query, State},
     response::{IntoResponse, Response},
 };
-use config::ChainType;
+use polkadot_rest_api_config::ChainType;
 
 // ================================================================================================
 // Main Handler
