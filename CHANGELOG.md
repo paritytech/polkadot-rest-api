@@ -22,7 +22,7 @@ First beta release of `polkadot-rest-api`, a REST service that makes it easy to 
 - **Node endpoints**: Version, roles, network, and transaction pool.
 - **Relay chain mirror endpoints** (`/rc/*`): Query relay chain state for blocks, accounts, transactions, runtime, and node endpoints directly from an Asset Hub instance.
 - **`useRcBlock` query parameter**: Map a relay chain block reference to the corresponding Asset Hub block, enabling cross-chain state queries.
-- **OpenAPI documentation**: Auto-generated Swagger UI available at the root endpoint.
+- **OpenAPI documentation**: Custom UI available at `/docs` with interactive endpoint explorer. Auto-generated OpenAPI spec available at `/api-docs/openapi.json`.
 - **Infrastructure**: Docker and docker-compose support, Prometheus metrics, Grafana dashboard, Loki log aggregation, WebSocket reconnection logic, and configurable HTTP logging.
 - **SAS-compatible configuration**: Drop-in environment variable compatibility with substrate-api-sidecar (`SAS_SUBSTRATE_URL`, `SAS_EXPRESS_PORT`, etc.).
 
