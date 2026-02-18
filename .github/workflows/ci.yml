@@ -133,7 +133,7 @@ jobs:
             ${{ runner.os }}-target-
 
       - name: Build server
-        run: cargo build --release --package server
+        run: cargo build --release --package polkadot-rest-api
 
       # ========================================
       # Polkadot Tests
