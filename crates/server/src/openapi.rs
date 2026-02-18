@@ -7,7 +7,7 @@ use utoipa::OpenApi;
 #[openapi(
     info(
         title = "Polkadot REST API",
-        version = "0.1.0",
+        version = "0.1.0-beta.1",
         description = "High-performance Rust REST API for Substrate/Polkadot blockchain data. Drop-in replacement for substrate-api-sidecar.",
         license(name = "GPL-3.0-or-later"),
         contact(url = "https://github.com/paritytech/polkadot-rest-api")
