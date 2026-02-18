@@ -1,7 +1,11 @@
 [package]
-name = "config"
-version = "0.1.0"
-edition = "2024"
+name = "polkadot-rest-api-config"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+version.workspace = true
+repository.workspace = true
+description = "Configuration crate for polkadot-rest-api"
 
 [dependencies]
 serde = { version= "1.0", features = ["derive"] }

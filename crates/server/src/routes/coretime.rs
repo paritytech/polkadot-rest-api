@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use axum::{Router, routing::get};
-use config::ChainType;
+use polkadot_rest_api_config::ChainType;
 
 use crate::{
     handlers::coretime,

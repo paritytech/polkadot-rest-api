@@ -15,7 +15,7 @@ use serde_json::Value;
 use super::super::types::{
     DownwardMessage, ExtrinsicInfo, HorizontalMessage, UpwardMessage, XcmMessages,
 };
-use config::ChainType;
+use polkadot_rest_api_config::ChainType;
 
 // ================================================================================================
 // Registry-Aware SCALE Value Transformation

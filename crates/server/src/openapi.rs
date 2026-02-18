@@ -160,7 +160,7 @@ pub struct ApiDoc;
 mod tests {
     use super::*;
     use crate::routes::{self, RouteRegistry};
-    use config::ChainType;
+    use polkadot_rest_api_config::ChainType;
     use std::collections::BTreeSet;
     use utoipa::OpenApi;
 

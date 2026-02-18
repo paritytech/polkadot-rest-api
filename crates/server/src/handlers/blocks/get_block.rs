@@ -12,7 +12,7 @@ use axum::{
     extract::{Path, Query, State},
     response::{IntoResponse, Response},
 };
-use config::ChainType;
+use polkadot_rest_api_config::ChainType;
 use serde_json::json;
 
 use super::common::{BlockBuildContext, build_block_response_generic};
@@ -186,7 +186,7 @@ pub(crate) async fn build_block_response_for_hash(
 mod tests {
     use super::*;
     use crate::state::AppState;
-    use config::SidecarConfig;
+    use polkadot_rest_api_config::SidecarConfig;
     use serde_json::json;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
@@ -198,7 +198,7 @@ mod tests {
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
         let chain_info = crate::state::ChainInfo {
-            chain_type: config::ChainType::Relay,
+            chain_type: polkadot_rest_api_config::ChainType::Relay,
             spec_name: "test".to_string(),
             spec_version: 1,
             ss58_prefix: 42,
@@ -218,8 +218,10 @@ mod tests {
             relay_rpc_client: None,
             relay_chain_info: None,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
-            chain_configs: Arc::new(config::ChainConfigs::default()),
-            chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
+            chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
+            chain_config: Arc::new(polkadot_rest_api_config::Config::single_chain(
+                polkadot_rest_api_config::ChainConfig::default(),
+            )),
             route_registry: crate::routes::RouteRegistry::new(),
             relay_chain_rpc: None,
             lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),

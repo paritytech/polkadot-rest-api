@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use server::metrics;
+use polkadot_rest_api::metrics;
 
 #[test]
 fn test_metrics_initialization() {
@@ -44,7 +44,9 @@ fn test_metrics_initialization() {
 
 #[test]
 fn test_http_metrics_increment() {
-    use server::metrics::registry::{HTTP_REQUEST_ERROR, HTTP_REQUEST_SUCCESS, HTTP_REQUESTS};
+    use polkadot_rest_api::metrics::registry::{
+        HTTP_REQUEST_ERROR, HTTP_REQUEST_SUCCESS, HTTP_REQUESTS,
+    };
 
     // Initialize metrics with test prefix
     metrics::init("test");
@@ -67,7 +69,7 @@ fn test_http_metrics_increment() {
 
 #[test]
 fn test_histogram_metrics() {
-    use server::metrics::registry::REQUEST_DURATION_SECONDS;
+    use polkadot_rest_api::metrics::registry::REQUEST_DURATION_SECONDS;
 
     // Initialize metrics with test prefix
     metrics::init("test");

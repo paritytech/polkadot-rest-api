@@ -4,7 +4,7 @@
 use crate::consts::{get_asset_hub_spec_name, get_migration_boundaries};
 use crate::state::AppState;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
-use config::ChainType;
+use polkadot_rest_api_config::ChainType;
 use serde::Serialize;
 use serde_json::json;
 use thiserror::Error;
@@ -139,7 +139,7 @@ fn handle_from_relay(
 mod tests {
     use super::*;
     use crate::state::{AppState, ChainInfo};
-    use config::SidecarConfig;
+    use polkadot_rest_api_config::SidecarConfig;
     use serde_json::json;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json;
@@ -179,8 +179,10 @@ mod tests {
             relay_rpc_client: None,
             relay_chain_info: None,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
-            chain_configs: Arc::new(config::ChainConfigs::default()),
-            chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
+            chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
+            chain_config: Arc::new(polkadot_rest_api_config::Config::single_chain(
+                polkadot_rest_api_config::ChainConfig::default(),
+            )),
             route_registry: crate::routes::RouteRegistry::new(),
             relay_chain_rpc: None,
             lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),

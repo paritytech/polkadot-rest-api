@@ -23,8 +23,8 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use config::ChainType;
 use heck::{ToSnakeCase, ToUpperCamelCase};
+use polkadot_rest_api_config::ChainType;
 use serde::Deserialize;
 use serde_json::json;
 use thiserror::Error;

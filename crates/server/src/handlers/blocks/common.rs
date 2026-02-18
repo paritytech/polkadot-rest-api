@@ -453,7 +453,7 @@ use super::processing::{
     fetch_block_events_with_prefix,
 };
 use super::types::{BlockBuildParams, BlockResponse};
-use config::ChainType;
+use polkadot_rest_api_config::ChainType;
 
 /// Context for building a block response.
 pub struct BlockBuildContext<'a> {

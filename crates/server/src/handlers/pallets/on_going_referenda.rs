@@ -19,8 +19,8 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use config::ChainType;
 use futures::future::join_all;
+use polkadot_rest_api_config::ChainType;
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use subxt::error::StorageError;

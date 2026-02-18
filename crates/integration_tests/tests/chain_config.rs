@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Integration tests for chain config validation
-use config::{ChainConfig, ChainConfigs, ChainType, Hasher};
+use polkadot_rest_api_config::{ChainConfig, ChainConfigs, ChainType, Hasher};
 
 #[test]
 fn test_all_expected_chains_exist() {
@@ -216,12 +216,13 @@ fn test_config_dual_connection_support() {
     let relay_config = ChainConfig::default();
 
     // Test single-chain config
-    let single_config = config::Config::single_chain(chain_config.clone());
+    let single_config = polkadot_rest_api_config::Config::single_chain(chain_config.clone());
     assert!(!single_config.has_relay_chain());
     assert!(single_config.rc.is_none());
 
     // Test dual-chain config
-    let dual_config = config::Config::with_relay_chain(chain_config, relay_config);
+    let dual_config =
+        polkadot_rest_api_config::Config::with_relay_chain(chain_config, relay_config);
     assert!(dual_config.has_relay_chain());
     assert!(dual_config.rc.is_some());
 }

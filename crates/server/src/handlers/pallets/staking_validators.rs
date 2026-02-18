@@ -15,9 +15,9 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use config::ChainType;
 use futures::StreamExt;
 use parity_scale_codec::{Compact, Decode};
+use polkadot_rest_api_config::ChainType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};

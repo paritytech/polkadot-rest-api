@@ -8,7 +8,7 @@
 //! - `QueryFeeDetailsCache`: Tracks whether `payment_queryFeeDetails` is available per spec_version
 //! - `parse_fee_details` / `extract_estimated_weight`: RPC response parsing utilities
 
-use config::ChainConfigs;
+use polkadot_rest_api_config::ChainConfigs;
 use serde_json::Value;
 use sp_runtime::Perbill;
 use std::collections::HashMap;
@@ -314,7 +314,7 @@ impl QueryFeeDetailsCache {
     /// - `Some(false)` if known to be unavailable
     /// - `None` if unknown and needs to be discovered via RPC
     pub fn is_available(&self, spec_name: &str, spec_version: u32) -> Option<bool> {
-        use config::ChainQueryFeeDetailsStatus as QueryFeeDetailsStatus;
+        use polkadot_rest_api_config::ChainQueryFeeDetailsStatus as QueryFeeDetailsStatus;
 
         // First, check the static chain config
         if let Some(chain_cfg) = self.chain_configs.get(spec_name) {

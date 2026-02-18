@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use server::{app, logging, state};
+use polkadot_rest_api::{app, logging, state};
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use thiserror::Error;
@@ -80,7 +80,7 @@ async fn main() -> Result<(), MainError> {
     let addr = SocketAddr::new(ip, port);
     // Initialize metrics if enabled
     if metrics_enabled {
-        server::metrics::init(&metrics_prefix);
+        polkadot_rest_api::metrics::init(&metrics_prefix);
         tracing::info!(
             "Prometheus metrics enabled at http://{}:{}/metrics (prefix: {})",
             metrics_host,

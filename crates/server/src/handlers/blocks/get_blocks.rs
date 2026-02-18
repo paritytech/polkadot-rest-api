@@ -114,7 +114,7 @@ async fn handle_use_rc_block_range(
     start: u64,
     end: u64,
 ) -> Result<Vec<BlockResponse>, GetBlockError> {
-    use config::ChainType;
+    use polkadot_rest_api_config::ChainType;
 
     if state.chain_info.chain_type != ChainType::AssetHub {
         return Err(GetBlockError::UseRcBlockNotSupported);
