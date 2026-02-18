@@ -26,6 +26,21 @@ First beta release of `polkadot-rest-api`, a REST service that makes it easy to 
 - **Infrastructure**: Docker and docker-compose support, Prometheus metrics, Grafana dashboard, Loki log aggregation, WebSocket reconnection logic, and configurable HTTP logging.
 - **SAS-compatible configuration**: Drop-in environment variable compatibility with substrate-api-sidecar (`SAS_SUBSTRATE_URL`, `SAS_EXPRESS_PORT`, etc.).
 
+### Breaking Changes (vs substrate-api-sidecar)
+
+- **URL prefix**: All endpoints are now versioned under `/v1` (e.g., `/blocks/head` → `/v1/blocks/head`).
+- **`useRcBlockFormat` replaced by `format`**: Use `format=object` instead of `useRcBlockFormat=object`. The array format (default) no longer requires a parameter.
+- **Coretime field renames**: `palletVersion` → `storageVersion` in `coretime/info`; `type` → `lifecycle` in `coretime/overview`.
+- **Numeric fields**: All u16 and u32 fields are returned as numbers instead of strings. u128 values remain strings.
+- **HTTP status codes**: Error responses now return 400 or 404 instead of 500 where appropriate.
+- **Coretime price fix**: `currentCorePrice` calculation in `/v1/coretime/info` has been corrected.
+- **Historical data with `?at=`**: Pallet endpoints (`assets`, `asset-conversion`, `pool-assets`, `foreign-assets`) now correctly return historical data when using the `?at=` query parameter. Sidecar returned current state regardless.
+- **Removed endpoints**: Experimental/trace endpoints, ink! contract endpoints, and most parachain-specific endpoints (crowdloans, auctions, leases) are not implemented. See the [Migration Guide](docs/guides/MIGRATION.md) for the full list.
+- **Removed config variables**: `SAS_SUBSTRATE_TYPES_*`, `SAS_SUBSTRATE_CACHE_CAPACITY`, `SAS_EXPRESS_INJECTED_CONTROLLERS`, and `SAS_LOG_FILTER_RPC` are no longer supported. `SAS_EXPRESS_MAX_BODY` is replaced by `SAS_EXPRESS_REQUEST_LIMIT`.
+- **Runtime**: Requires a Rust binary instead of Node.js.
+
+For a comprehensive migration guide, see [docs/guides/MIGRATION.md](docs/guides/MIGRATION.md).
+
 ### Compatibility
 
 Tested against:
