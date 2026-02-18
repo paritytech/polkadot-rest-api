@@ -184,8 +184,8 @@ mod tests {
             relay_chain_rpc: Some(Arc::new(LegacyRpcMethods::new((*relay_rpc_client).clone()))),
             relay_chain_info: None,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
-            chain_configs: Arc::new(config::ChainConfigs::default()),
-            chain_config: Arc::new(config::Config::single_chain(config::ChainConfig::default())),
+            chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
+            chain_config: Arc::new(polkadot_rest_api_config::Config::single_chain(polkadot_rest_api_config::ChainConfig::default())),
             route_registry: RouteRegistry::new(),
             lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
