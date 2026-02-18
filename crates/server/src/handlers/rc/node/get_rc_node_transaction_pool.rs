@@ -169,7 +169,9 @@ mod tests {
             relay_chain_info: None,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
             chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
-            chain_config: Arc::new(polkadot_rest_api_config::Config::single_chain(polkadot_rest_api_config::ChainConfig::default())),
+            chain_config: Arc::new(polkadot_rest_api_config::Config::single_chain(
+                polkadot_rest_api_config::ChainConfig::default(),
+            )),
             route_registry: crate::routes::RouteRegistry::new(),
             lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
