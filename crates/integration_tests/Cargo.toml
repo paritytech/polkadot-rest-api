@@ -39,7 +39,7 @@ serde_json = "1.0"
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-polkadot-rest-api-config = { path = "../config", version = "0.1.0" }
+polkadot-rest-api-config = { path = "../config", version = "0.1.0-beta.1" }
 serde_urlencoded = "0.7"
 futures = "0.3"
 jsonrpsee = { version = "0.24.10", features = ["ws-client"] }

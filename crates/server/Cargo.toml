@@ -25,7 +25,7 @@ thiserror = "2.0"
 tower = "0.5"
 tower-http = { version = "0.6.6", features = ["trace", "cors", "limit", "normalize-path", "fs"] }
 socket2 = "0.6"
-polkadot-rest-api-config = { path = "../config", version = "0.1.0" }
+polkadot-rest-api-config = { path = "../config", version = "0.1.0-beta.1" }
 subxt = { version = "0.50.0-beta.2", features = ["reconnecting-rpc-client"] }
 subxt-rpcs = { version = "0.50.0-beta.2", features = ["reconnecting-rpc-client"] }
 subxt-metadata = "=0.50.0-beta.2"
