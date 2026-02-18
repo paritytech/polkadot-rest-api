@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Integration tests for relay chain connection and config validation
-use config::ChainConfigs;
 use jsonrpsee::{core::client::ClientT, rpc_params, ws_client::WsClientBuilder};
+use polkadot_rest_api_config::ChainConfigs;
 use serde_json::Value;
 use std::time::Duration;
 

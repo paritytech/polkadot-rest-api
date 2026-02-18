@@ -107,7 +107,7 @@ mod tests {
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
         let chain_info = crate::state::ChainInfo {
-            chain_type: config::ChainType::Relay,
+            chain_type: polkadot_rest_api_config::ChainType::Relay,
             spec_name: "test".to_string(),
             spec_version: 1,
             ss58_prefix: 42,

@@ -349,13 +349,13 @@ mod tests {
 
         let hash_blake2 = compute_block_hash_from_header_json_with_hasher(
             &header_json,
-            &config::Hasher::Blake2_256,
+            &polkadot_rest_api_config::Hasher::Blake2_256,
         )
         .unwrap();
 
         let hash_keccak = compute_block_hash_from_header_json_with_hasher(
             &header_json,
-            &config::Hasher::Keccak256,
+            &polkadot_rest_api_config::Hasher::Keccak256,
         )
         .unwrap();
 

@@ -103,7 +103,7 @@ mod tests {
         let relay_rpc_client = Arc::new(RpcClient::new(relay_mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
         let chain_info = crate::state::ChainInfo {
-            chain_type: config::ChainType::AssetHub,
+            chain_type: polkadot_rest_api_config::ChainType::AssetHub,
             spec_name: "statemint".to_string(),
             spec_version: 1,
             ss58_prefix: 0,
