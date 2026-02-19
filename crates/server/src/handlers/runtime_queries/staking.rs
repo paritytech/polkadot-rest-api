@@ -1391,3 +1391,19 @@ pub async fn get_timestamp(
         .ok()?;
     value.decode().ok()
 }
+
+/// Get the bonded eras from Staking::BondedEras.
+/// Returns a list of (era_index, session_index) pairs.
+pub async fn get_bonded_eras(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<Vec<(u32, u32)>> {
+    let storage_addr = subxt::dynamic::storage::<(), ()>("Staking", "BondedEras");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    
+    let raw_bytes = value.into_bytes();
+    Vec::<(u32, u32)>::decode(&mut &raw_bytes[..]).ok()
+}
