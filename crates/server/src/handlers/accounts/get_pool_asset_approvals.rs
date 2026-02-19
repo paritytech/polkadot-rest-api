@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::types::{
-    AccountsError, BlockInfo, DecodedPoolAssetApproval, PoolAssetApprovalQueryParams,
-    PoolAssetApprovalResponse,
+    AccountsError, BlockInfo, PoolAssetApprovalQueryParams, PoolAssetApprovalResponse,
 };
 use super::utils::validate_and_parse_address;
 use crate::extractors::JsonQuery;
+use crate::handlers::runtime_queries::pool_assets as pool_assets_queries;
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
@@ -14,22 +14,10 @@ use axum::{
     extract::{Path, State},
     response::{IntoResponse, Response},
 };
-use parity_scale_codec::Decode;
 use polkadot_rest_api_config::ChainType;
 use serde_json::json;
 use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
-
-// ================================================================================================
-// SCALE Decode Types for PoolAssets::Approvals storage
-// ================================================================================================
-
-/// Pool asset approval structure
-#[derive(Debug, Clone, Decode)]
-struct PoolAssetApproval {
-    amount: u128,
-    deposit: u128,
-}
 
 // ================================================================================================
 // Main Handler
@@ -105,40 +93,24 @@ async fn query_pool_asset_approval(
     asset_id: u32,
     block: &utils::ResolvedBlock,
 ) -> Result<PoolAssetApprovalResponse, AccountsError> {
-    // Build the storage address for PoolAssets::Approvals(asset_id, owner, delegate)
-    let storage_addr = subxt::dynamic::storage::<_, ()>("PoolAssets", "Approvals");
-
-    // Check if the pallet exists by trying to create the storage entry
-    if client_at_block
-        .storage()
-        .entry(("PoolAssets", "Approvals"))
-        .is_err()
-    {
+    // Check if the pallet exists
+    if !pool_assets_queries::is_pool_assets_pallet_available(client_at_block) {
         return Err(AccountsError::PalletNotAvailable("PoolAssets".to_string()));
     }
 
-    // Storage key for Approvals: (asset_id, owner, delegate)
-    let owner_bytes: [u8; 32] = *owner.as_ref();
-    let delegate_bytes: [u8; 32] = *delegate.as_ref();
+    // Use centralized query function
+    let approval =
+        pool_assets_queries::get_pool_asset_approval(client_at_block, asset_id, owner, delegate)
+            .await
+            .map_err(|_| {
+                AccountsError::DecodeFailed(parity_scale_codec::Error::from(
+                    "Failed to query pool asset approval",
+                ))
+            })?;
 
-    let storage_value = client_at_block
-        .storage()
-        .fetch(storage_addr, (asset_id, owner_bytes, delegate_bytes))
-        .await;
-
-    let (amount, deposit) = if let Ok(value) = storage_value {
-        // Get raw bytes and decode
-        let raw_bytes = value.into_bytes();
-        let decoded = decode_pool_asset_approval(&raw_bytes)?;
-        match decoded {
-            Some(approval) => (
-                Some(approval.amount.to_string()),
-                Some(approval.deposit.to_string()),
-            ),
-            None => (None, None),
-        }
-    } else {
-        (None, None)
+    let (amount, deposit) = match approval {
+        Some(a) => (Some(a.amount), Some(a.deposit)),
+        None => (None, None),
     };
 
     Ok(PoolAssetApprovalResponse {
@@ -152,28 +124,6 @@ async fn query_pool_asset_approval(
         rc_block_number: None,
         ah_timestamp: None,
     })
-}
-
-// ================================================================================================
-// Pool Asset Approval Decoding
-// ================================================================================================
-
-/// Decode pool asset approval from raw SCALE bytes
-fn decode_pool_asset_approval(
-    raw_bytes: &[u8],
-) -> Result<Option<DecodedPoolAssetApproval>, AccountsError> {
-    // Decode as PoolAssetApproval struct
-    if let Ok(approval) = PoolAssetApproval::decode(&mut &raw_bytes[..]) {
-        return Ok(Some(DecodedPoolAssetApproval {
-            amount: approval.amount,
-            deposit: approval.deposit,
-        }));
-    }
-
-    // If decoding fails, return an error
-    Err(AccountsError::DecodeFailed(
-        parity_scale_codec::Error::from("Failed to decode pool asset approval: unknown format"),
-    ))
 }
 
 // ================================================================================================
