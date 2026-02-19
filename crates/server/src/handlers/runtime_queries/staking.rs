@@ -1244,3 +1244,150 @@ fn decode_ledger_claimed_eras(raw_bytes: &[u8], era: u32) -> Option<bool> {
 
     None
 }
+
+// ================================================================================================
+// Additional Staking Progress Queries
+// ================================================================================================
+
+/// Decoded active era information with start timestamp.
+#[derive(Debug, Clone)]
+pub struct DecodedActiveEraInfo {
+    pub index: u32,
+    pub start: Option<u64>,
+}
+
+/// Force era status enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForceEra {
+    NotForcing,
+    ForceNew,
+    ForceNone,
+    ForceAlways,
+}
+
+impl ForceEra {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ForceEra::NotForcing => "NotForcing",
+            ForceEra::ForceNew => "ForceNew",
+            ForceEra::ForceNone => "ForceNone",
+            ForceEra::ForceAlways => "ForceAlways",
+        }
+    }
+}
+
+/// Get the ideal validator count from Staking::ValidatorCount.
+pub async fn get_validator_count(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<u32> {
+    let storage_addr = subxt::dynamic::storage::<(), u32>("Staking", "ValidatorCount");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    value.decode().ok()
+}
+
+/// Get the force era status from Staking::ForceEra.
+pub async fn get_force_era(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<ForceEra> {
+    let storage_addr = subxt::dynamic::storage::<(), u8>("Staking", "ForceEra");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    
+    // ForceEra is an enum: 0=NotForcing, 1=ForceNew, 2=ForceNone, 3=ForceAlways
+    let variant = value.decode().ok()?;
+    Some(match variant {
+        0 => ForceEra::NotForcing,
+        1 => ForceEra::ForceNew,
+        2 => ForceEra::ForceNone,
+        3 => ForceEra::ForceAlways,
+        _ => ForceEra::NotForcing,
+    })
+}
+
+/// Get the active era info with start timestamp from Staking::ActiveEra.
+pub async fn get_active_era_info(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<DecodedActiveEraInfo> {
+    let storage_addr = subxt::dynamic::storage::<(), ()>("Staking", "ActiveEra");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    
+    let raw_bytes = value.into_bytes();
+    
+    // Try direct decode first
+    if let Ok(era_info) = ActiveEraInfo::decode(&mut &raw_bytes[..]) {
+        return Some(DecodedActiveEraInfo {
+            index: era_info.index,
+            start: era_info.start,
+        });
+    }
+    
+    // Try with Option wrapper
+    if let Ok(Some(era_info)) = Option::<ActiveEraInfo>::decode(&mut &raw_bytes[..]) {
+        return Some(DecodedActiveEraInfo {
+            index: era_info.index,
+            start: era_info.start,
+        });
+    }
+    
+    None
+}
+
+/// Get the current session index from Session::CurrentIndex.
+pub async fn get_session_current_index(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<u32> {
+    let storage_addr = subxt::dynamic::storage::<(), u32>("Session", "CurrentIndex");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    value.decode().ok()
+}
+
+/// Get the session validators from Session::Validators.
+pub async fn get_session_validators(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    ss58_prefix: u16,
+) -> Option<Vec<String>> {
+    let storage_addr = subxt::dynamic::storage::<(), ()>("Session", "Validators");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    
+    let raw_bytes = value.into_bytes();
+    let validators: Vec<[u8; 32]> = Vec::decode(&mut &raw_bytes[..]).ok()?;
+    
+    Some(
+        validators
+            .into_iter()
+            .map(|bytes| AccountId32::from(bytes).to_ss58check_with_version(ss58_prefix.into()))
+            .collect()
+    )
+}
+
+/// Get the current timestamp from Timestamp::Now.
+pub async fn get_timestamp(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<u64> {
+    let storage_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    value.decode().ok()
+}
