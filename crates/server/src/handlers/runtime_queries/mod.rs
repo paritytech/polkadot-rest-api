@@ -8,7 +8,9 @@
 //!
 //! # Available Modules
 //! - `assets` - Assets pallet (asset details, metadata, balances, approvals)
+//! - `pool_assets` - PoolAssets pallet (LP token details, metadata, balances, approvals)
 //! - `staking` - Staking pallet (ledger, nominations, rewards, etc.)
 
 pub mod assets;
+pub mod pool_assets;
 pub mod staking;
