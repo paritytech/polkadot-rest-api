@@ -31,7 +31,7 @@ use super::types::{BlockResponse, GetBlockError};
 
 /// Query parameters for /blocks/head endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BlockHeadQueryParams {
     /// When true (default), returns finalized head. When false, returns canonical head.
     #[serde(default = "default_true")]

@@ -329,7 +329,7 @@ pub async fn resolve_block_for_pallet(
 
 /// Query parameters for pallet metadata endpoints (list endpoints).
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PalletQueryParams {
     /// Block hash or number to query at. If not provided, uses the latest block.
     pub at: Option<String>,
@@ -345,7 +345,7 @@ pub struct PalletQueryParams {
 
 /// Query parameters for single item endpoints (e.g., `/pallets/{palletId}/errors/{errorId}`).
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PalletItemQueryParams {
     /// Block hash or number to query at. If not provided, uses the latest block.
     pub at: Option<String>,
@@ -361,7 +361,7 @@ pub struct PalletItemQueryParams {
 
 /// Query parameters for relay chain pallet list endpoints (e.g., `/rc/pallets/{palletId}/consts`).
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcPalletQueryParams {
     /// Block hash or number to query at. If not provided, uses the latest block.
     pub at: Option<String>,
@@ -373,7 +373,7 @@ pub struct RcPalletQueryParams {
 
 /// Query parameters for relay chain single item endpoints (e.g., `/rc/pallets/{palletId}/consts/{constantItemId}`).
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcPalletItemQueryParams {
     /// Block hash or number to query at. If not provided, uses the latest block.
     pub at: Option<String>,

@@ -28,7 +28,7 @@ use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetConversionQueryParams {
     pub at: Option<String>,
     #[serde(default)]

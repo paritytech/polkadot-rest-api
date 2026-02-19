@@ -28,7 +28,7 @@ use super::CommonBlockError;
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ParaInclusionsQueryParams {
     pub para_id: Option<u32>,
 }

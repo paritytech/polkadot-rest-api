@@ -66,6 +66,7 @@ pub struct RuntimeCodeResponse {
 
 /// Query parameters for the runtime code endpoint
 #[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AtBlockParam {
     pub at: Option<String>,
 }

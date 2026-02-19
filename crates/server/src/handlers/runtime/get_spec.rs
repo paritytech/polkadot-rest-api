@@ -63,6 +63,7 @@ impl IntoResponse for GetSpecError {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AtBlockParam {
     pub at: Option<String>,
 }

@@ -48,7 +48,7 @@ struct CandidateDescriptorDecoded {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ParasInclusionQueryParams {
     /// Search depth for relay chain blocks (max 100, default 10)
     #[serde(default = "default_depth")]

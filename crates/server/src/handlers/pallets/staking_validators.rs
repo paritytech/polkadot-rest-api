@@ -23,7 +23,7 @@ use std::collections::HashSet;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StakingValidatorsQueryParams {
     pub at: Option<String>,
     #[serde(default)]
@@ -31,7 +31,7 @@ pub struct StakingValidatorsQueryParams {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcStakingValidatorsQueryParams {
     pub at: Option<String>,
 }

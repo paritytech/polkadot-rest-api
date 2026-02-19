@@ -27,7 +27,7 @@ use thiserror::Error;
 
 /// Query parameters for /rc/blocks/{blockId} endpoint
 #[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcBlockQueryParams {
     /// When true, include documentation for events
     #[serde(default)]

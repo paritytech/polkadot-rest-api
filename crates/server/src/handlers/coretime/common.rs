@@ -282,7 +282,7 @@ pub struct AtResponse {
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CoretimeQueryParams {
     /// Block number or 0x-prefixed block hash to query at.
     /// If not provided, queries at the latest finalized block.

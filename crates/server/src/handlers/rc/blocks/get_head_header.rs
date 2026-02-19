@@ -22,6 +22,7 @@ use crate::handlers::blocks::common::RcBlockHeaderResponse;
 
 /// Query parameters for /rc/blocks/head/header endpoint
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RcBlockHeadHeaderQueryParams {
     /// When true (default), query finalized head. When false, query canonical head.
     #[serde(default = "default_finalized")]

@@ -26,7 +26,7 @@ use subxt::{OnlineClient, SubstrateConfig};
 
 /// Query parameters for GET /rc/blocks endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcBlocksRangeQueryParams {
     /// Range of blocks to fetch
     pub range: Option<String>,

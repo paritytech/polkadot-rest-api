@@ -35,7 +35,7 @@ use thiserror::Error;
 
 /// Query parameters for /rc/blocks/head endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcBlockHeadQueryParams {
     /// When true (default), returns finalized head. When false, returns canonical head.
     #[serde(default = "default_true")]

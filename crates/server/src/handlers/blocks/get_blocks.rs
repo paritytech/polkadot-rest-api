@@ -17,7 +17,7 @@ use super::get_block::build_block_response_for_hash;
 use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BlocksRangeQueryParams {
     pub range: Option<String>,
     #[serde(default)]

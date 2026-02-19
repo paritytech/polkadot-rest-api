@@ -26,6 +26,7 @@ use super::types::{DigestLog, GetBlockError};
 
 /// Query parameters for /blocks/{blockId}/extrinsics-raw endpoint
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockRawExtrinsicsQueryParams {
     /// When true, treat blockId as Relay Chain block and return Asset Hub blocks
     #[serde(default, rename = "useRcBlock")]

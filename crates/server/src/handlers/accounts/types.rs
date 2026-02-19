@@ -53,7 +53,7 @@ macro_rules! impl_error_response {
 
 /// Query parameters for GET /accounts/{accountId}/asset-balances endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetBalancesQueryParams {
     /// Optional Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -120,7 +120,7 @@ pub struct DecodedAssetBalance {
 
 /// Query parameters for GET /accounts/{accountId}/asset-approvals endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetApprovalQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -377,7 +377,7 @@ impl_error_response!(AccountsError,
 
 /// Query parameters for GET /accounts/{accountId}/balance-info endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BalanceInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -476,7 +476,7 @@ pub struct DecodedBalanceLock {
 
 /// Query parameters for GET /accounts/{accountId}/pool-asset-balances endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PoolAssetBalancesQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -522,7 +522,7 @@ pub struct PoolAssetBalance {
 
 /// Query parameters for GET /accounts/{accountId}/pool-asset-approvals endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PoolAssetApprovalQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -572,7 +572,7 @@ pub struct DecodedPoolAssetApproval {
 
 /// Query parameters for GET /accounts/{accountId}/convert endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AccountConvertQueryParams {
     pub scheme: Option<String>,
 
@@ -612,7 +612,7 @@ pub struct AccountConvertResponse {
 
 /// Query parameters for GET /accounts/{accountId}/proxy-info endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProxyInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -663,7 +663,7 @@ pub struct ProxyDefinition {
 
 /// Query parameters for GET /accounts/{accountId}/staking-info endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StakingInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -786,7 +786,7 @@ pub struct ClaimedReward {
 
 /// Query parameters for GET /accounts/{accountId}/staking-payouts endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StakingPayoutsQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -892,7 +892,7 @@ pub struct ValidatorPayout {
 
 /// Query parameters for GET /accounts/{accountId}/vesting-info endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VestingInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -940,7 +940,7 @@ pub struct VestingSchedule {
 
 /// Query parameters for GET /accounts/compare endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AccountCompareQueryParams {
     /// Comma-separated list of SS58 addresses to compare (max 30)
     pub addresses: String,
@@ -983,7 +983,7 @@ pub struct AddressDetails {
 
 /// Query parameters for GET /accounts/{accountId}/validate endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AccountValidateQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -1015,7 +1015,7 @@ pub struct AccountValidateResponse {
 
 /// Query parameters for GET /accounts/{accountId}/foreign-asset-balances endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ForeignAssetBalancesQueryParams {
     /// Optional Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,

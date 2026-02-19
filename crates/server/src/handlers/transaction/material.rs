@@ -15,7 +15,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MaterialQuery {
     /// Block hash or number to query at. If not provided, queries finalized head.
     pub at: Option<String>,

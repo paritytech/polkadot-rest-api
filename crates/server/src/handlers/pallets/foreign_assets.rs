@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ForeignAssetsQueryParams {
     pub at: Option<String>,
     #[serde(default)]

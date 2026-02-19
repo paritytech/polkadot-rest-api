@@ -27,7 +27,7 @@ use serde_json::json;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StakingProgressQueryParams {
     pub at: Option<String>,
     #[serde(default)]
@@ -488,7 +488,7 @@ pub async fn rc_pallets_staking_progress(
 
 /// Query parameters for RC staking progress endpoint (no useRcBlock)
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcStakingProgressQueryParams {
     pub at: Option<String>,
 }

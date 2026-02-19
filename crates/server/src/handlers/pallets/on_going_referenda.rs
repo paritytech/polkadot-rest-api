@@ -30,7 +30,7 @@ use subxt::error::StorageError;
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OnGoingReferendaQueryParams {
     /// Block height (number) or hash (0x-prefixed hex string)
     pub at: Option<String>,
@@ -466,7 +466,7 @@ fn format_id_with_comma(id: u32) -> String {
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcOnGoingReferendaQueryParams {
     pub at: Option<String>,
 }

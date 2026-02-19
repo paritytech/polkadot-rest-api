@@ -37,7 +37,7 @@ pub struct BlockBuildParams {
 
 /// Query parameters for /blocks/{blockId} endpoint
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BlockQueryParams {
     /// When true, include documentation for events
     #[serde(default)]
@@ -70,7 +70,7 @@ fn default_true() -> bool {
 }
 
 #[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExtrinsicQueryParams {
     /// When true, include documentation for events
     #[serde(default)]
@@ -129,6 +129,7 @@ impl BlockQueryParams {
 
 /// Query parameters for /blocks/{blockId}/header endpoint
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockHeaderQueryParams {
     /// When true, treat block identifier as Relay Chain block and return Asset Hub blocks included in it
     #[serde(default, rename = "useRcBlock")]

@@ -29,7 +29,7 @@ use subxt::Metadata;
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConstantsQueryParams {
     pub at: Option<String>,
     #[serde(default)]
@@ -39,7 +39,7 @@ pub struct ConstantsQueryParams {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConstantItemQueryParams {
     pub at: Option<String>,
     #[serde(default)]
