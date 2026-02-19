@@ -5,6 +5,7 @@ use super::types::{
     AccountsError, BlockInfo, EraPayouts, EraPayoutsData, RcStakingPayoutsQueryParams,
     RcStakingPayoutsResponse, RelayChainAccess, ValidatorPayout,
 };
+use crate::extractors::JsonQuery;
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
     RawEraPayouts, RawStakingPayouts, StakingPayoutsParams, query_staking_payouts,
@@ -13,7 +14,7 @@ use crate::state::AppState;
 use crate::utils;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse, Response},
 };
 use polkadot_rest_api_config::ChainType;
@@ -40,10 +41,10 @@ use polkadot_rest_api_config::ChainType;
     description = "Returns staking payout information for a given account on the relay chain.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
-        ("depth" = Option<u32>, Query, description = "Number of eras to query (default: 1)"),
-        ("era" = Option<u32>, Query, description = "The era to query at (default: active_era - 1)"),
-        ("unclaimedOnly" = Option<bool>, Query, description = "Only show unclaimed rewards (default: true)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)"),
+        ("depth" = Option<u32>, description = "Number of eras to query (default: 1)"),
+        ("era" = Option<u32>, description = "The era to query at (default: active_era - 1)"),
+        ("unclaimedOnly" = Option<bool>, description = "Only show unclaimed rewards (default: true)")
     ),
     responses(
         (status = 200, description = "Staking payouts", body = RcStakingPayoutsResponse),
@@ -55,7 +56,7 @@ use polkadot_rest_api_config::ChainType;
 pub async fn get_staking_payouts(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
-    Query(params): Query<RcStakingPayoutsQueryParams>,
+    JsonQuery(params): JsonQuery<RcStakingPayoutsQueryParams>,
 ) -> Result<Response, AccountsError> {
     // Get the relay chain ss58_prefix for address validation
     let rc_ss58_prefix = get_relay_chain_ss58_prefix(&state)?;

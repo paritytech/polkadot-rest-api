@@ -3,12 +3,13 @@
 
 use super::types::{AccountsError, AssetBalancesQueryParams, AssetBalancesResponse, BlockInfo};
 use super::utils::validate_and_parse_address;
+use crate::extractors::JsonQuery;
 use crate::handlers::accounts::utils::{query_all_assets_id, query_assets};
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse, Response},
 };
 use polkadot_rest_api_config::ChainType;
@@ -36,9 +37,9 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
     description = "Returns asset balances for a given account on Asset Hub chains.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier"),
-        ("assets" = Option<String>, Query, description = "Comma-separated list of asset IDs to query")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier"),
+        ("assets" = Option<String>, description = "Comma-separated list of asset IDs to query")
     ),
     responses(
         (status = 200, description = "Account asset balances", body = AssetBalancesResponse),
@@ -49,7 +50,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 pub async fn get_asset_balances(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
-    Query(params): Query<AssetBalancesQueryParams>,
+    JsonQuery(params): JsonQuery<AssetBalancesQueryParams>,
 ) -> Result<Response, AccountsError> {
     let account = validate_and_parse_address(&account_id, state.chain_info.ss58_prefix)?;
 

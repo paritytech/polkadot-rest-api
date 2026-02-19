@@ -5,6 +5,7 @@
 //!
 //! Returns the decoded runtime metadata in JSON format matching sidecar's output.
 
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils;
 use axum::{Json, extract::Path, extract::State, http::StatusCode, response::IntoResponse};
@@ -148,7 +149,7 @@ pub struct RuntimeMetadataResponse {
     summary = "Runtime metadata",
     description = "Returns the decoded runtime metadata in JSON format.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Runtime metadata", body = Object),
@@ -158,7 +159,7 @@ pub struct RuntimeMetadataResponse {
 )]
 pub async fn runtime_metadata(
     State(state): State<AppState>,
-    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+    JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<RuntimeMetadataResponse>, GetMetadataError> {
     // Get block hash - only fetch what we need (saves RPC call when hash provided)
     let block_hash = resolve_block_hash(&state, params.at.as_deref()).await?;
@@ -201,7 +202,7 @@ pub async fn runtime_metadata(
     summary = "Available metadata versions",
     description = "Returns the available metadata versions at a given block.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "List of available metadata versions", body = Vec<String>),
@@ -211,7 +212,7 @@ pub async fn runtime_metadata(
 )]
 pub async fn runtime_metadata_versions(
     State(state): State<AppState>,
-    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+    JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<Vec<String>>, GetMetadataError> {
     // Get block hash - only fetch what we need (saves RPC call when hash provided)
     let block_hash = resolve_block_hash(&state, params.at.as_deref()).await?;
@@ -258,7 +259,7 @@ pub async fn runtime_metadata_versions(
     description = "Returns the metadata at a specific version. The version parameter should be in 'vX' format (e.g., 'v14', 'v15').",
     params(
         ("version" = String, Path, description = "Metadata version (e.g., 'v14', 'v15')"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Runtime metadata at specified version", body = Object),
@@ -269,7 +270,7 @@ pub async fn runtime_metadata_versions(
 pub async fn runtime_metadata_versioned(
     State(state): State<AppState>,
     Path(version): Path<String>,
-    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+    JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<RuntimeMetadataResponse>, GetMetadataError> {
     let version_num: u32 = match VERSION_REGEX.captures(&version) {
         Some(caps) => {

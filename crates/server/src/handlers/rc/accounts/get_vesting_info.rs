@@ -5,13 +5,14 @@ use super::types::{
     AccountsError, RcVestingInfoQueryParams, RcVestingInfoResponse, RelayChainAccess,
     VestingSchedule,
 };
+use crate::extractors::JsonQuery;
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{RawVestingInfo, query_vesting_info};
 use crate::state::AppState;
 use crate::utils;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse, Response},
 };
 use polkadot_rest_api_config::ChainType;
@@ -36,8 +37,8 @@ use polkadot_rest_api_config::ChainType;
     description = "Returns vesting information for a given account on the relay chain.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
-        ("includeClaimable" = Option<bool>, Query, description = "When true, calculate vested amounts")
+        ("at" = Option<String>, description = "Block identifier (number or hash)"),
+        ("includeClaimable" = Option<bool>, description = "When true, calculate vested amounts")
     ),
     responses(
         (status = 200, description = "Vesting information", body = RcVestingInfoResponse),
@@ -49,7 +50,7 @@ use polkadot_rest_api_config::ChainType;
 pub async fn get_vesting_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
-    Query(params): Query<RcVestingInfoQueryParams>,
+    JsonQuery(params): JsonQuery<RcVestingInfoQueryParams>,
 ) -> Result<Response, AccountsError> {
     // Get the relay chain ss58_prefix for address validation
     let rc_ss58_prefix = get_relay_chain_ss58_prefix(&state)?;

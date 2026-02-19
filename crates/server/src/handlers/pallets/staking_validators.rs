@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, format_account_id, resolve_block_for_pallet,
 };
@@ -11,7 +12,7 @@ use crate::utils::{
 };
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -85,8 +86,8 @@ struct ActiveEraInfo {
     summary = "Staking validators",
     description = "Returns the list of active validators and their info.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Validator information", body = Object),
@@ -95,7 +96,7 @@ struct ActiveEraInfo {
 )]
 pub async fn pallets_staking_validators(
     State(state): State<AppState>,
-    Query(params): Query<StakingValidatorsQueryParams>,
+    JsonQuery(params): JsonQuery<StakingValidatorsQueryParams>,
 ) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_use_rc_block(state, params).await;
@@ -131,7 +132,7 @@ pub async fn pallets_staking_validators(
     summary = "RC staking validators",
     description = "Returns the list of active validators from the relay chain.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Relay chain validator information", body = Object),
@@ -140,7 +141,7 @@ pub async fn pallets_staking_validators(
 )]
 pub async fn rc_pallets_staking_validators(
     State(state): State<AppState>,
-    Query(params): Query<RcStakingValidatorsQueryParams>,
+    JsonQuery(params): JsonQuery<RcStakingValidatorsQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()

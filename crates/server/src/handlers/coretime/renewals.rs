@@ -10,6 +10,7 @@
 //! Potential renewals represent coretime allocations that can be renewed by the holder
 //! before the next sale period begins.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::coretime::common::{
     AtResponse, CoreAssignment, CoreMask, CoretimeError, CoretimeQueryParams,
     STORAGE_KEY_DATA_OFFSET, has_broker_pallet, is_storage_item_not_found_error,
@@ -18,7 +19,7 @@ use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -151,7 +152,7 @@ pub struct CoretimeRenewalsResponse {
     summary = "Get coretime potential renewals",
     description = "Returns potential renewals on a coretime chain sorted by core index, including price, completion status, and task assignment.",
     params(
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Coretime renewals", body = Object),
@@ -161,7 +162,7 @@ pub struct CoretimeRenewalsResponse {
 )]
 pub async fn coretime_renewals(
     State(state): State<AppState>,
-    Query(params): Query<CoretimeQueryParams>,
+    JsonQuery(params): JsonQuery<CoretimeQueryParams>,
 ) -> Result<Response, CoretimeError> {
     // Parse the block ID if provided
     let block_id = match &params.at {

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::state::{AppState, RelayChainError};
 use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
@@ -101,7 +102,7 @@ pub struct AtBlockParam {
     summary = "RC get runtime code",
     description = "Returns the Wasm code blob of the relay chain runtime at a given block.",
     params(
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Relay chain runtime code", body = Object),
@@ -111,7 +112,7 @@ pub struct AtBlockParam {
 )]
 pub async fn get_rc_runtime_code(
     State(state): State<AppState>,
-    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+    JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<RuntimeCodeResponse>, GetRcCodeError> {
     let relay_client = state
         .get_relay_chain_client()

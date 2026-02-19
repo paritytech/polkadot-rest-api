@@ -1,9 +1,10 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils::BlockId;
-use axum::{Json, extract::Query, extract::State, http::StatusCode, response::IntoResponse};
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use frame_metadata::RuntimeMetadataPrefixed;
 use parity_scale_codec::Decode;
 use serde::{Deserialize, Serialize};
@@ -63,7 +64,7 @@ impl IntoResponse for CapabilitiesError {
     summary = "API capabilities",
     description = "Returns the chain name and list of available pallets in the runtime metadata.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Chain capabilities", body = CapabilitiesResponse),
@@ -73,7 +74,7 @@ impl IntoResponse for CapabilitiesError {
 )]
 pub async fn get_capabilities(
     State(state): State<AppState>,
-    Query(params): Query<AtBlockParam>,
+    JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<CapabilitiesResponse>, CapabilitiesError> {
     let block_id = params.at.map(|s| s.parse::<BlockId>()).transpose()?;
     let resolved = crate::utils::resolve_block(&state, block_id).await?;

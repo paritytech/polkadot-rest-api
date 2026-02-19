@@ -6,6 +6,7 @@
 //! Returns block information for the latest block (head) on the relay chain.
 //! This endpoint is designed for Asset Hub or parachain endpoints that have a relay chain configured.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::blocks::common::{
     add_docs_to_events, convert_digest_items_to_logs, extract_author_with_prefix,
 };
@@ -19,7 +20,7 @@ use crate::handlers::blocks::types::{BlockResponse, GetBlockError};
 use crate::state::AppState;
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -152,10 +153,10 @@ impl IntoResponse for GetRcBlockHeadError {
     summary = "RC get head block",
     description = "Returns the latest block on the relay chain.",
     params(
-        ("finalized" = Option<bool>, Query, description = "When true returns finalized head (default: true)"),
-        ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
-        ("extrinsicDocs" = Option<bool>, Query, description = "Include extrinsic documentation"),
-        ("noFees" = Option<bool>, Query, description = "Skip fee calculation")
+        ("finalized" = Option<bool>, description = "When true returns finalized head (default: true)"),
+        ("eventDocs" = Option<bool>, description = "Include event documentation"),
+        ("extrinsicDocs" = Option<bool>, description = "Include extrinsic documentation"),
+        ("noFees" = Option<bool>, description = "Skip fee calculation")
     ),
     responses(
         (status = 200, description = "Relay chain head block", body = Object),
@@ -165,7 +166,7 @@ impl IntoResponse for GetRcBlockHeadError {
 )]
 pub async fn get_rc_blocks_head(
     State(state): State<AppState>,
-    Query(params): Query<RcBlockHeadQueryParams>,
+    JsonQuery(params): JsonQuery<RcBlockHeadQueryParams>,
 ) -> Result<Response, GetRcBlockHeadError> {
     let relay_client = state
         .get_relay_chain_client()

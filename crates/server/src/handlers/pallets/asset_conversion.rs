@@ -7,13 +7,14 @@
 //! - `/pallets/asset-conversion/liquidity-pools` - List all liquidity pools
 //! - `/pallets/asset-conversion/next-available-id` - Get the next available pool asset ID
 
+use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{AtResponse, PalletError, resolve_block_for_pallet};
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -87,8 +88,8 @@ pub struct LiquidityPoolsResponse {
     summary = "Next available pool ID",
     description = "Returns the next available pool asset ID from the AssetConversion pallet.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Next available ID", body = Object),
@@ -97,7 +98,7 @@ pub struct LiquidityPoolsResponse {
 )]
 pub async fn get_next_available_id(
     State(state): State<AppState>,
-    Query(params): Query<AssetConversionQueryParams>,
+    JsonQuery(params): JsonQuery<AssetConversionQueryParams>,
 ) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_next_id_with_rc_block(state, params).await;
@@ -192,8 +193,8 @@ async fn handle_next_id_with_rc_block(
     summary = "Liquidity pools",
     description = "Returns all liquidity pools from the AssetConversion pallet.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Liquidity pools", body = Object),
@@ -202,7 +203,7 @@ async fn handle_next_id_with_rc_block(
 )]
 pub async fn get_liquidity_pools(
     State(state): State<AppState>,
-    Query(params): Query<AssetConversionQueryParams>,
+    JsonQuery(params): JsonQuery<AssetConversionQueryParams>,
 ) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_pools_with_rc_block(state, params).await;

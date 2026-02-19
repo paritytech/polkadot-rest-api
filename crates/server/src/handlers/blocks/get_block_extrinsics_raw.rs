@@ -6,11 +6,12 @@
 //! This module provides a handler for fetching raw block data with hex-encoded extrinsics.
 //! Unlike the main /blocks/{blockId} endpoint, this returns raw extrinsic bytes without decoding.
 
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse, Response},
 };
 use polkadot_rest_api_config::ChainType;
@@ -94,7 +95,7 @@ pub struct BlockRawResponse {
     description = "Returns raw block data with hex-encoded extrinsics for a given block identifier. The extrinsics are returned as raw hex strings without decoding.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
-        ("useRcBlock" = Option<bool>, Query, description = "When true, treat blockId as Relay Chain block and return Asset Hub blocks")
+        ("useRcBlock" = Option<bool>, description = "When true, treat blockId as Relay Chain block and return Asset Hub blocks")
     ),
     responses(
         (status = 200, description = "Raw block data with hex-encoded extrinsics", body = Object),
@@ -105,7 +106,7 @@ pub struct BlockRawResponse {
 pub async fn get_block_extrinsics_raw(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
-    Query(params): Query<BlockRawExtrinsicsQueryParams>,
+    JsonQuery(params): JsonQuery<BlockRawExtrinsicsQueryParams>,
 ) -> Result<Response, GetBlockError> {
     if params.use_rc_block {
         return handle_use_rc_block(state, block_id).await;

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::handlers::coretime::common::{
     AtResponse, CoretimeError, CoretimeQueryParams, has_broker_pallet, has_coretime_pallet,
 };
@@ -8,7 +9,7 @@ use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -160,7 +161,7 @@ struct StatusRecord {
     summary = "Get coretime info",
     description = "Returns coretime chain status information including the last committed timeslice.",
     params(
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Coretime info", body = Object),
@@ -170,7 +171,7 @@ struct StatusRecord {
 )]
 pub async fn coretime_info(
     State(state): State<AppState>,
-    Query(params): Query<CoretimeQueryParams>,
+    JsonQuery(params): JsonQuery<CoretimeQueryParams>,
 ) -> Result<Response, CoretimeError> {
     // Parse the block ID if provided
     let block_id = match &params.at {

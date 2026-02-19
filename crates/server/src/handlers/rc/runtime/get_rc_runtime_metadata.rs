@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::handlers::runtime::{RuntimeMetadataResponse, VERSION_REGEX, convert_metadata};
 use crate::state::{AppState, RelayChainError, SubstrateLegacyRpc};
 use crate::utils;
@@ -139,7 +140,7 @@ async fn resolve_relay_block_hash(
     summary = "RC get runtime metadata",
     description = "Returns the decoded runtime metadata of the relay chain in JSON format.",
     params(
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Relay chain runtime metadata", body = Object),
@@ -149,7 +150,7 @@ async fn resolve_relay_block_hash(
 )]
 pub async fn get_rc_runtime_metadata(
     State(state): State<AppState>,
-    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+    JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<RuntimeMetadataResponse>, GetRcMetadataError> {
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
@@ -204,7 +205,7 @@ pub async fn get_rc_runtime_metadata(
     summary = "RC get metadata versions",
     description = "Returns the available metadata versions on the relay chain at a given block.",
     params(
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Available metadata versions", body = Object),
@@ -214,7 +215,7 @@ pub async fn get_rc_runtime_metadata(
 )]
 pub async fn get_rc_runtime_metadata_versions(
     State(state): State<AppState>,
-    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+    JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<Vec<String>>, GetRcMetadataError> {
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
@@ -269,7 +270,7 @@ pub async fn get_rc_runtime_metadata_versions(
     description = "Returns the relay chain metadata at a specific version (e.g., v14, v15).",
     params(
         ("version" = String, Path, description = "Metadata version in 'vX' format (e.g., v14, v15)"),
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Relay chain metadata at specified version", body = Object),
@@ -281,7 +282,7 @@ pub async fn get_rc_runtime_metadata_versions(
 pub async fn get_rc_runtime_metadata_versioned(
     State(state): State<AppState>,
     Path(version): Path<String>,
-    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+    JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<RuntimeMetadataResponse>, GetRcMetadataError> {
     let version_num: u32 = match VERSION_REGEX.captures(&version) {
         Some(caps) => caps

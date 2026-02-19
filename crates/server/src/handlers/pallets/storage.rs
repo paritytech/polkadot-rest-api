@@ -10,6 +10,7 @@
 // which is large by design. Boxing would add indirection without significant benefit.
 #![allow(clippy::result_large_err)]
 
+use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     PalletError, RcPalletQueryParams, resolve_block_for_pallet,
 };
@@ -17,9 +18,7 @@ use crate::state::AppState;
 use crate::utils;
 use crate::utils::format::to_camel_case;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
-use axum::{
-    Json, extract::Path, extract::Query, extract::State, response::IntoResponse, response::Response,
-};
+use axum::{Json, extract::Path, extract::State, response::IntoResponse, response::Response};
 use frame_metadata::decode_different::DecodeDifferent;
 use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
 use parity_scale_codec::Decode;
@@ -203,9 +202,9 @@ fn extract_default_bytes<G>(default: &DecodeDifferent<G, Vec<u8>>) -> String {
     description = "Returns the list of storage items for a given pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, Query, description = "Only return storage item names"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, description = "Only return storage item names"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Pallet storage items", body = Object),
@@ -216,7 +215,7 @@ fn extract_default_bytes<G>(default: &DecodeDifferent<G, Vec<u8>>) -> String {
 pub async fn get_pallets_storage(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
-    Query(params): Query<StorageQueryParams>,
+    JsonQuery(params): JsonQuery<StorageQueryParams>,
 ) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_use_rc_block(state, pallet_id, params).await;
@@ -355,10 +354,10 @@ async fn handle_use_rc_block(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("storageItemId" = String, Path, description = "Name of the storage item"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("keys" = Option<String>, Query, description = "Storage key arguments"),
-        ("metadata" = Option<bool>, Query, description = "Include metadata for the storage item"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("keys" = Option<String>, description = "Storage key arguments"),
+        ("metadata" = Option<bool>, description = "Include metadata for the storage item"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Storage item value", body = Object),
@@ -370,7 +369,7 @@ async fn handle_use_rc_block(
 pub async fn get_pallets_storage_item(
     State(state): State<AppState>,
     Path((pallet_id, storage_item_id)): Path<(String, String)>,
-    Query(params): Query<StorageItemQueryParams>,
+    JsonQuery(params): JsonQuery<StorageItemQueryParams>,
 ) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_storage_item_use_rc_block(state, pallet_id, storage_item_id, params).await;
@@ -1962,8 +1961,8 @@ pub struct RcStorageItemQueryParams {
     description = "Returns the list of storage items for a relay chain pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, Query, description = "Only return storage item names")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, description = "Only return storage item names")
     ),
     responses(
         (status = 200, description = "Relay chain pallet storage items", body = Object),
@@ -1974,7 +1973,7 @@ pub struct RcStorageItemQueryParams {
 pub async fn rc_get_pallets_storage(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
-    Query(params): Query<RcPalletQueryParams>,
+    JsonQuery(params): JsonQuery<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
@@ -2010,9 +2009,9 @@ pub async fn rc_get_pallets_storage(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("storageItemId" = String, Path, description = "Name of the storage item"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("keys" = Option<String>, Query, description = "Storage key arguments"),
-        ("metadata" = Option<bool>, Query, description = "Include metadata for the storage item")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("keys" = Option<String>, description = "Storage key arguments"),
+        ("metadata" = Option<bool>, description = "Include metadata for the storage item")
     ),
     responses(
         (status = 200, description = "Relay chain storage item value", body = Object),
@@ -2024,7 +2023,7 @@ pub async fn rc_get_pallets_storage(
 pub async fn rc_get_pallets_storage_item(
     State(state): State<AppState>,
     Path((pallet_id, storage_item_id)): Path<(String, String)>,
-    Query(params): Query<RcStorageItemQueryParams>,
+    JsonQuery(params): JsonQuery<RcStorageItemQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()

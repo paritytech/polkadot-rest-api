@@ -7,6 +7,7 @@
 //! Referenda pallet. Only relay chains (Polkadot, Kusama) support this endpoint
 //! as parachains don't have governance.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     AtResponse, ClientAtBlock, PalletError, format_account_id, resolve_block_for_pallet,
 };
@@ -15,7 +16,7 @@ use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -165,8 +166,8 @@ struct DecidingDetails {
     summary = "On-going referenda",
     description = "Returns all currently active referenda from the Referenda pallet.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Active referenda", body = Object),
@@ -175,7 +176,7 @@ struct DecidingDetails {
 )]
 pub async fn pallets_on_going_referenda(
     State(state): State<AppState>,
-    Query(params): Query<OnGoingReferendaQueryParams>,
+    JsonQuery(params): JsonQuery<OnGoingReferendaQueryParams>,
 ) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_use_rc_block(state, params).await;
@@ -481,7 +482,7 @@ pub struct RcOnGoingReferendaQueryParams {
     summary = "RC on-going referenda",
     description = "Returns all currently active referenda from the relay chain's Referenda pallet.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Active referenda from relay chain", body = Object),
@@ -490,7 +491,7 @@ pub struct RcOnGoingReferendaQueryParams {
 )]
 pub async fn rc_pallets_on_going_referenda(
     State(state): State<AppState>,
-    Query(params): Query<RcOnGoingReferendaQueryParams>,
+    JsonQuery(params): JsonQuery<RcOnGoingReferendaQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()

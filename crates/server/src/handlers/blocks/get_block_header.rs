@@ -6,6 +6,7 @@
 //! This module provides the handler for fetching block header information
 //! for a specific block identified by hash or number.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::blocks::common::convert_digest_items_to_logs;
 use crate::handlers::blocks::types::{
     BlockHeaderQueryParams, BlockHeaderResponse, GetBlockHeaderError,
@@ -15,7 +16,7 @@ use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block_at};
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse, Response},
 };
 use polkadot_rest_api_config::ChainType;
@@ -29,7 +30,7 @@ use serde_json::json;
     description = "Returns the header of the specified block (lightweight, no extrinsics/events).",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat blockId as Relay Chain block and return Asset Hub blocks")
+        ("useRcBlock" = Option<bool>, description = "Treat blockId as Relay Chain block and return Asset Hub blocks")
     ),
     responses(
         (status = 200, description = "Block header information", body = Object),
@@ -40,7 +41,7 @@ use serde_json::json;
 pub async fn get_block_header(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
-    Query(params): Query<BlockHeaderQueryParams>,
+    JsonQuery(params): JsonQuery<BlockHeaderQueryParams>,
 ) -> Result<Response, GetBlockHeaderError> {
     if params.use_rc_block {
         return handle_use_rc_block(state, block_id, params).await;

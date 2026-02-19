@@ -1,11 +1,12 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils::extract_block_number_from_header;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -149,7 +150,7 @@ fn default_depth() -> String {
     description = "Returns inclusion information for a given parachain block, searching relay chain blocks for when the parachain block was included.",
     params(
         ("number" = String, Path, description = "Parachain block number"),
-        ("depth" = Option<String>, Query, description = "Search depth for relay chain blocks (max 100, default 10, must be divisible by 5)")
+        ("depth" = Option<String>, description = "Search depth for relay chain blocks (max 100, default 10, must be divisible by 5)")
     ),
     responses(
         (status = 200, description = "Parachain inclusion information", body = Object),
@@ -160,7 +161,7 @@ fn default_depth() -> String {
 pub async fn get_paras_inclusion(
     State(state): State<AppState>,
     Path(number): Path<String>,
-    Query(params): Query<ParasInclusionQueryParams>,
+    JsonQuery(params): JsonQuery<ParasInclusionQueryParams>,
 ) -> Result<Json<ParasInclusionResponse>, ParasInclusionError> {
     let search_depth = validate_depth(params.depth)?;
 

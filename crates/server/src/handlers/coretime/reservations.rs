@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::handlers::coretime::common::{
     AtResponse, CoretimeError, CoretimeQueryParams, ScheduleItem, has_broker_pallet,
 };
@@ -8,7 +9,7 @@ use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -54,7 +55,7 @@ pub struct CoretimeReservationsResponse {
     summary = "Get coretime reservations",
     description = "Returns all reservations on a coretime chain. Reserved cores are permanently allocated and not available for sale.",
     params(
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Coretime reservations", body = Object),
@@ -64,7 +65,7 @@ pub struct CoretimeReservationsResponse {
 )]
 pub async fn coretime_reservations(
     State(state): State<AppState>,
-    Query(params): Query<CoretimeQueryParams>,
+    JsonQuery(params): JsonQuery<CoretimeQueryParams>,
 ) -> Result<Response, CoretimeError> {
     // Parse the block ID if provided
     let block_id = match &params.at {

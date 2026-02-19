@@ -8,6 +8,7 @@
 
 #![allow(clippy::result_large_err)]
 
+use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
     RcPalletItemQueryParams, RcPalletQueryParams, resolve_block_for_pallet, resolve_type_name,
@@ -17,7 +18,7 @@ use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -116,8 +117,8 @@ pub struct EventField {
     description = "Returns all events defined in a pallet.",
     params(
         ("palletId" = String, Path, description = "Pallet name or index"),
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
-        ("onlyIds" = Option<bool>, Query, description = "Only return event names")
+        ("at" = Option<String>, description = "Block identifier (number or hash)"),
+        ("onlyIds" = Option<bool>, description = "Only return event names")
     ),
     responses(
         (status = 200, description = "Pallet events", body = Object),
@@ -129,7 +130,7 @@ pub struct EventField {
 pub async fn get_pallet_events(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
-    Query(params): Query<PalletQueryParams>,
+    JsonQuery(params): JsonQuery<PalletQueryParams>,
 ) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_events_use_rc_block(state, pallet_id, params).await;
@@ -163,8 +164,8 @@ pub async fn get_pallet_events(
     params(
         ("palletId" = String, Path, description = "Pallet name or index"),
         ("eventItemId" = String, Path, description = "Event name"),
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
-        ("metadata" = Option<bool>, Query, description = "Include full event metadata")
+        ("at" = Option<String>, description = "Block identifier (number or hash)"),
+        ("metadata" = Option<bool>, description = "Include full event metadata")
     ),
     responses(
         (status = 200, description = "Event item details", body = Object),
@@ -176,7 +177,7 @@ pub async fn get_pallet_events(
 pub async fn get_pallet_event_item(
     State(state): State<AppState>,
     Path((pallet_id, event_item_id)): Path<(String, String)>,
-    Query(params): Query<PalletItemQueryParams>,
+    JsonQuery(params): JsonQuery<PalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_event_item_use_rc_block(state, pallet_id, event_item_id, params).await;
@@ -515,8 +516,8 @@ fn extract_event_item_from_metadata(
     description = "Returns all events defined in a relay chain pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, Query, description = "Only return event names")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, description = "Only return event names")
     ),
     responses(
         (status = 200, description = "Relay chain pallet events", body = Object),
@@ -527,7 +528,7 @@ fn extract_event_item_from_metadata(
 pub async fn rc_pallet_events(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
-    Query(params): Query<RcPalletQueryParams>,
+    JsonQuery(params): JsonQuery<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()
@@ -577,8 +578,8 @@ pub async fn rc_pallet_events(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("eventItemId" = String, Path, description = "Event name"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("metadata" = Option<bool>, Query, description = "Include full event metadata")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, description = "Include full event metadata")
     ),
     responses(
         (status = 200, description = "Relay chain event details", body = Object),
@@ -589,7 +590,7 @@ pub async fn rc_pallet_events(
 pub async fn rc_pallet_event_item(
     State(state): State<AppState>,
     Path((pallet_id, event_item_id)): Path<(String, String)>,
-    Query(params): Query<RcPalletItemQueryParams>,
+    JsonQuery(params): JsonQuery<RcPalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()

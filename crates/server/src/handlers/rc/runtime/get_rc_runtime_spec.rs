@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::handlers::runtime::{
     RuntimeSpecResponse, SpecBlockInfo, transform_chain_type, transform_properties,
 };
@@ -94,7 +95,7 @@ pub struct AtBlockParam {
     summary = "RC get runtime spec",
     description = "Returns the runtime spec of the relay chain at a given block.",
     params(
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Relay chain runtime spec", body = Object),
@@ -104,7 +105,7 @@ pub struct AtBlockParam {
 )]
 pub async fn get_rc_runtime_spec(
     State(state): State<AppState>,
-    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+    JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<RuntimeSpecResponse>, GetRcSpecError> {
     let relay_client = state
         .get_relay_chain_client()

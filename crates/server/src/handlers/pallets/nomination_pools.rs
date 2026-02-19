@@ -6,6 +6,7 @@
 //! This module provides endpoints for querying nomination pool information
 //! on Polkadot and Kusama networks.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, format_account_id, resolve_block_for_pallet,
 };
@@ -14,7 +15,7 @@ use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -176,7 +177,7 @@ struct RewardPoolStorageV1 {
     summary = "Nomination pools info",
     description = "Returns global nomination pools statistics and configuration.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Nomination pools information", body = Object),
@@ -186,7 +187,7 @@ struct RewardPoolStorageV1 {
 )]
 pub async fn pallets_nomination_pools_info(
     State(state): State<AppState>,
-    Query(params): Query<NominationPoolsQueryParams>,
+    JsonQuery(params): JsonQuery<NominationPoolsQueryParams>,
 ) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_info_use_rc_block(state, params).await;
@@ -216,7 +217,7 @@ pub async fn pallets_nomination_pools_info(
     description = "Returns details for a specific nomination pool.",
     params(
         ("poolId" = String, Path, description = "Pool ID"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Pool details", body = Object),
@@ -227,7 +228,7 @@ pub async fn pallets_nomination_pools_info(
 pub async fn pallets_nomination_pools_pool(
     State(state): State<AppState>,
     Path(pool_id): Path<String>,
-    Query(params): Query<NominationPoolsQueryParams>,
+    JsonQuery(params): JsonQuery<NominationPoolsQueryParams>,
 ) -> Result<Response, PalletError> {
     // Parse pool ID
     let pool_id: u32 = pool_id

@@ -1,13 +1,10 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils;
-use axum::{
-    Json,
-    extract::{Query, State},
-    response::IntoResponse,
-};
+use axum::{Json, extract::State, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
@@ -128,7 +125,7 @@ pub struct TransactionPoolResponse {
 )]
 pub async fn get_node_transaction_pool(
     State(state): State<AppState>,
-    Query(params): Query<TransactionPoolQueryParams>,
+    JsonQuery(params): JsonQuery<TransactionPoolQueryParams>,
 ) -> Result<Json<TransactionPoolResponse>, GetNodeTransactionPoolError> {
     let response = if params.include_fee {
         fetch_transaction_pool_with_fees(&state.rpc_client).await?
@@ -142,9 +139,10 @@ pub async fn get_node_transaction_pool(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extractors::JsonQuery;
     use crate::state::AppState;
     use crate::test_fixtures::mock_rpc_client_builder;
-    use axum::extract::{Query, State};
+    use axum::extract::State;
     use polkadot_rest_api_config::SidecarConfig;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
@@ -239,7 +237,7 @@ mod tests {
         let state = create_test_state_with_mock(mock_client).await;
         let params = TransactionPoolQueryParams { include_fee: false };
 
-        let result = get_node_transaction_pool(State(state), Query(params)).await;
+        let result = get_node_transaction_pool(State(state), JsonQuery(params)).await;
         assert!(result.is_ok());
 
         let response = result.unwrap().0;
@@ -263,7 +261,7 @@ mod tests {
         let state = create_test_state_with_mock(mock_client).await;
         let params = TransactionPoolQueryParams { include_fee: false };
 
-        let result = get_node_transaction_pool(State(state), Query(params)).await;
+        let result = get_node_transaction_pool(State(state), JsonQuery(params)).await;
         assert!(result.is_ok());
 
         let response = result.unwrap().0;
@@ -310,7 +308,7 @@ mod tests {
         let state = create_test_state_with_mock(mock_client).await;
         let params = TransactionPoolQueryParams { include_fee: true };
 
-        let result = get_node_transaction_pool(State(state), Query(params)).await;
+        let result = get_node_transaction_pool(State(state), JsonQuery(params)).await;
         if let Ok(response) = result {
             assert_eq!(response.pool.len(), 1);
             let entry = &response.pool[0];

@@ -3,6 +3,7 @@
 
 //! Handler for /pallets/assets/{assetId}/asset-info endpoint.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     AssetDetails, AssetMetadataStorage, AtResponse, ClientAtBlock, PalletError, format_account_id,
     resolve_block_for_pallet,
@@ -14,7 +15,7 @@ use crate::utils::{
 };
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -88,7 +89,7 @@ pub struct PalletsAssetsInfoResponse {
     description = "Returns details for a specific asset including supply, admin, and metadata.",
     params(
         ("assetId" = String, Path, description = "Asset ID"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Asset information", body = Object),
@@ -99,7 +100,7 @@ pub struct PalletsAssetsInfoResponse {
 pub async fn pallets_assets_asset_info(
     State(state): State<AppState>,
     Path(asset_id): Path<String>,
-    Query(params): Query<AssetsQueryParams>,
+    JsonQuery(params): JsonQuery<AssetsQueryParams>,
 ) -> Result<Response, PalletError> {
     let asset_id: u32 = asset_id
         .parse()

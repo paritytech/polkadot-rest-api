@@ -6,6 +6,7 @@
 //! Returns information about all foreign assets on Asset Hub chains.
 //! Foreign assets are cross-chain assets identified by XCM MultiLocation.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::common::xcm_types::{Location, decode_multi_location_from_bytes};
 use crate::handlers::pallets::common::{
     AtResponse, ClientAtBlock, PalletError, format_account_id, resolve_block_for_pallet,
@@ -15,7 +16,7 @@ use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -120,7 +121,7 @@ struct AssetMetadataStorage {
     summary = "Foreign assets",
     description = "Returns all foreign assets with their details and metadata. Foreign assets use XCM MultiLocation as their identifier.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Foreign assets list", body = Object),
@@ -130,7 +131,7 @@ struct AssetMetadataStorage {
 )]
 pub async fn pallets_foreign_assets(
     State(state): State<AppState>,
-    Query(params): Query<ForeignAssetsQueryParams>,
+    JsonQuery(params): JsonQuery<ForeignAssetsQueryParams>,
 ) -> Result<Response, PalletError> {
     // Foreign assets only exist on Asset Hub chains
     if state.chain_info.chain_type != ChainType::AssetHub {

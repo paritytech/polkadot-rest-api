@@ -1,13 +1,14 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::handlers::blocks::common::convert_digest_items_to_logs;
 use crate::handlers::blocks::types::{BlockHeaderResponse, convert_digest_logs_to_sidecar_format};
 use crate::state::AppState;
 use crate::utils::{self, RcBlockError, fetch_block_timestamp, find_ah_blocks_in_rc_block_at};
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -104,8 +105,8 @@ impl IntoResponse for GetBlockHeadHeaderError {
     summary = "Get head block header",
     description = "Returns the header of the latest finalized or canonical block (lightweight, no extrinsics/events).",
     params(
-        ("finalized" = Option<bool>, Query, description = "When true (default), returns finalized head header. When false, returns canonical head header."),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat as Relay Chain block and return Asset Hub blocks")
+        ("finalized" = Option<bool>, description = "When true (default), returns finalized head header. When false, returns canonical head header."),
+        ("useRcBlock" = Option<bool>, description = "Treat as Relay Chain block and return Asset Hub blocks")
     ),
     responses(
         (status = 200, description = "Block header information", body = Object),
@@ -114,7 +115,7 @@ impl IntoResponse for GetBlockHeadHeaderError {
 )]
 pub async fn get_blocks_head_header(
     State(state): State<AppState>,
-    Query(params): Query<BlockQueryParams>,
+    JsonQuery(params): JsonQuery<BlockQueryParams>,
 ) -> Result<Response, GetBlockHeadHeaderError> {
     if params.use_rc_block {
         return handle_use_rc_block(state, params).await;
