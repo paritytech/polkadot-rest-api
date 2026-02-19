@@ -327,4 +327,12 @@ mod tests {
         assert!(xcm.get("downwardMessages").is_some());
         assert!(xcm.get("upwardMessages").is_some());
     }
+
+    #[test]
+    fn test_rc_block_query_params_rejects_unknown_fields() {
+        let json = r#"{"eventDocs": true, "unknownField": true}"#;
+        let result: Result<RcBlockQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
 }

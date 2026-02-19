@@ -416,4 +416,12 @@ mod tests {
             "Relay chain api must be available"
         );
     }
+
+    #[test]
+    fn test_paras_inclusion_query_params_rejects_unknown_fields() {
+        let json = r#"{"depth": "10", "unknownField": true}"#;
+        let result: Result<ParasInclusionQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
 }

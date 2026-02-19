@@ -647,4 +647,12 @@ mod tests {
         assert_eq!(params.at, Some("0xabc123".to_string()));
         assert!(!params.use_rc_block);
     }
+
+    #[test]
+    fn test_asset_conversion_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<AssetConversionQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
 }

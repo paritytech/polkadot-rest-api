@@ -585,5 +585,17 @@ mod tests {
     }
 
     // ------------------------------------------------------------------------
+    // deny_unknown_fields tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_coretime_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "123", "unknownField": true}"#;
+        let result: Result<CoretimeQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    // ------------------------------------------------------------------------
     // decode_compact_u32 tests
 }

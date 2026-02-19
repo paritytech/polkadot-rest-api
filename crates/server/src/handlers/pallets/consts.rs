@@ -788,4 +788,55 @@ mod tests {
         let json = serde_json::to_string(&items).unwrap();
         assert_eq!(json, r#"["Item1","Item2"]"#);
     }
+
+    // ========================================================================
+    // deny_unknown_fields tests
+    // ========================================================================
+
+    #[test]
+    fn test_constants_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "123", "unknownField": true}"#;
+        let result: Result<ConstantsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("unknown field"),
+            "Expected 'unknown field' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_constants_query_params_rejects_misspelled_field() {
+        // "onlyids" instead of "onlyIds" (camelCase)
+        let json = r#"{"onlyids": true}"#;
+        let result: Result<ConstantsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_constant_item_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "456", "extra": "value"}"#;
+        let result: Result<ConstantItemQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("unknown field"));
+    }
+
+    #[test]
+    fn test_constants_query_params_accepts_all_known_fields() {
+        let json = r#"{"at": "123", "onlyIds": true, "useRcBlock": false}"#;
+        let params: ConstantsQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.at, Some("123".to_string()));
+        assert!(params.only_ids);
+        assert!(!params.use_rc_block);
+    }
+
+    #[test]
+    fn test_constant_item_query_params_accepts_all_known_fields() {
+        let json = r#"{"at": "100", "metadata": true, "useRcBlock": true}"#;
+        let params: ConstantItemQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.at, Some("100".to_string()));
+        assert!(params.metadata);
+        assert!(params.use_rc_block);
+    }
 }

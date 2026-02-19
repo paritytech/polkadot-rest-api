@@ -310,3 +310,16 @@ async fn build_rc_block_response(
         ah_timestamp: None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rc_blocks_range_query_params_rejects_unknown_fields() {
+        let json = r#"{"range": "100-200", "unknownField": true}"#;
+        let result: Result<RcBlocksRangeQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+}

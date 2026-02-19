@@ -526,4 +526,12 @@ mod tests {
         // finalized should be omitted when None
         assert!(json.get("finalized").is_none());
     }
+
+    #[test]
+    fn test_rc_block_head_query_params_rejects_unknown_fields() {
+        let json = r#"{"finalized": true, "unknownField": true}"#;
+        let result: Result<RcBlockHeadQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
 }

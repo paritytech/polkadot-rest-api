@@ -371,3 +371,49 @@ async fn build_head_block_response(
         ah_timestamp: None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_block_head_query_params_rejects_unknown_fields() {
+        let json = r#"{"finalized": true, "unknownField": true}"#;
+        let result: Result<BlockHeadQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_block_head_query_params_accepts_known_fields() {
+        let json = r#"{
+            "finalized": false,
+            "eventDocs": true,
+            "extrinsicDocs": true,
+            "noFees": true,
+            "decodedXcmMsgs": true,
+            "paraId": 1000,
+            "useRcBlock": true,
+            "useEvmFormat": true
+        }"#;
+        let result: Result<BlockHeadQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_ok());
+        let params = result.unwrap();
+        assert!(!params.finalized);
+        assert!(params.event_docs);
+        assert!(params.extrinsic_docs);
+        assert!(params.no_fees);
+        assert!(params.decoded_xcm_msgs);
+        assert_eq!(params.para_id, Some(1000));
+        assert!(params.use_rc_block);
+        assert!(params.use_evm_format);
+    }
+
+    #[test]
+    fn test_block_head_query_params_rejects_snake_case_field() {
+        let json = r#"{"event_docs": true}"#;
+        let result: Result<BlockHeadQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+}
