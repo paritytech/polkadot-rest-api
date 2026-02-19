@@ -5,5 +5,10 @@
 //!
 //! This module provides standalone functions for querying various pallet storage items.
 //! Each submodule handles a specific pallet.
+//!
+//! # Available Modules
+//! - `assets` - Assets pallet (asset details, metadata, balances, approvals)
+//! - `staking` - Staking pallet (ledger, nominations, rewards, etc.)
 
+pub mod assets;
 pub mod staking;
