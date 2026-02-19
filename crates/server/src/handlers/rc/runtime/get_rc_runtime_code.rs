@@ -30,6 +30,17 @@ pub enum GetRcCodeError {
     ServiceUnavailable(String),
 }
 
+impl From<utils::ResolveClientAtBlockError> for GetRcCodeError {
+    fn from(err: utils::ResolveClientAtBlockError) -> Self {
+        match err {
+            utils::ResolveClientAtBlockError::ParseError(e) => GetRcCodeError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::SubxtError(e) => {
+                GetRcCodeError::ClientAtBlockFailed(Box::new(e))
+            }
+        }
+    }
+}
+
 impl IntoResponse for GetRcCodeError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
@@ -116,20 +127,8 @@ pub async fn get_rc_runtime_code(
         .get_relay_chain_client()
         .ok_or(GetRcCodeError::RelayChainNotConfigured)?;
 
-    let client_at_block = match params.at {
-        None => relay_client
-            .at_current_block()
-            .await
-            .map_err(|e| GetRcCodeError::ClientAtBlockFailed(Box::new(e)))?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<crate::utils::BlockId>()?;
-            match block_id {
-                crate::utils::BlockId::Hash(hash) => relay_client.at_block(hash).await,
-                crate::utils::BlockId::Number(number) => relay_client.at_block(number).await,
-            }
-            .map_err(|e| GetRcCodeError::ClientAtBlockFailed(Box::new(e)))?
-        }
-    };
+    let client_at_block =
+        utils::resolve_client_at_block(relay_client.as_ref(), params.at.as_ref()).await?;
 
     let block_hash = format!("{:#x}", client_at_block.block_hash());
     let block_number = client_at_block.block_number();

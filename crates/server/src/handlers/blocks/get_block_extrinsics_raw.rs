@@ -118,13 +118,7 @@ async fn build_block_raw_response(
     state: &AppState,
     block_id: String,
 ) -> Result<BlockRawResponse, GetBlockError> {
-    let block_id_parsed = block_id.parse::<utils::BlockId>()?;
-
-    let client_at_block = match &block_id_parsed {
-        utils::BlockId::Hash(hash) => state.client.at_block(*hash).await,
-        utils::BlockId::Number(number) => state.client.at_block(*number).await,
-    }
-    .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+    let client_at_block = utils::resolve_client_at_block(&state.client, Some(&block_id)).await?;
 
     let block_hash = format!("{:#x}", client_at_block.block_hash());
     let block_number = client_at_block.block_number();

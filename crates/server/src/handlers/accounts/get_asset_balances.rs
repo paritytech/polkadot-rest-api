@@ -64,16 +64,7 @@ pub async fn get_asset_balances(
         .transpose()?;
     let resolved_block = utils::resolve_block(&state, block_id).await?;
 
-    let client_at_block = match params.at {
-        None => state.client.at_current_block().await?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<utils::BlockId>()?;
-            match block_id {
-                utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-                utils::BlockId::Number(number) => state.client.at_block(number).await?,
-            }
-        }
-    };
+    let client_at_block = utils::resolve_client_at_block(&state.client, params.at.as_ref()).await?;
 
     let assets = params.assets.as_deref().unwrap_or(&[]);
     let response =

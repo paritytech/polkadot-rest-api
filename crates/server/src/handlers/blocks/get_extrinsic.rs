@@ -69,11 +69,8 @@ pub async fn get_extrinsic(
         .parse()
         .map_err(|_| GetBlockError::InvalidExtrinsicIndex(path_params.extrinsic_index.clone()))?;
 
-    let block_id_parsed = path_params.block_id.parse::<utils::BlockId>()?;
-    let client_at_block = match block_id_parsed {
-        utils::BlockId::Hash(hash) => state.client.at_block(hash).await?,
-        utils::BlockId::Number(number) => state.client.at_block(number).await?,
-    };
+    let client_at_block =
+        utils::resolve_client_at_block(&state.client, Some(&path_params.block_id)).await?;
 
     let block_hash = format!("{:#x}", client_at_block.block_hash());
     let block_number = client_at_block.block_number();
