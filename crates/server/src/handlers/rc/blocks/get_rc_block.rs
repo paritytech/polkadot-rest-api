@@ -27,7 +27,7 @@ use thiserror::Error;
 
 /// Query parameters for /rc/blocks/{blockId} endpoint
 #[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcBlockQueryParams {
     /// When true, include documentation for events
     #[serde(default)]
@@ -326,5 +326,13 @@ mod tests {
         assert!(xcm.get("horizontalMessages").is_some());
         assert!(xcm.get("downwardMessages").is_some());
         assert!(xcm.get("upwardMessages").is_some());
+    }
+
+    #[test]
+    fn test_rc_block_query_params_rejects_unknown_fields() {
+        let json = r#"{"eventDocs": true, "unknownField": true}"#;
+        let result: Result<RcBlockQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 }

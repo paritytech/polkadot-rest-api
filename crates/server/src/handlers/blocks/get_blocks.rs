@@ -17,7 +17,7 @@ use super::get_block::build_block_response_for_hash;
 use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BlocksRangeQueryParams {
     pub range: Option<String>,
     #[serde(default)]
@@ -211,4 +211,38 @@ async fn resolve_rc_block(
     let resolved =
         utils::resolve_block_with_rpc(rc_rpc_client, rc_legacy_rpc, Some(block_id)).await?;
     Ok(resolved)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_blocks_range_query_params_rejects_unknown_fields() {
+        let json = r#"{"range": "1-10", "unknownField": true}"#;
+        let result: Result<BlocksRangeQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_blocks_range_query_params_accepts_known_fields() {
+        let json = r#"{
+            "range": "100-200",
+            "eventDocs": true,
+            "extrinsicDocs": true,
+            "noFees": true,
+            "useRcBlock": true,
+            "useEvmFormat": true
+        }"#;
+        let result: Result<BlocksRangeQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_ok());
+        let params = result.unwrap();
+        assert_eq!(params.range, Some("100-200".to_string()));
+        assert!(params.event_docs);
+        assert!(params.extrinsic_docs);
+        assert!(params.no_fees);
+        assert!(params.use_rc_block);
+        assert!(params.use_evm_format);
+    }
 }

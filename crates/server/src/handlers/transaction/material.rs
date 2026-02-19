@@ -15,7 +15,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MaterialQuery {
     /// Block hash or number to query at. If not provided, queries finalized head.
     pub at: Option<String>,
@@ -831,5 +831,13 @@ mod tests {
         assert!(parse_metadata_version("").is_err());
         assert!(parse_metadata_version("vABC").is_err());
         assert!(parse_metadata_version("v-1").is_err());
+    }
+
+    #[test]
+    fn test_material_query_rejects_unknown_fields() {
+        let json = r#"{"at": "123", "unknownField": true}"#;
+        let result: Result<MaterialQuery, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 }

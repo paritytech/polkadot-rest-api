@@ -26,7 +26,7 @@ use subxt::{OnlineClient, SubstrateConfig};
 
 /// Query parameters for GET /rc/blocks endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcBlocksRangeQueryParams {
     /// Range of blocks to fetch
     pub range: Option<String>,
@@ -309,4 +309,17 @@ async fn build_rc_block_response(
         rc_block_number: None,
         ah_timestamp: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rc_blocks_range_query_params_rejects_unknown_fields() {
+        let json = r#"{"range": "100-200", "unknownField": true}"#;
+        let result: Result<RcBlocksRangeQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
 }

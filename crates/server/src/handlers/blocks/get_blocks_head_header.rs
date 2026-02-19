@@ -19,6 +19,7 @@ use thiserror::Error;
 
 /// Query parameters for /blocks/head/header endpoint
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockQueryParams {
     /// When true (default), query finalized head. When false, query canonical head.
     #[serde(default = "default_finalized")]
@@ -259,4 +260,37 @@ async fn handle_use_rc_block(
     }
 
     Ok(Json(json!(results)).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_block_query_params_rejects_unknown_fields() {
+        let json = r#"{"finalized": true, "unknownField": true}"#;
+        let result: Result<BlockQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_block_query_params_accepts_known_fields() {
+        let json = r#"{"finalized": false, "useRcBlock": true}"#;
+        let result: Result<BlockQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_ok());
+        let params = result.unwrap();
+        assert!(!params.finalized);
+        assert!(params.use_rc_block);
+    }
+
+    #[test]
+    fn test_block_query_params_accepts_empty_object() {
+        let json = r#"{}"#;
+        let result: Result<BlockQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_ok());
+        let params = result.unwrap();
+        assert!(params.finalized); // default is true
+        assert!(!params.use_rc_block); // default is false
+    }
 }

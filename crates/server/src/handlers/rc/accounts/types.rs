@@ -38,7 +38,7 @@ pub type RelayChainAccessWithSpec<'a> = (
 
 /// Query parameters for GET /rc/accounts/{accountId}/balance-info endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcBalanceInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     #[serde(default)]
@@ -95,7 +95,7 @@ pub struct RcBalanceInfoResponse {
 
 /// Query parameters for GET /rc/accounts/{accountId}/proxy-info endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcProxyInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     #[serde(default)]
@@ -121,7 +121,7 @@ pub struct RcProxyInfoResponse {
 
 /// Query parameters for GET /rc/accounts/{accountId}/vesting-info endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcVestingInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     #[serde(default)]
@@ -144,7 +144,7 @@ pub struct RcVestingInfoResponse {
 
 /// Query parameters for GET /rc/accounts/{accountId}/staking-info endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcStakingInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     #[serde(default)]
@@ -183,7 +183,7 @@ pub struct RcStakingInfoResponse {
 
 /// Query parameters for GET /rc/accounts/{accountId}/staking-payouts endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcStakingPayoutsQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     #[serde(default)]
@@ -218,4 +218,49 @@ pub struct RcStakingPayoutsResponse {
 
     /// Array of era payouts
     pub eras_payouts: Vec<EraPayouts>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rc_balance_info_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "123", "unknownField": true}"#;
+        let result: Result<RcBalanceInfoQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_rc_proxy_info_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "123", "unknownField": true}"#;
+        let result: Result<RcProxyInfoQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_rc_vesting_info_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "123", "unknownField": true}"#;
+        let result: Result<RcVestingInfoQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_rc_staking_info_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "123", "unknownField": true}"#;
+        let result: Result<RcStakingInfoQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_rc_staking_payouts_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "123", "unknownField": true}"#;
+        let result: Result<RcStakingPayoutsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
 }

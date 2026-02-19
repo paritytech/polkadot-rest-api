@@ -87,7 +87,7 @@ impl IntoResponse for GetNodeTransactionPoolError {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TransactionPoolQueryParams {
     #[serde(default)]
     pub include_fee: bool,
@@ -367,5 +367,13 @@ mod tests {
         Compact(body.len() as u32).encode_to(&mut unsigned);
         unsigned.extend(body);
         assert_eq!(extract_tip_from_extrinsic_bytes(&unsigned), Ok(None));
+    }
+
+    #[test]
+    fn test_transaction_pool_query_params_rejects_unknown_fields() {
+        let json = r#"{"includeFee": true, "unknownField": true}"#;
+        let result: Result<TransactionPoolQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 }

@@ -20,6 +20,7 @@ pub struct CapabilitiesResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AtBlockParam {
     pub at: Option<String>,
 }
@@ -101,4 +102,35 @@ pub async fn get_capabilities(
         chain: state.chain_info.spec_name.clone(),
         pallets,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_at_block_param_rejects_unknown_fields() {
+        let json = r#"{"at": "100", "extra": "nope"}"#;
+        let result: Result<AtBlockParam, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("unknown field"),
+            "Expected 'unknown field' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_at_block_param_accepts_known_fields() {
+        let json = r#"{"at": "0xabc123"}"#;
+        let params: AtBlockParam = serde_json::from_str(json).unwrap();
+        assert_eq!(params.at, Some("0xabc123".to_string()));
+    }
+
+    #[test]
+    fn test_at_block_param_accepts_empty() {
+        let json = r#"{}"#;
+        let params: AtBlockParam = serde_json::from_str(json).unwrap();
+        assert_eq!(params.at, None);
+    }
 }

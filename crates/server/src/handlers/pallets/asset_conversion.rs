@@ -28,7 +28,7 @@ use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetConversionQueryParams {
     pub at: Option<String>,
     #[serde(default)]
@@ -646,5 +646,13 @@ mod tests {
         let params: AssetConversionQueryParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.at, Some("0xabc123".to_string()));
         assert!(!params.use_rc_block);
+    }
+
+    #[test]
+    fn test_asset_conversion_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<AssetConversionQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 }

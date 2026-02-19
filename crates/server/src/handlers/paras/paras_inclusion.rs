@@ -48,7 +48,7 @@ struct CandidateDescriptorDecoded {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ParasInclusionQueryParams {
     /// Search depth for relay chain blocks (max 100, default 10)
     #[serde(default = "default_depth")]
@@ -415,5 +415,13 @@ mod tests {
             ParasInclusionError::RelayChainNotAvailable.to_string(),
             "Relay chain api must be available"
         );
+    }
+
+    #[test]
+    fn test_paras_inclusion_query_params_rejects_unknown_fields() {
+        let json = r#"{"depth": "10", "unknownField": true}"#;
+        let result: Result<ParasInclusionQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 }

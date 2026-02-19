@@ -26,6 +26,7 @@ use super::types::{DigestLog, GetBlockError};
 
 /// Query parameters for /blocks/{blockId}/extrinsics-raw endpoint
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockRawExtrinsicsQueryParams {
     /// When true, treat blockId as Relay Chain block and return Asset Hub blocks
     #[serde(default, rename = "useRcBlock")]
@@ -232,4 +233,35 @@ fn extract_raw_extrinsics_from_json(
         .collect();
 
     Ok(raw_extrinsics)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_block_raw_extrinsics_query_params_rejects_unknown_fields() {
+        let json = r#"{"useRcBlock": true, "unknownField": true}"#;
+        let result: Result<BlockRawExtrinsicsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_block_raw_extrinsics_query_params_accepts_known_field() {
+        let json = r#"{"useRcBlock": true}"#;
+        let result: Result<BlockRawExtrinsicsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_ok());
+        let params = result.unwrap();
+        assert!(params.use_rc_block);
+    }
+
+    #[test]
+    fn test_block_raw_extrinsics_query_params_accepts_empty_object() {
+        let json = r#"{}"#;
+        let result: Result<BlockRawExtrinsicsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_ok());
+        let params = result.unwrap();
+        assert!(!params.use_rc_block); // default is false
+    }
 }
