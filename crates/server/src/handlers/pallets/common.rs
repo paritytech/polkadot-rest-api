@@ -168,6 +168,19 @@ pub enum PalletError {
     TimestampParseFailed,
 }
 
+impl From<crate::utils::ResolveClientAtBlockError> for PalletError {
+    fn from(err: crate::utils::ResolveClientAtBlockError) -> Self {
+        match err {
+            crate::utils::ResolveClientAtBlockError::ParseError(e) => {
+                PalletError::InvalidBlockParam(e)
+            }
+            crate::utils::ResolveClientAtBlockError::SubxtError(e) => {
+                PalletError::ClientAtBlockFailed(e)
+            }
+        }
+    }
+}
+
 impl IntoResponse for PalletError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {

@@ -294,6 +294,17 @@ impl From<OnlineClientAtBlockError> for AccountsError {
     }
 }
 
+impl From<utils::ResolveClientAtBlockError> for AccountsError {
+    fn from(err: utils::ResolveClientAtBlockError) -> Self {
+        match err {
+            utils::ResolveClientAtBlockError::ParseError(e) => AccountsError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::SubxtError(e) => {
+                AccountsError::ClientAtBlockFailed(Box::new(e))
+            }
+        }
+    }
+}
+
 impl From<crate::handlers::common::accounts::BalanceQueryError> for AccountsError {
     fn from(err: crate::handlers::common::accounts::BalanceQueryError) -> Self {
         AccountsError::BalanceQueryFailed(Box::new(err))

@@ -241,6 +241,17 @@ impl From<OnlineClientAtBlockError> for GetBlockError {
     }
 }
 
+impl From<utils::ResolveClientAtBlockError> for GetBlockError {
+    fn from(err: utils::ResolveClientAtBlockError) -> Self {
+        match err {
+            utils::ResolveClientAtBlockError::ParseError(e) => GetBlockError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::SubxtError(e) => {
+                GetBlockError::ClientAtBlockFailed(Box::new(e))
+            }
+        }
+    }
+}
+
 impl IntoResponse for GetBlockError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
@@ -338,6 +349,19 @@ pub enum GetBlockHeaderError {
 
     #[error("Failed to get client at block: {0}")]
     ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+}
+
+impl From<utils::ResolveClientAtBlockError> for GetBlockHeaderError {
+    fn from(err: utils::ResolveClientAtBlockError) -> Self {
+        match err {
+            utils::ResolveClientAtBlockError::ParseError(e) => {
+                GetBlockHeaderError::InvalidBlockParam(e)
+            }
+            utils::ResolveClientAtBlockError::SubxtError(e) => {
+                GetBlockHeaderError::ClientAtBlockFailed(e)
+            }
+        }
+    }
 }
 
 impl IntoResponse for GetBlockHeaderError {

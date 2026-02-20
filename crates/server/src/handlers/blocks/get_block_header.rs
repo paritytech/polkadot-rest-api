@@ -47,13 +47,7 @@ pub async fn get_block_header(
         return handle_use_rc_block(state, block_id, params).await;
     }
 
-    let block_id_parsed = block_id.parse::<utils::BlockId>()?;
-
-    let client_at_block = match &block_id_parsed {
-        utils::BlockId::Number(n) => state.client.at_block(*n).await,
-        utils::BlockId::Hash(h) => state.client.at_block(*h).await,
-    }
-    .map_err(GetBlockHeaderError::ClientAtBlockFailed)?;
+    let client_at_block = utils::resolve_client_at_block(&state.client, Some(&block_id)).await?;
 
     let header = client_at_block
         .block_header()

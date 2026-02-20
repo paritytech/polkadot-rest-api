@@ -89,6 +89,58 @@ pub struct ResolvedBlock {
     pub number: u64,
 }
 
+/// Resolves a client at a specific block from an optional `at` parameter string.
+///
+/// This is a convenience function that simplifies the common pattern of:
+/// 1. Parsing an optional `at` string to `BlockId`
+/// 2. Getting the client at that block (or current block if `at` is None)
+///
+/// # Arguments
+/// * `client` - The Subxt online client
+/// * `at` - Optional block identifier string (hash or number)
+///
+/// # Returns
+/// The client pinned at the specified block, or at the current block if `at` is None.
+///
+/// # Errors
+/// Returns `BlockIdParseError` if the `at` string cannot be parsed as a block hash or number.
+/// Returns `subxt::Error` if the block cannot be fetched.
+///
+/// # Example
+/// ```ignore
+/// let client_at_block = resolve_client_at_block(&state.client, params.at.as_ref()).await?;
+/// ```
+pub async fn resolve_client_at_block(
+    client: &subxt::OnlineClient<SubstrateConfig>,
+    at: Option<&String>,
+) -> Result<OnlineClientAtBlock<SubstrateConfig>, ResolveClientAtBlockError> {
+    match at {
+        None => client
+            .at_current_block()
+            .await
+            .map_err(ResolveClientAtBlockError::SubxtError),
+        Some(at_str) => {
+            let block_id = at_str
+                .parse::<BlockId>()
+                .map_err(ResolveClientAtBlockError::ParseError)?;
+            client
+                .at_block(block_id)
+                .await
+                .map_err(ResolveClientAtBlockError::SubxtError)
+        }
+    }
+}
+
+/// Error type for resolve_client_at_block
+#[derive(Debug, Error)]
+pub enum ResolveClientAtBlockError {
+    #[error("Failed to parse block identifier: {0}")]
+    ParseError(#[from] BlockIdParseError),
+
+    #[error("Failed to get client at block: {0}")]
+    SubxtError(#[from] subxt::error::OnlineClientAtBlockError),
+}
+
 /// Fetch the timestamp from the Timestamp.Now storage entry at a given block.
 pub async fn fetch_block_timestamp(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
