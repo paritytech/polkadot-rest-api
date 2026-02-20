@@ -1466,3 +1466,49 @@ pub async fn get_babe_skipped_epochs(
     let raw_bytes = value.into_bytes();
     Vec::<(u64, u32)>::decode(&mut &raw_bytes[..]).ok()
 }
+
+/// Era election status enum (legacy, removed in newer runtimes).
+#[derive(Debug, Clone)]
+pub enum EraElectionStatus {
+    /// Election is closed
+    Close,
+    /// Election is open at the given block number
+    Open(u32),
+}
+
+/// Get the era election status from Staking::EraElectionStatus.
+/// Note: This storage item was removed in newer runtimes (post multi-phase election).
+/// Returns None if the storage item doesn't exist.
+pub async fn get_era_election_status(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<EraElectionStatus> {
+    let storage_addr = subxt::dynamic::storage::<(), ()>("Staking", "EraElectionStatus");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    
+    let raw_bytes = value.into_bytes();
+    
+    // EraElectionStatus is an enum:
+    // 0 = Close
+    // 1 = Open(BlockNumber)
+    if raw_bytes.is_empty() {
+        return None;
+    }
+    
+    match raw_bytes[0] {
+        0 => Some(EraElectionStatus::Close),
+        1 => {
+            // Decode the block number (u32) from remaining bytes
+            if raw_bytes.len() >= 5 {
+                let block_num = u32::decode(&mut &raw_bytes[1..]).ok()?;
+                Some(EraElectionStatus::Open(block_num))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}

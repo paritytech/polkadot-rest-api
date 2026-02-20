@@ -151,6 +151,15 @@ enum ElectionStatus {
     Open(u32),
 }
 
+impl From<staking_queries::EraElectionStatus> for ElectionStatus {
+    fn from(status: staking_queries::EraElectionStatus) -> Self {
+        match status {
+            staking_queries::EraElectionStatus::Close => ElectionStatus::Close,
+            staking_queries::EraElectionStatus::Open(block) => ElectionStatus::Open(block),
+        }
+    }
+}
+
 impl ElectionStatus {
     fn to_json(self) -> serde_json::Value {
         match self {
@@ -784,15 +793,9 @@ async fn fetch_unapplied_slashes(
 async fn fetch_election_status(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Option<ElectionStatus> {
-    let storage_addr =
-        subxt::dynamic::storage::<(), scale_value::Value>("Staking", "EraElectionStatus");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_era_election_status(client_at_block)
         .await
-        .ok()?;
-    let bytes = value.into_bytes();
-    ElectionStatus::decode(&mut &bytes[..]).ok()
+        .map(ElectionStatus::from)
 }
 
 // ============================================================================

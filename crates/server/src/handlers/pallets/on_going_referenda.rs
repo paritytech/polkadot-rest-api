@@ -11,6 +11,7 @@ use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     AtResponse, ClientAtBlock, PalletError, format_account_id, resolve_block_for_pallet,
 };
+use crate::handlers::runtime_queries::governance as governance_queries;
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -25,7 +26,6 @@ use futures::stream::StreamExt;
 use polkadot_rest_api_config::ChainType;
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
-use subxt::error::StorageError;
 
 // ============================================================================
 // Query Parameters
@@ -278,56 +278,14 @@ async fn fetch_ongoing_referenda(
     let mut referenda = Vec::new();
 
     // First, get the ReferendumCount to know how many referenda have been created
-    // Use u32 as decode target - Subxt handles decoding automatically
-    let count_addr = subxt::dynamic::storage::<(), u32>("Referenda", "ReferendumCount");
-    let referendum_count: u32 = match client_at_block.storage().fetch(count_addr, ()).await {
-        Ok(storage_val) => match storage_val.decode() {
-            Ok(count) => count,
-            Err(e) => {
-                tracing::warn!("Failed to decode ReferendumCount: {:?}", e);
-                return Err(PalletError::StorageDecodeFailed {
-                    pallet: "Referenda",
-                    entry: "ReferendumCount",
-                });
-            }
-        },
-        Err(e) => {
-            // Match on concrete StorageError types instead of string matching
-            match &e {
-                StorageError::PalletNameNotFound(name) => {
-                    tracing::warn!(
-                        "Referenda pallet '{}' not found at block {}",
-                        name,
-                        block_height
-                    );
-                    return Err(PalletError::PalletNotAvailableAtBlock {
-                        module: "api.query.referenda".to_string(),
-                        block_height: block_height.to_string(),
-                    });
-                }
-                StorageError::StorageEntryNotFound {
-                    pallet_name,
-                    entry_name,
-                } => {
-                    tracing::warn!(
-                        "Storage entry '{}.{}' not found at block {}",
-                        pallet_name,
-                        entry_name,
-                        block_height
-                    );
-                    return Err(PalletError::PalletNotAvailableAtBlock {
-                        module: "api.query.referenda".to_string(),
-                        block_height: block_height.to_string(),
-                    });
-                }
-                _ => {
-                    tracing::warn!("Failed to fetch ReferendumCount: {:?}", e);
-                    return Err(PalletError::StorageFetchFailed {
-                        pallet: "Referenda",
-                        entry: "ReferendumCount",
-                    });
-                }
-            }
+    let referendum_count: u32 = match governance_queries::get_referendum_count(client_at_block).await {
+        Some(count) => count,
+        None => {
+            // The pallet or storage entry doesn't exist at this block
+            return Err(PalletError::PalletNotAvailableAtBlock {
+                module: "api.query.referenda".to_string(),
+                block_height: block_height.to_string(),
+            });
         }
     };
 

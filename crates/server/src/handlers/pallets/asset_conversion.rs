@@ -9,6 +9,7 @@
 
 use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{AtResponse, PalletError, resolve_block_for_pallet};
+use crate::handlers::runtime_queries::asset_conversion as asset_conversion_queries;
 use crate::handlers::runtime_queries::staking as staking_queries;
 use crate::state::AppState;
 use crate::utils;
@@ -288,29 +289,10 @@ async fn handle_pools_with_rc_block(
 async fn fetch_next_pool_asset_id(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Option<String>, PalletError> {
-    // Use dynamic storage to fetch NextPoolAssetId
-    // This is a simple value storage item (no keys)
-    let addr = subxt::dynamic::storage::<(), u32>("AssetConversion", "NextPoolAssetId");
-
-    match client_at_block.storage().fetch(addr, ()).await {
-        Ok(value) => {
-            // decode() returns Result<Value, Error> where Value is u32
-            match value.decode() {
-                Ok(id) => Ok(Some(id.to_string())),
-                Err(_) => Ok(None),
-            }
-        }
-        Err(e) => {
-            // Check if this is a "pallet not found" type error
-            let error_str = format!("{:?}", e);
-            if error_str.contains("Pallet") || error_str.contains("not found") {
-                Err(PalletError::PalletNotFound("AssetConversion".to_string()))
-            } else {
-                tracing::debug!("Failed to fetch NextPoolAssetId: {:?}", e);
-                Ok(None)
-            }
-        }
-    }
+    // Use centralized query function
+    Ok(asset_conversion_queries::get_next_pool_asset_id(client_at_block)
+        .await
+        .map(|id| id.to_string()))
 }
 
 /// Fetches all liquidity pools from AssetConversion::Pools storage.
