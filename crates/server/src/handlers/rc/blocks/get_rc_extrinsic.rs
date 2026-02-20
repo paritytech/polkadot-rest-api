@@ -17,7 +17,7 @@ use crate::handlers::blocks::types::{
     BlockIdentifiers, ExtrinsicIndexResponse, ExtrinsicPathParams, ExtrinsicQueryParams,
     GetBlockError,
 };
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils;
 use axum::{
     Json,
@@ -65,12 +65,12 @@ pub async fn get_rc_extrinsic(
 
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(GetBlockError::RelayChainNotConfigured)?
+        .ok_or(RelayChainError::NotConfigured)?
         .clone();
     let relay_chain_info = state
         .relay_chain_info
         .clone()
-        .ok_or(GetBlockError::RelayChainNotConfigured)?;
+        .ok_or(RelayChainError::NotConfigured)?;
 
     let ss58_prefix = relay_chain_info.ss58_prefix;
 

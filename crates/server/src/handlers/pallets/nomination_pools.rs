@@ -9,7 +9,7 @@
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, format_account_id, resolve_block_for_pallet,
 };
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
@@ -282,7 +282,7 @@ async fn handle_info_use_rc_block(
     }
 
     if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
+        return Err(RelayChainError::NotConfigured.into());
     }
 
     let rc_block_id = params
@@ -291,9 +291,12 @@ async fn handle_info_use_rc_block(
         .ok_or(PalletError::AtParameterRequired)?
         .parse::<utils::BlockId>()?;
 
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
     let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().expect("checked above"),
-        state.get_relay_chain_rpc().expect("checked above"),
+        &rc_rpc_client,
+        &rc_rpc,
         Some(rc_block_id),
     )
     .await?;
@@ -347,7 +350,7 @@ async fn handle_pool_use_rc_block(
     }
 
     if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
+        return Err(RelayChainError::NotConfigured.into());
     }
 
     let rc_block_id = params
@@ -356,9 +359,12 @@ async fn handle_pool_use_rc_block(
         .ok_or(PalletError::AtParameterRequired)?
         .parse::<utils::BlockId>()?;
 
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
     let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().expect("checked above"),
-        state.get_relay_chain_rpc().expect("checked above"),
+        &rc_rpc_client,
+        &rc_rpc,
         Some(rc_block_id),
     )
     .await?;

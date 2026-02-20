@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils::BlockId;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
@@ -71,8 +71,11 @@ pub enum DryRunError {
         stack: String,
     },
 
-    #[error("Relay chain not configured")]
-    RelayChainNotConfigured { transaction: String },
+    #[error("Relay chain error")]
+    RelayChain {
+        source: RelayChainError,
+        transaction: String,
+    },
 }
 
 impl IntoResponse for DryRunError {
@@ -144,11 +147,18 @@ impl IntoResponse for DryRunError {
                 cause.clone(),
                 format!("Error: {}\n    at dry_run", cause),
             ),
-            DryRunError::RelayChainNotConfigured { transaction } => {
-                let cause = "Relay chain not configured".to_string();
+            DryRunError::RelayChain {
+                source,
+                transaction,
+            } => {
+                let status = match source {
+                    RelayChainError::NotConfigured => StatusCode::BAD_REQUEST,
+                    RelayChainError::ConnectionFailed(_) => StatusCode::SERVICE_UNAVAILABLE,
+                };
+                let cause = source.to_string();
                 (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    503,
+                    status,
+                    status.as_u16(),
                     "Unable to dry-run transaction",
                     transaction,
                     cause.clone(),
@@ -266,7 +276,8 @@ pub async fn dry_run_rc(
     let relay_client =
         state
             .get_relay_chain_client()
-            .ok_or_else(|| DryRunError::RelayChainNotConfigured {
+            .ok_or_else(|| DryRunError::RelayChain {
+                source: RelayChainError::NotConfigured,
                 transaction: tx.to_string(),
             })?;
 

@@ -7,7 +7,7 @@
 //! RFC-0078: https://polkadot-fellows.github.io/RFCs/approved/0078-merkleized-metadata.html.
 //! This allows offline signers to decode transactions without the full metadata.
 
-use crate::state::{AppState, SubstrateLegacyRpc};
+use crate::state::{AppState, RelayChainError, SubstrateLegacyRpc};
 use crate::utils::BlockId;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use frame_metadata::RuntimeMetadataPrefixed;
@@ -110,8 +110,8 @@ pub enum MetadataBlobError {
     #[error("Failed to fetch chain information")]
     FetchFailed { cause: String, stack: String },
 
-    #[error("Relay chain not configured")]
-    RelayChainNotConfigured,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 }
 
 impl IntoResponse for MetadataBlobError {
@@ -185,11 +185,15 @@ impl IntoResponse for MetadataBlobError {
                 cause,
                 stack,
             ),
-            MetadataBlobError::RelayChainNotConfigured => {
-                let cause = "Relay chain not configured".to_string();
+            MetadataBlobError::RelayChain(ref err) => {
+                let status = match err {
+                    RelayChainError::NotConfigured => StatusCode::BAD_REQUEST,
+                    RelayChainError::ConnectionFailed(_) => StatusCode::SERVICE_UNAVAILABLE,
+                };
+                let cause = err.to_string();
                 (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    503,
+                    status,
+                    status.as_u16(),
                     "Relay chain not available",
                     cause.clone(),
                     format!("Error: {}\n    at metadata_blob_rc", cause),
@@ -245,12 +249,13 @@ pub async fn metadata_blob_rc(
 ) -> Result<Json<MetadataBlobResponse>, MetadataBlobError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(MetadataBlobError::RelayChainNotConfigured)?;
+        .ok_or(MetadataBlobError::RelayChain(RelayChainError::NotConfigured))?;
     let relay_legacy_rpc = state
         .get_relay_chain_rpc()
-        .ok_or(MetadataBlobError::RelayChainNotConfigured)?;
+        .await
+        .map_err(MetadataBlobError::RelayChain)?;
 
-    metadata_blob_internal(relay_client, relay_legacy_rpc, body).await
+    metadata_blob_internal(relay_client, &relay_legacy_rpc, body).await
 }
 
 async fn metadata_blob_internal(

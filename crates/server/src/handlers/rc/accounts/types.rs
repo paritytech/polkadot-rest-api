@@ -20,15 +20,15 @@ pub use crate::handlers::accounts::{
 /// Type alias for relay chain access tuple (client, rpc_client, legacy_rpc)
 pub type RelayChainAccess<'a> = (
     &'a Arc<OnlineClient<SubstrateConfig>>,
-    &'a Arc<RpcClient>,
-    &'a Arc<SubstrateLegacyRpc>,
+    Arc<RpcClient>,
+    Arc<SubstrateLegacyRpc>,
 );
 
 /// Type alias for relay chain access with spec name (client, rpc_client, legacy_rpc, spec_name)
 pub type RelayChainAccessWithSpec<'a> = (
     &'a Arc<OnlineClient<SubstrateConfig>>,
-    &'a Arc<RpcClient>,
-    &'a Arc<SubstrateLegacyRpc>,
+    Arc<RpcClient>,
+    Arc<SubstrateLegacyRpc>,
     String,
 );
 

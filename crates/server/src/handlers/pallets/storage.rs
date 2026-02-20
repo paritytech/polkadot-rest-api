@@ -13,7 +13,7 @@
 use crate::handlers::pallets::common::{
     PalletError, RcPalletQueryParams, resolve_block_for_pallet,
 };
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils;
 use crate::utils::format::to_camel_case;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -270,7 +270,7 @@ async fn handle_use_rc_block(
     }
 
     if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
+        return Err(RelayChainError::NotConfigured.into());
     }
 
     let rc_block_id = params
@@ -279,13 +279,12 @@ async fn handle_use_rc_block(
         .ok_or(PalletError::AtParameterRequired)?
         .parse::<utils::BlockId>()?;
 
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
     let rc_resolved_block = utils::resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
-        state
-            .get_relay_chain_rpc()
-            .expect("relay chain rpc checked above"),
+        &rc_rpc_client,
+        &rc_rpc,
         Some(rc_block_id),
     )
     .await?;
@@ -414,7 +413,7 @@ async fn handle_storage_item_use_rc_block(
     }
 
     if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
+        return Err(RelayChainError::NotConfigured.into());
     }
 
     let rc_block_id = params
@@ -423,13 +422,12 @@ async fn handle_storage_item_use_rc_block(
         .ok_or(PalletError::AtParameterRequired)?
         .parse::<utils::BlockId>()?;
 
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
     let rc_resolved_block = utils::resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
-        state
-            .get_relay_chain_rpc()
-            .expect("relay chain rpc checked above"),
+        &rc_rpc_client,
+        &rc_rpc,
         Some(rc_block_id),
     )
     .await?;
@@ -1976,12 +1974,8 @@ pub async fn rc_get_pallets_storage(
     Path(pallet_id): Path<String>,
     Query(params): Query<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
 
     let block_id = params
         .at
@@ -1989,10 +1983,11 @@ pub async fn rc_get_pallets_storage(
         .map(|s| s.parse::<crate::utils::BlockId>())
         .transpose()?;
     let resolved =
-        crate::utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+        crate::utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id)
+            .await?;
 
     let block_hash = resolved.hash.clone();
-    let metadata = fetch_runtime_metadata(relay_rpc_client, &block_hash).await?;
+    let metadata = fetch_runtime_metadata(&relay_rpc_client, &block_hash).await?;
 
     let response = build_storage_response(&metadata, &pallet_id, &resolved, params.only_ids)?;
     Ok(Json(response).into_response())
@@ -2026,12 +2021,8 @@ pub async fn rc_get_pallets_storage_item(
     Path((pallet_id, storage_item_id)): Path<(String, String)>,
     Query(params): Query<RcStorageItemQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
 
     let block_id = params
         .at
@@ -2039,13 +2030,14 @@ pub async fn rc_get_pallets_storage_item(
         .map(|s| s.parse::<crate::utils::BlockId>())
         .transpose()?;
     let resolved =
-        crate::utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+        crate::utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id)
+            .await?;
 
     let block_hash = resolved.hash.clone();
-    let metadata = fetch_runtime_metadata(relay_rpc_client, &block_hash).await?;
+    let metadata = fetch_runtime_metadata(&relay_rpc_client, &block_hash).await?;
 
     let response = build_storage_item_response(
-        relay_rpc_client,
+        &relay_rpc_client,
         &metadata,
         &pallet_id,
         &storage_item_id,
