@@ -168,19 +168,11 @@ impl AppState {
         {
             // If relay chain URL is provided in multi_chain_urls, connect to it
             if let Some(relay_url) = config.substrate.get_relay_chain_url() {
-                match Self::connect_relay_chain(relay_url, relay_chain_name, &chain_configs).await {
-                    Ok((client, rpc, info, config)) => {
-                        (Some(client), Some(rpc), Some(info), Some(config))
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to connect to relay chain at {}: {}. Continuing without relay chain support.",
-                            relay_url,
-                            e
-                        );
-                        (None, None, None, None)
-                    }
-                }
+                // Relay chain connection now blocks and fails startup if it cannot connect
+                let (client, rpc, info, rc_config) =
+                    Self::connect_relay_chain(relay_url, relay_chain_name, &chain_configs, &config)
+                        .await?;
+                (Some(client), Some(rpc), Some(info), Some(rc_config))
             } else {
                 tracing::info!(
                     "Chain '{}' is a parachain with relay chain '{}', but no relay chain URL found in SAS_SUBSTRATE_MULTI_CHAIN_URL. \
@@ -246,13 +238,17 @@ impl AppState {
     /// This method first checks if a relay chain connection was established at startup.
     /// If not, it attempts to create one lazily using the configured relay chain URL.
     /// The connection is cached after the first successful initialization.
+    ///
+    /// Note: With the current startup behavior, this lazy path is only hit when:
+    /// - Primary chain doesn't require relay chain (no `relay_chain` in chain config)
+    /// - But a relay URL was still provided in SAS_SUBSTRATE_MULTI_CHAIN_URL
     pub async fn get_or_init_relay_rpc_client(&self) -> Result<Arc<RpcClient>, RelayChainError> {
         // Return existing connection if available
         if let Some(client) = &self.relay_rpc_client {
             return Ok(client.clone());
         }
 
-        // Try lazy initialization
+        // Try lazy initialization with reconnection support
         self.lazy_relay_rpc
             .get_or_try_init(|| async {
                 let relay_url = self
@@ -264,21 +260,24 @@ impl AppState {
                     .map(|chain_url| chain_url.url.clone())
                     .ok_or(RelayChainError::NotConfigured)?;
 
-                let client = RpcClient::from_insecure_url(&relay_url)
-                    .await
-                    .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
+                // Use reconnecting client for consistency with startup behavior
+                let reconnecting_client =
+                    connect_relay_chain_with_progress_logging(&relay_url, &self.config)
+                        .await
+                        .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
 
-                Ok(Arc::new(client))
+                Ok(Arc::new(RpcClient::new(reconnecting_client)))
             })
             .await
             .cloned()
     }
 
-    /// Connect to a relay chain
+    /// Connect to a relay chain with reconnection support and progress logging
     async fn connect_relay_chain(
         relay_url: &str,
         _relay_chain_name: &str,
         chain_configs: &polkadot_rest_api_config::ChainConfigs,
+        config: &SidecarConfig,
     ) -> Result<
         (
             Arc<OnlineClient<SubstrateConfig>>,
@@ -288,14 +287,11 @@ impl AppState {
         ),
         StateError,
     > {
-        // Create relay chain RPC client
-        let relay_rpc_client = RpcClient::from_insecure_url(relay_url)
-            .await
-            .map_err(|source| StateError::ConnectionFailed {
-                url: relay_url.to_string(),
-                source,
-            })?;
+        // Create relay chain RPC client with reconnection support
+        let reconnecting_client =
+            connect_relay_chain_with_progress_logging(relay_url, config).await?;
 
+        let relay_rpc_client = RpcClient::new(reconnecting_client);
         let relay_legacy_rpc: SubstrateLegacyRpc = LegacyRpcMethods::new(relay_rpc_client.clone());
 
         // Get relay chain info
@@ -544,6 +540,26 @@ async fn connect_with_progress_logging(
     url: &str,
     config: &SidecarConfig,
 ) -> Result<ReconnectingRpcClient, StateError> {
+    connect_with_progress_logging_impl(url, config, "Connecting to").await
+}
+
+/// Connect to a relay chain with CLI progress indicator.
+/// Shows a live progress line that updates every second, independent of log levels.
+/// Terminates after 60 seconds with a clear error message.
+async fn connect_relay_chain_with_progress_logging(
+    url: &str,
+    config: &SidecarConfig,
+) -> Result<ReconnectingRpcClient, StateError> {
+    connect_with_progress_logging_impl(url, config, "Connecting to relay chain at").await
+}
+
+/// Internal implementation for connection with progress logging.
+/// The `prefix` parameter customizes the progress message (e.g., "Connecting to" vs "Connecting to relay chain at").
+async fn connect_with_progress_logging_impl(
+    url: &str,
+    config: &SidecarConfig,
+    prefix: &str,
+) -> Result<ReconnectingRpcClient, StateError> {
     use std::io::Write;
     use subxt_rpcs::client::reconnecting_rpc_client::RpcClient as ReconnectingClient;
 
@@ -567,7 +583,7 @@ async fn connect_with_progress_logging(
     const TIMEOUT_SECS: u64 = 60;
 
     // Show initial connection message
-    eprint!("\rConnecting to {}...", url);
+    eprint!("\r{} {}...", prefix, url);
     let _ = std::io::stderr().flush();
 
     loop {
@@ -607,8 +623,8 @@ async fn connect_with_progress_logging(
                 };
 
                 eprint!(
-                    "\rConnecting to {}... {}s{}",
-                    url, elapsed_secs, status
+                    "\r{} {}... {}s{}",
+                    prefix, url, elapsed_secs, status
                 );
                 let _ = std::io::stderr().flush();
             }
