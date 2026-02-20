@@ -163,12 +163,13 @@ pub async fn fee_estimate_rc(
     Json(body): Json<FeeEstimateRequest>,
 ) -> Result<Json<FeeEstimateResponse>, FeeEstimateError> {
     let tx = body.tx.as_deref().unwrap_or_default();
-    let relay_client = state.get_relay_chain_client().ok_or_else(|| {
-        FeeEstimateError::RelayChain {
-            source: RelayChainError::NotConfigured,
-            transaction: tx.to_string(),
-        }
-    })?;
+    let relay_client =
+        state
+            .get_relay_chain_client()
+            .ok_or_else(|| FeeEstimateError::RelayChain {
+                source: RelayChainError::NotConfigured,
+                transaction: tx.to_string(),
+            })?;
 
     fee_estimate_internal(relay_client, body).await
 }

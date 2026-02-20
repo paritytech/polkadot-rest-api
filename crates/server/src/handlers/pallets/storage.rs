@@ -281,12 +281,8 @@ async fn handle_use_rc_block(
     let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
     let rc_rpc = state.get_relay_chain_rpc().await?;
 
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        &rc_rpc_client,
-        &rc_rpc,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
@@ -424,12 +420,8 @@ async fn handle_storage_item_use_rc_block(
     let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
     let rc_rpc = state.get_relay_chain_rpc().await?;
 
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        &rc_rpc_client,
-        &rc_rpc,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
@@ -1982,8 +1974,7 @@ pub async fn rc_get_pallets_storage(
         .map(|s| s.parse::<crate::utils::BlockId>())
         .transpose()?;
     let resolved =
-        crate::utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id)
-            .await?;
+        crate::utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id).await?;
 
     let block_hash = resolved.hash.clone();
     let metadata = fetch_runtime_metadata(&relay_rpc_client, &block_hash).await?;
@@ -2029,8 +2020,7 @@ pub async fn rc_get_pallets_storage_item(
         .map(|s| s.parse::<crate::utils::BlockId>())
         .transpose()?;
     let resolved =
-        crate::utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id)
-            .await?;
+        crate::utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id).await?;
 
     let block_hash = resolved.hash.clone();
     let metadata = fetch_runtime_metadata(&relay_rpc_client, &block_hash).await?;

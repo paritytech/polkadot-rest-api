@@ -191,12 +191,9 @@ async fn handle_use_rc_block(
             .ok_or_else(|| GetBlockError::HeaderFieldMissing("canonical head hash".to_string()))?
     };
 
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        &rc_rpc_client,
-        &rc_rpc,
-        Some(utils::BlockId::Hash(rc_hash)),
-    )
-    .await?;
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(utils::BlockId::Hash(rc_hash)))
+            .await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
         .await

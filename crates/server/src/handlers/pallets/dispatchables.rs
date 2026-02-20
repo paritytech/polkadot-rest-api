@@ -423,12 +423,8 @@ async fn handle_use_rc_block(
     let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
     let rc_rpc = state.get_relay_chain_rpc().await?;
 
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        &rc_rpc_client,
-        &rc_rpc,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     // Find Asset Hub blocks in the relay chain block
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
@@ -516,12 +512,8 @@ async fn handle_dispatchable_item_use_rc_block(
     let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
     let rc_rpc = state.get_relay_chain_rpc().await?;
 
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        &rc_rpc_client,
-        &rc_rpc,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     // Find Asset Hub blocks in the relay chain block
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;

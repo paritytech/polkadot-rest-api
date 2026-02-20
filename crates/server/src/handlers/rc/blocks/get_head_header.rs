@@ -98,9 +98,12 @@ pub async fn get_rc_blocks_head_header(
     JsonQuery(params): JsonQuery<RcBlockHeadHeaderQueryParams>,
 ) -> Result<Response, GetRcBlockHeadHeaderError> {
     let header = if params.finalized {
-        let relay_client = state
-            .get_relay_chain_client()
-            .ok_or(GetRcBlockHeadHeaderError::RelayChain(RelayChainError::NotConfigured))?;
+        let relay_client =
+            state
+                .get_relay_chain_client()
+                .ok_or(GetRcBlockHeadHeaderError::RelayChain(
+                    RelayChainError::NotConfigured,
+                ))?;
         let at_block = relay_client
             .at_current_block()
             .await
@@ -194,7 +197,8 @@ mod tests {
             },
             relay_chain_rpc: {
                 let cell = Arc::new(tokio::sync::OnceCell::new());
-                cell.set(Arc::new(LegacyRpcMethods::new((*relay_rpc_client).clone()))).ok();
+                cell.set(Arc::new(LegacyRpcMethods::new((*relay_rpc_client).clone())))
+                    .ok();
                 cell
             },
             relay_chain_info: None,

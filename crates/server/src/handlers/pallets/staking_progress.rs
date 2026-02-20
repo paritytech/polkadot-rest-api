@@ -217,7 +217,11 @@ pub async fn pallets_staking_progress(
                 let header: serde_json::Value = relay_rpc_client
                     .request("chain_getHeader", subxt_rpcs::rpc_params![hash_str])
                     .await
-                    .map_err(|e| PalletError::StorageEntryFetchFailed { pallet: "System", entry: "BlockHash", error: e.to_string() })?;
+                    .map_err(|e| PalletError::StorageEntryFetchFailed {
+                        pallet: "System",
+                        entry: "BlockHash",
+                        error: e.to_string(),
+                    })?;
                 header["number"]
                     .as_str()
                     .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
@@ -507,12 +511,8 @@ async fn handle_use_rc_block(
     let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
     let rc_rpc = state.get_relay_chain_rpc().await?;
 
-    let rc_resolved_block = resolve_block_with_rpc(
-        &rc_rpc_client,
-        &rc_rpc,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved_block =
+        resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 

@@ -80,7 +80,9 @@ pub async fn get_rc_block_para_inclusions(
 ) -> Result<Response, RcParaInclusionsError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(RcParaInclusionsError::RelayChain(RelayChainError::NotConfigured))?;
+        .ok_or(RcParaInclusionsError::RelayChain(
+            RelayChainError::NotConfigured,
+        ))?;
 
     let block_id_parsed = block_id
         .parse::<utils::BlockId>()

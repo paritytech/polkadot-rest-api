@@ -107,12 +107,8 @@ async fn handle_use_rc_block(
         .map_err(|_| GetBlockError::InvalidExtrinsicIndex(path_params.extrinsic_index.clone()))?;
 
     let rc_block_id = path_params.block_id.parse::<utils::BlockId>()?;
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        &rc_rpc_client,
-        &rc_rpc,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
         .await

@@ -105,7 +105,9 @@ fn get_relay_chain_ss58_prefix(state: &AppState) -> Result<u16, AccountsError> {
 }
 
 /// Get access to relay chain client and RPC
-async fn get_relay_chain_access(state: &AppState) -> Result<RelayChainAccessWithSpec<'_>, AccountsError> {
+async fn get_relay_chain_access(
+    state: &AppState,
+) -> Result<RelayChainAccessWithSpec<'_>, AccountsError> {
     // If we're connected directly to a relay chain, use the primary client
     if state.chain_info.chain_type == ChainType::Relay {
         return Ok((

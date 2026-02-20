@@ -232,9 +232,7 @@ impl AppState {
     ///
     /// Returns a cached `SubstrateLegacyRpc` instance, creating one from the
     /// relay chain RPC client if not yet initialized.
-    pub async fn get_relay_chain_rpc(
-        &self,
-    ) -> Result<Arc<SubstrateLegacyRpc>, RelayChainError> {
+    pub async fn get_relay_chain_rpc(&self) -> Result<Arc<SubstrateLegacyRpc>, RelayChainError> {
         self.relay_chain_rpc
             .get_or_try_init(|| async {
                 let rpc_client = self.get_relay_chain_rpc_client().await?;

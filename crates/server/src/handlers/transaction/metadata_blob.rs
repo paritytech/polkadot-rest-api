@@ -249,7 +249,9 @@ pub async fn metadata_blob_rc(
 ) -> Result<Json<MetadataBlobResponse>, MetadataBlobError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(MetadataBlobError::RelayChain(RelayChainError::NotConfigured))?;
+        .ok_or(MetadataBlobError::RelayChain(
+            RelayChainError::NotConfigured,
+        ))?;
     let relay_legacy_rpc = state
         .get_relay_chain_rpc()
         .await
