@@ -111,6 +111,14 @@ enum RewardDestinationType {
     None,
 }
 
+/// Validator preferences structure
+#[derive(Debug, Clone, Decode)]
+struct ValidatorPrefsStorage {
+    #[codec(compact)]
+    commission: u32, // Perbill
+    blocked: bool,
+}
+
 /// Nominations structure
 #[derive(Debug, Clone, Decode)]
 struct Nominations {
@@ -1511,4 +1519,197 @@ pub async fn get_era_election_status(
         }
         _ => None,
     }
+}
+
+// ================================================================================================
+// Staking Validators Iteration
+// ================================================================================================
+
+/// Decoded validator preferences entry from Staking::Validators iteration.
+#[derive(Debug, Clone)]
+pub struct DecodedValidatorPrefsEntry {
+    /// Validator account ID (raw 32 bytes)
+    pub validator: [u8; 32],
+    /// Commission percentage (Perbill - parts per billion)
+    pub commission: u32,
+    /// Whether the validator is blocked from receiving new nominations
+    pub blocked: bool,
+}
+
+/// Iterate all entries in Staking::Validators storage.
+/// Returns a list of (validator_account, preferences) for all registered validators.
+pub async fn iter_staking_validators(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<Vec<DecodedValidatorPrefsEntry>> {
+    use futures::StreamExt;
+    
+    let storage_addr =
+        subxt::dynamic::storage::<([u8; 32],), ()>("Staking", "Validators");
+    
+    let mut stream = client_at_block
+        .storage()
+        .iter(storage_addr, ())
+        .await
+        .ok()?;
+    
+    let mut validators = Vec::new();
+    
+    while let Some(entry_result) = stream.next().await {
+        let entry = match entry_result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        
+        let key_bytes = entry.key_bytes();
+        let value_bytes = entry.value().bytes();
+        
+        // For Twox64Concat hasher, the account_id (32 bytes) is always the last
+        // 32 bytes of the key
+        if key_bytes.len() < 32 {
+            continue;
+        }
+        
+        let mut validator = [0u8; 32];
+        validator.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
+        
+        // Decode ValidatorPrefs: { commission: Perbill (u32), blocked: bool }
+        if let Ok(prefs) = ValidatorPrefsStorage::decode(&mut &value_bytes[..]) {
+            validators.push(DecodedValidatorPrefsEntry {
+                validator,
+                commission: prefs.commission,
+                blocked: prefs.blocked,
+            });
+        }
+    }
+    
+    Some(validators)
+}
+
+/// Iterate ErasStakersOverview keys for a given era to get active validator set.
+/// Returns a list of validator account IDs (raw 32 bytes) that are active in the era.
+pub async fn iter_era_stakers_overview_keys(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+) -> Option<Vec<[u8; 32]>> {
+    use futures::StreamExt;
+    
+    let storage_addr = subxt::dynamic::storage::<(u32, [u8; 32]), ()>(
+        "Staking",
+        "ErasStakersOverview",
+    );
+    
+    let mut stream = client_at_block
+        .storage()
+        .iter(storage_addr, (era,))
+        .await
+        .ok()?;
+    
+    let mut validators = Vec::new();
+    
+    while let Some(entry_result) = stream.next().await {
+        let entry = match entry_result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        
+        let key_bytes = entry.key_bytes();
+        
+        // For Twox64Concat hasher on the second key (AccountId32),
+        // the account_id (32 bytes) is always the last 32 bytes of the key.
+        if key_bytes.len() < 32 {
+            continue;
+        }
+        
+        let mut validator = [0u8; 32];
+        validator.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
+        validators.push(validator);
+    }
+    
+    Some(validators)
+}
+
+// ================================================================================================
+// Unapplied Slashes Iteration
+// ================================================================================================
+
+/// Decoded unapplied slash entry from Staking::UnappliedSlashes iteration.
+#[derive(Debug, Clone)]
+pub struct DecodedUnappliedSlash {
+    /// Era index
+    pub era: u32,
+    /// Validator account ID (raw 32 bytes)
+    pub validator: [u8; 32],
+    /// Own stake slashed
+    pub own: u128,
+    /// Other nominators slashed: (account, amount)
+    pub others: Vec<([u8; 32], u128)>,
+    /// Reporters (accounts that reported the slash)
+    pub reporters: Vec<[u8; 32]>,
+    /// Payout amount
+    pub payout: u128,
+}
+
+/// Internal storage type for UnappliedSlash
+#[derive(Debug, Clone, Decode)]
+struct UnappliedSlashStorage {
+    validator: [u8; 32],
+    own: u128,
+    others: Vec<([u8; 32], u128)>,
+    reporters: Vec<[u8; 32]>,
+    payout: u128,
+}
+
+/// Iterate all entries in Staking::UnappliedSlashes storage.
+/// Returns a list of unapplied slashes across all eras.
+pub async fn iter_unapplied_slashes(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Vec<DecodedUnappliedSlash> {
+    use futures::StreamExt;
+    
+    let storage_addr =
+        subxt::dynamic::storage::<(u32,), ()>("Staking", "UnappliedSlashes");
+    
+    let mut stream = match client_at_block.storage().iter(storage_addr, ()).await {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+    
+    let mut result = Vec::new();
+    
+    while let Some(entry_result) = stream.next().await {
+        let entry = match entry_result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        
+        let key_bytes = entry.key_bytes();
+        let value_bytes = entry.value().bytes();
+        
+        // Key format: 16 bytes pallet prefix + 16 bytes entry prefix + 8 bytes twox64 hash + 4 bytes era
+        // Total: 44 bytes, era starts at byte 40
+        let era: u32 = if key_bytes.len() >= 44 {
+            u32::decode(&mut &key_bytes[40..44]).unwrap_or(0)
+        } else {
+            continue;
+        };
+        
+        let slashes: Vec<UnappliedSlashStorage> =
+            match Vec::<UnappliedSlashStorage>::decode(&mut &value_bytes[..]) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+        
+        for slash in slashes {
+            result.push(DecodedUnappliedSlash {
+                era,
+                validator: slash.validator,
+                own: slash.own,
+                others: slash.others,
+                reporters: slash.reporters,
+                payout: slash.payout,
+            });
+        }
+    }
+    
+    result
 }

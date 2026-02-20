@@ -17,7 +17,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use parity_scale_codec::{Compact, Decode};
 use polkadot_rest_api_config::ChainType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -64,12 +63,6 @@ pub struct ValidatorInfo {
     pub commission: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub blocked: Option<bool>,
-}
-
-#[derive(Debug, Clone, Decode)]
-struct ValidatorPrefs {
-    commission: Compact<u32>,
-    blocked: bool,
 }
 
 #[utoipa::path(
@@ -248,55 +241,18 @@ async fn derive_staking_validators(
     // Get the active validator set
     let mut active_set = fetch_active_validators_set(client_at_block, ss58_prefix).await?;
 
-    // Iterate over all Staking.Validators entries to get each validator's preferences
-    let mut validators = Vec::new();
-
-    let storage_addr =
-        subxt::dynamic::storage::<([u8; 32],), scale_value::Value>("Staking", "Validators");
-    let mut stream = client_at_block
-        .storage()
-        .iter(storage_addr, ())
+    // Use centralized iteration to get all validator preferences
+    let validator_entries = staking_queries::iter_staking_validators(client_at_block)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Staking",
             entry: "Validators",
         })?;
 
-    while let Some(entry_result) = stream.next().await {
-        let entry = match entry_result {
-            Ok(e) => e,
-            Err(e) => {
-                return Err(PalletError::StorageEntryFetchFailed {
-                    pallet: "Staking",
-                    entry: "Validators",
-                    error: format!("{}", e),
-                });
-            }
-        };
+    let mut validators = Vec::new();
 
-        let key_bytes = entry.key_bytes();
-        let value_bytes = entry.value().bytes();
-
-        // For Twox64Concat hasher, the account_id (32 bytes) is always the last
-        // 32 bytes of the key, regardless of whether the storage prefix is included.
-        if key_bytes.len() < 32 {
-            continue;
-        }
-
-        let mut account_id = [0u8; 32];
-        account_id.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
-        let address = format_account_id(&account_id, ss58_prefix);
-
-        // Decode ValidatorPrefs: try full struct first, then just commission
-        // for older runtimes that don't have the `blocked` field.
-        let (commission, blocked) = if let Ok(prefs) = ValidatorPrefs::decode(&mut &value_bytes[..])
-        {
-            (Some(prefs.commission.0.to_string()), Some(prefs.blocked))
-        } else if let Ok(commission) = Compact::<u32>::decode(&mut &value_bytes[..]) {
-            (Some(commission.0.to_string()), Some(false))
-        } else {
-            (None, None)
-        };
+    for entry in validator_entries {
+        let address = format_account_id(&entry.validator, ss58_prefix);
 
         let status = if active_set.remove(&address) {
             "active"
@@ -307,8 +263,8 @@ async fn derive_staking_validators(
         validators.push(ValidatorInfo {
             address,
             status: status.to_string(),
-            commission,
-            blocked,
+            commission: Some(entry.commission.to_string()),
+            blocked: Some(entry.blocked),
         });
     }
 
@@ -377,46 +333,18 @@ async fn fetch_era_stakers_overview_keys(
     active_era: u32,
     ss58_prefix: u16,
 ) -> Result<HashSet<String>, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(u32, [u8; 32]), scale_value::Value>(
-        "Staking",
-        "ErasStakersOverview",
-    );
-
-    let mut stream = client_at_block
-        .storage()
-        .iter(storage_addr, (active_era,))
+    // Use centralized iteration function
+    let validators = staking_queries::iter_era_stakers_overview_keys(client_at_block, active_era)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Staking",
             entry: "ErasStakersOverview",
         })?;
 
-    let mut active_set = HashSet::new();
-
-    while let Some(entry_result) = stream.next().await {
-        let entry = match entry_result {
-            Ok(e) => e,
-            Err(e) => {
-                return Err(PalletError::StorageEntryFetchFailed {
-                    pallet: "Staking",
-                    entry: "ErasStakersOverview",
-                    error: format!("{}", e),
-                });
-            }
-        };
-
-        let key_bytes = entry.key_bytes();
-
-        // For Twox64Concat hasher on the second key (AccountId32),
-        // the account_id (32 bytes) is always the last 32 bytes of the key.
-        if key_bytes.len() < 32 {
-            continue;
-        }
-
-        let mut account_id = [0u8; 32];
-        account_id.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
-        active_set.insert(format_account_id(&account_id, ss58_prefix));
-    }
+    let active_set: HashSet<String> = validators
+        .iter()
+        .map(|v| format_account_id(v, ss58_prefix))
+        .collect();
 
     Ok(active_set)
 }

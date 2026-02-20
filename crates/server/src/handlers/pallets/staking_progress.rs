@@ -136,15 +136,6 @@ impl ForceEra {
     }
 }
 
-#[derive(Debug, Clone, Decode)]
-struct UnappliedSlashStorage {
-    validator: [u8; 32],
-    own: u128,
-    others: Vec<([u8; 32], u128)>,
-    reporters: Vec<[u8; 32]>,
-    payout: u128,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Decode)]
 enum ElectionStatus {
     Close,
@@ -733,61 +724,28 @@ async fn fetch_unapplied_slashes(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
 ) -> Vec<UnappliedSlash> {
-    // Use (u32,) for the key type since UnappliedSlashes is a map with era as key
-    let storage_addr =
-        subxt::dynamic::storage::<(u32,), scale_value::Value>("Staking", "UnappliedSlashes");
-    // Pass () as partial keys to iterate over all entries
-    let mut stream = match client_at_block.storage().iter(storage_addr, ()).await {
-        Ok(s) => s,
-        Err(_) => return vec![],
-    };
+    // Use centralized iteration function
+    let slashes = staking_queries::iter_unapplied_slashes(client_at_block).await;
 
-    let mut result = Vec::new();
-
-    while let Some(entry_result) = stream.next().await {
-        let entry = match entry_result {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-
-        // Get key bytes and value bytes
-        let key_bytes = entry.key_bytes();
-        let value_bytes = entry.value().bytes();
-
-        // Key format: 16 bytes pallet prefix + 16 bytes entry prefix + 8 bytes twox64 hash + 4 bytes era
-        // Total: 44 bytes, era starts at byte 40
-        let era: u32 = if key_bytes.len() >= 44 {
-            u32::decode(&mut &key_bytes[40..44]).unwrap_or(0)
-        } else {
-            continue;
-        };
-        let slashes: Vec<UnappliedSlashStorage> =
-            match Vec::<UnappliedSlashStorage>::decode(&mut &value_bytes[..]) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-
-        for slash in slashes {
-            result.push(UnappliedSlash {
-                era: era.to_string(),
-                validator: format_account_id(&slash.validator, ss58_prefix),
-                own: slash.own.to_string(),
-                others: slash
-                    .others
-                    .iter()
-                    .map(|(acc, amount)| (format_account_id(acc, ss58_prefix), amount.to_string()))
-                    .collect(),
-                reporters: slash
-                    .reporters
-                    .iter()
-                    .map(|acc| format_account_id(acc, ss58_prefix))
-                    .collect(),
-                payout: slash.payout.to_string(),
-            });
-        }
-    }
-
-    result
+    slashes
+        .into_iter()
+        .map(|slash| UnappliedSlash {
+            era: slash.era.to_string(),
+            validator: format_account_id(&slash.validator, ss58_prefix),
+            own: slash.own.to_string(),
+            others: slash
+                .others
+                .iter()
+                .map(|(acc, amount)| (format_account_id(acc, ss58_prefix), amount.to_string()))
+                .collect(),
+            reporters: slash
+                .reporters
+                .iter()
+                .map(|acc| format_account_id(acc, ss58_prefix))
+                .collect(),
+            payout: slash.payout.to_string(),
+        })
+        .collect()
 }
 
 async fn fetch_election_status(
