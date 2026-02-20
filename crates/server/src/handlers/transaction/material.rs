@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::extractors::JsonQuery;
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils::BlockId;
 use axum::{
     Json,
@@ -77,8 +77,8 @@ pub enum MaterialError {
     #[error("Failed to fetch chain information")]
     FetchFailed { cause: String, stack: String },
 
-    #[error("Relay chain not configured")]
-    RelayChainNotConfigured,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 }
 
 impl IntoResponse for MaterialError {
@@ -153,11 +153,15 @@ impl IntoResponse for MaterialError {
                 cause,
                 stack,
             ),
-            MaterialError::RelayChainNotConfigured => {
-                let cause = "Relay chain not configured".to_string();
+            MaterialError::RelayChain(ref err) => {
+                let status = match err {
+                    RelayChainError::NotConfigured => StatusCode::BAD_REQUEST,
+                    RelayChainError::ConnectionFailed(_) => StatusCode::SERVICE_UNAVAILABLE,
+                };
+                let cause = err.to_string();
                 (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    503,
+                    status,
+                    status.as_u16(),
                     "Failed to fetch transaction material",
                     cause.clone(),
                     format!("Error: {}\n    at material", cause),
@@ -262,12 +266,13 @@ pub async fn material_rc(
 ) -> Result<Json<MaterialResponse>, MaterialError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(MaterialError::RelayChainNotConfigured)?;
+        .ok_or(MaterialError::RelayChain(RelayChainError::NotConfigured))?;
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
-        .ok_or(MaterialError::RelayChainNotConfigured)?;
+        .await
+        .map_err(MaterialError::RelayChain)?;
 
-    material_internal(relay_client, relay_rpc_client, query).await
+    material_internal(relay_client, &relay_rpc_client, query).await
 }
 
 /// Parse and validate metadata version from path parameter.
@@ -339,12 +344,13 @@ pub async fn material_versioned_rc(
 ) -> Result<Json<MaterialResponse>, MaterialError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(MaterialError::RelayChainNotConfigured)?;
+        .ok_or(MaterialError::RelayChain(RelayChainError::NotConfigured))?;
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
-        .ok_or(MaterialError::RelayChainNotConfigured)?;
+        .await
+        .map_err(MaterialError::RelayChain)?;
 
-    material_versioned_internal(relay_client, relay_rpc_client, metadata_version, query).await
+    material_versioned_internal(relay_client, &relay_rpc_client, metadata_version, query).await
 }
 
 async fn material_versioned_internal(

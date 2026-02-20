@@ -7,7 +7,7 @@
 
 use crate::handlers::blocks::common::convert_digest_items_to_logs;
 use crate::handlers::blocks::types::convert_digest_logs_to_sidecar_format;
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils;
 use axum::{
     Json,
@@ -29,16 +29,19 @@ pub enum GetRcBlockHeaderError {
     #[error("Failed to get block header: {0}")]
     HeaderFetchFailed(String),
 
-    #[error("Relay chain API is not configured. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL")]
-    RelayChainNotConfigured,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 }
 
 impl IntoResponse for GetRcBlockHeaderError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
-            GetRcBlockHeaderError::RelayChainNotConfigured
+            GetRcBlockHeaderError::RelayChain(RelayChainError::NotConfigured)
             | GetRcBlockHeaderError::InvalidBlockParam(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetRcBlockHeaderError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetRcBlockHeaderError::HeaderFetchFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
@@ -81,7 +84,7 @@ pub async fn get_rc_block_header(
 ) -> Result<Response, GetRcBlockHeaderError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(GetRcBlockHeaderError::RelayChainNotConfigured)?;
+        .ok_or(RelayChainError::NotConfigured)?;
 
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
 

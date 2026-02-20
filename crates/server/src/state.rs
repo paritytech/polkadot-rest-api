@@ -80,8 +80,6 @@ pub struct AppState {
     #[allow(dead_code)] // Will be used when implementing relay chain endpoints
     pub relay_client: Option<Arc<OnlineClient<SubstrateConfig>>>,
     #[allow(dead_code)] // Will be used when implementing relay chain endpoints
-    pub relay_rpc_client: Option<Arc<RpcClient>>,
-    #[allow(dead_code)] // Will be used when implementing relay chain endpoints
     pub relay_chain_info: Option<ChainInfo>,
 
     /// Cache for tracking queryFeeDetails availability per spec version
@@ -92,10 +90,10 @@ pub struct AppState {
     pub chain_config: Arc<polkadot_rest_api_config::Config>,
     /// Registry of all available routes for introspection
     pub route_registry: RouteRegistry,
-    /// Relay Chain RPC client (only present when multi-chain is configured with a relay chain)
-    pub relay_chain_rpc: Option<Arc<SubstrateLegacyRpc>>,
-    /// Lazy-initialized relay chain RPC client for when startup connection failed but URL is configured
-    pub lazy_relay_rpc: Arc<OnceCell<Arc<RpcClient>>>,
+    /// Relay chain RPC client — pre-populated at startup if connection succeeds, lazy-init otherwise
+    pub relay_rpc_client: Arc<OnceCell<Arc<RpcClient>>>,
+    /// Relay chain legacy RPC methods — lazy-init from relay_rpc_client
+    pub relay_chain_rpc: Arc<OnceCell<Arc<SubstrateLegacyRpc>>>,
 }
 
 impl AppState {
@@ -199,9 +197,15 @@ impl AppState {
             ))
         };
 
-        let relay_chain_rpc = relay_rpc_client
-            .as_ref()
-            .map(|rpc_client| Arc::new(LegacyRpcMethods::new((**rpc_client).clone())));
+        let relay_rpc_client_cell = Arc::new(OnceCell::new());
+        let relay_chain_rpc_cell = Arc::new(OnceCell::new());
+
+        if let Some(rpc) = relay_rpc_client {
+            relay_rpc_client_cell.set(rpc.clone()).ok();
+            relay_chain_rpc_cell
+                .set(Arc::new(LegacyRpcMethods::new((*rpc).clone())))
+                .ok();
+        }
 
         Ok(Self {
             config,
@@ -210,14 +214,13 @@ impl AppState {
             rpc_client: Arc::new(rpc_client),
             chain_info,
             relay_client,
-            relay_rpc_client,
             relay_chain_info,
             fee_details_cache: Arc::new(QueryFeeDetailsCache::new()),
             chain_configs,
             chain_config: full_config,
             route_registry: RouteRegistry::new(),
-            relay_chain_rpc,
-            lazy_relay_rpc: Arc::new(OnceCell::new()),
+            relay_rpc_client: relay_rpc_client_cell,
+            relay_chain_rpc: relay_chain_rpc_cell,
         })
     }
 
@@ -225,39 +228,34 @@ impl AppState {
         self.relay_client.as_ref()
     }
 
-    pub fn get_relay_chain_rpc(&self) -> Option<&Arc<SubstrateLegacyRpc>> {
-        self.relay_chain_rpc.as_ref()
-    }
-
-    pub fn get_relay_chain_rpc_client(&self) -> Option<&Arc<RpcClient>> {
-        self.relay_rpc_client.as_ref()
+    /// Get or lazily initialize the relay chain legacy RPC methods.
+    ///
+    /// Returns a cached `SubstrateLegacyRpc` instance, creating one from the
+    /// relay chain RPC client if not yet initialized.
+    pub async fn get_relay_chain_rpc(
+        &self,
+    ) -> Result<Arc<SubstrateLegacyRpc>, RelayChainError> {
+        self.relay_chain_rpc
+            .get_or_try_init(|| async {
+                let rpc_client = self.get_relay_chain_rpc_client().await?;
+                Ok(Arc::new(LegacyRpcMethods::new((*rpc_client).clone())))
+            })
+            .await
+            .cloned()
     }
 
     /// Get or lazily initialize the relay chain RPC client.
     ///
-    /// This method first checks if a relay chain connection was established at startup.
-    /// If not, it attempts to create one lazily using the configured relay chain URL.
+    /// If the connection was established at startup, returns the pre-populated client.
+    /// Otherwise, attempts lazy initialization using the configured relay chain URL.
     /// The connection is cached after the first successful initialization.
-    ///
-    /// Note: With the current startup behavior, this lazy path is only hit when:
-    /// - Primary chain doesn't require relay chain (no `relay_chain` in chain config)
-    /// - But a relay URL was still provided in SAS_SUBSTRATE_MULTI_CHAIN_URL
-    pub async fn get_or_init_relay_rpc_client(&self) -> Result<Arc<RpcClient>, RelayChainError> {
-        // Return existing connection if available
-        if let Some(client) = &self.relay_rpc_client {
-            return Ok(client.clone());
-        }
-
-        // Try lazy initialization with reconnection support
-        self.lazy_relay_rpc
+    pub async fn get_relay_chain_rpc_client(&self) -> Result<Arc<RpcClient>, RelayChainError> {
+        self.relay_rpc_client
             .get_or_try_init(|| async {
                 let relay_url = self
                     .config
                     .substrate
-                    .multi_chain_urls
-                    .iter()
-                    .find(|chain_url| chain_url.chain_type == ChainType::Relay)
-                    .map(|chain_url| chain_url.url.clone())
+                    .get_relay_chain_url()
                     .ok_or(RelayChainError::NotConfigured)?;
 
                 // Use reconnecting client for consistency with startup behavior

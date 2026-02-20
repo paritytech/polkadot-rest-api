@@ -8,7 +8,7 @@ use crate::handlers::pallets::common::{
     AssetDetails, AssetMetadataStorage, AtResponse, ClientAtBlock, PalletError, format_account_id,
     resolve_block_for_pallet,
 };
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils::{
     BlockId, DEFAULT_CONCURRENCY, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
     resolve_block_with_rpc, run_with_concurrency,
@@ -149,7 +149,7 @@ async fn handle_use_rc_block(
     }
 
     if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
+        return Err(RelayChainError::NotConfigured.into());
     }
 
     let rc_block_id = params
@@ -158,13 +158,12 @@ async fn handle_use_rc_block(
         .ok_or(PalletError::AtParameterRequired)?
         .parse::<BlockId>()?;
 
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
     let rc_resolved_block = resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
-        state
-            .get_relay_chain_rpc()
-            .expect("relay chain rpc checked above"),
+        &rc_rpc_client,
+        &rc_rpc,
         Some(rc_block_id),
     )
     .await?;

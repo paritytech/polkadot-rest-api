@@ -80,7 +80,7 @@ impl IntoResponse for GetRcNodeNetworkError {
 pub async fn get_rc_node_network(
     State(state): State<AppState>,
 ) -> Result<Json<NodeNetworkResponse>, GetRcNodeNetworkError> {
-    let relay_rpc_client = state.get_or_init_relay_rpc_client().await?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let response = fetch_node_network(&relay_rpc_client).await?;
     Ok(Json(response))
 }
@@ -121,10 +121,18 @@ mod tests {
             rpc_client,
             chain_info,
             relay_client: None,
-            relay_rpc_client: Some(relay_rpc_client.clone()),
-            relay_chain_rpc: Some(Arc::new(subxt_rpcs::LegacyRpcMethods::new(
-                (*relay_rpc_client).clone(),
-            ))),
+            relay_rpc_client: {
+                let cell = Arc::new(tokio::sync::OnceCell::new());
+                cell.set(relay_rpc_client.clone()).ok();
+                cell
+            },
+            relay_chain_rpc: {
+                let cell = Arc::new(tokio::sync::OnceCell::new());
+                cell.set(Arc::new(subxt_rpcs::LegacyRpcMethods::new(
+                    (*relay_rpc_client).clone(),
+                ))).ok();
+                cell
+            },
             relay_chain_info: None,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
             chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
@@ -132,7 +140,6 @@ mod tests {
                 polkadot_rest_api_config::ChainConfig::default(),
             )),
             route_registry: crate::routes::RouteRegistry::new(),
-            lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 

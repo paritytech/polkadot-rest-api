@@ -8,7 +8,7 @@
 use crate::extractors::JsonQuery;
 use crate::handlers::blocks::common::convert_digest_items_to_logs;
 use crate::handlers::blocks::types::convert_digest_logs_to_sidecar_format;
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use axum::{
     Json,
     extract::State,
@@ -43,15 +43,18 @@ pub enum GetRcBlockHeadHeaderError {
     #[error("Service temporarily unavailable: {0}")]
     ServiceUnavailable(String),
 
-    #[error("Relay chain API is not configured. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL")]
-    RelayChainNotConfigured,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 }
 
 impl IntoResponse for GetRcBlockHeadHeaderError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
-            GetRcBlockHeadHeaderError::RelayChainNotConfigured => {
+            GetRcBlockHeadHeaderError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetRcBlockHeadHeaderError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetRcBlockHeadHeaderError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
@@ -97,7 +100,7 @@ pub async fn get_rc_blocks_head_header(
     let header = if params.finalized {
         let relay_client = state
             .get_relay_chain_client()
-            .ok_or(GetRcBlockHeadHeaderError::RelayChainNotConfigured)?;
+            .ok_or(GetRcBlockHeadHeaderError::RelayChain(RelayChainError::NotConfigured))?;
         let at_block = relay_client
             .at_current_block()
             .await
@@ -109,7 +112,8 @@ pub async fn get_rc_blocks_head_header(
     } else {
         let relay_legacy_rpc = state
             .get_relay_chain_rpc()
-            .ok_or(GetRcBlockHeadHeaderError::RelayChainNotConfigured)?;
+            .await
+            .map_err(GetRcBlockHeadHeaderError::RelayChain)?;
         relay_legacy_rpc
             .chain_get_header(None)
             .await
@@ -183,8 +187,16 @@ mod tests {
             rpc_client,
             chain_info,
             relay_client: None,
-            relay_rpc_client: Some(relay_rpc_client.clone()),
-            relay_chain_rpc: Some(Arc::new(LegacyRpcMethods::new((*relay_rpc_client).clone()))),
+            relay_rpc_client: {
+                let cell = Arc::new(tokio::sync::OnceCell::new());
+                cell.set(relay_rpc_client.clone()).ok();
+                cell
+            },
+            relay_chain_rpc: {
+                let cell = Arc::new(tokio::sync::OnceCell::new());
+                cell.set(Arc::new(LegacyRpcMethods::new((*relay_rpc_client).clone()))).ok();
+                cell
+            },
             relay_chain_info: None,
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
             chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
@@ -192,7 +204,6 @@ mod tests {
                 polkadot_rest_api_config::ChainConfig::default(),
             )),
             route_registry: RouteRegistry::new(),
-            lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 
@@ -241,7 +252,8 @@ mod tests {
 
     #[test]
     fn test_error_responses() {
-        let relay_not_configured = GetRcBlockHeadHeaderError::RelayChainNotConfigured;
+        let relay_not_configured =
+            GetRcBlockHeadHeaderError::RelayChain(RelayChainError::NotConfigured);
         let response = relay_not_configured.into_response();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 

@@ -98,9 +98,8 @@ async fn handle_use_rc_block(
         return Err(GetBlockError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(GetBlockError::RelayChainNotConfigured);
-    }
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
 
     let extrinsic_index: usize = path_params
         .extrinsic_index
@@ -109,8 +108,8 @@ async fn handle_use_rc_block(
 
     let rc_block_id = path_params.block_id.parse::<utils::BlockId>()?;
     let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().unwrap(),
-        state.get_relay_chain_rpc().unwrap(),
+        &rc_rpc_client,
+        &rc_rpc,
         Some(rc_block_id),
     )
     .await?;

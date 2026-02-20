@@ -130,12 +130,8 @@ async fn handle_use_rc_block(
         return Err(AccountsError::UseRcBlockNotSupported);
     }
 
-    let rc_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(AccountsError::RelayChainNotConfigured)?;
-    let rc_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(AccountsError::RelayChainNotConfigured)?;
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
 
     // Resolve RC block
     let rc_block_id = params
@@ -143,7 +139,7 @@ async fn handle_use_rc_block(
         .unwrap_or_else(|| "head".to_string())
         .parse::<utils::BlockId>()?;
     let rc_resolved =
-        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc, Some(rc_block_id)).await?;
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     // Find AH blocks
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved).await?;

@@ -17,7 +17,7 @@ use crate::handlers::blocks::processing::{
     fetch_block_events_with_prefix,
 };
 use crate::handlers::blocks::types::{BlockResponse, GetBlockError};
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use axum::{
     Json,
     extract::State,
@@ -82,10 +82,8 @@ impl Default for RcBlockHeadQueryParams {
 /// Error types for /rc/blocks/head endpoint
 #[derive(Debug, Error)]
 pub enum GetRcBlockHeadError {
-    #[error(
-        "Relay chain API is not configured. Please set SAS_SUBSTRATE_MULTI_CHAIN_URL with a relay chain entry"
-    )]
-    RelayChainNotConfigured,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 
     #[error("RPC call failed")]
     RpcCallFailed(#[source] subxt_rpcs::Error),
@@ -106,8 +104,11 @@ pub enum GetRcBlockHeadError {
 impl IntoResponse for GetRcBlockHeadError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            GetRcBlockHeadError::RelayChainNotConfigured => {
+            GetRcBlockHeadError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetRcBlockHeadError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetRcBlockHeadError::RpcCallFailed(err) => crate::utils::rpc_error_to_status(err),
             GetRcBlockHeadError::BlockHeaderFailed(_) => {
@@ -170,14 +171,15 @@ pub async fn get_rc_blocks_head(
 ) -> Result<Response, GetRcBlockHeadError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(GetRcBlockHeadError::RelayChainNotConfigured)?;
+        .ok_or(GetRcBlockHeadError::RelayChain(RelayChainError::NotConfigured))?;
     let relay_rpc = state
         .get_relay_chain_rpc()
-        .ok_or(GetRcBlockHeadError::RelayChainNotConfigured)?;
+        .await
+        .map_err(GetRcBlockHeadError::RelayChain)?;
     let relay_chain_info = state
         .relay_chain_info
         .as_ref()
-        .ok_or(GetRcBlockHeadError::RelayChainNotConfigured)?;
+        .ok_or(GetRcBlockHeadError::RelayChain(RelayChainError::NotConfigured))?;
 
     let ss58_prefix = relay_chain_info.ss58_prefix;
 
@@ -384,7 +386,8 @@ mod tests {
 
     #[test]
     fn test_error_responses() {
-        let relay_not_configured = GetRcBlockHeadError::RelayChainNotConfigured;
+        let relay_not_configured =
+            GetRcBlockHeadError::RelayChain(RelayChainError::NotConfigured);
         let response = relay_not_configured.into_response();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }

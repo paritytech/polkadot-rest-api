@@ -121,18 +121,8 @@ async fn handle_use_rc_block_range(
         return Err(GetBlockError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(GetBlockError::RelayChainNotConfigured);
-    }
-
-    let rc_rpc = state
-        .get_relay_chain_rpc_client()
-        .ok_or(GetBlockError::RelayChainNotConfigured)?
-        .clone();
-    let rc_legacy_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(GetBlockError::RelayChainNotConfigured)?
-        .clone();
+    let rc_rpc = state.get_relay_chain_rpc_client().await?;
+    let rc_legacy_rpc = state.get_relay_chain_rpc().await?;
 
     let concurrency = state.config.express.block_fetch_concurrency;
 

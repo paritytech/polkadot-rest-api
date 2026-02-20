@@ -21,9 +21,6 @@ pub enum GetRcSpecError {
     #[error(transparent)]
     RelayChain(#[from] RelayChainError),
 
-    #[error("Relay chain client not configured")]
-    RelayChainNotConfigured,
-
     #[error("Failed to get client at block")]
     ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 
@@ -43,7 +40,7 @@ pub enum GetRcSpecError {
 impl IntoResponse for GetRcSpecError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
-            GetRcSpecError::InvalidBlockParam(_) | GetRcSpecError::RelayChainNotConfigured => {
+            GetRcSpecError::InvalidBlockParam(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             GetRcSpecError::RelayChain(RelayChainError::NotConfigured) => {
@@ -120,13 +117,13 @@ pub async fn get_rc_runtime_spec(
 ) -> Result<Json<RuntimeSpecResponse>, GetRcSpecError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(GetRcSpecError::RelayChainNotConfigured)?;
+        .ok_or(GetRcSpecError::RelayChain(RelayChainError::NotConfigured))?;
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
-        .ok_or(GetRcSpecError::RelayChainNotConfigured)?;
+        .await?;
     let relay_legacy_rpc = state
         .get_relay_chain_rpc()
-        .ok_or(GetRcSpecError::RelayChainNotConfigured)?;
+        .await?;
 
     let client_at_block =
         utils::resolve_client_at_block(relay_client.as_ref(), params.at.as_ref()).await?;

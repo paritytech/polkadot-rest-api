@@ -10,7 +10,7 @@ use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
     RawEraPayouts, RawStakingPayouts, StakingPayoutsParams, query_staking_payouts,
 };
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils;
 use axum::{
     Json,
@@ -63,7 +63,7 @@ pub async fn get_staking_payouts(
     let account = validate_and_parse_address(&account_id, rc_ss58_prefix)?;
 
     // Get the relay chain client and info
-    let (rc_client, rc_rpc_client, rc_rpc) = get_relay_chain_access(&state)?;
+    let (rc_client, rc_rpc_client, rc_rpc) = get_relay_chain_access(&state).await?;
 
     // Resolve block on relay chain
     let block_id = params
@@ -73,7 +73,7 @@ pub async fn get_staking_payouts(
         .transpose()?;
 
     let resolved_block =
-        utils::resolve_block_with_rpc(rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
+        utils::resolve_block_with_rpc(&rc_rpc_client, rc_rpc.as_ref(), block_id).await?;
 
     let client_at_block =
         utils::resolve_client_at_block(rc_client.as_ref(), params.at.as_ref()).await?;
@@ -122,28 +122,24 @@ fn get_relay_chain_ss58_prefix(state: &AppState) -> Result<u16, AccountsError> {
         .relay_chain_info
         .as_ref()
         .map(|info| info.ss58_prefix)
-        .ok_or(AccountsError::RelayChainNotAvailable)
+        .ok_or(AccountsError::RelayChain(RelayChainError::NotConfigured))
 }
 
 /// Get access to relay chain client and RPC
-fn get_relay_chain_access(state: &AppState) -> Result<RelayChainAccess<'_>, AccountsError> {
+async fn get_relay_chain_access(state: &AppState) -> Result<RelayChainAccess<'_>, AccountsError> {
     // If we're connected directly to a relay chain, use the primary client
     if state.chain_info.chain_type == ChainType::Relay {
-        return Ok((&state.client, &state.rpc_client, &state.legacy_rpc));
+        return Ok((&state.client, state.rpc_client.clone(), state.legacy_rpc.clone()));
     }
 
     // Otherwise, we need the relay chain client (for Asset Hub or parachain)
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(AccountsError::RelayChainNotAvailable)?;
+        .ok_or(RelayChainError::NotConfigured)?;
 
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(AccountsError::RelayChainNotAvailable)?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
 
-    let relay_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(AccountsError::RelayChainNotAvailable)?;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
 
     Ok((relay_client, relay_rpc_client, relay_rpc))
 }

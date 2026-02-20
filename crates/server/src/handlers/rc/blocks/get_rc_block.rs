@@ -9,7 +9,7 @@
 use crate::extractors::JsonQuery;
 use crate::handlers::blocks::common::{BlockBuildContext, build_block_response_generic};
 use crate::handlers::blocks::types::{BlockBuildParams, GetBlockError};
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils;
 use axum::{
     Json,
@@ -67,10 +67,8 @@ impl RcBlockQueryParams {
 /// Error types for /rc/blocks/{blockId} endpoint
 #[derive(Debug, Error)]
 pub enum GetRcBlockError {
-    #[error(
-        "Relay chain API is not configured. Please set SAS_SUBSTRATE_MULTI_CHAIN_URL with a relay chain entry"
-    )]
-    RelayChainNotConfigured,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 
     #[error("Invalid block parameter")]
     InvalidBlockParam(#[from] utils::BlockIdParseError),
@@ -85,7 +83,12 @@ pub enum GetRcBlockError {
 impl IntoResponse for GetRcBlockError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            GetRcBlockError::RelayChainNotConfigured => (StatusCode::BAD_REQUEST, self.to_string()),
+            GetRcBlockError::RelayChain(RelayChainError::NotConfigured) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetRcBlockError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
             GetRcBlockError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             GetRcBlockError::ClientAtBlockFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
@@ -149,11 +152,11 @@ pub async fn get_rc_block(
 ) -> Result<Response, GetRcBlockError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(GetRcBlockError::RelayChainNotConfigured)?;
+        .ok_or(RelayChainError::NotConfigured)?;
     let relay_chain_info = state
         .relay_chain_info
         .as_ref()
-        .ok_or(GetRcBlockError::RelayChainNotConfigured)?;
+        .ok_or(RelayChainError::NotConfigured)?;
 
     let block_id_parsed: utils::BlockId = block_id.parse()?;
     let queried_by_hash = matches!(block_id_parsed, utils::BlockId::Hash(_));

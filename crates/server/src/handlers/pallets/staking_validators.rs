@@ -6,7 +6,7 @@ use crate::handlers::pallets::common::{
     AtResponse, PalletError, format_account_id, resolve_block_for_pallet,
 };
 use crate::handlers::pallets::constants::is_bad_staking_block;
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils::{
     BlockId, fetch_block_timestamp, find_ah_blocks_in_rc_block, resolve_block_with_rpc,
 };
@@ -145,20 +145,16 @@ pub async fn rc_pallets_staking_validators(
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
+        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
     let relay_chain_info = state
         .relay_chain_info
         .as_ref()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
+        .ok_or(RelayChainError::NotConfigured)?;
 
     let block_id = params.at.map(|s| s.parse::<BlockId>()).transpose()?;
-    let resolved_block = resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+    let resolved_block = resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id).await?;
 
     let client_at_block = relay_client.at_block(resolved_block.number).await?;
 
@@ -196,7 +192,7 @@ async fn handle_use_rc_block(
     }
 
     if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
+        return Err(RelayChainError::NotConfigured.into());
     }
 
     let rc_block_id = params
@@ -205,13 +201,12 @@ async fn handle_use_rc_block(
         .ok_or(PalletError::AtParameterRequired)?
         .parse::<BlockId>()?;
 
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
     let rc_resolved_block = resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .ok_or(PalletError::RelayChainNotConfigured)?,
-        state
-            .get_relay_chain_rpc()
-            .ok_or(PalletError::RelayChainNotConfigured)?,
+        &rc_rpc_client,
+        &rc_rpc,
         Some(rc_block_id),
     )
     .await?;
