@@ -226,7 +226,7 @@ fn build_rc_block(
 }
 
 async fn fetch_rc_parent_hash(state: &AppState, rc_block_hash: &str) -> Option<String> {
-    let relay_rpc = state.get_relay_chain_rpc()?;
+    let relay_rpc = state.get_relay_chain_rpc().await.ok()?;
     let hash: subxt::utils::H256 = rc_block_hash.parse().ok()?;
     let header = relay_rpc.chain_get_header(Some(hash)).await.ok()??;
     Some(format!("{:#x}", header.parent_hash))
@@ -237,7 +237,7 @@ async fn fetch_rc_block_info(
     state: &AppState,
     at: &str,
 ) -> Option<serde_json::Map<String, serde_json::Value>> {
-    let relay_rpc = state.get_relay_chain_rpc()?;
+    let relay_rpc = state.get_relay_chain_rpc().await.ok()?;
 
     let hash: subxt::utils::H256 = if at.starts_with("0x") {
         at.parse().ok()?

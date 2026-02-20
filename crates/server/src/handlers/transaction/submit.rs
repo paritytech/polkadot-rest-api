@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use subxt_rpcs::rpc_params;
@@ -51,8 +51,11 @@ pub enum SubmitError {
         stack: String,
     },
 
-    #[error("Relay chain not configured")]
-    RelayChainNotConfigured { transaction: String },
+    #[error("Relay chain error")]
+    RelayChain {
+        source: RelayChainError,
+        transaction: String,
+    },
 }
 
 impl IntoResponse for SubmitError {
@@ -97,16 +100,23 @@ impl IntoResponse for SubmitError {
                 });
                 (StatusCode::BAD_REQUEST, body).into_response()
             }
-            SubmitError::RelayChainNotConfigured { transaction } => {
-                let cause = "Relay chain not configured".to_string();
+            SubmitError::RelayChain {
+                source,
+                transaction,
+            } => {
+                let status = match source {
+                    RelayChainError::NotConfigured => StatusCode::BAD_REQUEST,
+                    RelayChainError::ConnectionFailed(_) => StatusCode::SERVICE_UNAVAILABLE,
+                };
+                let cause = source.to_string();
                 let body = Json(TransactionError {
-                    code: 503,
+                    code: status.as_u16(),
                     error: "Failed to submit transaction.".to_string(),
                     transaction,
                     cause: cause.clone(),
                     stack: format!("Error: {}\n    at submit", cause),
                 });
-                (StatusCode::SERVICE_UNAVAILABLE, body).into_response()
+                (status, body).into_response()
             }
         }
     }
@@ -179,11 +189,13 @@ pub async fn submit_rc(
     let rpc_client =
         state
             .get_relay_chain_rpc_client()
-            .ok_or_else(|| SubmitError::RelayChainNotConfigured {
+            .await
+            .map_err(|e| SubmitError::RelayChain {
+                source: e,
                 transaction: tx_str.to_string(),
             })?;
 
-    submit_internal(rpc_client, body).await
+    submit_internal(&rpc_client, body).await
 }
 
 async fn submit_internal(

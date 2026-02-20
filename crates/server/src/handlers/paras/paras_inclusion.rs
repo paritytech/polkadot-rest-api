@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils::extract_block_number_from_header;
 use axum::{
     Json,
@@ -91,8 +91,8 @@ pub enum ParasInclusionError {
     #[error("This endpoint requires a parachain connection (parachainInfo pallet not found)")]
     NotAParachain,
 
-    #[error("Relay chain api must be available")]
-    RelayChainNotAvailable,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 
     #[error("RPC call failed: {0}")]
     RpcFailed(#[source] subxt_rpcs::Error),
@@ -117,8 +117,14 @@ impl IntoResponse for ParasInclusionError {
             | ParasInclusionError::BlockNotFound(_)
             | ParasInclusionError::NotAParachain => StatusCode::BAD_REQUEST,
 
+            ParasInclusionError::RelayChain(RelayChainError::NotConfigured) => {
+                StatusCode::BAD_REQUEST
+            }
+            ParasInclusionError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
+
             ParasInclusionError::NoValidationData
-            | ParasInclusionError::RelayChainNotAvailable
             | ParasInclusionError::DecodeFailed(_)
             | ParasInclusionError::ClientAtBlockFailed(_)
             | ParasInclusionError::EventsFetchFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -177,12 +183,10 @@ pub async fn get_paras_inclusion(
     let para_id = get_parachain_id(&state, block_number).await?;
     let relay_parent_number = extract_relay_parent_number(&state, &block_hash).await?;
 
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(ParasInclusionError::RelayChainNotAvailable)?;
+    let relay_client = state.get_relay_chain_client().await?;
 
     let inclusion_number = search_for_inclusion_block(
-        relay_client,
+        &relay_client,
         para_id,
         block_number,
         relay_parent_number,
@@ -412,8 +416,8 @@ mod tests {
             "Block does not contain setValidationData extrinsic. Cannot determine relay parent number."
         );
         assert_eq!(
-            ParasInclusionError::RelayChainNotAvailable.to_string(),
-            "Relay chain api must be available"
+            ParasInclusionError::RelayChain(RelayChainError::NotConfigured).to_string(),
+            "Relay chain URL not configured. Add a relay chain URL to SAS_SUBSTRATE_MULTI_CHAIN_URL"
         );
     }
 

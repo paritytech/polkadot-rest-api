@@ -7,9 +7,6 @@ use crate::state::{AppState, RelayChainError};
 use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde_json::json;
-use subxt::SubstrateConfig;
-use subxt::config::RpcConfigFor;
-use subxt_rpcs::LegacyRpcMethods;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -77,9 +74,8 @@ impl IntoResponse for GetRcNodeVersionError {
 pub async fn get_rc_node_version(
     State(state): State<AppState>,
 ) -> Result<Json<NodeVersionResponse>, GetRcNodeVersionError> {
-    let relay_rpc_client = state.get_or_init_relay_rpc_client().await?;
-    let relay_legacy_rpc =
-        LegacyRpcMethods::<RpcConfigFor<SubstrateConfig>>::new((*relay_rpc_client).clone());
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_legacy_rpc = state.get_relay_chain_rpc().await?;
 
     let response = fetch_node_version(&relay_rpc_client, &relay_legacy_rpc).await?;
     Ok(Json(response))
@@ -119,19 +115,27 @@ mod tests {
             legacy_rpc,
             rpc_client,
             chain_info,
-            relay_client: None,
-            relay_rpc_client: Some(relay_rpc_client.clone()),
-            relay_chain_rpc: Some(Arc::new(subxt_rpcs::LegacyRpcMethods::new(
-                (*relay_rpc_client).clone(),
-            ))),
-            relay_chain_info: None,
+            relay_client: Arc::new(tokio::sync::OnceCell::new()),
+            relay_rpc_client: {
+                let cell = Arc::new(tokio::sync::OnceCell::new());
+                cell.set(relay_rpc_client.clone()).ok();
+                cell
+            },
+            relay_chain_rpc: {
+                let cell = Arc::new(tokio::sync::OnceCell::new());
+                cell.set(Arc::new(subxt_rpcs::LegacyRpcMethods::new(
+                    (*relay_rpc_client).clone(),
+                )))
+                .ok();
+                cell
+            },
+            relay_chain_info: Arc::new(tokio::sync::OnceCell::new()),
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
             chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
             chain_config: Arc::new(polkadot_rest_api_config::Config::single_chain(
                 polkadot_rest_api_config::ChainConfig::default(),
             )),
             route_registry: crate::routes::RouteRegistry::new(),
-            lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 

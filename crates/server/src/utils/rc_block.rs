@@ -48,7 +48,8 @@ pub async fn find_ah_blocks_in_rc_block(
 ) -> Result<Vec<AhBlockInfo>, RcBlockError> {
     let rc_client = state
         .get_relay_chain_client()
-        .ok_or(RcBlockError::RelayChainClientNotAvailable)?;
+        .await
+        .map_err(|_| RcBlockError::RelayChainClientNotAvailable)?;
 
     let rc_client_at_block = rc_client
         .at_block(rc_block.number)
