@@ -6,109 +6,14 @@
 //! This module provides common functionality for querying account balance information
 //! that is shared between the regular accounts endpoint and the RC (relay chain) endpoint.
 
+use crate::handlers::runtime_queries::balances as balances_queries;
 use crate::utils::ResolvedBlock;
-use parity_scale_codec::Decode;
 use serde::Serialize;
 use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 
-// ================================================================================================
-// SCALE Decode Types for System::Account storage
-// ================================================================================================
-
-/// Account data for modern runtimes (with frozen field)
-#[derive(Debug, Clone, Decode)]
-#[allow(dead_code)] // Fields needed for SCALE decoding
-struct AccountDataModern {
-    free: u128,
-    reserved: u128,
-    frozen: u128,
-    flags: u128,
-}
-
-/// Account data for legacy runtimes (with misc_frozen/fee_frozen fields)
-#[derive(Debug, Clone, Decode)]
-struct AccountDataLegacy {
-    free: u128,
-    reserved: u128,
-    misc_frozen: u128,
-    fee_frozen: u128,
-}
-
-/// Account info structure (modern runtime)
-#[derive(Debug, Clone, Decode)]
-#[allow(dead_code)] // Fields needed for SCALE decoding
-struct AccountInfoModern {
-    nonce: u32,
-    consumers: u32,
-    providers: u32,
-    sufficients: u32,
-    data: AccountDataModern,
-}
-
-/// Account info structure (legacy runtime)
-#[derive(Debug, Clone, Decode)]
-#[allow(dead_code)] // Fields needed for SCALE decoding
-struct AccountInfoLegacy {
-    nonce: u32,
-    consumers: u32,
-    providers: u32,
-    sufficients: u32,
-    data: AccountDataLegacy,
-}
-
-// ================================================================================================
-// SCALE Decode Types for Balances::Locks storage
-// ================================================================================================
-
-/// Lock reasons enum
-#[derive(Debug, Clone, Decode)]
-enum LockReasons {
-    Fee,
-    Misc,
-    All,
-}
-
-impl LockReasons {
-    fn as_str(&self) -> &'static str {
-        match self {
-            LockReasons::Fee => "Fee",
-            LockReasons::Misc => "Misc",
-            LockReasons::All => "All",
-        }
-    }
-}
-
-/// Balance lock structure
-#[derive(Debug, Clone, Decode)]
-struct BalanceLock {
-    id: [u8; 8],
-    amount: u128,
-    reasons: LockReasons,
-}
-
-// ================================================================================================
-// Shared Types
-// ================================================================================================
-
-/// Decoded account data from storage
-#[derive(Debug, Clone)]
-pub struct DecodedAccountData {
-    pub nonce: u32,
-    pub free: u128,
-    pub reserved: u128,
-    pub misc_frozen: Option<u128>,
-    pub fee_frozen: Option<u128>,
-    pub frozen: Option<u128>,
-}
-
-/// Decoded balance lock from storage
-#[derive(Debug, Clone)]
-pub struct DecodedBalanceLock {
-    pub id: String,
-    pub amount: u128,
-    pub reasons: String,
-}
+// Re-export types from centralized module for backward compatibility
+pub use balances_queries::{DecodedAccountData, DecodedBalanceLock};
 
 /// Raw balance info data (before formatting)
 #[derive(Debug, Clone)]
@@ -202,13 +107,10 @@ pub async fn query_balance_info(
     // Fetch existential deposit from runtime constants (sync - reads from metadata)
     let existential_deposit = fetch_existential_deposit(client_at_block)?;
 
-    let (account_data_result, locks_result) = tokio::join!(
-        query_account_data(client_at_block, account),
-        query_balance_locks(client_at_block, account)
+    let (account_data, locks) = tokio::join!(
+        balances_queries::get_account_data_or_default(client_at_block, account),
+        balances_queries::get_balance_locks(client_at_block, account)
     );
-
-    let account_data = account_data_result?;
-    let locks = locks_result?;
 
     // Calculate transferable balance using the dynamically fetched ED
     let transferable = calculate_transferable(existential_deposit, &account_data);
@@ -278,125 +180,6 @@ pub fn fetch_existential_deposit(
         .constants()
         .entry(addr)
         .map_err(|_| BalanceQueryError::ExistentialDepositFetchFailed)
-}
-
-// ================================================================================================
-// Account Data Query
-// ================================================================================================
-
-async fn query_account_data(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-    account: &AccountId32,
-) -> Result<DecodedAccountData, BalanceQueryError> {
-    // Build the storage address for System::Account(account_id)
-    let storage_addr = subxt::dynamic::storage::<_, ()>("System", "Account");
-    let account_bytes: [u8; 32] = *account.as_ref();
-
-    let storage_value = client_at_block
-        .storage()
-        .fetch(storage_addr, (account_bytes,))
-        .await;
-
-    if let Ok(value) = storage_value {
-        let raw_bytes = value.into_bytes();
-        decode_account_info(&raw_bytes)
-    } else {
-        // Return empty account data if account doesn't exist
-        Ok(DecodedAccountData {
-            nonce: 0,
-            free: 0,
-            reserved: 0,
-            misc_frozen: None,
-            fee_frozen: None,
-            frozen: Some(0),
-        })
-    }
-}
-
-fn decode_account_info(raw_bytes: &[u8]) -> Result<DecodedAccountData, BalanceQueryError> {
-    // Try modern format first (with frozen field)
-    if let Ok(account_info) = AccountInfoModern::decode(&mut &raw_bytes[..]) {
-        return Ok(DecodedAccountData {
-            nonce: account_info.nonce,
-            free: account_info.data.free,
-            reserved: account_info.data.reserved,
-            misc_frozen: None,
-            fee_frozen: None,
-            frozen: Some(account_info.data.frozen),
-        });
-    }
-
-    // Fall back to legacy format (with misc_frozen/fee_frozen fields)
-    if let Ok(account_info) = AccountInfoLegacy::decode(&mut &raw_bytes[..]) {
-        return Ok(DecodedAccountData {
-            nonce: account_info.nonce,
-            free: account_info.data.free,
-            reserved: account_info.data.reserved,
-            misc_frozen: Some(account_info.data.misc_frozen),
-            fee_frozen: Some(account_info.data.fee_frozen),
-            frozen: None,
-        });
-    }
-
-    // If neither format works, return an error
-    Err(BalanceQueryError::DecodeFailed(
-        parity_scale_codec::Error::from("Failed to decode account info: unknown format"),
-    ))
-}
-
-// ================================================================================================
-// Balance Locks Query
-// ================================================================================================
-
-async fn query_balance_locks(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-    account: &AccountId32,
-) -> Result<Vec<DecodedBalanceLock>, BalanceQueryError> {
-    // Check if Balances::Locks exists
-    if client_at_block
-        .storage()
-        .entry(("Balances", "Locks"))
-        .is_err()
-    {
-        return Ok(Vec::new());
-    }
-
-    // Build the storage address for Balances::Locks(account_id)
-    let storage_addr = subxt::dynamic::storage::<_, ()>("Balances", "Locks");
-    let account_bytes: [u8; 32] = *account.as_ref();
-
-    let storage_value = client_at_block
-        .storage()
-        .fetch(storage_addr, (account_bytes,))
-        .await;
-
-    if let Ok(value) = storage_value {
-        let raw_bytes = value.into_bytes();
-        decode_balance_locks(&raw_bytes)
-    } else {
-        Ok(Vec::new())
-    }
-}
-
-fn decode_balance_locks(raw_bytes: &[u8]) -> Result<Vec<DecodedBalanceLock>, BalanceQueryError> {
-    // Decode as Vec<BalanceLock>
-    if let Ok(locks) = Vec::<BalanceLock>::decode(&mut &raw_bytes[..]) {
-        return Ok(locks
-            .into_iter()
-            .map(|lock| {
-                // Format lock ID as hex with 0x prefix to match Sidecar format
-                let id = format!("0x{}", hex::encode(lock.id));
-                DecodedBalanceLock {
-                    id,
-                    amount: lock.amount,
-                    reasons: lock.reasons.as_str().to_string(),
-                }
-            })
-            .collect());
-    }
-
-    // If decoding fails, return empty (locks may just not exist)
-    Ok(Vec::new())
 }
 
 // ================================================================================================
