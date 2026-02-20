@@ -125,7 +125,8 @@ mod tests {
                 let cell = Arc::new(tokio::sync::OnceCell::new());
                 cell.set(Arc::new(subxt_rpcs::LegacyRpcMethods::new(
                     (*relay_rpc_client).clone(),
-                ))).ok();
+                )))
+                .ok();
                 cell
             },
             relay_chain_info: None,

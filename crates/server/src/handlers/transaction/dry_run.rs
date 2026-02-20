@@ -273,13 +273,12 @@ pub async fn dry_run_rc(
     Json(body): Json<DryRunRequest>,
 ) -> Result<Json<DryRunResponse>, DryRunError> {
     let tx = body.tx.as_deref().unwrap_or_default();
-    let relay_client =
-        state
-            .get_relay_chain_client()
-            .ok_or_else(|| DryRunError::RelayChain {
-                source: RelayChainError::NotConfigured,
-                transaction: tx.to_string(),
-            })?;
+    let relay_client = state
+        .get_relay_chain_client()
+        .ok_or_else(|| DryRunError::RelayChain {
+            source: RelayChainError::NotConfigured,
+            transaction: tx.to_string(),
+        })?;
 
     dry_run_internal(relay_client, body).await
 }

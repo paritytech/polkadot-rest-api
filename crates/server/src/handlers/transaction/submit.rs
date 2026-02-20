@@ -186,12 +186,14 @@ pub async fn submit_rc(
     Json(body): Json<SubmitRequest>,
 ) -> Result<Json<SubmitResponse>, SubmitError> {
     let tx_str = body.tx.as_deref().unwrap_or_default();
-    let rpc_client = state.get_relay_chain_rpc_client().await.map_err(|e| {
-        SubmitError::RelayChain {
-            source: e,
-            transaction: tx_str.to_string(),
-        }
-    })?;
+    let rpc_client =
+        state
+            .get_relay_chain_rpc_client()
+            .await
+            .map_err(|e| SubmitError::RelayChain {
+                source: e,
+                transaction: tx_str.to_string(),
+            })?;
 
     submit_internal(&rpc_client, body).await
 }
