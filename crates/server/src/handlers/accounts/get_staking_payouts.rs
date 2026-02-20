@@ -107,7 +107,7 @@ async fn create_relay_client_for_migration(
     state: &AppState,
 ) -> Option<subxt::OnlineClientAtBlock<subxt::SubstrateConfig>> {
     let boundaries = get_migration_boundaries(&state.chain_info.spec_name)?;
-    let relay_client = state.get_relay_chain_client()?;
+    let relay_client = state.get_relay_chain_client().await.ok()?;
     relay_client
         .at_block(boundaries.relay_migration_started_at as u64 - 1)
         .await

@@ -82,9 +82,7 @@ pub async fn get_rc_block_header(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
 ) -> Result<Response, GetRcBlockHeaderError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
 
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
 

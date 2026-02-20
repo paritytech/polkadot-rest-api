@@ -201,16 +201,13 @@ pub async fn pallets_staking_progress(
     let is_asset_hub = state.chain_info.chain_type == ChainType::AssetHub;
 
     let validators = if is_asset_hub {
-        if let Some(relay_client) = state.get_relay_chain_client() {
-            let relay_chain_info = state
-                .relay_chain_info
-                .as_ref()
-                .ok_or(RelayChainError::NotConfigured)?;
+        if let Ok(relay_client) = state.get_relay_chain_client().await {
+            let relay_chain_info = state.get_relay_chain_info().await?;
             let relay_rpc = state.get_relay_chain_rpc().await?;
             let relay_block_hash = relay_rpc
                 .chain_get_block_hash(None)
                 .await
-                .map_err(|_| RelayChainError::NotConfigured)?;
+                .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
             let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
             let relay_block_number = if let Some(hash) = relay_block_hash {
                 let hash_str = format!("{:?}", hash);
@@ -348,15 +345,10 @@ pub async fn rc_pallets_staking_progress(
     JsonQuery(params): JsonQuery<RcStakingProgressQueryParams>,
 ) -> Result<Response, PalletError> {
     // Ensure relay chain is configured
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_rpc = state.get_relay_chain_rpc().await?;
-    let relay_chain_info = state
-        .relay_chain_info
-        .as_ref()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_chain_info = state.get_relay_chain_info().await?;
 
     tracing::debug!(
         "RC staking progress: querying relay chain '{}' (spec version: {})",
@@ -498,9 +490,7 @@ async fn handle_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(RelayChainError::NotConfigured.into());
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at
@@ -967,12 +957,12 @@ async fn derive_session_era_progress_asset_hub(
         (current_slot.saturating_sub(babe_params.genesis_slot)) / babe_params.epoch_duration;
 
     // Calculate session index accounting for skipped epochs from relay chain
-    let current_index = if let Some(relay_client) = state.get_relay_chain_client() {
+    let current_index = if let Ok(relay_client) = state.get_relay_chain_client().await {
         // Get relay chain client at current block to fetch skipped epochs
         let relay_client_at_block = relay_client
             .at_current_block()
             .await
-            .map_err(|_| RelayChainError::NotConfigured)?;
+            .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
         let skipped_epochs = fetch_relay_skipped_epochs(&relay_client_at_block).await;
         calculate_session_from_skipped_epochs(epoch_index, &skipped_epochs)
     } else {

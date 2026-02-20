@@ -11,7 +11,7 @@ use crate::handlers::common::xcm_types::{Location, decode_multi_location_from_by
 use crate::handlers::pallets::common::{
     AtResponse, ClientAtBlock, PalletError, format_account_id, resolve_block_for_pallet,
 };
-use crate::state::{AppState, RelayChainError};
+use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
@@ -173,9 +173,7 @@ async fn handle_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(RelayChainError::NotConfigured.into());
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at

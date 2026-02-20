@@ -8,7 +8,7 @@ use crate::handlers::pallets::common::{
     AssetDetails, AssetMetadataStorage, AtResponse, ClientAtBlock, PalletError, format_account_id,
     resolve_block_for_pallet,
 };
-use crate::state::{AppState, RelayChainError};
+use crate::state::AppState;
 use crate::utils::{
     BlockId, DEFAULT_CONCURRENCY, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
     resolve_block_with_rpc, run_with_concurrency,
@@ -148,9 +148,7 @@ async fn handle_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(RelayChainError::NotConfigured.into());
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at

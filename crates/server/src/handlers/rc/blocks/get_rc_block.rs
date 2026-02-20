@@ -150,13 +150,8 @@ pub async fn get_rc_block(
     Path(block_id): Path<String>,
     JsonQuery(params): JsonQuery<RcBlockQueryParams>,
 ) -> Result<Response, GetRcBlockError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
-    let relay_chain_info = state
-        .relay_chain_info
-        .as_ref()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
+    let relay_chain_info = state.get_relay_chain_info().await?;
 
     let block_id_parsed: utils::BlockId = block_id.parse()?;
     let queried_by_hash = matches!(block_id_parsed, utils::BlockId::Hash(_));
@@ -177,7 +172,7 @@ pub async fn get_rc_block(
 
     let ctx = BlockBuildContext {
         state: &state,
-        client: relay_client,
+        client: &relay_client,
         ss58_prefix: relay_chain_info.ss58_prefix,
         chain_type: ChainType::Relay,
         spec_name: relay_chain_info.spec_name.clone(),

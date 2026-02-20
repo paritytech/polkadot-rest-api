@@ -10,7 +10,7 @@ use crate::handlers::common::accounts::{
     RawBalanceInfo, format_balance, format_frozen_fields, format_locks, format_transferable,
     query_balance_info,
 };
-use crate::state::{AppState, RelayChainError};
+use crate::state::AppState;
 use crate::utils;
 use axum::{
     Json,
@@ -57,7 +57,7 @@ pub async fn get_balance_info(
     JsonQuery(params): JsonQuery<RcBalanceInfoQueryParams>,
 ) -> Result<Response, AccountsError> {
     // Get the relay chain ss58_prefix for address validation
-    let rc_ss58_prefix = get_relay_chain_ss58_prefix(&state)?;
+    let rc_ss58_prefix = get_relay_chain_ss58_prefix(&state).await?;
     let account = validate_and_parse_address(&account_id, rc_ss58_prefix)?;
 
     // Get the relay chain client and info
@@ -92,26 +92,26 @@ pub async fn get_balance_info(
 // ================================================================================================
 
 /// Get the SS58 prefix for the relay chain
-fn get_relay_chain_ss58_prefix(state: &AppState) -> Result<u16, AccountsError> {
+async fn get_relay_chain_ss58_prefix(state: &AppState) -> Result<u16, AccountsError> {
     if state.chain_info.chain_type == ChainType::Relay {
         return Ok(state.chain_info.ss58_prefix);
     }
 
     state
-        .relay_chain_info
-        .as_ref()
+        .get_relay_chain_info()
+        .await
         .map(|info| info.ss58_prefix)
-        .ok_or(AccountsError::RelayChain(RelayChainError::NotConfigured))
+        .map_err(AccountsError::RelayChain)
 }
 
 /// Get access to relay chain client and RPC
 async fn get_relay_chain_access(
     state: &AppState,
-) -> Result<RelayChainAccessWithSpec<'_>, AccountsError> {
+) -> Result<RelayChainAccessWithSpec, AccountsError> {
     // If we're connected directly to a relay chain, use the primary client
     if state.chain_info.chain_type == ChainType::Relay {
         return Ok((
-            &state.client,
+            state.client.clone(),
             state.rpc_client.clone(),
             state.legacy_rpc.clone(),
             state.chain_info.spec_name.clone(),
@@ -119,19 +119,17 @@ async fn get_relay_chain_access(
     }
 
     // Otherwise, we need the relay chain client (for Asset Hub or parachain)
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
 
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
 
     let relay_rpc = state.get_relay_chain_rpc().await?;
 
     let relay_spec_name = state
-        .relay_chain_info
-        .as_ref()
+        .get_relay_chain_info()
+        .await
         .map(|info| info.spec_name.clone())
-        .ok_or(AccountsError::RelayChain(RelayChainError::NotConfigured))?;
+        .map_err(AccountsError::RelayChain)?;
 
     Ok((relay_client, relay_rpc_client, relay_rpc, relay_spec_name))
 }

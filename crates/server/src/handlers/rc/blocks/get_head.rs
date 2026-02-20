@@ -171,20 +171,16 @@ pub async fn get_rc_blocks_head(
 ) -> Result<Response, GetRcBlockHeadError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(GetRcBlockHeadError::RelayChain(
-            RelayChainError::NotConfigured,
-        ))?;
+        .await
+        .map_err(GetRcBlockHeadError::RelayChain)?;
     let relay_rpc = state
         .get_relay_chain_rpc()
         .await
         .map_err(GetRcBlockHeadError::RelayChain)?;
-    let relay_chain_info =
-        state
-            .relay_chain_info
-            .as_ref()
-            .ok_or(GetRcBlockHeadError::RelayChain(
-                RelayChainError::NotConfigured,
-            ))?;
+    let relay_chain_info = state
+        .get_relay_chain_info()
+        .await
+        .map_err(GetRcBlockHeadError::RelayChain)?;
 
     let ss58_prefix = relay_chain_info.ss58_prefix;
 

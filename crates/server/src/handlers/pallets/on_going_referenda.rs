@@ -11,7 +11,7 @@ use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     AtResponse, ClientAtBlock, PalletError, format_account_id, resolve_block_for_pallet,
 };
-use crate::state::{AppState, RelayChainError};
+use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
@@ -214,9 +214,7 @@ async fn handle_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(RelayChainError::NotConfigured.into());
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at
@@ -492,15 +490,10 @@ pub async fn rc_pallets_on_going_referenda(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<RcOnGoingReferendaQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_rpc = state.get_relay_chain_rpc().await?;
-    let relay_chain_info = state
-        .relay_chain_info
-        .as_ref()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_chain_info = state.get_relay_chain_info().await?;
 
     let block_id = params
         .at

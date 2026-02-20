@@ -266,13 +266,14 @@ pub async fn material_rc(
 ) -> Result<Json<MaterialResponse>, MaterialError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(MaterialError::RelayChain(RelayChainError::NotConfigured))?;
+        .await
+        .map_err(MaterialError::RelayChain)?;
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
         .await
         .map_err(MaterialError::RelayChain)?;
 
-    material_internal(relay_client, &relay_rpc_client, query).await
+    material_internal(&relay_client, &relay_rpc_client, query).await
 }
 
 /// Parse and validate metadata version from path parameter.
@@ -344,13 +345,14 @@ pub async fn material_versioned_rc(
 ) -> Result<Json<MaterialResponse>, MaterialError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(MaterialError::RelayChain(RelayChainError::NotConfigured))?;
+        .await
+        .map_err(MaterialError::RelayChain)?;
     let relay_rpc_client = state
         .get_relay_chain_rpc_client()
         .await
         .map_err(MaterialError::RelayChain)?;
 
-    material_versioned_internal(relay_client, &relay_rpc_client, metadata_version, query).await
+    material_versioned_internal(&relay_client, &relay_rpc_client, metadata_version, query).await
 }
 
 async fn material_versioned_internal(

@@ -13,7 +13,7 @@ use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcBlockFields,
     RcPalletItemQueryParams, RcPalletQueryParams, resolve_block_for_pallet, resolve_type_name,
 };
-use crate::state::{AppState, RelayChainError};
+use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
@@ -213,9 +213,7 @@ async fn handle_events_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(RelayChainError::NotConfigured.into());
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at
@@ -276,9 +274,7 @@ async fn handle_event_item_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(RelayChainError::NotConfigured.into());
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at
@@ -528,9 +524,7 @@ pub async fn rc_pallet_events(
     Path(pallet_id): Path<String>,
     JsonQuery(params): JsonQuery<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_rpc = state.get_relay_chain_rpc().await?;
 
@@ -586,9 +580,7 @@ pub async fn rc_pallet_event_item(
     Path((pallet_id, event_item_id)): Path<(String, String)>,
     JsonQuery(params): JsonQuery<RcPalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_rpc = state.get_relay_chain_rpc().await?;
 

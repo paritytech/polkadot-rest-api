@@ -21,7 +21,7 @@ use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcPalletItemQueryParams,
     RcPalletQueryParams,
 };
-use crate::state::{AppState, RelayChainError};
+use crate::state::AppState;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use crate::utils::{self, fetch_block_timestamp};
 use axum::{
@@ -408,9 +408,7 @@ async fn handle_use_rc_block(
     }
 
     // Validate relay chain connection is configured
-    if state.get_relay_chain_client().is_none() {
-        return Err(RelayChainError::NotConfigured.into());
-    }
+    state.get_relay_chain_client().await?;
 
     // Parse the relay chain block ID
     let rc_block_id = params
@@ -497,9 +495,7 @@ async fn handle_dispatchable_item_use_rc_block(
     }
 
     // Validate relay chain connection is configured
-    if state.get_relay_chain_client().is_none() {
-        return Err(RelayChainError::NotConfigured.into());
-    }
+    state.get_relay_chain_client().await?;
 
     // Parse the relay chain block ID
     let rc_block_id = params
@@ -832,9 +828,7 @@ pub async fn rc_pallets_dispatchables(
     Path(pallet_id): Path<String>,
     JsonQuery(params): JsonQuery<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_rpc = state.get_relay_chain_rpc().await?;
 
@@ -908,9 +902,7 @@ pub async fn rc_pallet_dispatchable_item(
     Path((pallet_id, dispatchable_id)): Path<(String, String)>,
     JsonQuery(params): JsonQuery<RcPalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_rpc = state.get_relay_chain_rpc().await?;
 

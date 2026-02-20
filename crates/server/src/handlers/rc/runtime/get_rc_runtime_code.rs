@@ -120,9 +120,7 @@ pub async fn get_rc_runtime_code(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<RuntimeCodeResponse>, GetRcCodeError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
 
     let client_at_block =
         utils::resolve_client_at_block(relay_client.as_ref(), params.at.as_ref()).await?;

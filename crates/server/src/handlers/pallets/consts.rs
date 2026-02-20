@@ -12,7 +12,7 @@ use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, RcPalletItemQueryParams, RcPalletQueryParams,
 };
-use crate::state::{AppState, RelayChainError};
+use crate::state::AppState;
 use crate::utils;
 use crate::utils::format::to_camel_case;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -300,9 +300,7 @@ async fn handle_constants_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(RelayChainError::NotConfigured.into());
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at
@@ -375,9 +373,7 @@ async fn handle_constant_item_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(RelayChainError::NotConfigured.into());
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at
@@ -520,9 +516,7 @@ pub async fn rc_pallets_constants(
     Path(pallet_id): Path<String>,
     JsonQuery(params): JsonQuery<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_rpc = state.get_relay_chain_rpc().await?;
 
@@ -596,9 +590,7 @@ pub async fn rc_pallets_constant_item(
     Path((pallet_id, constant_item_id)): Path<(String, String)>,
     JsonQuery(params): JsonQuery<RcPalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_rpc = state.get_relay_chain_rpc().await?;
 

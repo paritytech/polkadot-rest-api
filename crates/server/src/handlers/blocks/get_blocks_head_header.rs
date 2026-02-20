@@ -187,9 +187,7 @@ async fn handle_use_rc_block(
         return Err(GetBlockHeadHeaderError::UseRcBlockNotSupported);
     }
 
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
 
     let relay_rpc = state.get_relay_chain_rpc().await?;
 

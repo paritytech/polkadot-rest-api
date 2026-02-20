@@ -184,12 +184,10 @@ pub async fn get_paras_inclusion(
     let para_id = get_parachain_id(&state, block_number).await?;
     let relay_parent_number = extract_relay_parent_number(&state, &block_hash).await?;
 
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
 
     let inclusion_number = search_for_inclusion_block(
-        relay_client,
+        &relay_client,
         para_id,
         block_number,
         relay_parent_number,

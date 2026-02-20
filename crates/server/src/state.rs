@@ -76,11 +76,10 @@ pub struct AppState {
     pub rpc_client: Arc<RpcClient>,
     pub chain_info: ChainInfo,
 
-    /// Optional relay chain connection (for parachains)
-    #[allow(dead_code)] // Will be used when implementing relay chain endpoints
-    pub relay_client: Option<Arc<OnlineClient<SubstrateConfig>>>,
-    #[allow(dead_code)] // Will be used when implementing relay chain endpoints
-    pub relay_chain_info: Option<ChainInfo>,
+    /// Relay chain OnlineClient — pre-populated at startup if connection succeeds, lazy-init otherwise
+    pub relay_client: Arc<OnceCell<Arc<OnlineClient<SubstrateConfig>>>>,
+    /// Relay chain info — pre-populated at startup if connection succeeds, lazy-init otherwise
+    pub relay_chain_info: Arc<OnceCell<ChainInfo>>,
 
     /// Cache for tracking queryFeeDetails availability per spec version
     pub fee_details_cache: Arc<QueryFeeDetailsCache>,
@@ -124,31 +123,7 @@ impl AppState {
             .unwrap_or_default();
 
         // Configure SubstrateConfig with appropriate legacy types based on chain config
-        let subxt_config = match chain_chain_config.legacy_types.as_str() {
-            "polkadot" => {
-                // Load Polkadot-specific legacy types for historic block support
-                // Must use builder pattern - SubstrateConfig::new() doesn't have set_legacy_types
-                SubstrateConfig::builder()
-                    .set_legacy_types(frame_decode::legacy_types::polkadot::relay_chain())
-                    .build()
-            }
-            "kusama-relay" => {
-                // Load Kusama relay chain legacy types for historic block support
-                SubstrateConfig::builder()
-                    .set_legacy_types(frame_decode::legacy_types::kusama::relay_chain())
-                    .build()
-            }
-            "kusama-asset-hub" => {
-                // Load Kusama Asset Hub legacy types for historic block support
-                SubstrateConfig::builder()
-                    .set_legacy_types(frame_decode::legacy_types::kusama::asset_hub())
-                    .build()
-            }
-            _ => {
-                // For chains without legacy types or unknown chains, use empty config
-                SubstrateConfig::new()
-            }
-        };
+        let subxt_config = build_subxt_config(&chain_chain_config.legacy_types);
 
         // Note: from_rpc_client_with_config is now async in the new subxt
         let client = OnlineClient::from_rpc_client_with_config(subxt_config, rpc_client.clone())
@@ -199,12 +174,20 @@ impl AppState {
 
         let relay_rpc_client_cell = Arc::new(OnceCell::new());
         let relay_chain_rpc_cell = Arc::new(OnceCell::new());
+        let relay_client_cell = Arc::new(OnceCell::new());
+        let relay_chain_info_cell = Arc::new(OnceCell::new());
 
         if let Some(rpc) = relay_rpc_client {
             relay_rpc_client_cell.set(rpc.clone()).ok();
             relay_chain_rpc_cell
                 .set(Arc::new(LegacyRpcMethods::new((*rpc).clone())))
                 .ok();
+        }
+        if let Some(client) = relay_client {
+            relay_client_cell.set(client).ok();
+        }
+        if let Some(info) = relay_chain_info {
+            relay_chain_info_cell.set(info).ok();
         }
 
         Ok(Self {
@@ -213,8 +196,8 @@ impl AppState {
             legacy_rpc: Arc::new(legacy_rpc),
             rpc_client: Arc::new(rpc_client),
             chain_info,
-            relay_client,
-            relay_chain_info,
+            relay_client: relay_client_cell,
+            relay_chain_info: relay_chain_info_cell,
             fee_details_cache: Arc::new(QueryFeeDetailsCache::new()),
             chain_configs,
             chain_config: full_config,
@@ -224,8 +207,50 @@ impl AppState {
         })
     }
 
-    pub fn get_relay_chain_client(&self) -> Option<&Arc<OnlineClient<SubstrateConfig>>> {
-        self.relay_client.as_ref()
+    /// Get or lazily initialize the relay chain OnlineClient.
+    ///
+    /// If the connection was established at startup, returns the pre-populated client.
+    /// Otherwise, attempts lazy initialization using the relay chain RPC client.
+    pub async fn get_relay_chain_client(
+        &self,
+    ) -> Result<Arc<OnlineClient<SubstrateConfig>>, RelayChainError> {
+        self.relay_client
+            .get_or_try_init(|| async {
+                let rpc_client = self.get_relay_chain_rpc_client().await?;
+
+                // Get relay chain legacy types from config
+                let rc_config = self
+                    .chain_config
+                    .rc
+                    .as_ref()
+                    .ok_or(RelayChainError::NotConfigured)?;
+                let subxt_config = build_subxt_config(&rc_config.legacy_types);
+
+                let client =
+                    OnlineClient::from_rpc_client_with_config(subxt_config, (*rpc_client).clone())
+                        .await
+                        .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
+
+                Ok(Arc::new(client))
+            })
+            .await
+            .cloned()
+    }
+
+    /// Get or lazily initialize the relay chain info.
+    ///
+    /// If the info was obtained at startup, returns the pre-populated value.
+    /// Otherwise, queries the relay chain via RPC to obtain it.
+    pub async fn get_relay_chain_info(&self) -> Result<ChainInfo, RelayChainError> {
+        self.relay_chain_info
+            .get_or_try_init(|| async {
+                let legacy_rpc = self.get_relay_chain_rpc().await?;
+                get_chain_info(&legacy_rpc)
+                    .await
+                    .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))
+            })
+            .await
+            .cloned()
     }
 
     /// Get or lazily initialize the relay chain legacy RPC methods.
@@ -306,18 +331,7 @@ impl AppState {
             });
 
         // Configure SubstrateConfig with appropriate legacy types
-        let relay_subxt_config = match relay_chain_config.legacy_types.as_str() {
-            "polkadot" => SubstrateConfig::builder()
-                .set_legacy_types(frame_decode::legacy_types::polkadot::relay_chain())
-                .build(),
-            "kusama-relay" => SubstrateConfig::builder()
-                .set_legacy_types(frame_decode::legacy_types::kusama::relay_chain())
-                .build(),
-            "kusama-asset-hub" => SubstrateConfig::builder()
-                .set_legacy_types(frame_decode::legacy_types::kusama::asset_hub())
-                .build(),
-            _ => SubstrateConfig::new(),
-        };
+        let relay_subxt_config = build_subxt_config(&relay_chain_config.legacy_types);
 
         let relay_client =
             OnlineClient::from_rpc_client_with_config(relay_subxt_config, relay_rpc_client.clone())
@@ -448,6 +462,22 @@ impl AppState {
                 rpc_params![method, call_parameters, block_hash],
             )
             .await
+    }
+}
+
+/// Build a SubstrateConfig with appropriate legacy types based on the chain config string.
+fn build_subxt_config(legacy_types: &str) -> SubstrateConfig {
+    match legacy_types {
+        "polkadot" => SubstrateConfig::builder()
+            .set_legacy_types(frame_decode::legacy_types::polkadot::relay_chain())
+            .build(),
+        "kusama-relay" => SubstrateConfig::builder()
+            .set_legacy_types(frame_decode::legacy_types::kusama::relay_chain())
+            .build(),
+        "kusama-asset-hub" => SubstrateConfig::builder()
+            .set_legacy_types(frame_decode::legacy_types::kusama::asset_hub())
+            .build(),
+        _ => SubstrateConfig::new(),
     }
 }
 

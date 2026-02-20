@@ -13,7 +13,7 @@ use crate::handlers::blocks::processing::{
     fetch_block_events_with_prefix,
 };
 use crate::handlers::blocks::types::{BlockQueryParams, BlockResponse, GetBlockError};
-use crate::state::{AppState, RelayChainError};
+use crate::state::AppState;
 use axum::{
     Json,
     extract::State,
@@ -88,17 +88,11 @@ pub async fn get_rc_blocks(
 
     let (start, end) = parse_range(&range_str)?;
 
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?
-        .clone();
+    let relay_client = state.get_relay_chain_client().await?;
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_chain_rpc = state.get_relay_chain_rpc().await?;
 
-    let relay_chain_info = state
-        .relay_chain_info
-        .clone()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_chain_info = state.get_relay_chain_info().await?;
 
     let base_params = BlockQueryParams {
         event_docs: params.event_docs,

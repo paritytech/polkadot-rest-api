@@ -10,7 +10,7 @@
 use crate::handlers::blocks::common::convert_digest_items_to_logs;
 use crate::handlers::blocks::get_block_extrinsics_raw::{BlockRawDigest, BlockRawResponse};
 use crate::handlers::blocks::types::GetBlockError;
-use crate::state::{AppState, RelayChainError};
+use crate::state::AppState;
 use crate::utils;
 use axum::{
     Json,
@@ -55,9 +55,7 @@ async fn build_rc_block_raw_response(
     state: &AppState,
     block_id: String,
 ) -> Result<BlockRawResponse, GetBlockError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
 
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
 

@@ -12,7 +12,7 @@ use crate::handlers::blocks::types::{
     BlockHeaderQueryParams, BlockHeaderResponse, GetBlockHeaderError,
     convert_digest_logs_to_sidecar_format,
 };
-use crate::state::{AppState, RelayChainError};
+use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block_at};
 use axum::{
     Json,
@@ -83,9 +83,7 @@ async fn handle_use_rc_block(
         return Err(GetBlockHeaderError::UseRcBlockNotSupported);
     }
 
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
 
     let rc_block_id = block_id.parse::<utils::BlockId>()?;
     let rc_client_at_block = match &rc_block_id {

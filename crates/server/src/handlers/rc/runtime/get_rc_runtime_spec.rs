@@ -115,7 +115,8 @@ pub async fn get_rc_runtime_spec(
 ) -> Result<Json<RuntimeSpecResponse>, GetRcSpecError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(GetRcSpecError::RelayChain(RelayChainError::NotConfigured))?;
+        .await
+        .map_err(GetRcSpecError::RelayChain)?;
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_legacy_rpc = state.get_relay_chain_rpc().await?;
 
