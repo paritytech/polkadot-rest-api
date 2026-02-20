@@ -342,7 +342,7 @@ pub async fn resolve_block_for_pallet(
 
 /// Query parameters for pallet metadata endpoints (list endpoints).
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PalletQueryParams {
     /// Block hash or number to query at. If not provided, uses the latest block.
     pub at: Option<String>,
@@ -358,7 +358,7 @@ pub struct PalletQueryParams {
 
 /// Query parameters for single item endpoints (e.g., `/pallets/{palletId}/errors/{errorId}`).
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PalletItemQueryParams {
     /// Block hash or number to query at. If not provided, uses the latest block.
     pub at: Option<String>,
@@ -374,7 +374,7 @@ pub struct PalletItemQueryParams {
 
 /// Query parameters for relay chain pallet list endpoints (e.g., `/rc/pallets/{palletId}/consts`).
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcPalletQueryParams {
     /// Block hash or number to query at. If not provided, uses the latest block.
     pub at: Option<String>,
@@ -386,7 +386,7 @@ pub struct RcPalletQueryParams {
 
 /// Query parameters for relay chain single item endpoints (e.g., `/rc/pallets/{palletId}/consts/{constantItemId}`).
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcPalletItemQueryParams {
     /// Block hash or number to query at. If not provided, uses the latest block.
     pub at: Option<String>,
@@ -574,5 +574,42 @@ pub fn resolve_type_name(types: &scale_info::PortableRegistry, type_id: u32) -> 
         }
         scale_info::TypeDef::BitSequence(_) => "BitSequence".to_string(),
         _ => type_id.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pallet_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<PalletQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_pallet_item_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<PalletItemQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_rc_pallet_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<RcPalletQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_rc_pallet_item_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<RcPalletItemQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 }

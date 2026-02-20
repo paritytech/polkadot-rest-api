@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetsQueryParams {
     pub at: Option<String>,
     #[serde(default)]
@@ -284,4 +284,17 @@ async fn fetch_asset_metadata(
         decimals: metadata.decimals.to_string(),
         is_frozen: metadata.is_frozen,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_assets_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<AssetsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
 }

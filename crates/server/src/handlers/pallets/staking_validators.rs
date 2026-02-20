@@ -23,7 +23,7 @@ use std::collections::HashSet;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StakingValidatorsQueryParams {
     pub at: Option<String>,
     #[serde(default)]
@@ -31,7 +31,7 @@ pub struct StakingValidatorsQueryParams {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcStakingValidatorsQueryParams {
     pub at: Option<String>,
 }
@@ -481,4 +481,25 @@ async fn fetch_session_validators_set(
         .iter()
         .map(|v| format_account_id(v, ss58_prefix))
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_staking_validators_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<StakingValidatorsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_rc_staking_validators_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<RcStakingValidatorsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
 }

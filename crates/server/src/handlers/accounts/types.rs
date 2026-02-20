@@ -53,7 +53,7 @@ macro_rules! impl_error_response {
 
 /// Query parameters for GET /accounts/{accountId}/asset-balances endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetBalancesQueryParams {
     /// Optional Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -120,7 +120,7 @@ pub struct DecodedAssetBalance {
 
 /// Query parameters for GET /accounts/{accountId}/asset-approvals endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetApprovalQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -388,7 +388,7 @@ impl_error_response!(AccountsError,
 
 /// Query parameters for GET /accounts/{accountId}/balance-info endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BalanceInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -487,7 +487,7 @@ pub struct DecodedBalanceLock {
 
 /// Query parameters for GET /accounts/{accountId}/pool-asset-balances endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PoolAssetBalancesQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -533,7 +533,7 @@ pub struct PoolAssetBalance {
 
 /// Query parameters for GET /accounts/{accountId}/pool-asset-approvals endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PoolAssetApprovalQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -583,7 +583,7 @@ pub struct DecodedPoolAssetApproval {
 
 /// Query parameters for GET /accounts/{accountId}/convert endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AccountConvertQueryParams {
     pub scheme: Option<String>,
 
@@ -623,7 +623,7 @@ pub struct AccountConvertResponse {
 
 /// Query parameters for GET /accounts/{accountId}/proxy-info endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProxyInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -674,7 +674,7 @@ pub struct ProxyDefinition {
 
 /// Query parameters for GET /accounts/{accountId}/staking-info endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StakingInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -797,7 +797,7 @@ pub struct ClaimedReward {
 
 /// Query parameters for GET /accounts/{accountId}/staking-payouts endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StakingPayoutsQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -903,7 +903,7 @@ pub struct ValidatorPayout {
 
 /// Query parameters for GET /accounts/{accountId}/vesting-info endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VestingInfoQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -951,7 +951,7 @@ pub struct VestingSchedule {
 
 /// Query parameters for GET /accounts/compare endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AccountCompareQueryParams {
     /// Comma-separated list of SS58 addresses to compare (max 30)
     pub addresses: String,
@@ -994,7 +994,7 @@ pub struct AddressDetails {
 
 /// Query parameters for GET /accounts/{accountId}/validate endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AccountValidateQueryParams {
     /// Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -1026,7 +1026,7 @@ pub struct AccountValidateResponse {
 
 /// Query parameters for GET /accounts/{accountId}/foreign-asset-balances endpoint
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ForeignAssetBalancesQueryParams {
     /// Optional Block identifier (hash or height) - defaults to latest finalized
     pub at: Option<String>,
@@ -1106,4 +1106,100 @@ pub struct ForeignAssetBalance {
     pub balance: String,
     pub is_frozen: bool,
     pub is_sufficient: bool,
+}
+
+// ================================================================================================
+// Tests
+// ================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- deny_unknown_fields tests ---
+
+    #[test]
+    fn test_asset_balances_query_rejects_unknown_fields() {
+        let json = r#"{"at": "100", "foo": "bar"}"#;
+        let result: Result<AssetBalancesQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("unknown field"),
+            "Expected 'unknown field' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_asset_balances_query_accepts_known_fields() {
+        let json = r#"{"at": "100", "useRcBlock": true, "assets": [1, 2, 3]}"#;
+        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.at, Some("100".to_string()));
+        assert!(params.use_rc_block);
+        assert_eq!(params.assets, Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn test_balance_info_query_rejects_unknown_fields() {
+        let json = r#"{"at": "200", "unknown": 42}"#;
+        let result: Result<BalanceInfoQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_balance_info_query_accepts_known_fields() {
+        let json = r#"{"at": "200", "useRcBlock": false, "token": "DOT", "denominated": true}"#;
+        let params: BalanceInfoQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.at, Some("200".to_string()));
+        assert!(!params.use_rc_block);
+        assert_eq!(params.token, Some("DOT".to_string()));
+        assert_eq!(params.denominated, Some(true));
+    }
+
+    #[test]
+    fn test_staking_info_query_rejects_unknown_fields() {
+        let json = r#"{"at": "300", "badParam": true}"#;
+        let result: Result<StakingInfoQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_account_validate_query_rejects_unknown_fields() {
+        let json = r#"{"scheme": "sr25519", "extra": "nope"}"#;
+        let result: Result<AccountValidateQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_staking_payouts_query_rejects_misspelled_camel_case() {
+        // "useRcblock" instead of "useRcBlock"
+        let json = r#"{"at": "400", "useRcblock": true}"#;
+        let result: Result<StakingPayoutsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_foreign_asset_balances_query_rejects_unknown_fields() {
+        let json = r#"{"at": "500", "surprise": "field"}"#;
+        let result: Result<ForeignAssetBalancesQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_empty_object_accepted_for_all_optional_params() {
+        // All query params should accept empty JSON (all fields are optional or have defaults)
+        let json = r#"{}"#;
+        let _: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        let _: BalanceInfoQueryParams = serde_json::from_str(json).unwrap();
+        let _: StakingInfoQueryParams = serde_json::from_str(json).unwrap();
+        let _: ProxyInfoQueryParams = serde_json::from_str(json).unwrap();
+        let _: VestingInfoQueryParams = serde_json::from_str(json).unwrap();
+        let _: AccountConvertQueryParams = serde_json::from_str(json).unwrap();
+        let _: AccountValidateQueryParams = serde_json::from_str(json).unwrap();
+        let _: ForeignAssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+    }
 }

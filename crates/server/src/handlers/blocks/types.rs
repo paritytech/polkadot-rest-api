@@ -37,7 +37,7 @@ pub struct BlockBuildParams {
 
 /// Query parameters for /blocks/{blockId} endpoint
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BlockQueryParams {
     /// When true, include documentation for events
     #[serde(default)]
@@ -70,7 +70,7 @@ fn default_true() -> bool {
 }
 
 #[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExtrinsicQueryParams {
     /// When true, include documentation for events
     #[serde(default)]
@@ -129,6 +129,7 @@ impl BlockQueryParams {
 
 /// Query parameters for /blocks/{blockId}/header endpoint
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockHeaderQueryParams {
     /// When true, treat block identifier as Relay Chain block and return Asset Hub blocks included in it
     #[serde(default, rename = "useRcBlock")]
@@ -693,4 +694,94 @@ pub struct ExtrinsicOutcome {
     pub actual_weight: Option<ActualWeight>,
     /// Dispatch class (Normal, Operational, or Mandatory)
     pub class: Option<String>,
+}
+
+// ================================================================================================
+// Tests
+// ================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- deny_unknown_fields tests ---
+
+    #[test]
+    fn test_block_query_params_rejects_unknown_fields() {
+        let json = r#"{"eventDocs": true, "badField": "oops"}"#;
+        let result: Result<BlockQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("unknown field"),
+            "Expected 'unknown field' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_block_query_params_accepts_all_known_fields() {
+        let json = r#"{
+            "eventDocs": true,
+            "extrinsicDocs": true,
+            "noFees": true,
+            "finalizedKey": false,
+            "useRcBlock": true,
+            "decodedXcmMsgs": true,
+            "paraId": 2000,
+            "useEvmFormat": true
+        }"#;
+        let params: BlockQueryParams = serde_json::from_str(json).unwrap();
+        assert!(params.event_docs);
+        assert!(params.extrinsic_docs);
+        assert!(params.no_fees);
+        assert!(!params.finalized_key);
+        assert!(params.use_rc_block);
+        assert!(params.decoded_xcm_msgs);
+        assert_eq!(params.para_id, Some(2000));
+        assert!(params.use_evm_format);
+    }
+
+    #[test]
+    fn test_block_query_params_rejects_snake_case_fields() {
+        // Must use camelCase, not snake_case
+        let json = r#"{"event_docs": true}"#;
+        let result: Result<BlockQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extrinsic_query_params_rejects_unknown_fields() {
+        let json = r#"{"eventDocs": true, "extra": 1}"#;
+        let result: Result<ExtrinsicQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_block_header_query_params_rejects_unknown_fields() {
+        // BlockHeaderQueryParams has deny_unknown_fields without rename_all
+        let json = r#"{"useRcBlock": true, "unknown": false}"#;
+        let result: Result<BlockHeaderQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_block_header_query_params_accepts_known_fields() {
+        let json = r#"{"useRcBlock": true}"#;
+        let params: BlockHeaderQueryParams = serde_json::from_str(json).unwrap();
+        assert!(params.use_rc_block);
+    }
+
+    #[test]
+    fn test_empty_object_accepted_for_block_params() {
+        let json = r#"{}"#;
+        let params: BlockQueryParams = serde_json::from_str(json).unwrap();
+        // Verify defaults
+        assert!(!params.event_docs);
+        assert!(!params.no_fees);
+        assert!(params.finalized_key); // default_true
+        assert!(!params.use_rc_block);
+        assert_eq!(params.para_id, None);
+    }
 }

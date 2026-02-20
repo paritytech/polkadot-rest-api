@@ -22,6 +22,7 @@ use crate::handlers::blocks::common::RcBlockHeaderResponse;
 
 /// Query parameters for /rc/blocks/head/header endpoint
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RcBlockHeadHeaderQueryParams {
     /// When true (default), query finalized head. When false, query canonical head.
     #[serde(default = "default_finalized")]
@@ -281,5 +282,13 @@ mod tests {
 
         // Block number should be TEST_BLOCK_NUMBER + 10 (canonical is ahead of finalized)
         assert_eq!(json["number"], (TEST_BLOCK_NUMBER + 10).to_string());
+    }
+
+    #[test]
+    fn test_rc_block_head_header_query_params_rejects_unknown_fields() {
+        let json = r#"{"finalized": true, "unknownField": true}"#;
+        let result: Result<RcBlockHeadHeaderQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 }

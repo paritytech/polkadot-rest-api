@@ -30,7 +30,7 @@ use subxt::error::StorageError;
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OnGoingReferendaQueryParams {
     /// Block height (number) or hash (0x-prefixed hex string)
     pub at: Option<String>,
@@ -466,7 +466,7 @@ fn format_id_with_comma(id: u32) -> String {
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcOnGoingReferendaQueryParams {
     pub at: Option<String>,
 }
@@ -676,5 +676,21 @@ mod tests {
             serde_json::from_str(r#"{"useRcBlock": true}"#).unwrap();
         assert!(params.at.is_none());
         assert!(params.use_rc_block);
+    }
+
+    #[test]
+    fn test_on_going_referenda_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<OnGoingReferendaQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_rc_on_going_referenda_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<RcOnGoingReferendaQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 }

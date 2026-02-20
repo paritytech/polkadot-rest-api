@@ -28,7 +28,7 @@ use super::CommonBlockError;
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ParaInclusionsQueryParams {
     pub para_id: Option<u32>,
 }
@@ -421,4 +421,35 @@ fn extract_u32_from_value(value: &Value<()>) -> Option<u32> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_para_inclusions_query_params_rejects_unknown_fields() {
+        let json = r#"{"paraId": 1000, "unknownField": true}"#;
+        let result: Result<ParaInclusionsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_para_inclusions_query_params_accepts_known_field() {
+        let json = r#"{"paraId": 2000}"#;
+        let result: Result<ParaInclusionsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_ok());
+        let params = result.unwrap();
+        assert_eq!(params.para_id, Some(2000));
+    }
+
+    #[test]
+    fn test_para_inclusions_query_params_accepts_empty_object() {
+        let json = r#"{}"#;
+        let result: Result<ParaInclusionsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_ok());
+        let params = result.unwrap();
+        assert_eq!(params.para_id, None);
+    }
 }

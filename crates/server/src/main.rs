@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use polkadot_rest_api::{app, logging, state};
+use polkadot_rest_api_config::SidecarConfig;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use thiserror::Error;
@@ -10,6 +11,9 @@ use tower_http::normalize_path::NormalizePathLayer;
 
 #[derive(Debug, Error)]
 enum MainError {
+    #[error("Failed to load configuration: {0}")]
+    ConfigLoadFailed(#[from] polkadot_rest_api_config::ConfigError),
+
     #[error("Failed to initialize application state: {0}")]
     StateInitFailed(#[from] state::StateError),
 
@@ -25,27 +29,20 @@ enum MainError {
 
 #[tokio::main]
 async fn main() -> Result<(), MainError> {
-    let state = state::AppState::new().await?;
-    // Extract values we need before cloning state
-    let log_level = state.config.log.level.clone();
-    let log_json = state.config.log.json;
-    let log_strip_ansi = state.config.log.strip_ansi;
-    let log_write = state.config.log.write;
-    let log_write_path = state.config.log.write_path.clone();
-    let log_write_max_file_size = state.config.log.write_max_file_size;
-    let log_write_max_files = state.config.log.write_max_files;
-    let bind_host = state.config.express.bind_host.clone();
-    let port = state.config.express.port;
-    let keep_alive_timeout = state.config.express.keep_alive_timeout;
-    let substrate_url = state.config.substrate.url.clone();
-    let multi_chain_urls = state.config.substrate.multi_chain_urls.clone();
-    let chain_info = state.chain_info.clone();
-    let metrics_enabled = state.config.metrics.enabled;
-    let metrics_host = state.config.metrics.prom_host.clone();
-    let metrics_port = state.config.metrics.prom_port;
-    let metrics_prefix = state.config.metrics.prometheus_prefix.clone();
-    let loki_host = state.config.metrics.loki_host.clone();
-    let loki_port = state.config.metrics.loki_port;
+    // Load configuration first (before any network connections)
+    let config = SidecarConfig::from_env()?;
+
+    // Extract logging config values
+    let log_level = config.log.level.clone();
+    let log_json = config.log.json;
+    let log_strip_ansi = config.log.strip_ansi;
+    let log_write = config.log.write;
+    let log_write_path = config.log.write_path.clone();
+    let log_write_max_file_size = config.log.write_max_file_size;
+    let log_write_max_files = config.log.write_max_files;
+    let metrics_enabled = config.metrics.enabled;
+    let loki_host = config.metrics.loki_host.clone();
+    let loki_port = config.metrics.loki_port;
 
     // Build Loki URL if metrics are enabled (Loki is part of metrics/observability stack)
     let loki_url = if metrics_enabled {
@@ -54,6 +51,7 @@ async fn main() -> Result<(), MainError> {
         None
     };
 
+    // Initialize logging BEFORE AppState so connection warnings are captured
     logging::init(
         &log_level,
         log_json,
@@ -64,6 +62,20 @@ async fn main() -> Result<(), MainError> {
         log_write_max_files,
         loki_url.as_deref(),
     )?;
+
+    // Now create application state (connections happen here, warnings will be logged)
+    let state = state::AppState::new_with_config(config).await?;
+
+    // Extract remaining values we need
+    let bind_host = state.config.express.bind_host.clone();
+    let port = state.config.express.port;
+    let keep_alive_timeout = state.config.express.keep_alive_timeout;
+    let substrate_url = state.config.substrate.url.clone();
+    let multi_chain_urls = state.config.substrate.multi_chain_urls.clone();
+    let chain_info = state.chain_info.clone();
+    let metrics_host = state.config.metrics.prom_host.clone();
+    let metrics_port = state.config.metrics.prom_port;
+    let metrics_prefix = state.config.metrics.prometheus_prefix.clone();
 
     // Parse bind_host to IpAddr
     let ip: IpAddr = bind_host.parse()?;

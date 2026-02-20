@@ -282,7 +282,7 @@ pub struct AtResponse {
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CoretimeQueryParams {
     /// Block number or 0x-prefixed block hash to query at.
     /// If not provided, queries at the latest finalized block.
@@ -582,6 +582,18 @@ mod tests {
         assert_eq!(CoreAssignment::Task(100), CoreAssignment::Task(100));
         assert_ne!(CoreAssignment::Task(100), CoreAssignment::Task(200));
         assert_ne!(CoreAssignment::Idle, CoreAssignment::Pool);
+    }
+
+    // ------------------------------------------------------------------------
+    // deny_unknown_fields tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_coretime_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "123", "unknownField": true}"#;
+        let result: Result<CoretimeQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 
     // ------------------------------------------------------------------------

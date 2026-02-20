@@ -30,7 +30,7 @@ use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NominationPoolsQueryParams {
     pub at: Option<String>,
     #[serde(default)]
@@ -827,10 +827,18 @@ mod tests {
         let params: NominationPoolsQueryParams = serde_json::from_str(json).unwrap();
         assert!(params.use_rc_block);
 
-        // snake_case should NOT work due to rename_all = "camelCase"
+        // snake_case should NOT work due to rename_all = "camelCase" + deny_unknown_fields
         let json = r#"{"use_rc_block": true}"#;
-        let params: NominationPoolsQueryParams = serde_json::from_str(json).unwrap();
-        assert!(!params.use_rc_block); // Should be false (default) since field name doesn't match
+        let result: Result<NominationPoolsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "snake_case field should be rejected");
+    }
+
+    #[test]
+    fn test_nomination_pools_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<NominationPoolsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 
     #[test]

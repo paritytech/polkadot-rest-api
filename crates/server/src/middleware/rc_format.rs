@@ -26,6 +26,31 @@ struct RcFormatParams {
     at: Option<String>,
 }
 
+/// Remove the `format` parameter from the request's query string so that
+/// handler query param structs with `deny_unknown_fields` don't reject it.
+fn strip_format_param(req: Request) -> Request {
+    let uri = req.uri();
+    let new_query: String = uri
+        .query()
+        .map(|q| {
+            q.split('&')
+                .filter(|pair| !pair.starts_with("format="))
+                .collect::<Vec<_>>()
+                .join("&")
+        })
+        .unwrap_or_default();
+
+    let new_uri = if new_query.is_empty() {
+        uri.path().to_string()
+    } else {
+        format!("{}?{}", uri.path(), new_query)
+    };
+
+    let (mut parts, body) = req.into_parts();
+    parts.uri = new_uri.parse().unwrap();
+    Request::from_parts(parts, body)
+}
+
 /// Pre-process an RC format request: parse query params, validate, run the inner handler,
 /// and collect the response body.
 ///
@@ -57,6 +82,12 @@ async fn process_rc_request(
     }
 
     let at_param = params.at;
+
+    // Strip `format` from the query string before passing to the handler,
+    // so that `deny_unknown_fields` on handler query param structs doesn't
+    // reject it as an unknown field.
+    let req = strip_format_param(req);
+
     let response = next.run(req).await;
 
     if !response.status().is_success() {

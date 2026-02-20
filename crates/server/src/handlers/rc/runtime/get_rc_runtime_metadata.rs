@@ -86,6 +86,7 @@ impl IntoResponse for GetRcMetadataError {
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AtBlockParam {
     pub at: Option<String>,
 }
@@ -386,4 +387,17 @@ pub async fn get_rc_runtime_metadata_versioned(
         magic_number: magic_number.to_string(),
         metadata,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_at_block_param_rejects_unknown_fields() {
+        let json = r#"{"at": "123", "unknownField": true}"#;
+        let result: Result<AtBlockParam, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
 }

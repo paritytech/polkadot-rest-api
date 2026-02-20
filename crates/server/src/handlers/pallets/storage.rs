@@ -34,7 +34,7 @@ use utoipa::ToSchema;
 // ============================================================================
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StorageQueryParams {
     pub at: Option<String>,
     /// When true, only return storage item names instead of full metadata
@@ -132,7 +132,7 @@ pub enum DeprecationInfo {
 // ============================================================================
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StorageItemQueryParams {
     pub at: Option<String>,
     /// Storage keys for map types (format: ?keys[]=key1&keys[]=key2)
@@ -1941,7 +1941,7 @@ fn build_storage_response_v16(
 // ============================================================================
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RcStorageItemQueryParams {
     pub at: Option<String>,
     /// Storage keys for map types (format: ?keys[]=key1&keys[]=key2)
@@ -2057,4 +2057,33 @@ pub async fn rc_get_pallets_storage_item(
     .await?;
 
     Ok(Json(response).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_storage_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<StorageQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_storage_item_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<StorageItemQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_rc_storage_item_query_params_rejects_unknown_fields() {
+        let json = r#"{"at": "12345", "unknownField": true}"#;
+        let result: Result<RcStorageItemQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
 }
