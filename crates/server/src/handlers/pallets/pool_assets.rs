@@ -10,6 +10,7 @@
 use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{AtResponse, ClientAtBlock, PalletError, resolve_block_for_pallet};
 use crate::handlers::runtime_queries::pool_assets as pool_assets_queries;
+use crate::handlers::runtime_queries::staking as staking_queries;
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -257,14 +258,9 @@ async fn fetch_pool_asset_meta_data(
 
 /// Fetches timestamp from Timestamp::Now storage.
 async fn fetch_timestamp(client_at_block: &ClientAtBlock) -> Option<String> {
-    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
-    let timestamp = client_at_block
-        .storage()
-        .fetch(timestamp_addr, ())
+    staking_queries::get_timestamp(client_at_block)
         .await
-        .ok()?;
-    let timestamp_value = timestamp.decode().ok()?;
-    Some(timestamp_value.to_string())
+        .map(|ts| ts.to_string())
 }
 
 // ============================================================================

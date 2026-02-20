@@ -11,6 +11,7 @@ use crate::handlers::common::xcm_types::{Location, decode_multi_location_from_by
 use crate::handlers::pallets::common::{
     AtResponse, ClientAtBlock, PalletError, format_account_id, resolve_block_for_pallet,
 };
+use crate::handlers::runtime_queries::staking as staking_queries;
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -384,14 +385,9 @@ fn format_asset_details(details: &AssetDetails, ss58_prefix: u16) -> serde_json:
 
 /// Fetches timestamp from Timestamp::Now storage.
 async fn fetch_timestamp(client_at_block: &ClientAtBlock) -> Option<String> {
-    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
-    let timestamp = client_at_block
-        .storage()
-        .fetch(timestamp_addr, ())
+    staking_queries::get_timestamp(client_at_block)
         .await
-        .ok()?;
-    let timestamp_value = timestamp.decode().ok()?;
-    Some(timestamp_value.to_string())
+        .map(|ts| ts.to_string())
 }
 
 #[cfg(test)]

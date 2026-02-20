@@ -9,6 +9,7 @@
 
 use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{AtResponse, PalletError, resolve_block_for_pallet};
+use crate::handlers::runtime_queries::staking as staking_queries;
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -449,14 +450,9 @@ fn scale_value_to_json(value: &scale_value::Value) -> serde_json::Value {
 
 /// Fetches timestamp from Timestamp::Now storage.
 async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<String> {
-    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
-    let timestamp = client_at_block
-        .storage()
-        .fetch(timestamp_addr, ())
+    staking_queries::get_timestamp(client_at_block)
         .await
-        .ok()?;
-    let timestamp_value = timestamp.decode().ok()?;
-    Some(timestamp_value.to_string())
+        .map(|ts| ts.to_string())
 }
 
 // ============================================================================
