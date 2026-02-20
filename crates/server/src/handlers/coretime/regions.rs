@@ -9,6 +9,7 @@
 //!
 //! Regions represent purchased coretime that can be traded or used.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::coretime::common::{
     AtResponse,
     // Shared constants
@@ -22,7 +23,7 @@ use crate::state::AppState;
 use crate::utils::{BlockId, decode_address_to_ss58, resolve_block};
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -134,7 +135,7 @@ pub struct CoretimeRegionsResponse {
     summary = "Get coretime regions",
     description = "Returns all regions on a coretime chain including begin/end timeslices, core, owner, and mask.",
     params(
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Coretime regions", body = Object),
@@ -144,7 +145,7 @@ pub struct CoretimeRegionsResponse {
 )]
 pub async fn coretime_regions(
     State(state): State<AppState>,
-    Query(params): Query<CoretimeQueryParams>,
+    JsonQuery(params): JsonQuery<CoretimeQueryParams>,
 ) -> Result<Response, CoretimeError> {
     // Parse the block ID if provided
     let block_id = match &params.at {

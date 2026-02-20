@@ -7,6 +7,7 @@
 //! but queries the PoolAssets pallet instead of Assets. Pool assets are
 //! LP (liquidity pool) tokens created by the AssetConversion pallet.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     AssetDetails, AssetMetadataStorage, AtResponse, ClientAtBlock, PalletError, format_account_id,
     resolve_block_for_pallet,
@@ -16,7 +17,7 @@ use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -90,7 +91,7 @@ pub struct PalletsPoolAssetsInfoResponse {
     description = "Returns details for a specific pool asset including supply, admin, and metadata.",
     params(
         ("assetId" = String, Path, description = "Pool asset ID"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Pool asset information", body = Object),
@@ -101,7 +102,7 @@ pub struct PalletsPoolAssetsInfoResponse {
 pub async fn pallets_pool_assets_asset_info(
     State(state): State<AppState>,
     Path(asset_id): Path<String>,
-    Query(params): Query<PoolAssetsQueryParams>,
+    JsonQuery(params): JsonQuery<PoolAssetsQueryParams>,
 ) -> Result<Response, PalletError> {
     let asset_id: u32 = asset_id.parse().map_err(|_| {
         PalletError::PoolAssetNotFound(format!("Invalid pool asset ID: {}", asset_id))

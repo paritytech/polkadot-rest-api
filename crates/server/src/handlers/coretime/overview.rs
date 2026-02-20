@@ -20,6 +20,7 @@
 //! - Broker::Reservations - reserved cores
 //! - Broker::Regions - purchased regions
 
+use crate::extractors::JsonQuery;
 use crate::handlers::coretime::common::{
     AtResponse, CORE_TYPE_BULK, CORE_TYPE_LEASE, CORE_TYPE_ONDEMAND, CORE_TYPE_RESERVATION,
     CoreAssignment, CoretimeError, CoretimeQueryParams, ScheduleItem, TASK_POOL, has_broker_pallet,
@@ -32,7 +33,7 @@ use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -334,7 +335,7 @@ struct WorkplanWithSchedule {
     summary = "Get coretime overview",
     description = "Returns an overview of all cores with assignments, queue state, workload, workplan, and regions.",
     params(
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Coretime overview", body = Object),
@@ -344,7 +345,7 @@ struct WorkplanWithSchedule {
 )]
 pub async fn coretime_overview(
     State(state): State<AppState>,
-    Query(params): Query<CoretimeQueryParams>,
+    JsonQuery(params): JsonQuery<CoretimeQueryParams>,
 ) -> Result<Response, CoretimeError> {
     // Parse the block ID if provided
     let block_id = match &params.at {

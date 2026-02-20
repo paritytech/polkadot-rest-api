@@ -16,6 +16,7 @@
 // which is large by design. Boxing would add indirection without significant benefit.
 #![allow(clippy::result_large_err)]
 
+use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, PalletItemQueryParams, PalletQueryParams, RcPalletItemQueryParams,
     RcPalletQueryParams,
@@ -25,7 +26,7 @@ use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use crate::utils::{self, fetch_block_timestamp};
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -235,9 +236,9 @@ pub struct PalletDispatchableItemResponse {
     description = "Returns the dispatchable calls defined in a pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, Query, description = "Only return dispatchable names"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, description = "Only return dispatchable names"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Pallet dispatchables", body = Object),
@@ -248,7 +249,7 @@ pub struct PalletDispatchableItemResponse {
 pub async fn get_pallets_dispatchables(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
-    Query(params): Query<PalletQueryParams>,
+    JsonQuery(params): JsonQuery<PalletQueryParams>,
 ) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_use_rc_block(state, pallet_id, params).await;
@@ -323,9 +324,9 @@ pub async fn get_pallets_dispatchables(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("dispatchableItemId" = String, Path, description = "Name of the dispatchable"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("metadata" = Option<bool>, Query, description = "Include metadata"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, description = "Include metadata"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Dispatchable details", body = Object),
@@ -336,7 +337,7 @@ pub async fn get_pallets_dispatchables(
 pub async fn get_pallet_dispatchable_item(
     State(state): State<AppState>,
     Path((pallet_id, dispatchable_id)): Path<(String, String)>,
-    Query(params): Query<PalletItemQueryParams>,
+    JsonQuery(params): JsonQuery<PalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_dispatchable_item_use_rc_block(state, pallet_id, dispatchable_id, params)
@@ -827,8 +828,8 @@ fn simplify_type_name(type_name: &str) -> String {
     description = "Returns the dispatchable calls defined in a relay chain pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, Query, description = "Only return dispatchable names")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, description = "Only return dispatchable names")
     ),
     responses(
         (status = 200, description = "Relay chain pallet dispatchables", body = Object),
@@ -839,7 +840,7 @@ fn simplify_type_name(type_name: &str) -> String {
 pub async fn rc_pallets_dispatchables(
     State(state): State<AppState>,
     Path(pallet_id): Path<String>,
-    Query(params): Query<RcPalletQueryParams>,
+    JsonQuery(params): JsonQuery<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()
@@ -907,8 +908,8 @@ pub async fn rc_pallets_dispatchables(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("dispatchableItemId" = String, Path, description = "Name of the dispatchable"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("metadata" = Option<bool>, Query, description = "Include metadata")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, description = "Include metadata")
     ),
     responses(
         (status = 200, description = "Relay chain dispatchable details", body = Object),
@@ -919,7 +920,7 @@ pub async fn rc_pallets_dispatchables(
 pub async fn rc_pallet_dispatchable_item(
     State(state): State<AppState>,
     Path((pallet_id, dispatchable_id)): Path<(String, String)>,
-    Query(params): Query<RcPalletItemQueryParams>,
+    JsonQuery(params): JsonQuery<RcPalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_client = state
         .get_relay_chain_client()

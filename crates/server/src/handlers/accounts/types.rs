@@ -277,10 +277,6 @@ pub enum AccountsError {
     #[error("Invalid foreign asset multilocation: {0}")]
     InvalidForeignAsset(String),
 
-    // ---- Query parameter errors ----
-    #[error("{0}")]
-    MissingQueryParam(&'static str),
-
     // ---- Generic internal error ----
     #[error("Internal error: {0}")]
     InternalError(String),
@@ -378,7 +374,6 @@ impl_error_response!(AccountsError,
     AccountsError::TooManyAddresses => BAD_REQUEST,
     AccountsError::NoAddresses => BAD_REQUEST,
     AccountsError::InvalidForeignAsset(_) => BAD_REQUEST,
-    AccountsError::MissingQueryParam(_) => BAD_REQUEST,
     _ => INTERNAL_SERVER_ERROR
 );
 

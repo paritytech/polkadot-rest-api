@@ -6,6 +6,7 @@
 //! This module provides the handler for fetching a specific extrinsic by its index
 //! within a Relay Chain block.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::blocks::common::{
     add_docs_to_events, add_docs_to_extrinsic, associate_events_with_extrinsics,
 };
@@ -21,7 +22,7 @@ use crate::state::AppState;
 use crate::utils;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::IntoResponse,
 };
 
@@ -42,9 +43,9 @@ use axum::{
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
         ("extrinsicIndex" = String, Path, description = "Index of the extrinsic in the block"),
-        ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
-        ("extrinsicDocs" = Option<bool>, Query, description = "Include extrinsic documentation"),
-        ("noFees" = Option<bool>, Query, description = "Skip fee calculation")
+        ("eventDocs" = Option<bool>, description = "Include event documentation"),
+        ("extrinsicDocs" = Option<bool>, description = "Include extrinsic documentation"),
+        ("noFees" = Option<bool>, description = "Skip fee calculation")
     ),
     responses(
         (status = 200, description = "Extrinsic details", body = Object),
@@ -56,7 +57,7 @@ use axum::{
 pub async fn get_rc_extrinsic(
     State(state): State<AppState>,
     Path(path_params): Path<ExtrinsicPathParams>,
-    Query(params): Query<ExtrinsicQueryParams>,
+    JsonQuery(params): JsonQuery<ExtrinsicQueryParams>,
 ) -> Result<impl IntoResponse, GetBlockError> {
     let extrinsic_index: usize = path_params
         .extrinsic_index

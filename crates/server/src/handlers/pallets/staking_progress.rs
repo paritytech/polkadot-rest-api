@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, format_account_id, resolve_block_for_pallet,
 };
@@ -15,7 +16,7 @@ use crate::utils::{
 };
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -160,8 +161,8 @@ struct SessionEraProgress {
     summary = "Staking progress",
     description = "Returns staking progress including era, session info, and validator counts.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Staking progress information", body = Object),
@@ -170,7 +171,7 @@ struct SessionEraProgress {
 )]
 pub async fn pallets_staking_progress(
     State(state): State<AppState>,
-    Query(params): Query<StakingProgressQueryParams>,
+    JsonQuery(params): JsonQuery<StakingProgressQueryParams>,
 ) -> Result<Response, PalletError> {
     // Handle useRcBlock mode for Asset Hub
     if params.use_rc_block {
@@ -335,7 +336,7 @@ pub async fn pallets_staking_progress(
     summary = "RC staking progress",
     description = "Returns staking progress from the relay chain.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Relay chain staking progress", body = Object),
@@ -344,7 +345,7 @@ pub async fn pallets_staking_progress(
 )]
 pub async fn rc_pallets_staking_progress(
     State(state): State<AppState>,
-    Query(params): Query<RcStakingProgressQueryParams>,
+    JsonQuery(params): JsonQuery<RcStakingProgressQueryParams>,
 ) -> Result<Response, PalletError> {
     // Ensure relay chain is configured
     let relay_client = state

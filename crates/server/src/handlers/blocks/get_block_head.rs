@@ -5,11 +5,12 @@
 //!
 //! This module provides the handler for fetching the latest block (head).
 
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     response::{IntoResponse, Response},
 };
 use heck::{ToSnakeCase, ToUpperCamelCase};
@@ -101,13 +102,13 @@ impl Default for BlockHeadQueryParams {
     summary = "Get latest block",
     description = "Returns the latest finalized or canonical block with full extrinsic and event details.",
     params(
-        ("finalized" = Option<bool>, Query, description = "When true (default), returns finalized head. When false, returns canonical head."),
-        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
-        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
-        ("noFees" = Option<bool>, Query, description = "Skip fee calculation for extrinsics"),
-        ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
-        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID"),
-        ("useRcBlock" = Option<bool>, Query, description = "When true, use relay chain head to find corresponding Asset Hub blocks")
+        ("finalized" = Option<bool>, description = "When true (default), returns finalized head. When false, returns canonical head."),
+        ("eventDocs" = Option<bool>, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, description = "Skip fee calculation for extrinsics"),
+        ("decodedXcmMsgs" = Option<bool>, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, description = "Filter XCM messages by parachain ID"),
+        ("useRcBlock" = Option<bool>, description = "When true, use relay chain head to find corresponding Asset Hub blocks")
     ),
     responses(
         (status = 200, description = "Latest block information", body = Object),
@@ -116,7 +117,7 @@ impl Default for BlockHeadQueryParams {
 )]
 pub async fn get_block_head(
     State(state): State<AppState>,
-    Query(params): Query<BlockHeadQueryParams>,
+    JsonQuery(params): JsonQuery<BlockHeadQueryParams>,
 ) -> Result<Response, GetBlockError> {
     if params.use_rc_block {
         return handle_use_rc_block(state, params).await;

@@ -5,6 +5,7 @@ use super::types::{
     AccountsError, ClaimedReward, NominationsInfo, RcStakingInfoQueryParams, RcStakingInfoResponse,
     RelayChainAccess, RewardDestination, StakingLedger, UnlockingChunk,
 };
+use crate::extractors::JsonQuery;
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
     DecodedRewardDestination, RawStakingInfo, query_staking_info,
@@ -13,7 +14,7 @@ use crate::state::AppState;
 use crate::utils;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse, Response},
 };
 use polkadot_rest_api_config::ChainType;
@@ -37,7 +38,7 @@ use polkadot_rest_api_config::ChainType;
     description = "Returns staking information for a given stash account on the relay chain.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded stash account address"),
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Staking information", body = RcStakingInfoResponse),
@@ -49,7 +50,7 @@ use polkadot_rest_api_config::ChainType;
 pub async fn get_staking_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
-    Query(params): Query<RcStakingInfoQueryParams>,
+    JsonQuery(params): JsonQuery<RcStakingInfoQueryParams>,
 ) -> Result<Response, AccountsError> {
     // Get the relay chain ss58_prefix for address validation
     let rc_ss58_prefix = get_relay_chain_ss58_prefix(&state)?;

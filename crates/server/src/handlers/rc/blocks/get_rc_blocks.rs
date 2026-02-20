@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::handlers::blocks::common::{
     BlockClient, add_docs_to_events, convert_digest_items_to_logs, extract_author_with_prefix,
     get_canonical_hash_at_number_with_rpc, get_finalized_block_number_with_rpc, parse_range,
@@ -15,7 +16,7 @@ use crate::handlers::blocks::types::{BlockQueryParams, BlockResponse, GetBlockEr
 use crate::state::AppState;
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     response::{IntoResponse, Response},
 };
 use futures::stream::{self, StreamExt, TryStreamExt};
@@ -65,12 +66,12 @@ pub struct RcBlocksRangeQueryParams {
     summary = "RC get blocks by range",
     description = "Returns relay chain blocks within a specified range (max 500 blocks).",
     params(
-        ("range" = Option<String>, Query, description = "Block range (e.g., '100-200')"),
-        ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
-        ("extrinsicDocs" = Option<bool>, Query, description = "Include extrinsic documentation"),
-        ("noFees" = Option<bool>, Query, description = "Skip fee calculation"),
-        ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
-        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID")
+        ("range" = Option<String>, description = "Block range (e.g., '100-200')"),
+        ("eventDocs" = Option<bool>, description = "Include event documentation"),
+        ("extrinsicDocs" = Option<bool>, description = "Include extrinsic documentation"),
+        ("noFees" = Option<bool>, description = "Skip fee calculation"),
+        ("decodedXcmMsgs" = Option<bool>, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, description = "Filter XCM messages by parachain ID")
     ),
     responses(
         (status = 200, description = "Relay chain blocks", body = Object),
@@ -81,7 +82,7 @@ pub struct RcBlocksRangeQueryParams {
 )]
 pub async fn get_rc_blocks(
     State(state): State<AppState>,
-    Query(params): Query<RcBlocksRangeQueryParams>,
+    JsonQuery(params): JsonQuery<RcBlocksRangeQueryParams>,
 ) -> Result<Response, GetBlockError> {
     let range_str = params.range.clone().ok_or(GetBlockError::MissingRange)?;
 

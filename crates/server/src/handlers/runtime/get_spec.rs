@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
@@ -189,7 +190,7 @@ pub fn transform_properties(properties: Value) -> Value {
     summary = "Runtime specification",
     description = "Returns the runtime specification including version, APIs, and chain properties.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Runtime specification", body = Object),
@@ -199,7 +200,7 @@ pub fn transform_properties(properties: Value) -> Value {
 )]
 pub async fn runtime_spec(
     State(state): State<AppState>,
-    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+    JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<RuntimeSpecResponse>, GetSpecError> {
     // Create client at the specified block - saves RPC calls by letting subxt
     // resolve hash<->number internally
@@ -276,6 +277,7 @@ pub async fn runtime_spec(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extractors::JsonQuery;
     use crate::state::AppState;
     use crate::test_fixtures::{TEST_BLOCK_HASH, TEST_BLOCK_NUMBER, mock_rpc_client_builder};
     use polkadot_rest_api_config::SidecarConfig;
@@ -346,7 +348,7 @@ mod tests {
         let state = create_test_state_with_mock(mock_client).await;
 
         let params = AtBlockParam { at: None };
-        let result = runtime_spec(State(state), axum::extract::Query(params)).await;
+        let result = runtime_spec(State(state), JsonQuery(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
@@ -395,7 +397,7 @@ mod tests {
         let params = AtBlockParam {
             at: Some(TEST_BLOCK_HASH.to_string()),
         };
-        let result = runtime_spec(State(state), axum::extract::Query(params)).await;
+        let result = runtime_spec(State(state), JsonQuery(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
@@ -435,7 +437,7 @@ mod tests {
         let params = AtBlockParam {
             at: Some(TEST_BLOCK_NUMBER.to_string()),
         };
-        let result = runtime_spec(State(state), axum::extract::Query(params)).await;
+        let result = runtime_spec(State(state), JsonQuery(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
@@ -455,7 +457,7 @@ mod tests {
         let params = AtBlockParam {
             at: Some("invalid_block".to_string()),
         };
-        let result = runtime_spec(State(state), axum::extract::Query(params)).await;
+        let result = runtime_spec(State(state), JsonQuery(params)).await;
 
         assert!(result.is_err());
         assert!(matches!(
@@ -482,7 +484,7 @@ mod tests {
         let params = AtBlockParam {
             at: Some("999999".to_string()),
         };
-        let result = runtime_spec(State(state), axum::extract::Query(params)).await;
+        let result = runtime_spec(State(state), JsonQuery(params)).await;
 
         assert!(result.is_err());
         assert!(matches!(

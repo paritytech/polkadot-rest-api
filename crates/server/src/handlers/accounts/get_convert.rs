@@ -3,9 +3,10 @@
 
 use super::types::{AccountConvertQueryParams, AccountConvertResponse, AccountsError};
 use super::utils::get_network_name;
+use crate::extractors::JsonQuery;
 use axum::{
     Json,
-    extract::{Path, Query},
+    extract::Path,
     response::{IntoResponse, Response},
 };
 use sp_core::crypto::{AccountId32, Ss58AddressFormat, Ss58Codec};
@@ -33,9 +34,9 @@ use sp_core::crypto::{AccountId32, Ss58AddressFormat, Ss58Codec};
     description = "Converts an account address between different SS58 formats and key types.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address or hex public key"),
-        ("scheme" = Option<String>, Query, description = "Cryptographic scheme: ed25519, sr25519, or ecdsa (default: sr25519)"),
-        ("prefix" = Option<u16>, Query, description = "SS58 prefix number (default: 42)"),
-        ("publicKey" = Option<bool>, Query, description = "If true, treat input as a public key")
+        ("scheme" = Option<String>, description = "Cryptographic scheme: ed25519, sr25519, or ecdsa (default: sr25519)"),
+        ("prefix" = Option<u16>, description = "SS58 prefix number (default: 42)"),
+        ("publicKey" = Option<bool>, description = "If true, treat input as a public key")
     ),
     responses(
         (status = 200, description = "Converted account information", body = AccountConvertResponse),
@@ -45,7 +46,7 @@ use sp_core::crypto::{AccountId32, Ss58AddressFormat, Ss58Codec};
 )]
 pub async fn get_convert(
     Path(account_id): Path<String>,
-    Query(params): Query<AccountConvertQueryParams>,
+    JsonQuery(params): JsonQuery<AccountConvertQueryParams>,
 ) -> Result<Response, AccountsError> {
     // Get scheme with default, validate
     let scheme = params

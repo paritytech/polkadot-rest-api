@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::types::{AccountsError, RcProxyInfoQueryParams, RcProxyInfoResponse, RelayChainAccess};
+use crate::extractors::JsonQuery;
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{RawProxyInfo, query_proxy_info};
 use crate::state::AppState;
 use crate::utils;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse, Response},
 };
 use polkadot_rest_api_config::ChainType;
@@ -32,7 +33,7 @@ use polkadot_rest_api_config::ChainType;
     description = "Returns proxy information for a given account on the relay chain.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Proxy information", body = RcProxyInfoResponse),
@@ -44,7 +45,7 @@ use polkadot_rest_api_config::ChainType;
 pub async fn get_proxy_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
-    Query(params): Query<RcProxyInfoQueryParams>,
+    JsonQuery(params): JsonQuery<RcProxyInfoQueryParams>,
 ) -> Result<Response, AccountsError> {
     // Get the relay chain ss58_prefix for address validation
     let rc_ss58_prefix = get_relay_chain_ss58_prefix(&state)?;

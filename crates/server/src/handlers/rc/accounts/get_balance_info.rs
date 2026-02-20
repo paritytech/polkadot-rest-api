@@ -4,6 +4,7 @@
 use super::types::{
     AccountsError, RcBalanceInfoQueryParams, RcBalanceInfoResponse, RelayChainAccessWithSpec,
 };
+use crate::extractors::JsonQuery;
 use crate::handlers::accounts::utils::validate_and_parse_address;
 use crate::handlers::common::accounts::{
     RawBalanceInfo, format_balance, format_frozen_fields, format_locks, format_transferable,
@@ -13,7 +14,7 @@ use crate::state::AppState;
 use crate::utils;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse, Response},
 };
 use polkadot_rest_api_config::ChainType;
@@ -39,9 +40,9 @@ use polkadot_rest_api_config::ChainType;
     description = "Returns balance information for a given account on the relay chain.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
-        ("token" = Option<String>, Query, description = "Token symbol (defaults to native token)"),
-        ("denominated" = Option<bool>, Query, description = "Denominate balances using chain decimals")
+        ("at" = Option<String>, description = "Block identifier (number or hash)"),
+        ("token" = Option<String>, description = "Token symbol (defaults to native token)"),
+        ("denominated" = Option<bool>, description = "Denominate balances using chain decimals")
     ),
     responses(
         (status = 200, description = "Balance information", body = RcBalanceInfoResponse),
@@ -53,7 +54,7 @@ use polkadot_rest_api_config::ChainType;
 pub async fn get_balance_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
-    Query(params): Query<RcBalanceInfoQueryParams>,
+    JsonQuery(params): JsonQuery<RcBalanceInfoQueryParams>,
 ) -> Result<Response, AccountsError> {
     // Get the relay chain ss58_prefix for address validation
     let rc_ss58_prefix = get_relay_chain_ss58_prefix(&state)?;

@@ -3,9 +3,10 @@
 
 use super::types::{AccountValidateQueryParams, AccountValidateResponse, AccountsError};
 use super::utils::get_network_name;
+use crate::extractors::JsonQuery;
 use axum::{
     Json,
-    extract::{Path, Query},
+    extract::Path,
     response::{IntoResponse, Response},
 };
 use sp_core::crypto::{AccountId32, Ss58Codec};
@@ -41,7 +42,7 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
 )]
 pub async fn get_validate(
     Path(address): Path<String>,
-    Query(_params): Query<AccountValidateQueryParams>,
+    JsonQuery(_params): JsonQuery<AccountValidateQueryParams>,
 ) -> Result<Response, AccountsError> {
     // Note: `at` param is accepted for API consistency but not used for validation
     let result = validate_address(&address);

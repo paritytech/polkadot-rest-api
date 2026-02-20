@@ -7,6 +7,7 @@
 //! Each lease includes the task ID (parachain ID), the until timeslice, and the
 //! assigned core ID (correlated from workload data).
 
+use crate::extractors::JsonQuery;
 use crate::handlers::coretime::common::{
     AtResponse, CORE_MASK_SIZE, CoretimeError, CoretimeQueryParams, has_broker_pallet,
 };
@@ -14,7 +15,7 @@ use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -109,7 +110,7 @@ enum WorkloadAssignment {
     summary = "Get coretime leases",
     description = "Returns all leases registered on a coretime chain with task IDs and validity timeslices.",
     params(
-        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Coretime leases", body = Object),
@@ -119,7 +120,7 @@ enum WorkloadAssignment {
 )]
 pub async fn coretime_leases(
     State(state): State<AppState>,
-    Query(params): Query<CoretimeQueryParams>,
+    JsonQuery(params): JsonQuery<CoretimeQueryParams>,
 ) -> Result<Response, CoretimeError> {
     // Parse the block ID if provided
     let block_id = match &params.at {

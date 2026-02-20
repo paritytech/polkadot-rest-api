@@ -6,13 +6,14 @@
 //! Returns block information for a specific block by height or hash on the relay chain.
 //! This endpoint is designed for Asset Hub or parachain endpoints that have a relay chain configured.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::blocks::common::{BlockBuildContext, build_block_response_generic};
 use crate::handlers::blocks::types::{BlockBuildParams, GetBlockError};
 use crate::state::AppState;
 use crate::utils;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -128,11 +129,11 @@ impl IntoResponse for GetRcBlockError {
     description = "Returns relay chain block information for a given block identifier.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
-        ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
-        ("extrinsicDocs" = Option<bool>, Query, description = "Include extrinsic documentation"),
-        ("noFees" = Option<bool>, Query, description = "Skip fee calculation"),
-        ("decodedXcmMsgs" = Option<bool>, Query, description = "Include decoded XCM messages"),
-        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID")
+        ("eventDocs" = Option<bool>, description = "Include event documentation"),
+        ("extrinsicDocs" = Option<bool>, description = "Include extrinsic documentation"),
+        ("noFees" = Option<bool>, description = "Skip fee calculation"),
+        ("decodedXcmMsgs" = Option<bool>, description = "Include decoded XCM messages"),
+        ("paraId" = Option<u32>, description = "Filter XCM messages by parachain ID")
     ),
     responses(
         (status = 200, description = "Relay chain block information", body = Object),
@@ -144,7 +145,7 @@ impl IntoResponse for GetRcBlockError {
 pub async fn get_rc_block(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
-    Query(params): Query<RcBlockQueryParams>,
+    JsonQuery(params): JsonQuery<RcBlockQueryParams>,
 ) -> Result<Response, GetRcBlockError> {
     let relay_client = state
         .get_relay_chain_client()

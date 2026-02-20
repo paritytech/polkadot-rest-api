@@ -5,11 +5,12 @@
 //!
 //! This module provides the main handler for fetching block information.
 
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse, Response},
 };
 use polkadot_rest_api_config::ChainType;
@@ -30,12 +31,12 @@ use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
     description = "Returns block information for a given block identifier (hash or number), including extrinsics, events, and fees.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
-        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
-        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
-        ("noFees" = Option<bool>, Query, description = "Skip fee calculation for extrinsics"),
-        ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
-        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat blockId as Relay Chain block and return Asset Hub blocks")
+        ("eventDocs" = Option<bool>, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, description = "Skip fee calculation for extrinsics"),
+        ("decodedXcmMsgs" = Option<bool>, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, description = "Filter XCM messages by parachain ID"),
+        ("useRcBlock" = Option<bool>, description = "Treat blockId as Relay Chain block and return Asset Hub blocks")
     ),
     responses(
         (status = 200, description = "Block information", body = Object),
@@ -47,7 +48,7 @@ use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
 pub async fn get_block(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
-    Query(params): Query<BlockQueryParams>,
+    JsonQuery(params): JsonQuery<BlockQueryParams>,
 ) -> Result<Response, GetBlockError> {
     if params.use_rc_block {
         return handle_use_rc_block(state, block_id, params).await;
@@ -185,6 +186,7 @@ pub(crate) async fn build_block_response_for_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extractors::JsonQuery;
     use crate::state::AppState;
     use polkadot_rest_api_config::SidecarConfig;
     use serde_json::json;
@@ -281,7 +283,7 @@ mod tests {
 
         // Attempt to get the block - this will fail at metadata fetch in current setup
         // but validates the handler flow up to that point
-        let result = get_block(State(state), Path(block_id), Query(params)).await;
+        let result = get_block(State(state), Path(block_id), JsonQuery(params)).await;
 
         // We expect an error due to metadata fetching limitations in mock environment
         assert!(result.is_err());

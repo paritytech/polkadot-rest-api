@@ -5,12 +5,13 @@ use super::types::{
     AccountsError, BlockInfo, VestingInfoQueryParams, VestingInfoResponse, VestingSchedule,
 };
 use super::utils::validate_and_parse_address;
+use crate::extractors::JsonQuery;
 use crate::handlers::common::accounts::{RawVestingInfo, query_vesting_info};
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse, Response},
 };
 use polkadot_rest_api_config::ChainType;
@@ -37,9 +38,9 @@ use sp_core::crypto::AccountId32;
     description = "Returns vesting information for a given account including vesting schedules and locked amounts.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier"),
-        ("includeClaimable" = Option<bool>, Query, description = "When true, calculate vested amounts")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier"),
+        ("includeClaimable" = Option<bool>, description = "When true, calculate vested amounts")
     ),
     responses(
         (status = 200, description = "Vesting information", body = VestingInfoResponse),
@@ -50,7 +51,7 @@ use sp_core::crypto::AccountId32;
 pub async fn get_vesting_info(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
-    Query(params): Query<VestingInfoQueryParams>,
+    JsonQuery(params): JsonQuery<VestingInfoQueryParams>,
 ) -> Result<Response, AccountsError> {
     let account = validate_and_parse_address(&account_id, state.chain_info.ss58_prefix)?;
 

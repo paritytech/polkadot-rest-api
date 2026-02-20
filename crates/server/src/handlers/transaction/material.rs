@@ -1,11 +1,12 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils::BlockId;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
 };
@@ -222,9 +223,9 @@ fn parse_metadata_params(
     summary = "Transaction construction material",
     description = "Returns network information needed for transaction construction including genesis hash, spec version, and optionally metadata.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("noMeta" = Option<bool>, Query, description = "DEPRECATED: If true, metadata is not included"),
-        ("metadata" = Option<String>, Query, description = "Metadata format: 'json' or 'scale'")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("noMeta" = Option<bool>, description = "DEPRECATED: If true, metadata is not included"),
+        ("metadata" = Option<String>, description = "Metadata format: 'json' or 'scale'")
     ),
     responses(
         (status = 200, description = "Transaction material", body = Object),
@@ -234,7 +235,7 @@ fn parse_metadata_params(
 )]
 pub async fn material(
     State(state): State<AppState>,
-    Query(query): Query<MaterialQuery>,
+    JsonQuery(query): JsonQuery<MaterialQuery>,
 ) -> Result<Json<MaterialResponse>, MaterialError> {
     material_internal(&state.client, &state.rpc_client, query).await
 }
@@ -246,9 +247,9 @@ pub async fn material(
     summary = "RC transaction material",
     description = "Returns relay chain network information for transaction construction.",
     params(
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("noMeta" = Option<bool>, Query, description = "DEPRECATED: If true, metadata is not included"),
-        ("metadata" = Option<String>, Query, description = "Metadata format: 'json' or 'scale'")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("noMeta" = Option<bool>, description = "DEPRECATED: If true, metadata is not included"),
+        ("metadata" = Option<String>, description = "Metadata format: 'json' or 'scale'")
     ),
     responses(
         (status = 200, description = "Relay chain transaction material", body = Object),
@@ -257,7 +258,7 @@ pub async fn material(
 )]
 pub async fn material_rc(
     State(state): State<AppState>,
-    Query(query): Query<MaterialQuery>,
+    JsonQuery(query): JsonQuery<MaterialQuery>,
 ) -> Result<Json<MaterialResponse>, MaterialError> {
     let relay_client = state
         .get_relay_chain_client()
@@ -296,9 +297,9 @@ fn parse_metadata_version(version_str: &str) -> Result<u32, MaterialError> {
     description = "Returns transaction construction material with metadata at a specific version.",
     params(
         ("metadataVersion" = String, Path, description = "Metadata version (e.g., 'v14', 'v15')"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("noMeta" = Option<bool>, Query, description = "DEPRECATED: If true, metadata is not included"),
-        ("metadata" = Option<String>, Query, description = "Metadata format: 'json' or 'scale'")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("noMeta" = Option<bool>, description = "DEPRECATED: If true, metadata is not included"),
+        ("metadata" = Option<String>, description = "Metadata format: 'json' or 'scale'")
     ),
     responses(
         (status = 200, description = "Transaction material with versioned metadata", body = Object),
@@ -309,7 +310,7 @@ fn parse_metadata_version(version_str: &str) -> Result<u32, MaterialError> {
 pub async fn material_versioned(
     State(state): State<AppState>,
     Path(metadata_version): Path<String>,
-    Query(query): Query<MaterialQuery>,
+    JsonQuery(query): JsonQuery<MaterialQuery>,
 ) -> Result<Json<MaterialResponse>, MaterialError> {
     material_versioned_internal(&state.client, &state.rpc_client, metadata_version, query).await
 }
@@ -322,9 +323,9 @@ pub async fn material_versioned(
     description = "Returns relay chain transaction material with metadata at a specific version.",
     params(
         ("metadataVersion" = String, Path, description = "Metadata version (e.g., 'v14', 'v15')"),
-        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
-        ("noMeta" = Option<bool>, Query, description = "DEPRECATED: If true, metadata is not included"),
-        ("metadata" = Option<String>, Query, description = "Metadata format: 'json' or 'scale'")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("noMeta" = Option<bool>, description = "DEPRECATED: If true, metadata is not included"),
+        ("metadata" = Option<String>, description = "Metadata format: 'json' or 'scale'")
     ),
     responses(
         (status = 200, description = "Relay chain transaction material with versioned metadata", body = Object),
@@ -334,7 +335,7 @@ pub async fn material_versioned(
 pub async fn material_versioned_rc(
     State(state): State<AppState>,
     Path(metadata_version): Path<String>,
-    Query(query): Query<MaterialQuery>,
+    JsonQuery(query): JsonQuery<MaterialQuery>,
 ) -> Result<Json<MaterialResponse>, MaterialError> {
     let relay_client = state
         .get_relay_chain_client()

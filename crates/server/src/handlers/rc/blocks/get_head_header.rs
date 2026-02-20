@@ -5,12 +5,13 @@
 //!
 //! Returns the header of the latest relay chain block.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::blocks::common::convert_digest_items_to_logs;
 use crate::handlers::blocks::types::convert_digest_logs_to_sidecar_format;
 use crate::state::AppState;
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -81,7 +82,7 @@ impl IntoResponse for GetRcBlockHeadHeaderError {
     summary = "RC get head block header",
     description = "Returns the header of the latest relay chain block.",
     params(
-        ("finalized" = Option<bool>, Query, description = "When true returns finalized head (default: true)")
+        ("finalized" = Option<bool>, description = "When true returns finalized head (default: true)")
     ),
     responses(
         (status = 200, description = "Relay chain head block header", body = Object),
@@ -91,7 +92,7 @@ impl IntoResponse for GetRcBlockHeadHeaderError {
 )]
 pub async fn get_rc_blocks_head_header(
     State(state): State<AppState>,
-    Query(params): Query<RcBlockHeadHeaderQueryParams>,
+    JsonQuery(params): JsonQuery<RcBlockHeadHeaderQueryParams>,
 ) -> Result<Response, GetRcBlockHeadHeaderError> {
     let header = if params.finalized {
         let relay_client = state
@@ -139,6 +140,7 @@ pub async fn get_rc_blocks_head_header(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extractors::JsonQuery;
     use crate::routes::RouteRegistry;
     use crate::state::{AppState, ChainInfo};
     use crate::test_fixtures::mock_rpc_client_builder;
@@ -269,7 +271,7 @@ mod tests {
 
         let state = create_test_state_with_relay_mock(relay_mock).await;
         let params = RcBlockHeadHeaderQueryParams { finalized: false };
-        let result = get_rc_blocks_head_header(State(state), Query(params)).await;
+        let result = get_rc_blocks_head_header(State(state), JsonQuery(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap();

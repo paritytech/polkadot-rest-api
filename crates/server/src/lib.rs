@@ -3,6 +3,7 @@
 
 pub mod app;
 pub mod consts;
+pub mod extractors;
 pub mod handlers;
 pub mod logging;
 pub mod metrics;

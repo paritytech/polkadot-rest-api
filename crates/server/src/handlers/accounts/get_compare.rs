@@ -5,9 +5,9 @@ use super::types::{
     AccountCompareQueryParams, AccountCompareResponse, AccountsError, AddressDetails,
 };
 use super::utils::get_network_name;
+use crate::extractors::JsonQuery;
 use axum::{
     Json,
-    extract::Query,
     response::{IntoResponse, Response},
 };
 use sp_core::crypto::{AccountId32, Ss58Codec};
@@ -35,7 +35,7 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
     summary = "Compare account addresses",
     description = "Compares multiple SS58 addresses to determine if they have the same underlying public key.",
     params(
-        ("addresses" = String, Query, description = "Comma-separated list of SS58 addresses to compare (max 30)")
+        ("addresses" = String, description = "Comma-separated list of SS58 addresses to compare (max 30)")
     ),
     responses(
         (status = 200, description = "Comparison result", body = AccountCompareResponse),
@@ -43,7 +43,7 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
     )
 )]
 pub async fn get_compare(
-    Query(params): Query<AccountCompareQueryParams>,
+    JsonQuery(params): JsonQuery<AccountCompareQueryParams>,
 ) -> Result<Response, AccountsError> {
     // Parse comma-separated addresses
     let addresses: Vec<&str> = params

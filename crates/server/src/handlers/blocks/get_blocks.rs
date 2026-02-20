@@ -1,11 +1,12 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils::{self, ResolvedBlock, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     response::{IntoResponse, Response},
 };
 use futures::stream::{self, StreamExt, TryStreamExt};
@@ -40,11 +41,11 @@ pub struct BlocksRangeQueryParams {
     summary = "Get blocks by range",
     description = "Returns a collection of blocks given a numeric range. Range is inclusive and limited to 500 blocks.",
     params(
-        ("range" = Option<String>, Query, description = "Block range in format 'start-end' (e.g. '100-200')"),
-        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
-        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
-        ("noFees" = Option<bool>, Query, description = "Skip fee calculation for extrinsics"),
-        ("useRcBlock" = Option<bool>, Query, description = "Treat range as Relay Chain blocks")
+        ("range" = Option<String>, description = "Block range in format 'start-end' (e.g. '100-200')"),
+        ("eventDocs" = Option<bool>, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, description = "Skip fee calculation for extrinsics"),
+        ("useRcBlock" = Option<bool>, description = "Treat range as Relay Chain blocks")
     ),
     responses(
         (status = 200, description = "Array of block information", body = Vec<Object>),
@@ -54,7 +55,7 @@ pub struct BlocksRangeQueryParams {
 )]
 pub async fn get_blocks(
     State(state): State<AppState>,
-    Query(params): Query<BlocksRangeQueryParams>,
+    JsonQuery(params): JsonQuery<BlocksRangeQueryParams>,
 ) -> Result<Response, GetBlockError> {
     let range_str = params.range.clone().ok_or(GetBlockError::MissingRange)?;
 

@@ -7,6 +7,7 @@
 //! It extracts CandidateIncluded events from the ParaInclusion pallet to identify
 //! which parachain blocks were included in the relay chain block.
 
+use crate::extractors::JsonQuery;
 use crate::handlers::blocks::{
     CommonBlockError, ParaInclusionsError, ParaInclusionsQueryParams,
     fetch_para_inclusions_from_client,
@@ -15,7 +16,7 @@ use crate::state::AppState;
 use crate::utils::{self, BlockId, ResolvedBlock};
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -61,7 +62,7 @@ impl IntoResponse for RcParaInclusionsError {
     description = "Returns parachain inclusion information for a given relay chain block.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
-        ("paraId" = Option<u32>, Query, description = "Filter by parachain ID")
+        ("paraId" = Option<u32>, description = "Filter by parachain ID")
     ),
     responses(
         (status = 200, description = "Parachain inclusions", body = Object),
@@ -73,7 +74,7 @@ impl IntoResponse for RcParaInclusionsError {
 pub async fn get_rc_block_para_inclusions(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
-    Query(params): Query<ParaInclusionsQueryParams>,
+    JsonQuery(params): JsonQuery<ParaInclusionsQueryParams>,
 ) -> Result<Response, RcParaInclusionsError> {
     let relay_client = state
         .get_relay_chain_client()

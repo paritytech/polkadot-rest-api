@@ -6,11 +6,12 @@
 //! This module provides the handler for fetching a specific extrinsic by its index
 //! within a block.
 
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse, Response},
 };
 use polkadot_rest_api_config::ChainType;
@@ -43,10 +44,10 @@ use super::types::{
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
         ("extrinsicIndex" = String, Path, description = "Index of the extrinsic within the block"),
-        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
-        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
-        ("noFees" = Option<bool>, Query, description = "Skip fee calculation"),
-        ("useRcBlock" = Option<bool>, Query, description = "When true, treat blockId as Relay Chain block and return Asset Hub extrinsics")
+        ("eventDocs" = Option<bool>, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, description = "Skip fee calculation"),
+        ("useRcBlock" = Option<bool>, description = "When true, treat blockId as Relay Chain block and return Asset Hub extrinsics")
     ),
     responses(
         (status = 200, description = "Extrinsic details", body = Object),
@@ -58,7 +59,7 @@ use super::types::{
 pub async fn get_extrinsic(
     State(state): State<AppState>,
     Path(path_params): Path<ExtrinsicPathParams>,
-    Query(params): Query<ExtrinsicQueryParams>,
+    JsonQuery(params): JsonQuery<ExtrinsicQueryParams>,
 ) -> Result<Response, GetBlockError> {
     if params.use_rc_block {
         return handle_use_rc_block(state, path_params, params).await;
