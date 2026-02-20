@@ -75,6 +75,17 @@ impl IntoResponse for GetRcSpecError {
     }
 }
 
+impl From<utils::ResolveClientAtBlockError> for GetRcSpecError {
+    fn from(err: utils::ResolveClientAtBlockError) -> Self {
+        match err {
+            utils::ResolveClientAtBlockError::ParseError(e) => GetRcSpecError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::SubxtError(e) => {
+                GetRcSpecError::ClientAtBlockFailed(Box::new(e))
+            }
+        }
+    }
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AtBlockParam {
@@ -116,20 +127,8 @@ pub async fn get_rc_runtime_spec(
         .get_relay_chain_rpc()
         .ok_or(GetRcSpecError::RelayChainNotConfigured)?;
 
-    let client_at_block = match params.at {
-        None => relay_client
-            .at_current_block()
-            .await
-            .map_err(|e| GetRcSpecError::ClientAtBlockFailed(Box::new(e)))?,
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<crate::utils::BlockId>()?;
-            match block_id {
-                crate::utils::BlockId::Hash(hash) => relay_client.at_block(hash).await,
-                crate::utils::BlockId::Number(number) => relay_client.at_block(number).await,
-            }
-            .map_err(|e| GetRcSpecError::ClientAtBlockFailed(Box::new(e)))?
-        }
-    };
+    let client_at_block =
+        utils::resolve_client_at_block(relay_client.as_ref(), params.at.as_ref()).await?;
 
     let block_hash_str = format!("{:#x}", client_at_block.block_hash());
     let block_height = client_at_block.block_number().to_string();

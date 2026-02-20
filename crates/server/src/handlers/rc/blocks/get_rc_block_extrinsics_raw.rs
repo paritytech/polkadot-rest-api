@@ -63,12 +63,8 @@ async fn build_rc_block_raw_response(
         .get_relay_chain_rpc_client()
         .ok_or_else(|| GetBlockError::RelayChainNotConfigured)?;
 
-    let block_id_parsed = block_id.parse::<utils::BlockId>()?;
-
-    let client_at_block = match &block_id_parsed {
-        utils::BlockId::Number(n) => relay_client.at_block(*n).await?,
-        utils::BlockId::Hash(h) => relay_client.at_block(*h).await?,
-    };
+    let client_at_block =
+        utils::resolve_client_at_block(relay_client.as_ref(), Some(&block_id)).await?;
 
     let block_hash = format!("{:#x}", client_at_block.block_hash());
 

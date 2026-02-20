@@ -74,11 +74,8 @@ pub async fn get_rc_extrinsic(
 
     let ss58_prefix = relay_chain_info.ss58_prefix;
 
-    let block_id_parsed = path_params.block_id.parse::<utils::BlockId>()?;
-    let client_at_block = match block_id_parsed {
-        utils::BlockId::Hash(hash) => relay_client.at_block(hash).await?,
-        utils::BlockId::Number(number) => relay_client.at_block(number).await?,
-    };
+    let client_at_block =
+        utils::resolve_client_at_block(relay_client.as_ref(), Some(&path_params.block_id)).await?;
 
     let block_hash = format!("{:#x}", client_at_block.block_hash());
     let block_number = client_at_block.block_number();

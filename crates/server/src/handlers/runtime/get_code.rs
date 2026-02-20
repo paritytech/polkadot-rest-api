@@ -24,6 +24,17 @@ pub enum GetCodeError {
     ServiceUnavailable(String),
 }
 
+impl From<utils::ResolveClientAtBlockError> for GetCodeError {
+    fn from(err: utils::ResolveClientAtBlockError) -> Self {
+        match err {
+            utils::ResolveClientAtBlockError::ParseError(e) => GetCodeError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::SubxtError(e) => {
+                GetCodeError::ClientAtBlockFailed(Box::new(e))
+            }
+        }
+    }
+}
+
 impl IntoResponse for GetCodeError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
@@ -102,24 +113,7 @@ pub async fn runtime_code(
 ) -> Result<Json<RuntimeCodeResponse>, GetCodeError> {
     // Create client at the specified block - saves RPC calls by letting subxt
     // resolve hash<->number internally
-    let client_at_block = match params.at {
-        None => {
-            // Use current finalized block
-            state
-                .client
-                .at_current_block()
-                .await
-                .map_err(|e| GetCodeError::ClientAtBlockFailed(Box::new(e)))?
-        }
-        Some(ref at_str) => {
-            let block_id = at_str.parse::<crate::utils::BlockId>()?;
-            match block_id {
-                crate::utils::BlockId::Hash(hash) => state.client.at_block(hash).await,
-                crate::utils::BlockId::Number(number) => state.client.at_block(number).await,
-            }
-            .map_err(|e| GetCodeError::ClientAtBlockFailed(Box::new(e)))?
-        }
-    };
+    let client_at_block = utils::resolve_client_at_block(&state.client, params.at.as_ref()).await?;
 
     // Extract hash and number from the resolved client
     let block_hash = format!("{:#x}", client_at_block.block_hash());
