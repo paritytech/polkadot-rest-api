@@ -6,6 +6,7 @@ use crate::handlers::pallets::common::{
     AtResponse, PalletError, format_account_id, resolve_block_for_pallet,
 };
 use crate::handlers::pallets::constants::is_bad_staking_block;
+use crate::handlers::runtime_queries::staking as staking_queries;
 use crate::state::AppState;
 use crate::utils::{
     BlockId, fetch_block_timestamp, find_ah_blocks_in_rc_block, resolve_block_with_rpc,
@@ -69,13 +70,6 @@ pub struct ValidatorInfo {
 struct ValidatorPrefs {
     commission: Compact<u32>,
     blocked: bool,
-}
-
-#[derive(Debug, Clone, Decode)]
-struct ActiveEraInfo {
-    index: u32,
-    #[allow(dead_code)]
-    start: Option<u64>,
 }
 
 #[utoipa::path(
@@ -366,27 +360,15 @@ async fn fetch_active_era_index(
 ) -> Result<u32, PalletError> {
     // Try ActiveEra first
     tracing::debug!("Looking for Era info using staking.activeEra");
-    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "ActiveEra");
-    if let Ok(value) = client_at_block.storage().fetch(storage_addr, ()).await {
-        let bytes = value.into_bytes();
-        if let Ok(era_info) = ActiveEraInfo::decode(&mut &bytes[..]) {
-            return Ok(era_info.index);
-        }
-        // Try Option<ActiveEraInfo> wrapper
-        if let Ok(Some(era_info)) = Option::<ActiveEraInfo>::decode(&mut &bytes[..]) {
-            return Ok(era_info.index);
-        }
+    if let Some(era_info) = staking_queries::get_active_era_info(client_at_block).await {
+        return Ok(era_info.index);
     }
 
     // Fallback to CurrentEra
     tracing::debug!("Value for staking.activeEra not found, falling back to staking.currentEra");
-    let storage_addr = subxt::dynamic::storage::<(), u32>("Staking", "CurrentEra");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_current_era(client_at_block)
         .await
-        .map_err(|_| PalletError::ActiveEraNotFound)?;
-    value.decode().map_err(|_| PalletError::ActiveEraNotFound)
+        .ok_or(PalletError::ActiveEraNotFound)
 }
 
 /// Fetches the keys of ErasStakersOverview for a given era to determine active validators.
@@ -444,27 +426,14 @@ async fn fetch_session_validators_set(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
 ) -> Result<HashSet<String>, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Session", "Validators");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    let validators = staking_queries::get_session_validators(client_at_block, ss58_prefix)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Session",
             entry: "Validators",
         })?;
-
-    let bytes = value.into_bytes();
-    let validators: Vec<[u8; 32]> =
-        Vec::<[u8; 32]>::decode(&mut &bytes[..]).map_err(|_| PalletError::StorageDecodeFailed {
-            pallet: "Session",
-            entry: "Validators",
-        })?;
-
-    Ok(validators
-        .iter()
-        .map(|v| format_account_id(v, ss58_prefix))
-        .collect())
+    
+    Ok(validators.into_iter().collect())
 }
 
 #[cfg(test)]
