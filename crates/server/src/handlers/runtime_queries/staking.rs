@@ -1407,3 +1407,62 @@ pub async fn get_bonded_eras(
     let raw_bytes = value.into_bytes();
     Vec::<(u32, u32)>::decode(&mut &raw_bytes[..]).ok()
 }
+
+// ================================================================================================
+// Babe Pallet Queries (used for session/era progress calculations)
+// ================================================================================================
+
+/// Get the current slot from Babe::CurrentSlot.
+pub async fn get_babe_current_slot(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<u64> {
+    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "CurrentSlot");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    value.decode().ok()
+}
+
+/// Get the current epoch index from Babe::EpochIndex.
+pub async fn get_babe_epoch_index(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<u64> {
+    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "EpochIndex");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    value.decode().ok()
+}
+
+/// Get the genesis slot from Babe::GenesisSlot.
+pub async fn get_babe_genesis_slot(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<u64> {
+    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "GenesisSlot");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    value.decode().ok()
+}
+
+/// Get skipped epochs from Babe::SkippedEpochs.
+/// Returns a list of (epoch_index, skipped_session_count) pairs.
+pub async fn get_babe_skipped_epochs(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<Vec<(u64, u32)>> {
+    let storage_addr = subxt::dynamic::storage::<(), ()>("Babe", "SkippedEpochs");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    
+    let raw_bytes = value.into_bytes();
+    Vec::<(u64, u32)>::decode(&mut &raw_bytes[..]).ok()
+}

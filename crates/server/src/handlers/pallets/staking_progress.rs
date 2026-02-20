@@ -926,14 +926,9 @@ async fn derive_session_era_progress_asset_hub(
 async fn fetch_relay_skipped_epochs(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Vec<(u64, u32)> {
-    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Babe", "SkippedEpochs");
-    let value = match client_at_block.storage().fetch(storage_addr, ()).await {
-        Ok(v) => v,
-        Err(_) => return vec![],
-    };
-
-    let bytes = value.into_bytes();
-    Vec::<(u64, u32)>::decode(&mut &bytes[..]).unwrap_or_default()
+    staking_queries::get_babe_skipped_epochs(client_at_block)
+        .await
+        .unwrap_or_default()
 }
 
 /// Calculate the session index from epoch index, accounting for skipped epochs.
@@ -965,18 +960,9 @@ fn calculate_session_from_skipped_epochs(epoch_index: u64, skipped_epochs: &[(u6
 async fn fetch_babe_current_slot(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u64, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "CurrentSlot");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_babe_current_slot(client_at_block)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
-            pallet: "Babe",
-            entry: "CurrentSlot",
-        })?;
-    value
-        .decode()
-        .map_err(|_| PalletError::StorageDecodeFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Babe",
             entry: "CurrentSlot",
         })
@@ -985,18 +971,9 @@ async fn fetch_babe_current_slot(
 async fn fetch_babe_epoch_index(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u64, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "EpochIndex");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_babe_epoch_index(client_at_block)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
-            pallet: "Babe",
-            entry: "EpochIndex",
-        })?;
-    value
-        .decode()
-        .map_err(|_| PalletError::StorageDecodeFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Babe",
             entry: "EpochIndex",
         })
@@ -1005,18 +982,9 @@ async fn fetch_babe_epoch_index(
 async fn fetch_babe_genesis_slot(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u64, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "GenesisSlot");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_babe_genesis_slot(client_at_block)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
-            pallet: "Babe",
-            entry: "GenesisSlot",
-        })?;
-    value
-        .decode()
-        .map_err(|_| PalletError::StorageDecodeFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Babe",
             entry: "GenesisSlot",
         })
