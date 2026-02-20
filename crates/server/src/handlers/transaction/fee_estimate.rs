@@ -166,12 +166,13 @@ pub async fn fee_estimate_rc(
     let relay_client =
         state
             .get_relay_chain_client()
-            .ok_or_else(|| FeeEstimateError::RelayChain {
-                source: RelayChainError::NotConfigured,
+            .await
+            .map_err(|e| FeeEstimateError::RelayChain {
+                source: e,
                 transaction: tx.to_string(),
             })?;
 
-    fee_estimate_internal(relay_client, body).await
+    fee_estimate_internal(&relay_client, body).await
 }
 
 async fn fee_estimate_internal(

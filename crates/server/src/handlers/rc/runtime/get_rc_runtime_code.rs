@@ -108,9 +108,7 @@ pub async fn get_rc_runtime_code(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
 ) -> Result<Json<RuntimeCodeResponse>, GetRcCodeError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(RelayChainError::NotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
 
     let client_at_block = match params.at {
         None => relay_client

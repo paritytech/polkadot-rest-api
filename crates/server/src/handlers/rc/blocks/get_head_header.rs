@@ -97,12 +97,10 @@ pub async fn get_rc_blocks_head_header(
     Query(params): Query<RcBlockHeadHeaderQueryParams>,
 ) -> Result<Response, GetRcBlockHeadHeaderError> {
     let header = if params.finalized {
-        let relay_client =
-            state
-                .get_relay_chain_client()
-                .ok_or(GetRcBlockHeadHeaderError::RelayChain(
-                    RelayChainError::NotConfigured,
-                ))?;
+        let relay_client = state
+            .get_relay_chain_client()
+            .await
+            .map_err(GetRcBlockHeadHeaderError::RelayChain)?;
         let at_block = relay_client
             .at_current_block()
             .await
@@ -187,7 +185,7 @@ mod tests {
             legacy_rpc,
             rpc_client,
             chain_info,
-            relay_client: None,
+            relay_client: Arc::new(tokio::sync::OnceCell::new()),
             relay_rpc_client: {
                 let cell = Arc::new(tokio::sync::OnceCell::new());
                 cell.set(relay_rpc_client.clone()).ok();
@@ -199,7 +197,7 @@ mod tests {
                     .ok();
                 cell
             },
-            relay_chain_info: None,
+            relay_chain_info: Arc::new(tokio::sync::OnceCell::new()),
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
             chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
             chain_config: Arc::new(polkadot_rest_api_config::Config::single_chain(
