@@ -14,13 +14,14 @@ use crate::handlers::pallets::common::{
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
+use crate::utils::run_with_concurrency;
 use axum::{
     Json,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use futures::future::join_all;
+use futures::stream::StreamExt;
 use polkadot_rest_api_config::ChainType;
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
@@ -330,55 +331,35 @@ async fn fetch_ongoing_referenda(
         }
     };
 
-    // Iterate in batches from highest ID to lowest (ongoing referenda are usually recent)
-    // Use concurrent requests for better performance
-    let batch_size = 50;
-    let mut id = referendum_count.saturating_sub(1) as i64;
-
-    while id >= 0 {
-        let batch_start = (id - batch_size as i64 + 1).max(0) as u32;
-        let batch_end = id as u32;
-
-        // Create futures for batch fetching - decode directly to ReferendumStatus
-        let futures: Vec<_> = (batch_start..=batch_end)
-            .map(|ref_id| {
-                let storage_addr = subxt::dynamic::storage::<_, ReferendumStatus>(
-                    "Referenda",
-                    "ReferendumInfoFor",
-                );
-                let client = client_at_block.clone();
-                async move {
-                    let result = client.storage().fetch(storage_addr, (ref_id,)).await;
-                    let decoded: Option<ReferendumStatus> = match result {
-                        Ok(val) => val.decode().ok(),
-                        Err(_) => None,
-                    };
-                    (ref_id, decoded)
-                }
-            })
-            .collect();
-
-        // Execute batch concurrently
-        let results = join_all(futures).await;
-
-        for (ref_id, decoded) in results {
-            let decoded = match decoded {
-                Some(d) => d,
-                None => continue,
+    // Query all referendum IDs with bounded concurrency
+    let futures = (0..referendum_count).map(|ref_id| {
+        let storage_addr =
+            subxt::dynamic::storage::<_, ReferendumStatus>("Referenda", "ReferendumInfoFor");
+        let client = client_at_block.clone();
+        async move {
+            let result = client.storage().fetch(storage_addr, (ref_id,)).await;
+            let decoded: Option<ReferendumStatus> = match result {
+                Ok(val) => val.decode().ok(),
+                Err(_) => None,
             };
+            (ref_id, decoded)
+        }
+    });
 
-            // Extract ongoing referendum info using the typed struct
-            if let Some((track, ongoing)) =
-                extract_ongoing_from_status(decoded, ref_id, ss58_prefix)
-            {
-                // Filter to only include track 0 (Root) and track 1 (WhitelistedCaller)
-                if track == 0 || track == 1 {
-                    referenda.push(ongoing);
-                }
+    let mut stream = std::pin::pin!(run_with_concurrency(50, futures));
+    while let Some((ref_id, decoded)) = stream.next().await {
+        let decoded = match decoded {
+            Some(d) => d,
+            None => continue,
+        };
+
+        // Extract ongoing referendum info using the typed struct
+        if let Some((track, ongoing)) = extract_ongoing_from_status(decoded, ref_id, ss58_prefix) {
+            // Filter to only include track 0 (Root) and track 1 (WhitelistedCaller)
+            if track == 0 || track == 1 {
+                referenda.push(ongoing);
             }
         }
-
-        id -= batch_size as i64;
     }
 
     // Sort by ID in descending order to match Sidecar's ordering (highest ID first)

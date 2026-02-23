@@ -898,7 +898,8 @@ async fn fetch_core_descriptors(
     loop {
         let batch_end = (batch_start + BATCH_SIZE).min(MAX_CORES);
 
-        // Fire all queries in this batch concurrently
+        // Fire all queries in this batch concurrently (batch is already
+        // bounded by BATCH_SIZE so no extra concurrency limiting needed)
         let futures: Vec<_> = (batch_start..batch_end)
             .map(|core_idx| {
                 let addr = addr.clone();
@@ -911,7 +912,6 @@ async fn fetch_core_descriptors(
 
         let results = futures::future::join_all(futures).await;
 
-        // Process batch results
         let mut batch_found_any = false;
         for (core_idx, result) in results {
             match result {

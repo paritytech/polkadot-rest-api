@@ -12,7 +12,7 @@ use crate::handlers::pallets::constants::{
 use crate::state::{AppState, RelayChainError};
 use crate::utils::{
     BlockId, DEFAULT_CONCURRENCY, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
-    resolve_block_with_rpc, run_with_concurrency,
+    resolve_block_with_rpc, run_with_concurrency_collect,
 };
 use axum::{
     Json,
@@ -639,7 +639,7 @@ async fn handle_use_rc_block(
             }
         });
 
-    let responses = run_with_concurrency(DEFAULT_CONCURRENCY, futures).await?;
+    let responses = run_with_concurrency_collect(DEFAULT_CONCURRENCY, futures).await?;
 
     Ok((StatusCode::OK, Json(responses)).into_response())
 }

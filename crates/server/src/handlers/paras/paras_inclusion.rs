@@ -3,14 +3,14 @@
 
 use crate::extractors::JsonQuery;
 use crate::state::{AppState, RelayChainError};
-use crate::utils::extract_block_number_from_header;
+use crate::utils::{extract_block_number_from_header, run_with_concurrency};
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use futures::future::join_all;
+use futures::stream::StreamExt;
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -278,7 +278,9 @@ async fn extract_relay_parent_number(
 }
 
 /// Search relay chain blocks for inclusion of a parachain block.
-/// Checks blocks in parallel batches of 5 for faster lookups.
+///
+/// Runs at most BATCH_SIZE checks concurrently and returns as soon as the
+/// (unique) inclusion block is found — remaining in-flight futures are dropped.
 async fn search_for_inclusion_block(
     relay_client: &OnlineClient<SubstrateConfig>,
     para_id: u32,
@@ -286,21 +288,17 @@ async fn search_for_inclusion_block(
     relay_parent_number: u64,
     max_depth: u32,
 ) -> Option<u64> {
-    // Search blocks starting from relay_parent_number + 1
-    // Process in batches of BATCH_SIZE concurrently, returning the earliest match
-    for batch_start in (0..max_depth).step_by(BATCH_SIZE as usize) {
-        let futures: Vec<_> = (0..BATCH_SIZE)
-            .map(|i| {
-                let block_num = relay_parent_number + (batch_start + i) as u64 + 1;
-                check_block_for_inclusion(relay_client, block_num, para_id, parachain_block_number)
-            })
-            .collect();
+    // A parachain block is included in exactly one relay block, so the first
+    // match is the only match — no need to compare or collect further results.
+    let futs = (0..max_depth).map(|i| {
+        let block_num = relay_parent_number + i as u64 + 1;
+        check_block_for_inclusion(relay_client, block_num, para_id, parachain_block_number)
+    });
 
-        let results = join_all(futures).await;
-
-        // Return the earliest match within this batch
-        if let Some(found) = results.into_iter().flatten().next() {
-            return Some(found);
+    let mut stream = std::pin::pin!(run_with_concurrency(BATCH_SIZE as usize, futs));
+    while let Some(res) = stream.next().await {
+        if let Some(block_num) = res {
+            return Some(block_num);
         }
     }
 
