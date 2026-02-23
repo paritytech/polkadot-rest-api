@@ -75,6 +75,45 @@ Both return an array of Asset Hub blocks (or `[]` if none found).
 
 ---
 
+### Response Differences
+
+#### Pallet metadata `args` field — simplified type names
+
+The `args` field in pallet metadata responses (e.g., `/v1/pallets/{palletId}/events`, `/v1/pallets/{palletId}/errors`) returns **simplified type names** instead of fully expanded type definitions. This applies to any endpoint that exposes type arguments for pallet items.
+
+#### Example Responses
+
+**Polkadot REST API:**
+```json
+{
+  "args": ["DispatchInfo"]
+}
+```
+```json
+{
+  "args": ["DispatchError", "DispatchInfo"]
+}
+```
+
+**Sidecar (expanded definitions):**
+```json
+{
+  "args": ["{\"weight\":\"SpWeightsWeightV2Weight\",\"class\":\"FrameSupportDispatchDispatchClass\",\"paysFee\":\"FrameSupportDispatchPays\"}"]
+}
+```
+```json
+{
+  "args": [
+    "{\"_enum\":{\"Other\":\"Null\",\"CannotLookup\":\"Null\",\"BadOrigin\":\"Null\",\"Module\":\"SpRuntimeModuleError\",...}}",
+    "{\"weight\":\"SpWeightsWeightV2Weight\",\"class\":\"FrameSupportDispatchDispatchClass\",\"paysFee\":\"FrameSupportDispatchPays\"}"
+  ]
+}
+```
+
+**This is an intentional difference.** Resolving types to the fully expanded Polkadot.js-style structure introduces significant complexity and fragility for minimal benefit. The simplified type names are the canonical names from the runtime metadata and are sufficient to identify the type. Consumers needing the full type definition can look it up from the runtime metadata directly.
+
+---
+
 ## Fixes
 
 ### Historical data with `?at=`
