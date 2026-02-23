@@ -346,7 +346,7 @@ async fn fetch_ongoing_referenda(
         }
     });
 
-    let mut stream = std::pin::pin!(run_with_concurrency(50, futures).await);
+    let mut stream = std::pin::pin!(run_with_concurrency(50, futures));
     while let Some((ref_id, decoded)) = stream.next().await {
         let decoded = match decoded {
             Some(d) => d,

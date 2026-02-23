@@ -30,7 +30,7 @@ use crate::handlers::coretime::leases::fetch_leases;
 use crate::handlers::coretime::regions::{RegionInfo, fetch_regions};
 use crate::handlers::coretime::reservations::{ReservationInfo, fetch_reservations};
 use crate::state::AppState;
-use crate::utils::{BlockId, resolve_block, run_with_concurrency};
+use crate::utils::{BlockId, resolve_block};
 use axum::{
     Json,
     extract::State,
@@ -898,18 +898,22 @@ async fn fetch_core_descriptors(
     loop {
         let batch_end = (batch_start + BATCH_SIZE).min(MAX_CORES);
 
-        // Fire all queries in this batch concurrently
-        let futures = (batch_start..batch_end).map(|core_idx| {
-            let addr = addr.clone();
-            async move {
-                let result = client_at_block.storage().fetch(addr, (core_idx,)).await;
-                (core_idx, result)
-            }
-        });
+        // Fire all queries in this batch concurrently (batch is already
+        // bounded by BATCH_SIZE so no extra concurrency limiting needed)
+        let futures: Vec<_> = (batch_start..batch_end)
+            .map(|core_idx| {
+                let addr = addr.clone();
+                async move {
+                    let result = client_at_block.storage().fetch(addr, (core_idx,)).await;
+                    (core_idx, result)
+                }
+            })
+            .collect();
+
+        let results = futures::future::join_all(futures).await;
 
         let mut batch_found_any = false;
-        let mut stream = std::pin::pin!(run_with_concurrency(BATCH_SIZE as usize, futures).await);
-        while let Some((core_idx, result)) = stream.next().await {
+        for (core_idx, result) in results {
             match result {
                 Ok(value) => match value.decode_as::<RelayCoreDescriptorRaw>() {
                     Ok(descriptor) => {

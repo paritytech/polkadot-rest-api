@@ -295,7 +295,7 @@ async fn search_for_inclusion_block(
         check_block_for_inclusion(relay_client, block_num, para_id, parachain_block_number)
     });
 
-    let mut stream = std::pin::pin!(run_with_concurrency(BATCH_SIZE as usize, futs).await);
+    let mut stream = std::pin::pin!(run_with_concurrency(BATCH_SIZE as usize, futs));
     while let Some(res) = stream.next().await {
         if let Some(block_num) = res {
             return Some(block_num);

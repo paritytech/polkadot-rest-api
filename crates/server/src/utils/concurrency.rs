@@ -16,7 +16,12 @@ pub const DEFAULT_CONCURRENCY: usize = 4;
 ///
 /// Returns a [`Stream`] of results so callers can process items as they arrive
 /// and, if desired, stop early without waiting for remaining futures.
-pub async fn run_with_concurrency<F, O>(
+///
+/// **Note:** All futures are wrapped and pushed into the internal
+/// `FuturesUnordered` eagerly, so memory usage scales with the iterator
+/// length, not `max_concurrent`. This is fine for bounded iterators (hundreds
+/// of items) but not suitable for unbounded ones.
+pub fn run_with_concurrency<F, O>(
     max_concurrent: usize,
     tasks: impl IntoIterator<Item = F>,
 ) -> impl futures::Stream<Item = O>
