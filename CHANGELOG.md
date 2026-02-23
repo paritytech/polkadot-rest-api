@@ -29,8 +29,9 @@ Second beta release with improvements to error handling, relay chain connectivit
 ### Dependencies
 
 - Bumped `keccak` from 0.1.5 to 0.1.6 (security fix). (#233)
+- Updated `subxt` from 0.50.0-beta.2 to 0.50.0-beta.4, `frame-decode` from 0.16.1 to 0.17.1. (#239)
 
-## [1.0.0-beta.0] (2026-02-18)
+## [1.0.0-beta.1] (2026-02-18)
 
 First beta release of `polkadot-rest-api`, a REST service that makes it easy to interact with blockchain nodes built using Substrate's FRAME framework. This project is the successor to [substrate-api-sidecar](https://github.com/paritytech/substrate-api-sidecar), rewritten from the ground up in Rust.
 
