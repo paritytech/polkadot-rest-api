@@ -317,19 +317,17 @@ pub fn add_docs_to_extrinsic(extrinsic: &mut ExtrinsicInfo, metadata: &subxt::Me
 /// Associate events and outcomes with extrinsics.
 ///
 /// This function takes the categorized events and outcomes and attaches them
-/// to the corresponding extrinsics in-place.
+/// to the corresponding extrinsics in-place. Events are moved, not cloned.
 pub fn associate_events_with_extrinsics(
     extrinsics: &mut [ExtrinsicInfo],
-    per_extrinsic_events: &[Vec<Event>],
+    per_extrinsic_events: &mut [Vec<Event>],
     extrinsic_outcomes: &[ExtrinsicOutcome],
 ) {
-    for (i, (extrinsic_events, outcome)) in per_extrinsic_events
-        .iter()
-        .zip(extrinsic_outcomes.iter())
-        .enumerate()
-    {
+    for (i, outcome) in extrinsic_outcomes.iter().enumerate() {
         if let Some(extrinsic) = extrinsics.get_mut(i) {
-            extrinsic.events = extrinsic_events.clone();
+            if let Some(events) = per_extrinsic_events.get_mut(i) {
+                extrinsic.events = std::mem::take(events);
+            }
             extrinsic.success = outcome.success;
             if extrinsic.signature.is_some() {
                 if outcome.pays_fee.is_some() {
@@ -552,17 +550,15 @@ pub async fn build_block_response_generic(
         None
     };
 
-    let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
+    let (on_initialize, mut per_extrinsic_events, on_finalize, extrinsic_outcomes) =
         categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
-    for (i, (extrinsic_events, outcome)) in per_extrinsic_events
-        .iter()
-        .zip(extrinsic_outcomes.iter())
-        .enumerate()
-    {
+    for (i, outcome) in extrinsic_outcomes.iter().enumerate() {
         if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            extrinsic.events = extrinsic_events.clone();
+            if let Some(events) = per_extrinsic_events.get_mut(i) {
+                extrinsic.events = std::mem::take(events);
+            }
             extrinsic.success = outcome.success;
             if extrinsic.signature.is_some() {
                 // For signed extrinsics, use the value from the event's DispatchInfo

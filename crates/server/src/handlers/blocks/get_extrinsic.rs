@@ -174,13 +174,13 @@ async fn build_extrinsic_response(
         return Err(GetBlockError::ExtrinsicIndexNotFound);
     }
 
-    let (_on_initialize, per_extrinsic_events, _on_finalize, extrinsic_outcomes) =
+    let (_on_initialize, mut per_extrinsic_events, _on_finalize, extrinsic_outcomes) =
         categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
     associate_events_with_extrinsics(
         &mut extrinsics_with_events,
-        &per_extrinsic_events,
+        &mut per_extrinsic_events,
         &extrinsic_outcomes,
     );
 

@@ -263,17 +263,15 @@ async fn build_head_block_response(
     let extrinsics = extrinsics_result?;
     let block_events = events_result?;
 
-    let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
+    let (on_initialize, mut per_extrinsic_events, on_finalize, extrinsic_outcomes) =
         categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
-    for (i, (extrinsic_events, outcome)) in per_extrinsic_events
-        .iter()
-        .zip(extrinsic_outcomes.iter())
-        .enumerate()
-    {
+    for (i, outcome) in extrinsic_outcomes.iter().enumerate() {
         if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            extrinsic.events = extrinsic_events.clone();
+            if let Some(events) = per_extrinsic_events.get_mut(i) {
+                extrinsic.events = std::mem::take(events);
+            }
             extrinsic.success = outcome.success;
             if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
                 extrinsic.pays_fee = outcome.pays_fee;
