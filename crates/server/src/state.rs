@@ -283,7 +283,7 @@ impl AppState {
 
                 // Use reconnecting client for consistency with startup behavior
                 let reconnecting_client =
-                    connect_relay_chain_with_progress_logging(&relay_url, &self.config)
+                    connect_relay_chain_with_progress_logging(relay_url, &self.config)
                         .await
                         .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
 
