@@ -99,8 +99,15 @@ yarn build  # Creates deployable dist/ folder
 
 ### Deployment
 
-The built `dist/` folder is completely self-contained and can be:
-- Opened directly in a browser
+The built `dist/` folder is embedded into the API binary at compile time using `include_dir`. When the API server is running, the documentation is available at:
+
+- **`http://localhost:8080/docs/`** — Interactive documentation UI (trailing slash required)
+- **`http://localhost:8080/api-docs/openapi.json`** — Auto-generated OpenAPI 3.0 spec
+
+No separate web server or static hosting is needed — the docs are served directly by the API.
+
+The `dist/` folder can also be:
+- Opened directly in a browser (`docs/dist/index.html`)
 - Served by any web server
 - Deployed to static hosting services
 
@@ -112,7 +119,10 @@ Default servers are configured in `index.html`:
 ```html
 <select id="server-select">
   <option value="0">Polkadot Public</option>
-  <option value="1" selected>Localhost</option>
+  <option value="1">Kusama Public</option>
+  <option value="2">Polkadot Asset Hub</option>
+  <option value="3">Kusama Asset Hub</option>
+  <option value="4" selected>Localhost</option>
 </select>
 ```
 
@@ -120,12 +130,24 @@ Default servers are configured in `index.html`:
 
 The documentation uses CSS custom properties for theming. Modify `styles/main.css` to change colors and spacing.
 
-## OpenAPI Integration
+## Updating the Documentation
 
-The OpenAPI specification is embedded during build process. To update:
+When API endpoints change (new endpoints, updated parameters, etc.), the embedded OpenAPI spec needs to be regenerated:
 
-1. Replace `openapi-v1.yaml` with new specification
-2. Run `yarn build`
-3. Deploy the new `dist/` folder
+```bash
+# 1. Start the API server locally (it generates the OpenAPI spec at runtime)
+SAS_SUBSTRATE_URL=wss://rpc.polkadot.io cargo run --release --bin polkadot-rest-api
 
-No code changes required - the system automatically processes the new specification.
+# 2. In another terminal, fetch the latest spec from the running server
+cd docs
+yarn update-spec   # Runs: curl -s http://localhost:8080/api-docs/openapi.json > openapi.json
+
+# 3. Rebuild the docs bundle with the updated spec
+yarn build          # Creates updated dist/ folder
+
+# 4. Rebuild the API binary to embed the updated docs
+cd ..
+cargo build --release --package server
+```
+
+The `openapi.json` file is generated dynamically by the API from utoipa annotations on handlers. The `openapi-v1.yaml` is a legacy static spec kept for reference.
