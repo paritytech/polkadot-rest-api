@@ -3,14 +3,14 @@
 
 use crate::extractors::JsonQuery;
 use crate::state::{AppState, RelayChainError};
-use crate::utils::extract_block_number_from_header;
+use crate::utils::{extract_block_number_from_header, run_with_concurrency};
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use futures::future::join_all;
+use futures::stream::StreamExt;
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -286,20 +286,26 @@ async fn search_for_inclusion_block(
     relay_parent_number: u64,
     max_depth: u32,
 ) -> Option<u64> {
-    // Search blocks starting from relay_parent_number + 1
-    // Process in batches of BATCH_SIZE concurrently, returning the earliest match
+    // Search blocks starting from relay_parent_number + 1.
+    // Process in sequential batches of BATCH_SIZE so we can stop early once the
+    // earliest batch with a match is found, and always return the lowest block number.
     for batch_start in (0..max_depth).step_by(BATCH_SIZE as usize) {
-        let futures: Vec<_> = (0..BATCH_SIZE)
-            .map(|i| {
-                let block_num = relay_parent_number + (batch_start + i) as u64 + 1;
-                check_block_for_inclusion(relay_client, block_num, para_id, parachain_block_number)
-            })
-            .collect();
+        let batch_end = BATCH_SIZE.min(max_depth - batch_start);
+        let futs = (0..batch_end).map(|i| {
+            let block_num = relay_parent_number + (batch_start + i) as u64 + 1;
+            check_block_for_inclusion(relay_client, block_num, para_id, parachain_block_number)
+        });
 
-        let results = join_all(futures).await;
+        let mut earliest_in_batch: Option<u64> = None;
+        let mut stream = std::pin::pin!(run_with_concurrency(BATCH_SIZE as usize, futs).await);
+        while let Some(res) = stream.next().await {
+            if let Some(block_num) = res {
+                earliest_in_batch =
+                    Some(earliest_in_batch.map_or(block_num, |prev| prev.min(block_num)));
+            }
+        }
 
-        // Return the earliest match within this batch
-        if let Some(found) = results.into_iter().flatten().next() {
+        if let Some(found) = earliest_in_batch {
             return Some(found);
         }
     }

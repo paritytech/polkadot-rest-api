@@ -15,7 +15,7 @@ pub use block::{
     fetch_block_timestamp, get_block_number_from_hash_with_rpc, resolve_block,
     resolve_block_with_rpc, resolve_client_at_block,
 };
-pub use concurrency::{DEFAULT_CONCURRENCY, run_with_concurrency};
+pub use concurrency::{DEFAULT_CONCURRENCY, run_with_concurrency, run_with_concurrency_collect};
 pub use extrinsic::{
     EraInfo, decode_era_from_bytes, extract_era_from_extrinsic_bytes, parse_era_info,
 };
