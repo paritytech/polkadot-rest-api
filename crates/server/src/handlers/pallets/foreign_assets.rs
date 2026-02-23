@@ -7,10 +7,11 @@
 //! Foreign assets are cross-chain assets identified by XCM MultiLocation.
 
 use crate::extractors::JsonQuery;
-use crate::handlers::common::xcm_types::{Location, decode_multi_location_from_bytes};
+use crate::handlers::common::xcm_types::Location;
 use crate::handlers::pallets::common::{
     AtResponse, ClientAtBlock, PalletError, format_account_id, resolve_block_for_pallet,
 };
+use crate::handlers::runtime_queries::foreign_assets as foreign_assets_queries;
 use crate::handlers::runtime_queries::staking as staking_queries;
 use crate::state::AppState;
 use crate::utils;
@@ -21,7 +22,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use parity_scale_codec::Decode;
 use polkadot_rest_api_config::ChainType;
 use serde::{Deserialize, Serialize};
 
@@ -59,55 +59,6 @@ pub struct PalletsForeignAssetsResponse {
     pub rc_block_number: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ah_timestamp: Option<String>,
-}
-
-// ============================================================================
-// Internal SCALE Decode Types
-// ============================================================================
-
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-enum AssetStatus {
-    Live,
-    Frozen,
-    Destroying,
-}
-
-impl AssetStatus {
-    fn as_str(&self) -> &'static str {
-        match self {
-            AssetStatus::Live => "Live",
-            AssetStatus::Frozen => "Frozen",
-            AssetStatus::Destroying => "Destroying",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-struct AssetDetails {
-    owner: [u8; 32],
-    issuer: [u8; 32],
-    admin: [u8; 32],
-    freezer: [u8; 32],
-    supply: u128,
-    deposit: u128,
-    min_balance: u128,
-    is_sufficient: bool,
-    accounts: u32,
-    sufficients: u32,
-    approvals: u32,
-    status: AssetStatus,
-}
-
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-struct AssetMetadataStorage {
-    deposit: u128,
-    name: Vec<u8>,
-    symbol: Vec<u8>,
-    decimals: u8,
-    is_frozen: bool,
 }
 
 // ============================================================================
@@ -233,116 +184,60 @@ async fn fetch_all_foreign_assets(
     client_at_block: &ClientAtBlock,
     ss58_prefix: u16,
 ) -> Result<Vec<ForeignAssetItem>, PalletError> {
-    let mut items = Vec::new();
+    // First, fetch all metadata entries using centralized query
+    let metadata_list = foreign_assets_queries::iter_foreign_asset_metadata(client_at_block)
+        .await
+        .unwrap_or_default();
 
-    // First, fetch all metadata entries and store them by their key bytes
-    // We use the key part bytes directly from Subxt's API
-    let mut metadata_map: std::collections::HashMap<Vec<u8>, serde_json::Value> =
+    // Build a map from Location to metadata for quick lookup
+    let mut metadata_map: std::collections::HashMap<Location, serde_json::Value> =
         std::collections::HashMap::new();
 
-    // Using typed Location for the storage key - all XCM types implement EncodeAsType/DecodeAsType
-    let metadata_addr =
-        subxt::dynamic::storage::<(Location,), AssetMetadataStorage>("ForeignAssets", "Metadata");
-
-    // Try to iterate metadata - if this fails, the pallet might not exist
-    match client_at_block.storage().iter(metadata_addr, ()).await {
-        Ok(mut metadata_stream) => {
-            while let Some(entry_result) = metadata_stream.next().await {
-                if let Ok(entry) = entry_result
-                    // Use Subxt's key().part(0) to get the MultiLocation key part directly
-                    // This avoids manual byte offset calculations
-                    && let Ok(key) = entry.key()
-                    && let Some(key_part) = key.part(0)
-                {
-                    let key_part_bytes = key_part.bytes().to_vec();
-                    // Use typed decode instead of manual byte decoding
-                    if let Ok(metadata) = entry.value().decode() {
-                        let metadata_json = serde_json::json!({
-                            "deposit": metadata.deposit.to_string(),
-                            "name": format!("0x{}", hex::encode(&metadata.name)),
-                            "symbol": format!("0x{}", hex::encode(&metadata.symbol)),
-                            "decimals": metadata.decimals.to_string(),
-                            "isFrozen": metadata.is_frozen,
-                        });
-                        metadata_map.insert(key_part_bytes, metadata_json);
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            tracing::warn!("Failed to iterate ForeignAssets::Metadata storage: {:?}", e);
-            // Continue - metadata might be empty but Asset storage could still work
-        }
+    for metadata in metadata_list {
+        let metadata_json = serde_json::json!({
+            "deposit": metadata.deposit.to_string(),
+            "name": format!("0x{}", hex::encode(&metadata.name)),
+            "symbol": format!("0x{}", hex::encode(&metadata.symbol)),
+            "decimals": metadata.decimals.to_string(),
+            "isFrozen": metadata.is_frozen,
+        });
+        metadata_map.insert(metadata.location, metadata_json);
     }
 
     tracing::debug!("Fetched {} metadata entries", metadata_map.len());
 
-    // Use dynamic storage iteration to get all foreign assets
-    // ForeignAssets::Asset is a map with MultiLocation as key
-    let storage_addr =
-        subxt::dynamic::storage::<(Location,), AssetDetails>("ForeignAssets", "Asset");
-
-    let mut stream = client_at_block
-        .storage()
-        .iter(storage_addr, ())
+    // Fetch all foreign assets using centralized query
+    let assets = foreign_assets_queries::iter_foreign_assets(client_at_block)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to iterate ForeignAssets::Asset storage: {:?}", e);
-            PalletError::PalletNotAvailable("ForeignAssets")
-        })?;
+        .ok_or(PalletError::PalletNotAvailable("ForeignAssets"))?;
 
-    while let Some(entry_result) = stream.next().await {
-        let entry = match entry_result {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::debug!("Error reading foreign asset entry: {:?}", e);
-                continue;
-            }
-        };
+    let mut items = Vec::new();
 
-        // Use Subxt's key().part(0) to extract the MultiLocation key part directly
-        // This is cleaner than manual byte offset calculations
-        let key = match entry.key() {
-            Ok(k) => k,
-            Err(e) => {
-                tracing::debug!("Failed to decode storage key: {:?}", e);
-                continue;
-            }
-        };
-        let key_part = match key.part(0) {
-            Some(part) => part,
-            None => {
-                tracing::debug!("Storage key has no parts, skipping entry");
-                continue;
-            }
-        };
+    for asset_info in assets {
+        // Convert Location to JSON
+        let multi_location = serde_json::to_value(&asset_info.location)
+            .unwrap_or(serde_json::json!({}));
 
-        // Debug: log the key part bytes for first entry
-        if items.is_empty() {
-            tracing::debug!(
-                "First Asset key part (len={}): 0x{}",
-                key_part.bytes().len(),
-                hex::encode(key_part.bytes())
-            );
-        }
+        // Format asset details
+        let foreign_asset_info = serde_json::json!({
+            "owner": format_account_id(&asset_info.owner, ss58_prefix),
+            "issuer": format_account_id(&asset_info.issuer, ss58_prefix),
+            "admin": format_account_id(&asset_info.admin, ss58_prefix),
+            "freezer": format_account_id(&asset_info.freezer, ss58_prefix),
+            "supply": asset_info.supply.to_string(),
+            "deposit": asset_info.deposit.to_string(),
+            "minBalance": asset_info.min_balance.to_string(),
+            "isSufficient": asset_info.is_sufficient,
+            "accounts": asset_info.accounts.to_string(),
+            "sufficients": asset_info.sufficients.to_string(),
+            "approvals": asset_info.approvals.to_string(),
+            "status": asset_info.status,
+        });
 
-        // Decode the MultiLocation from the key part bytes
-        let multi_location = decode_multi_location_from_bytes(key_part.bytes());
-
-        // Decode the asset details using typed decode
-        let foreign_asset_info = match entry.value().decode() {
-            Ok(details) => format_asset_details(&details, ss58_prefix),
-            Err(e) => {
-                tracing::debug!("Failed to decode asset details: {:?}", e);
-                serde_json::json!({})
-            }
-        };
-
-        // Look up metadata using the key part bytes
-        let key_part_bytes = key_part.bytes();
+        // Look up metadata using the location
         let foreign_asset_metadata =
             metadata_map
-                .get(key_part_bytes)
+                .get(&asset_info.location)
                 .cloned()
                 .unwrap_or_else(|| {
                     // Return default metadata structure to match Sidecar format
@@ -363,24 +258,6 @@ async fn fetch_all_foreign_assets(
     }
 
     Ok(items)
-}
-
-/// Format asset details into JSON.
-fn format_asset_details(details: &AssetDetails, ss58_prefix: u16) -> serde_json::Value {
-    serde_json::json!({
-        "owner": format_account_id(&details.owner, ss58_prefix),
-        "issuer": format_account_id(&details.issuer, ss58_prefix),
-        "admin": format_account_id(&details.admin, ss58_prefix),
-        "freezer": format_account_id(&details.freezer, ss58_prefix),
-        "supply": details.supply.to_string(),
-        "deposit": details.deposit.to_string(),
-        "minBalance": details.min_balance.to_string(),
-        "isSufficient": details.is_sufficient,
-        "accounts": details.accounts.to_string(),
-        "sufficients": details.sufficients.to_string(),
-        "approvals": details.approvals.to_string(),
-        "status": details.status.as_str().to_string(),
-    })
 }
 
 /// Fetches timestamp from Timestamp::Now storage.
@@ -508,40 +385,6 @@ mod tests {
         // Verify empty objects are serialized correctly
         assert!(json.contains("\"foreignAssetInfo\":{}"));
         assert!(json.contains("\"foreignAssetMetadata\":{}"));
-    }
-
-    #[test]
-    fn test_format_asset_details() {
-        // Test that format_asset_details returns correctly formatted JSON
-        let details = AssetDetails {
-            owner: [1u8; 32],
-            issuer: [2u8; 32],
-            admin: [3u8; 32],
-            freezer: [4u8; 32],
-            supply: 1000,
-            deposit: 100,
-            min_balance: 1,
-            is_sufficient: true,
-            accounts: 10,
-            sufficients: 5,
-            approvals: 2,
-            status: AssetStatus::Live,
-        };
-        let result = format_asset_details(&details, 0);
-
-        // Check that the result has the expected structure
-        assert!(result.get("owner").is_some());
-        assert!(result.get("supply").is_some());
-        assert_eq!(result["supply"], "1000");
-        assert_eq!(result["isSufficient"], true);
-        assert_eq!(result["status"], "Live");
-    }
-
-    #[test]
-    fn test_asset_status_as_str() {
-        assert_eq!(AssetStatus::Live.as_str(), "Live");
-        assert_eq!(AssetStatus::Frozen.as_str(), "Frozen");
-        assert_eq!(AssetStatus::Destroying.as_str(), "Destroying");
     }
 
     #[test]
