@@ -174,38 +174,26 @@ async fn handle_use_rc_block(
         return Err(GetBlockError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(GetBlockError::RelayChainNotConfigured);
-    }
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
 
     // Determine which relay chain block to use (finalized or canonical head)
     let rc_hash = if params.finalized {
-        state
-            .get_relay_chain_rpc()
-            .ok_or(GetBlockError::RelayChainNotConfigured)?
+        rc_rpc
             .chain_get_finalized_head()
             .await
             .map_err(GetBlockError::RpcCallFailed)?
     } else {
-        state
-            .get_relay_chain_rpc()
-            .ok_or(GetBlockError::RelayChainNotConfigured)?
+        rc_rpc
             .chain_get_block_hash(None)
             .await
             .map_err(GetBlockError::RpcCallFailed)?
             .ok_or_else(|| GetBlockError::HeaderFieldMissing("canonical head hash".to_string()))?
     };
 
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .ok_or(GetBlockError::RelayChainNotConfigured)?,
-        state
-            .get_relay_chain_rpc()
-            .ok_or(GetBlockError::RelayChainNotConfigured)?,
-        Some(utils::BlockId::Hash(rc_hash)),
-    )
-    .await?;
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(utils::BlockId::Hash(rc_hash)))
+            .await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
         .await

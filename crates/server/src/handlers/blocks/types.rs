@@ -6,6 +6,7 @@
 //! This module contains all the types used by `/blocks/*` endpoints including
 //! request parameters, response structures, and internal types.
 
+use crate::state::RelayChainError;
 use crate::utils::{self, EraInfo, RcBlockError};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use heck::ToLowerCamelCase;
@@ -196,10 +197,8 @@ pub enum GetBlockError {
     #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
     UseRcBlockNotSupported,
 
-    #[error(
-        "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL"
-    )]
-    RelayChainNotConfigured,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 
     #[error("Failed to compute block hash: {0}")]
     HashComputationFailed(#[from] crate::utils::HashError),
@@ -257,7 +256,6 @@ impl IntoResponse for GetBlockError {
         let (status, message) = match &self {
             GetBlockError::InvalidBlockParam(_)
             | GetBlockError::BlockResolveFailed(_)
-            | GetBlockError::RelayChainNotConfigured
             | GetBlockError::ExtrinsicIndexNotFound
             | GetBlockError::InvalidExtrinsicIndex(_)
             | GetBlockError::MissingRange
@@ -266,6 +264,12 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::InvalidRangeMax
             | GetBlockError::InvalidRangeMinMax
             | GetBlockError::RangeTooLarge => (StatusCode::BAD_REQUEST, self.to_string()),
+            GetBlockError::RelayChain(RelayChainError::NotConfigured) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
             GetBlockError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
@@ -342,10 +346,8 @@ pub enum GetBlockHeaderError {
     #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
     UseRcBlockNotSupported,
 
-    #[error(
-        "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL"
-    )]
-    RelayChainNotConfigured,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 
     #[error("Failed to get client at block: {0}")]
     ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
@@ -369,9 +371,14 @@ impl IntoResponse for GetBlockHeaderError {
         let (status, message) = match &self {
             GetBlockHeaderError::InvalidBlockParam(_)
             | GetBlockHeaderError::BlockResolveFailed(_)
-            | GetBlockHeaderError::UseRcBlockNotSupported
-            | GetBlockHeaderError::RelayChainNotConfigured => {
+            | GetBlockHeaderError::UseRcBlockNotSupported => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockHeaderError::RelayChain(RelayChainError::NotConfigured) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockHeaderError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetBlockHeaderError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())

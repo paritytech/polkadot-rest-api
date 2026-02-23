@@ -83,9 +83,7 @@ async fn handle_use_rc_block(
         return Err(GetBlockHeaderError::UseRcBlockNotSupported);
     }
 
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(GetBlockHeaderError::RelayChainNotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
 
     let rc_block_id = block_id.parse::<utils::BlockId>()?;
     let rc_client_at_block = match &rc_block_id {

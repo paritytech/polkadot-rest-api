@@ -88,23 +88,11 @@ pub async fn get_rc_blocks(
 
     let (start, end) = parse_range(&range_str)?;
 
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(GetBlockError::RelayChainNotConfigured)?
-        .clone();
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(GetBlockError::RelayChainNotConfigured)?
-        .clone();
-    let relay_chain_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(GetBlockError::RelayChainNotConfigured)?
-        .clone();
+    let relay_client = state.get_relay_chain_client().await?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_chain_rpc = state.get_relay_chain_rpc().await?;
 
-    let relay_chain_info = state
-        .relay_chain_info
-        .clone()
-        .ok_or(GetBlockError::RelayChainNotConfigured)?;
+    let relay_chain_info = state.get_relay_chain_info().await?;
 
     let base_params = BlockQueryParams {
         event_docs: params.event_docs,

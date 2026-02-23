@@ -64,14 +64,8 @@ pub async fn get_rc_extrinsic(
         .parse()
         .map_err(|_| GetBlockError::InvalidExtrinsicIndex(path_params.extrinsic_index.clone()))?;
 
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(GetBlockError::RelayChainNotConfigured)?
-        .clone();
-    let relay_chain_info = state
-        .relay_chain_info
-        .clone()
-        .ok_or(GetBlockError::RelayChainNotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
+    let relay_chain_info = state.get_relay_chain_info().await?;
 
     let ss58_prefix = relay_chain_info.ss58_prefix;
 

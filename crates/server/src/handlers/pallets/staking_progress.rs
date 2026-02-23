@@ -9,7 +9,7 @@ use crate::handlers::pallets::constants::{
     derive_election_lookahead, get_asset_hub_babe_params, get_babe_epoch_duration,
     is_bad_staking_block,
 };
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils::{
     BlockId, DEFAULT_CONCURRENCY, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
     resolve_block_with_rpc, run_with_concurrency,
@@ -201,27 +201,24 @@ pub async fn pallets_staking_progress(
     let is_asset_hub = state.chain_info.chain_type == ChainType::AssetHub;
 
     let validators = if is_asset_hub {
-        if let Some(relay_client) = state.get_relay_chain_client() {
-            let relay_chain_info = state
-                .relay_chain_info
-                .as_ref()
-                .ok_or(PalletError::RelayChainNotConfigured)?;
-            let relay_rpc = state
-                .get_relay_chain_rpc()
-                .ok_or(PalletError::RelayChainNotConfigured)?;
+        if let Ok(relay_client) = state.get_relay_chain_client().await {
+            let relay_chain_info = state.get_relay_chain_info().await?;
+            let relay_rpc = state.get_relay_chain_rpc().await?;
             let relay_block_hash = relay_rpc
                 .chain_get_block_hash(None)
                 .await
-                .map_err(|_| PalletError::RelayChainNotConfigured)?;
+                .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
+            let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
             let relay_block_number = if let Some(hash) = relay_block_hash {
                 let hash_str = format!("{:?}", hash);
-                let header: serde_json::Value = state
-                    .relay_rpc_client
-                    .as_ref()
-                    .ok_or(PalletError::RelayChainNotConfigured)?
+                let header: serde_json::Value = relay_rpc_client
                     .request("chain_getHeader", subxt_rpcs::rpc_params![hash_str])
                     .await
-                    .map_err(|_| PalletError::RelayChainNotConfigured)?;
+                    .map_err(|e| PalletError::StorageEntryFetchFailed {
+                        pallet: "System",
+                        entry: "BlockHash",
+                        error: e.to_string(),
+                    })?;
                 header["number"]
                     .as_str()
                     .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
@@ -348,19 +345,10 @@ pub async fn rc_pallets_staking_progress(
     JsonQuery(params): JsonQuery<RcStakingProgressQueryParams>,
 ) -> Result<Response, PalletError> {
     // Ensure relay chain is configured
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_chain_info = state
-        .relay_chain_info
-        .as_ref()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
+    let relay_chain_info = state.get_relay_chain_info().await?;
 
     tracing::debug!(
         "RC staking progress: querying relay chain '{}' (spec version: {})",
@@ -370,7 +358,7 @@ pub async fn rc_pallets_staking_progress(
 
     // Resolve block on relay chain
     let block_id = params.at.map(|s| s.parse::<BlockId>()).transpose()?;
-    let resolved_block = resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+    let resolved_block = resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id).await?;
 
     tracing::debug!(
         "RC staking progress: resolved block {} (hash: {})",
@@ -502,9 +490,7 @@ async fn handle_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at
@@ -512,16 +498,11 @@ async fn handle_use_rc_block(
         .ok_or(PalletError::AtParameterRequired)?
         .parse::<BlockId>()?;
 
-    let rc_resolved_block = resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
-        state
-            .get_relay_chain_rpc()
-            .expect("relay chain rpc checked above"),
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
+    let rc_resolved_block =
+        resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
@@ -976,12 +957,12 @@ async fn derive_session_era_progress_asset_hub(
         (current_slot.saturating_sub(babe_params.genesis_slot)) / babe_params.epoch_duration;
 
     // Calculate session index accounting for skipped epochs from relay chain
-    let current_index = if let Some(relay_client) = state.get_relay_chain_client() {
+    let current_index = if let Ok(relay_client) = state.get_relay_chain_client().await {
         // Get relay chain client at current block to fetch skipped epochs
         let relay_client_at_block = relay_client
             .at_current_block()
             .await
-            .map_err(|_| PalletError::RelayChainNotConfigured)?;
+            .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
         let skipped_epochs = fetch_relay_skipped_epochs(&relay_client_at_block).await;
         calculate_session_from_skipped_epochs(epoch_index, &skipped_epochs)
     } else {

@@ -20,9 +20,6 @@ pub enum GetRcMetadataError {
     #[error(transparent)]
     RelayChain(#[from] RelayChainError),
 
-    #[error("Relay chain client not configured")]
-    RelayChainNotConfigured,
-
     #[error("Failed to get metadata from RPC")]
     RpcFailed(#[source] subxt_rpcs::Error),
 
@@ -64,10 +61,7 @@ impl IntoResponse for GetRcMetadataError {
             | GetRcMetadataError::VersionNotAvailable(_)
             | GetRcMetadataError::MetadataVersionsNotAvailable
             | GetRcMetadataError::BlockNotFound(_)
-            | GetRcMetadataError::RelayChainNotConfigured => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
-            GetRcMetadataError::RelayChain(RelayChainError::NotConfigured) => {
+            | GetRcMetadataError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             GetRcMetadataError::RelayChain(RelayChainError::ConnectionFailed(_))
@@ -152,15 +146,12 @@ pub async fn get_rc_runtime_metadata(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<RuntimeMetadataResponse>, GetRcMetadataError> {
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(GetRcMetadataError::RelayChainNotConfigured)?;
-    let relay_legacy_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(GetRcMetadataError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_legacy_rpc = state.get_relay_chain_rpc().await?;
 
     let block_hash =
-        resolve_relay_block_hash(relay_rpc_client, relay_legacy_rpc, params.at.as_deref()).await?;
+        resolve_relay_block_hash(&relay_rpc_client, &relay_legacy_rpc, params.at.as_deref())
+            .await?;
 
     let metadata_hex: String = relay_rpc_client
         .request("state_getMetadata", rpc_params![&block_hash])
@@ -217,15 +208,12 @@ pub async fn get_rc_runtime_metadata_versions(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<Vec<String>>, GetRcMetadataError> {
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(GetRcMetadataError::RelayChainNotConfigured)?;
-    let relay_legacy_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(GetRcMetadataError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_legacy_rpc = state.get_relay_chain_rpc().await?;
 
     let block_hash =
-        resolve_relay_block_hash(relay_rpc_client, relay_legacy_rpc, params.at.as_deref()).await?;
+        resolve_relay_block_hash(&relay_rpc_client, &relay_legacy_rpc, params.at.as_deref())
+            .await?;
 
     let call_data = "0x".to_string();
 
@@ -294,15 +282,12 @@ pub async fn get_rc_runtime_metadata_versioned(
         None => return Err(GetRcMetadataError::InvalidVersionFormat(version.clone())),
     };
 
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(GetRcMetadataError::RelayChainNotConfigured)?;
-    let relay_legacy_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(GetRcMetadataError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_legacy_rpc = state.get_relay_chain_rpc().await?;
 
     let block_hash =
-        resolve_relay_block_hash(relay_rpc_client, relay_legacy_rpc, params.at.as_deref()).await?;
+        resolve_relay_block_hash(&relay_rpc_client, &relay_legacy_rpc, params.at.as_deref())
+            .await?;
 
     // First, check if the version is available
     let versions_call_data = "0x".to_string();

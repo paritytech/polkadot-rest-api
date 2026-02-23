@@ -5,6 +5,7 @@
 
 use super::utils::AddressValidationError;
 use crate::handlers::common::accounts::StakingPayoutsQueryError;
+use crate::state::RelayChainError;
 use crate::utils::{self, RcBlockError};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
@@ -199,11 +200,8 @@ pub enum AccountsError {
     #[error("useRcBlock is only supported on Asset Hub chains")]
     UseRcBlockNotSupported,
 
-    #[error("Relay chain not configured for this Asset Hub")]
-    RelayChainNotConfigured,
-
-    #[error("Relay chain not available. This endpoint requires a relay chain connection.")]
-    RelayChainNotAvailable,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 
     #[error("Relay chain block mapping failed: {0}")]
     RcBlockMappingFailed(#[from] RcBlockError),
@@ -358,7 +356,8 @@ impl_error_response!(AccountsError,
     AccountsError::InvalidDelegateAddress(_) => BAD_REQUEST,
     AccountsError::PalletNotAvailable(_) => BAD_REQUEST,
     AccountsError::UseRcBlockNotSupported => BAD_REQUEST,
-    AccountsError::RelayChainNotAvailable => BAD_REQUEST,
+    AccountsError::RelayChain(RelayChainError::NotConfigured) => BAD_REQUEST,
+    AccountsError::RelayChain(RelayChainError::ConnectionFailed(_)) => SERVICE_UNAVAILABLE,
     AccountsError::BlockResolveFailed(_) => NOT_FOUND,
     AccountsError::InvalidDenominatedParam => BAD_REQUEST,
     AccountsError::InvalidToken(_) => BAD_REQUEST,

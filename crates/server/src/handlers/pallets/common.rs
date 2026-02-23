@@ -6,6 +6,7 @@
 //! This module provides shared error types, response types, and SCALE decode types
 //! used by the pallet endpoints.
 
+use crate::state::RelayChainError;
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use parity_scale_codec::Decode;
 use serde::Serialize;
@@ -36,8 +37,8 @@ pub enum PalletError {
     // ========================================================================
     // Relay Chain Errors
     // ========================================================================
-    #[error("Relay chain connection not configured")]
-    RelayChainNotConfigured,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 
     #[error("RC block error: {0}")]
     RcBlockError(#[from] crate::utils::rc_block::RcBlockError),
@@ -200,7 +201,12 @@ impl IntoResponse for PalletError {
             }
 
             // Relay chain errors
-            PalletError::RelayChainNotConfigured => (StatusCode::BAD_REQUEST, self.to_string()),
+            PalletError::RelayChain(RelayChainError::NotConfigured) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            PalletError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
             PalletError::RcBlockError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             PalletError::UseRcBlockNotSupported => (StatusCode::BAD_REQUEST, self.to_string()),
             PalletError::AtParameterRequired => (StatusCode::BAD_REQUEST, self.to_string()),

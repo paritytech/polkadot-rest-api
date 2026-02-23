@@ -55,13 +55,9 @@ async fn build_rc_block_raw_response(
     state: &AppState,
     block_id: String,
 ) -> Result<BlockRawResponse, GetBlockError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or_else(|| GetBlockError::RelayChainNotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
 
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or_else(|| GetBlockError::RelayChainNotConfigured)?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
 
     let client_at_block =
         utils::resolve_client_at_block(relay_client.as_ref(), Some(&block_id)).await?;
@@ -74,7 +70,7 @@ async fn build_rc_block_raw_response(
         .map_err(|e| GetBlockError::ExtrinsicsFetchFailed(format!("Header fetch failed: {}", e)))?;
 
     // Use chain_getBlock RPC directly to get raw extrinsics without decoding
-    let raw_extrinsics = fetch_raw_extrinsics_via_rpc(relay_rpc_client, &block_hash).await?;
+    let raw_extrinsics = fetch_raw_extrinsics_via_rpc(&relay_rpc_client, &block_hash).await?;
 
     let parent_hash = format!("{:#x}", header.parent_hash);
     let number = format!("0x{:08x}", header.number);

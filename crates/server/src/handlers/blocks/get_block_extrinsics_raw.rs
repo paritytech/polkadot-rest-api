@@ -158,17 +158,12 @@ async fn handle_use_rc_block(state: AppState, block_id: String) -> Result<Respon
         return Err(GetBlockError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(GetBlockError::RelayChainNotConfigured);
-    }
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
 
     let rc_block_id = block_id.parse::<utils::BlockId>()?;
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().unwrap(),
-        state.get_relay_chain_rpc().unwrap(),
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
         .await

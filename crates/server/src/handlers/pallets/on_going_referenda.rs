@@ -214,9 +214,7 @@ async fn handle_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at
@@ -224,12 +222,11 @@ async fn handle_use_rc_block(
         .ok_or(PalletError::AtParameterRequired)?
         .parse::<utils::BlockId>()?;
 
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().expect("checked above"),
-        state.get_relay_chain_rpc().expect("checked above"),
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
@@ -493,26 +490,17 @@ pub async fn rc_pallets_on_going_referenda(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<RcOnGoingReferendaQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_chain_info = state
-        .relay_chain_info
-        .as_ref()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
+    let relay_chain_info = state.get_relay_chain_info().await?;
 
     let block_id = params
         .at
         .as_ref()
         .map(|s| s.parse::<utils::BlockId>())
         .transpose()?;
-    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+    let resolved = utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id).await?;
 
     let client_at_block = relay_client.at_block(resolved.number).await?;
 
