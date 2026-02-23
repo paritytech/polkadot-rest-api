@@ -3,7 +3,6 @@
 
 use crate::handlers::accounts::{AccountsError, ForeignAssetBalance};
 use crate::handlers::common::xcm_types::{BLAKE2_128_HASH_LEN, Location};
-use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig, ext::scale_decode::DecodeAsType};

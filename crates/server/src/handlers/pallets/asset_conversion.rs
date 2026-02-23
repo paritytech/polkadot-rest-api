@@ -18,7 +18,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use futures::StreamExt;
 use heck::ToLowerCamelCase;
 use polkadot_rest_api_config::ChainType;
 use serde::{Deserialize, Serialize};

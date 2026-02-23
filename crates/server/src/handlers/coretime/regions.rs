@@ -27,7 +27,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use primitive_types::H256;
 use scale_decode::DecodeAsType;

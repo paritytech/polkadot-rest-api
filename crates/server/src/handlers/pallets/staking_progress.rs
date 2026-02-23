@@ -788,8 +788,6 @@ async fn fetch_unapplied_slashes(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
 ) -> Vec<UnappliedSlash> {
-    use futures::StreamExt;
-
     // Use (u32,) for the key type since UnappliedSlashes is a map with era as key
     let storage_addr =
         subxt::dynamic::storage::<(u32,), scale_value::Value>("Staking", "UnappliedSlashes");
