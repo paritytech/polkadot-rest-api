@@ -6,6 +6,30 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.0-beta.2] (2026-02-23)
+
+Second beta release with improvements to error handling, relay chain connectivity, and developer experience.
+
+### Features
+
+- **JSON error responses for query parameters**: All query parameter validation errors now return structured JSON (`{"error": "..."}`) with 400 status instead of plain text. A new `JsonQuery<T>` extractor replaces `Query<T>` across all handlers. (#229)
+- **Strict query parameter validation**: Unrecognized query parameters (e.g., typos like `onlyids` instead of `onlyIds`) now return a 400 error instead of being silently ignored. All query param structs enforce `deny_unknown_fields`. (#227)
+- **Unified lazy relay chain initialization**: Consolidated two separate relay chain connection patterns into a single `OnceCell`-backed lazy-init approach. Handlers are simplified and errors are unified under a `RelayChainError` enum (`NotConfigured` → 400, `ConnectionFailed` → 503). (#230)
+- **Relay chain reconnection support**: Multi-chain relay connections now support exponential backoff reconnection, reusing existing `SAS_SUBSTRATE_RECONNECT_*` environment variables. Connection failures at startup are now surfaced immediately. (#228)
+
+### Fixes
+
+- **Logging initialization order**: Logging is now initialized before `AppState` so that relay chain connection warnings are properly captured instead of silently lost. (#225)
+- **Migration guide**: Added documentation for response differences in pallet metadata `args` field (simplified type names vs Sidecar's expanded definitions). (#234)
+
+### Refactors
+
+- **`resolve_client_at_block` helper**: Extracted common block resolution logic into a shared utility, reducing duplicated code per handler across 16+ handlers. (#226)
+
+### Dependencies
+
+- Bumped `keccak` from 0.1.5 to 0.1.6 (security fix). (#233)
+
 ## [1.0.0-beta.0] (2026-02-18)
 
 First beta release of `polkadot-rest-api`, a REST service that makes it easy to interact with blockchain nodes built using Substrate's FRAME framework. This project is the successor to [substrate-api-sidecar](https://github.com/paritytech/substrate-api-sidecar), rewritten from the ground up in Rust.
