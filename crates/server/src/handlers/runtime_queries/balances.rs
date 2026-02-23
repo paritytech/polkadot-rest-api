@@ -270,7 +270,7 @@ fn decode_account_info(raw_bytes: &[u8]) -> Option<DecodedAccountData> {
 
 fn decode_balance_locks(raw_bytes: &[u8]) -> Option<Vec<DecodedBalanceLock>> {
     let locks = Vec::<BalanceLock>::decode(&mut &raw_bytes[..]).ok()?;
-    
+
     Some(
         locks
             .into_iter()
@@ -282,7 +282,7 @@ fn decode_balance_locks(raw_bytes: &[u8]) -> Option<Vec<DecodedBalanceLock>> {
                     reasons: lock.reasons.as_str().to_string(),
                 }
             })
-            .collect()
+            .collect(),
     )
 }
 
@@ -291,7 +291,7 @@ fn decode_proxy_definitions(
     ss58_prefix: u16,
 ) -> Option<(Vec<DecodedProxyDefinition>, u128)> {
     use sp_core::crypto::Ss58Codec;
-    
+
     // Proxy storage is (Vec<ProxyDefinition>, deposit)
     // Try decoding the tuple
     let (proxies, deposit): (Vec<ProxyDefinition>, u128) =
@@ -300,8 +300,8 @@ fn decode_proxy_definitions(
     let decoded_proxies = proxies
         .into_iter()
         .map(|p| {
-            let delegate = AccountId32::from(p.delegate)
-                .to_ss58check_with_version(ss58_prefix.into());
+            let delegate =
+                AccountId32::from(p.delegate).to_ss58check_with_version(ss58_prefix.into());
             DecodedProxyDefinition {
                 delegate,
                 proxy_type: p.proxy_type,
@@ -325,7 +325,7 @@ fn decode_vesting_schedules(raw_bytes: &[u8]) -> Option<Vec<DecodedVestingInfo>>
                     per_block: v.per_block,
                     starting_block: v.starting_block,
                 })
-                .collect()
+                .collect(),
         );
     }
 
@@ -339,7 +339,7 @@ fn decode_vesting_schedules(raw_bytes: &[u8]) -> Option<Vec<DecodedVestingInfo>>
                     per_block: v.per_block,
                     starting_block: v.starting_block,
                 })
-                .collect()
+                .collect(),
         );
     }
 

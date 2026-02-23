@@ -114,10 +114,8 @@ pub async fn get_referendum_info(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     referendum_id: u32,
 ) -> Option<ReferendumStatus> {
-    let storage_addr = subxt::dynamic::storage::<_, ReferendumStatus>(
-        "Referenda",
-        "ReferendumInfoFor",
-    );
+    let storage_addr =
+        subxt::dynamic::storage::<_, ReferendumStatus>("Referenda", "ReferendumInfoFor");
 
     let result = client_at_block
         .storage()
@@ -139,10 +137,8 @@ pub async fn iter_referenda_batch(
 ) -> Vec<(u32, Option<ReferendumStatus>)> {
     let futures: Vec<_> = (start_id..=end_id)
         .map(|ref_id| {
-            let storage_addr = subxt::dynamic::storage::<_, ReferendumStatus>(
-                "Referenda",
-                "ReferendumInfoFor",
-            );
+            let storage_addr =
+                subxt::dynamic::storage::<_, ReferendumStatus>("Referenda", "ReferendumInfoFor");
             let client = client_at_block.clone();
             async move {
                 let result = client.storage().fetch(storage_addr, (ref_id,)).await;
@@ -184,14 +180,17 @@ pub fn extract_ongoing_referendum(
                 confirming: d.confirming,
             });
 
-            Some((track, DecodedOngoingReferendum {
-                id,
+            Some((
                 track,
-                enactment,
-                submitted: ongoing.submitted,
-                decision_deposit,
-                deciding,
-            }))
+                DecodedOngoingReferendum {
+                    id,
+                    track,
+                    enactment,
+                    submitted: ongoing.submitted,
+                    decision_deposit,
+                    deciding,
+                },
+            ))
         }
         _ => None,
     }

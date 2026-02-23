@@ -1307,7 +1307,7 @@ pub async fn get_force_era(
         .fetch(storage_addr, ())
         .await
         .ok()?;
-    
+
     // ForceEra is an enum: 0=NotForcing, 1=ForceNew, 2=ForceNone, 3=ForceAlways
     let variant = value.decode().ok()?;
     Some(match variant {
@@ -1329,9 +1329,9 @@ pub async fn get_active_era_info(
         .fetch(storage_addr, ())
         .await
         .ok()?;
-    
+
     let raw_bytes = value.into_bytes();
-    
+
     // Try direct decode first
     if let Ok(era_info) = ActiveEraInfo::decode(&mut &raw_bytes[..]) {
         return Some(DecodedActiveEraInfo {
@@ -1339,7 +1339,7 @@ pub async fn get_active_era_info(
             start: era_info.start,
         });
     }
-    
+
     // Try with Option wrapper
     if let Ok(Some(era_info)) = Option::<ActiveEraInfo>::decode(&mut &raw_bytes[..]) {
         return Some(DecodedActiveEraInfo {
@@ -1347,7 +1347,7 @@ pub async fn get_active_era_info(
             start: era_info.start,
         });
     }
-    
+
     None
 }
 
@@ -1375,22 +1375,20 @@ pub async fn get_session_validators(
         .fetch(storage_addr, ())
         .await
         .ok()?;
-    
+
     let raw_bytes = value.into_bytes();
     let validators: Vec<[u8; 32]> = Vec::decode(&mut &raw_bytes[..]).ok()?;
-    
+
     Some(
         validators
             .into_iter()
             .map(|bytes| AccountId32::from(bytes).to_ss58check_with_version(ss58_prefix.into()))
-            .collect()
+            .collect(),
     )
 }
 
 /// Get the current timestamp from Timestamp::Now.
-pub async fn get_timestamp(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Option<u64> {
+pub async fn get_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<u64> {
     let storage_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
     let value = client_at_block
         .storage()
@@ -1411,7 +1409,7 @@ pub async fn get_bonded_eras(
         .fetch(storage_addr, ())
         .await
         .ok()?;
-    
+
     let raw_bytes = value.into_bytes();
     Vec::<(u32, u32)>::decode(&mut &raw_bytes[..]).ok()
 }
@@ -1470,7 +1468,7 @@ pub async fn get_babe_skipped_epochs(
         .fetch(storage_addr, ())
         .await
         .ok()?;
-    
+
     let raw_bytes = value.into_bytes();
     Vec::<(u64, u32)>::decode(&mut &raw_bytes[..]).ok()
 }
@@ -1496,16 +1494,16 @@ pub async fn get_era_election_status(
         .fetch(storage_addr, ())
         .await
         .ok()?;
-    
+
     let raw_bytes = value.into_bytes();
-    
+
     // EraElectionStatus is an enum:
     // 0 = Close
     // 1 = Open(BlockNumber)
     if raw_bytes.is_empty() {
         return None;
     }
-    
+
     match raw_bytes[0] {
         0 => Some(EraElectionStatus::Close),
         1 => {
@@ -1542,36 +1540,35 @@ pub async fn iter_staking_validators(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Option<Vec<DecodedValidatorPrefsEntry>> {
     use futures::StreamExt;
-    
-    let storage_addr =
-        subxt::dynamic::storage::<([u8; 32],), ()>("Staking", "Validators");
-    
+
+    let storage_addr = subxt::dynamic::storage::<([u8; 32],), ()>("Staking", "Validators");
+
     let mut stream = client_at_block
         .storage()
         .iter(storage_addr, ())
         .await
         .ok()?;
-    
+
     let mut validators = Vec::new();
-    
+
     while let Some(entry_result) = stream.next().await {
         let entry = match entry_result {
             Ok(e) => e,
             Err(_) => continue,
         };
-        
+
         let key_bytes = entry.key_bytes();
         let value_bytes = entry.value().bytes();
-        
+
         // For Twox64Concat hasher, the account_id (32 bytes) is always the last
         // 32 bytes of the key
         if key_bytes.len() < 32 {
             continue;
         }
-        
+
         let mut validator = [0u8; 32];
         validator.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
-        
+
         // Decode ValidatorPrefs: { commission: Perbill (u32), blocked: bool }
         if let Ok(prefs) = ValidatorPrefsStorage::decode(&mut &value_bytes[..]) {
             validators.push(DecodedValidatorPrefsEntry {
@@ -1581,7 +1578,7 @@ pub async fn iter_staking_validators(
             });
         }
     }
-    
+
     Some(validators)
 }
 
@@ -1592,39 +1589,37 @@ pub async fn iter_era_stakers_overview_keys(
     era: u32,
 ) -> Option<Vec<[u8; 32]>> {
     use futures::StreamExt;
-    
-    let storage_addr = subxt::dynamic::storage::<(u32, [u8; 32]), ()>(
-        "Staking",
-        "ErasStakersOverview",
-    );
-    
+
+    let storage_addr =
+        subxt::dynamic::storage::<(u32, [u8; 32]), ()>("Staking", "ErasStakersOverview");
+
     let mut stream = client_at_block
         .storage()
         .iter(storage_addr, (era,))
         .await
         .ok()?;
-    
+
     let mut validators = Vec::new();
-    
+
     while let Some(entry_result) = stream.next().await {
         let entry = match entry_result {
             Ok(e) => e,
             Err(_) => continue,
         };
-        
+
         let key_bytes = entry.key_bytes();
-        
+
         // For Twox64Concat hasher on the second key (AccountId32),
         // the account_id (32 bytes) is always the last 32 bytes of the key.
         if key_bytes.len() < 32 {
             continue;
         }
-        
+
         let mut validator = [0u8; 32];
         validator.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
         validators.push(validator);
     }
-    
+
     Some(validators)
 }
 
@@ -1665,26 +1660,25 @@ pub async fn iter_unapplied_slashes(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Vec<DecodedUnappliedSlash> {
     use futures::StreamExt;
-    
-    let storage_addr =
-        subxt::dynamic::storage::<(u32,), ()>("Staking", "UnappliedSlashes");
-    
+
+    let storage_addr = subxt::dynamic::storage::<(u32,), ()>("Staking", "UnappliedSlashes");
+
     let mut stream = match client_at_block.storage().iter(storage_addr, ()).await {
         Ok(s) => s,
         Err(_) => return vec![],
     };
-    
+
     let mut result = Vec::new();
-    
+
     while let Some(entry_result) = stream.next().await {
         let entry = match entry_result {
             Ok(e) => e,
             Err(_) => continue,
         };
-        
+
         let key_bytes = entry.key_bytes();
         let value_bytes = entry.value().bytes();
-        
+
         // Key format: 16 bytes pallet prefix + 16 bytes entry prefix + 8 bytes twox64 hash + 4 bytes era
         // Total: 44 bytes, era starts at byte 40
         let era: u32 = if key_bytes.len() >= 44 {
@@ -1692,13 +1686,13 @@ pub async fn iter_unapplied_slashes(
         } else {
             continue;
         };
-        
+
         let slashes: Vec<UnappliedSlashStorage> =
             match Vec::<UnappliedSlashStorage>::decode(&mut &value_bytes[..]) {
                 Ok(s) => s,
                 Err(_) => continue,
             };
-        
+
         for slash in slashes {
             result.push(DecodedUnappliedSlash {
                 era,
@@ -1710,6 +1704,6 @@ pub async fn iter_unapplied_slashes(
             });
         }
     }
-    
+
     result
 }

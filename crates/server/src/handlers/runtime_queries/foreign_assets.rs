@@ -6,7 +6,7 @@
 //! This module provides standalone functions for querying ForeignAssets pallet storage items.
 //! ForeignAssets uses XCM Location as the asset identifier key.
 
-use crate::handlers::common::xcm_types::{Location, BLAKE2_128_HASH_LEN};
+use crate::handlers::common::xcm_types::{BLAKE2_128_HASH_LEN, Location};
 use futures::StreamExt;
 use parity_scale_codec::Decode;
 use sp_core::crypto::AccountId32;
@@ -207,7 +207,8 @@ pub async fn iter_foreign_asset_locations(
 pub async fn iter_foreign_assets(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Option<Vec<DecodedForeignAssetInfo>> {
-    let storage_addr = subxt::dynamic::storage::<(Location,), AssetDetails>("ForeignAssets", "Asset");
+    let storage_addr =
+        subxt::dynamic::storage::<(Location,), AssetDetails>("ForeignAssets", "Asset");
 
     let mut stream = client_at_block
         .storage()
@@ -270,7 +271,8 @@ pub async fn iter_foreign_assets(
 pub async fn iter_foreign_asset_metadata(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Option<Vec<DecodedForeignAssetMetadata>> {
-    let storage_addr = subxt::dynamic::storage::<(Location,), AssetMetadataStorage>("ForeignAssets", "Metadata");
+    let storage_addr =
+        subxt::dynamic::storage::<(Location,), AssetMetadataStorage>("ForeignAssets", "Metadata");
 
     let mut stream = client_at_block
         .storage()
@@ -328,10 +330,8 @@ pub async fn get_foreign_asset_balance(
     account: &AccountId32,
     location: &Location,
 ) -> Option<DecodedForeignAssetBalance> {
-    let storage_addr = subxt::dynamic::storage::<(Location, [u8; 32]), AssetAccount>(
-        "ForeignAssets",
-        "Account",
-    );
+    let storage_addr =
+        subxt::dynamic::storage::<(Location, [u8; 32]), AssetAccount>("ForeignAssets", "Account");
 
     let account_bytes: [u8; 32] = *account.as_ref();
 
@@ -434,10 +434,8 @@ pub async fn get_foreign_asset_account(
     location: &Location,
     account_bytes: &[u8; 32],
 ) -> Result<Option<DecodedForeignAssetBalance>, &'static str> {
-    let storage_addr = subxt::dynamic::storage::<(Location, [u8; 32]), AssetAccount>(
-        "ForeignAssets",
-        "Account",
-    );
+    let storage_addr =
+        subxt::dynamic::storage::<(Location, [u8; 32]), AssetAccount>("ForeignAssets", "Account");
 
     let result = client_at_block
         .storage()
@@ -469,6 +467,30 @@ pub async fn get_foreign_asset_account(
                 Err(_) => Err("Failed to decode ForeignAssets::Account"),
             }
         }
+        Err(_) => Ok(None), // No entry for this (location, account) pair
+    }
+}
+
+/// Fallback fetch for older runtimes using scale_value dynamic decoding.
+/// Returns the raw scale_value Value for the caller to extract fields from.
+pub async fn get_foreign_asset_account_raw(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    location: &Location,
+    account_bytes: &[u8; 32],
+) -> Result<Option<scale_value::Value<()>>, &'static str> {
+    let storage_addr =
+        subxt::dynamic::storage::<(Location, [u8; 32]), ()>("ForeignAssets", "Account");
+
+    let result = client_at_block
+        .storage()
+        .fetch(storage_addr, (location.clone(), *account_bytes))
+        .await;
+
+    match result {
+        Ok(value) => match value.decode_as::<scale_value::Value<()>>() {
+            Ok(decoded) => Ok(Some(decoded)),
+            Err(_) => Err("Failed to decode ForeignAssets::Account as scale_value"),
+        },
         Err(_) => Ok(None), // No entry for this (location, account) pair
     }
 }

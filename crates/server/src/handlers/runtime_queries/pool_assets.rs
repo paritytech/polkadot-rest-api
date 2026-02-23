@@ -58,9 +58,9 @@ impl AssetStatus {
     /// Returns the status as a string for API responses.
     pub fn as_str(&self) -> &'static str {
         match self {
-            AssetStatus::Live => "live",
-            AssetStatus::Frozen => "frozen",
-            AssetStatus::Destroying => "destroying",
+            AssetStatus::Live => "Live",
+            AssetStatus::Frozen => "Frozen",
+            AssetStatus::Destroying => "Destroying",
         }
     }
 }
@@ -241,7 +241,8 @@ pub async fn get_all_pool_asset_ids(
         .map_err(|e| PoolAssetsStorageError::StorageFetchFailed(e.to_string()))?;
 
     while let Some(result) = values.next().await {
-        let entry = result.map_err(|e| PoolAssetsStorageError::StorageFetchFailed(e.to_string()))?;
+        let entry =
+            result.map_err(|e| PoolAssetsStorageError::StorageFetchFailed(e.to_string()))?;
         // Extract asset ID from storage key
         // Key structure: Twox128("PoolAssets") + Twox128("Asset") + Blake2_128Concat(asset_id)
         // Skip 48 bytes (16+16+16) to get to the raw asset_id
@@ -410,7 +411,9 @@ pub async fn get_pool_asset_approval(
 // ================================================================================================
 
 /// Decode pool asset balance from raw SCALE bytes, handling multiple runtime versions.
-fn decode_pool_asset_balance(raw_bytes: &[u8]) -> Result<Option<DecodedPoolAssetBalance>, PoolAssetsStorageError> {
+fn decode_pool_asset_balance(
+    raw_bytes: &[u8],
+) -> Result<Option<DecodedPoolAssetBalance>, PoolAssetsStorageError> {
     // Try modern format first (balance, status, reason)
     if let Ok(account) = PoolAssetAccountModern::decode(&mut &raw_bytes[..]) {
         return Ok(Some(DecodedPoolAssetBalance {
@@ -436,7 +439,9 @@ fn decode_pool_asset_balance(raw_bytes: &[u8]) -> Result<Option<DecodedPoolAsset
 }
 
 /// Decode pool asset approval from raw SCALE bytes.
-fn decode_pool_asset_approval(raw_bytes: &[u8]) -> Result<Option<DecodedPoolAssetApproval>, PoolAssetsStorageError> {
+fn decode_pool_asset_approval(
+    raw_bytes: &[u8],
+) -> Result<Option<DecodedPoolAssetApproval>, PoolAssetsStorageError> {
     if let Ok(approval) = PoolAssetApprovalStorage::decode(&mut &raw_bytes[..]) {
         return Ok(Some(DecodedPoolAssetApproval {
             amount: approval.amount.to_string(),
@@ -468,9 +473,9 @@ mod tests {
 
     #[test]
     fn test_asset_status_as_str() {
-        assert_eq!(AssetStatus::Live.as_str(), "live");
-        assert_eq!(AssetStatus::Frozen.as_str(), "frozen");
-        assert_eq!(AssetStatus::Destroying.as_str(), "destroying");
+        assert_eq!(AssetStatus::Live.as_str(), "Live");
+        assert_eq!(AssetStatus::Frozen.as_str(), "Frozen");
+        assert_eq!(AssetStatus::Destroying.as_str(), "Destroying");
     }
 
     #[test]

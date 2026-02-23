@@ -99,21 +99,17 @@ async fn try_fallback_foreign_asset_account(
     };
     use scale_value::{Composite, Value, ValueDef};
 
-    // Use typed dynamic storage fetch
-    let storage_addr = subxt::dynamic::storage::<(Location, [u8; 32]), ()>(
-        "ForeignAssets",
-        "Account",
-    );
-
-    let storage_val = client_at_block
-        .storage()
-        .fetch(storage_addr, (location.clone(), *account_bytes))
-        .await
-        .map_err(|_| AccountsError::PalletNotAvailable("ForeignAssets".to_string()))?;
-
-    let decoded: Value<()> = storage_val
-        .decode_as()
-        .map_err(|_| AccountsError::PalletNotAvailable("ForeignAssets".to_string()))?;
+    // Use centralized raw fetch
+    let decoded: Value<()> = foreign_assets_queries::get_foreign_asset_account_raw(
+        client_at_block,
+        location,
+        account_bytes,
+    )
+    .await
+    .map_err(|_| AccountsError::PalletNotAvailable("ForeignAssets".to_string()))?
+    .ok_or(AccountsError::PalletNotAvailable(
+        "ForeignAssets".to_string(),
+    ))?;
 
     // Unwrap Option<AssetAccount> if present
     let inner = match &decoded.value {

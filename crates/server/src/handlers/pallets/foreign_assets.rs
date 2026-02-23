@@ -215,8 +215,8 @@ async fn fetch_all_foreign_assets(
 
     for asset_info in assets {
         // Convert Location to JSON
-        let multi_location = serde_json::to_value(&asset_info.location)
-            .unwrap_or(serde_json::json!({}));
+        let multi_location =
+            serde_json::to_value(&asset_info.location).unwrap_or(serde_json::json!({}));
 
         // Format asset details
         let foreign_asset_info = serde_json::json!({
@@ -235,20 +235,19 @@ async fn fetch_all_foreign_assets(
         });
 
         // Look up metadata using the location
-        let foreign_asset_metadata =
-            metadata_map
-                .get(&asset_info.location)
-                .cloned()
-                .unwrap_or_else(|| {
-                    // Return default metadata structure to match Sidecar format
-                    serde_json::json!({
-                        "deposit": "0",
-                        "name": "0x",
-                        "symbol": "0x",
-                        "decimals": "0",
-                        "isFrozen": false,
-                    })
-                });
+        let foreign_asset_metadata = metadata_map
+            .get(&asset_info.location)
+            .cloned()
+            .unwrap_or_else(|| {
+                // Return default metadata structure to match Sidecar format
+                serde_json::json!({
+                    "deposit": "0",
+                    "name": "0x",
+                    "symbol": "0x",
+                    "decimals": "0",
+                    "isFrozen": false,
+                })
+            });
 
         items.push(ForeignAssetItem {
             multi_location,

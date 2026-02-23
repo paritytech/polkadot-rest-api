@@ -58,9 +58,9 @@ impl AssetStatus {
     /// Returns the status as a string for API responses.
     pub fn as_str(&self) -> &'static str {
         match self {
-            AssetStatus::Live => "live",
-            AssetStatus::Frozen => "frozen",
-            AssetStatus::Destroying => "destroying",
+            AssetStatus::Live => "Live",
+            AssetStatus::Frozen => "Frozen",
+            AssetStatus::Destroying => "Destroying",
         }
     }
 }
@@ -213,13 +213,8 @@ pub struct DecodedAssetApproval {
 // ================================================================================================
 
 /// Check if the Assets pallet exists on the chain.
-pub fn is_assets_pallet_available(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> bool {
-    client_at_block
-        .storage()
-        .entry(("Assets", "Asset"))
-        .is_ok()
+pub fn is_assets_pallet_available(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
+    client_at_block.storage().entry(("Assets", "Asset")).is_ok()
 }
 
 /// Fetch all asset IDs from Assets::Asset storage.
@@ -410,7 +405,9 @@ pub async fn get_asset_approval(
 // ================================================================================================
 
 /// Decode asset balance from raw SCALE bytes, handling multiple runtime versions.
-fn decode_asset_balance(raw_bytes: &[u8]) -> Result<Option<DecodedAssetBalance>, AssetsStorageError> {
+fn decode_asset_balance(
+    raw_bytes: &[u8],
+) -> Result<Option<DecodedAssetBalance>, AssetsStorageError> {
     // Try modern format first (balance, status, reason)
     if let Ok(account) = AssetAccountModern::decode(&mut &raw_bytes[..]) {
         return Ok(Some(DecodedAssetBalance {
@@ -436,7 +433,9 @@ fn decode_asset_balance(raw_bytes: &[u8]) -> Result<Option<DecodedAssetBalance>,
 }
 
 /// Decode asset approval from raw SCALE bytes.
-fn decode_asset_approval(raw_bytes: &[u8]) -> Result<Option<DecodedAssetApproval>, AssetsStorageError> {
+fn decode_asset_approval(
+    raw_bytes: &[u8],
+) -> Result<Option<DecodedAssetApproval>, AssetsStorageError> {
     if let Ok(approval) = AssetApprovalStorage::decode(&mut &raw_bytes[..]) {
         return Ok(Some(DecodedAssetApproval {
             amount: approval.amount.to_string(),
@@ -468,9 +467,9 @@ mod tests {
 
     #[test]
     fn test_asset_status_as_str() {
-        assert_eq!(AssetStatus::Live.as_str(), "live");
-        assert_eq!(AssetStatus::Frozen.as_str(), "frozen");
-        assert_eq!(AssetStatus::Destroying.as_str(), "destroying");
+        assert_eq!(AssetStatus::Live.as_str(), "Live");
+        assert_eq!(AssetStatus::Frozen.as_str(), "Frozen");
+        assert_eq!(AssetStatus::Destroying.as_str(), "Destroying");
     }
 
     #[test]

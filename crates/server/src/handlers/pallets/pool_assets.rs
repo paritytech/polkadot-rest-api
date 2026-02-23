@@ -8,7 +8,9 @@
 //! LP (liquidity pool) tokens created by the AssetConversion pallet.
 
 use crate::extractors::JsonQuery;
-use crate::handlers::pallets::common::{AtResponse, ClientAtBlock, PalletError, resolve_block_for_pallet};
+use crate::handlers::pallets::common::{
+    AtResponse, ClientAtBlock, PalletError, resolve_block_for_pallet,
+};
 use crate::handlers::runtime_queries::pool_assets as pool_assets_queries;
 use crate::handlers::runtime_queries::staking as staking_queries;
 use crate::state::AppState;
@@ -355,9 +357,12 @@ mod tests {
 
     #[test]
     fn test_asset_status_as_str() {
-        assert_eq!(AssetStatus::Live.as_str(), "Live");
-        assert_eq!(AssetStatus::Frozen.as_str(), "Frozen");
-        assert_eq!(AssetStatus::Destroying.as_str(), "Destroying");
+        assert_eq!(pool_assets_queries::AssetStatus::Live.as_str(), "Live");
+        assert_eq!(pool_assets_queries::AssetStatus::Frozen.as_str(), "Frozen");
+        assert_eq!(
+            pool_assets_queries::AssetStatus::Destroying.as_str(),
+            "Destroying"
+        );
     }
 
     #[test]

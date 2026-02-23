@@ -8,10 +8,10 @@
 //! as parachains don't have governance.
 
 use crate::extractors::JsonQuery;
+use crate::handlers::common::xcm_types::format_number_with_commas;
 use crate::handlers::pallets::common::{
     AtResponse, ClientAtBlock, PalletError, format_account_id, resolve_block_for_pallet,
 };
-use crate::handlers::common::xcm_types::format_number_with_commas;
 use crate::handlers::runtime_queries::governance as governance_queries;
 use crate::handlers::runtime_queries::referenda as referenda_queries;
 use crate::state::AppState;
@@ -215,16 +215,17 @@ async fn fetch_ongoing_referenda(
     let mut referenda = Vec::new();
 
     // First, get the ReferendumCount to know how many referenda have been created
-    let referendum_count: u32 = match governance_queries::get_referendum_count(client_at_block).await {
-        Some(count) => count,
-        None => {
-            // The pallet or storage entry doesn't exist at this block
-            return Err(PalletError::PalletNotAvailableAtBlock {
-                module: "api.query.referenda".to_string(),
-                block_height: block_height.to_string(),
-            });
-        }
-    };
+    let referendum_count: u32 =
+        match governance_queries::get_referendum_count(client_at_block).await {
+            Some(count) => count,
+            None => {
+                // The pallet or storage entry doesn't exist at this block
+                return Err(PalletError::PalletNotAvailableAtBlock {
+                    module: "api.query.referenda".to_string(),
+                    block_height: block_height.to_string(),
+                });
+            }
+        };
 
     // Iterate in batches from highest ID to lowest (ongoing referenda are usually recent)
     // Use concurrent requests for better performance
@@ -236,21 +237,14 @@ async fn fetch_ongoing_referenda(
         let batch_end = id as u32;
 
         // Fetch batch using centralized query
-        let results = referenda_queries::iter_referenda_batch(
-            client_at_block,
-            batch_start,
-            batch_end,
-        )
-        .await;
+        let results =
+            referenda_queries::iter_referenda_batch(client_at_block, batch_start, batch_end).await;
 
         for (ref_id, decoded) in results {
             let decoded = match decoded {
                 Some(d) => d,
                 None => continue,
             };
-            (ref_id, decoded)
-        }
-    });
 
             // Extract ongoing referendum info using the centralized function
             if let Some((track, ongoing)) =
@@ -262,6 +256,8 @@ async fn fetch_ongoing_referenda(
                 }
             }
         }
+
+        id -= batch_size as i64;
     }
 
     // Sort by ID in descending order to match Sidecar's ordering (highest ID first)

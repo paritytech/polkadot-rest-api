@@ -119,22 +119,21 @@ pub async fn query_proxy_info(
     }
 
     // Use centralized query function
-    let (delegated_accounts, deposit_held) =
-        if let Some((proxies, deposit)) =
-            balances_queries::get_proxy_definitions(client_at_block, account, ss58_prefix).await
-        {
-            let definitions = proxies
-                .into_iter()
-                .map(|p| DecodedProxyDefinition {
-                    delegate: p.delegate,
-                    proxy_type: proxy_type_name(p.proxy_type),
-                    delay: p.delay.to_string(),
-                })
-                .collect();
-            (definitions, deposit.to_string())
-        } else {
-            (Vec::new(), "0".to_string())
-        };
+    let (delegated_accounts, deposit_held) = if let Some((proxies, deposit)) =
+        balances_queries::get_proxy_definitions(client_at_block, account, ss58_prefix).await
+    {
+        let definitions = proxies
+            .into_iter()
+            .map(|p| DecodedProxyDefinition {
+                delegate: p.delegate,
+                proxy_type: proxy_type_name(p.proxy_type),
+                delay: p.delay.to_string(),
+            })
+            .collect();
+        (definitions, deposit.to_string())
+    } else {
+        (Vec::new(), "0".to_string())
+    };
 
     Ok(RawProxyInfo {
         block: FormattedBlockInfo {

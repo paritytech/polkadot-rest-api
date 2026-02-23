@@ -290,9 +290,11 @@ async fn fetch_next_pool_asset_id(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Option<String>, PalletError> {
     // Use centralized query function
-    Ok(asset_conversion_queries::get_next_pool_asset_id(client_at_block)
-        .await
-        .map(|id| id.to_string()))
+    Ok(
+        asset_conversion_queries::get_next_pool_asset_id(client_at_block)
+            .await
+            .map(|id| id.to_string()),
+    )
 }
 
 /// Fetches all liquidity pools from AssetConversion::Pools storage.

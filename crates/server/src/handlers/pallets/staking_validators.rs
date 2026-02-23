@@ -360,7 +360,7 @@ async fn fetch_session_validators_set(
             pallet: "Session",
             entry: "Validators",
         })?;
-    
+
     Ok(validators.into_iter().collect())
 }
 
