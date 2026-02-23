@@ -278,7 +278,9 @@ async fn extract_relay_parent_number(
 }
 
 /// Search relay chain blocks for inclusion of a parachain block.
-/// Checks blocks in parallel batches of 5 for faster lookups.
+///
+/// Runs at most BATCH_SIZE checks concurrently and returns as soon as the
+/// (unique) inclusion block is found — remaining in-flight futures are dropped.
 async fn search_for_inclusion_block(
     relay_client: &OnlineClient<SubstrateConfig>,
     para_id: u32,
@@ -286,27 +288,17 @@ async fn search_for_inclusion_block(
     relay_parent_number: u64,
     max_depth: u32,
 ) -> Option<u64> {
-    // Search blocks starting from relay_parent_number + 1.
-    // Process in sequential batches of BATCH_SIZE so we can stop early once the
-    // earliest batch with a match is found, and always return the lowest block number.
-    for batch_start in (0..max_depth).step_by(BATCH_SIZE as usize) {
-        let batch_end = BATCH_SIZE.min(max_depth - batch_start);
-        let futs = (0..batch_end).map(|i| {
-            let block_num = relay_parent_number + (batch_start + i) as u64 + 1;
-            check_block_for_inclusion(relay_client, block_num, para_id, parachain_block_number)
-        });
+    // A parachain block is included in exactly one relay block, so the first
+    // match is the only match — no need to compare or collect further results.
+    let futs = (0..max_depth).map(|i| {
+        let block_num = relay_parent_number + i as u64 + 1;
+        check_block_for_inclusion(relay_client, block_num, para_id, parachain_block_number)
+    });
 
-        let mut earliest_in_batch: Option<u64> = None;
-        let mut stream = std::pin::pin!(run_with_concurrency(BATCH_SIZE as usize, futs).await);
-        while let Some(res) = stream.next().await {
-            if let Some(block_num) = res {
-                earliest_in_batch =
-                    Some(earliest_in_batch.map_or(block_num, |prev| prev.min(block_num)));
-            }
-        }
-
-        if let Some(found) = earliest_in_batch {
-            return Some(found);
+    let mut stream = std::pin::pin!(run_with_concurrency(BATCH_SIZE as usize, futs).await);
+    while let Some(res) = stream.next().await {
+        if let Some(block_num) = res {
+            return Some(block_num);
         }
     }
 
