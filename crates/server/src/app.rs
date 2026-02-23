@@ -13,7 +13,7 @@ use include_dir::{Dir, include_dir};
 use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
 use utoipa::OpenApi;
 
-static DOCS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../docs/dist");
+static DOCS_DIR: Dir = include_dir!("$OUT_DIR/docs_dist");
 
 async fn redirect_docs() -> Redirect {
     Redirect::permanent("/docs/index.html")
