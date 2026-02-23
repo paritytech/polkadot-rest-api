@@ -147,7 +147,7 @@ yarn build          # Creates updated dist/ folder
 
 # 4. Rebuild the API binary to embed the updated docs
 cd ..
-cargo build --release --package server
+cargo build --release --package polkadot-rest-api
 ```
 
 The `openapi.json` file is generated dynamically by the API from utoipa annotations on handlers. The `openapi-v1.yaml` is a legacy static spec kept for reference.
