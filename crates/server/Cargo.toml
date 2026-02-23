@@ -26,10 +26,10 @@ tower = "0.5"
 tower-http = { version = "0.6.6", features = ["trace", "cors", "limit", "normalize-path", "fs"] }
 socket2 = "0.6"
 polkadot-rest-api-config = { path = "../config", version = "0.1.0-beta.1" }
-subxt = { version = "0.50.0-beta.2", features = ["reconnecting-rpc-client"] }
-subxt-rpcs = { version = "0.50.0-beta.2", features = ["reconnecting-rpc-client"] }
-subxt-metadata = "=0.50.0-beta.2"
-frame-decode = { version = "0.16.1", default-features = false, features = ["legacy-types"] }
+subxt = { version = "0.50.0-beta.4", features = ["reconnecting-rpc-client"] }
+subxt-rpcs = { version = "0.50.0-beta.4", features = ["reconnecting-rpc-client"] }
+subxt-metadata = "=0.50.0-beta.4"
+frame-decode = { version = "0.17.1", default-features = false, features = ["legacy-types"] }
 frame-metadata = { version = "23", default-features = false, features = ["current", "decode", "legacy", "std"] }
 scale-info = "2.11"
 heck = "0.5"
@@ -60,4 +60,4 @@ serde_urlencoded = "0.7.1"
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
-subxt-rpcs = { version = "0.50.0-beta.2", features = ["mock-rpc-client"] }
+subxt-rpcs = { version = "0.50.0-beta.4", features = ["mock-rpc-client"] }
