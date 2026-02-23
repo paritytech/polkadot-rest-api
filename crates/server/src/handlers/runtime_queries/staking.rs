@@ -953,8 +953,6 @@ pub async fn get_era_exposures_bulk(
     EraExposureMap,
     std::collections::HashMap<[u8; 32], ValidatorExposureInfo>,
 ) {
-    use futures::StreamExt;
-
     let mut nominator_map: EraExposureMap = std::collections::HashMap::new();
     let mut validator_map: std::collections::HashMap<[u8; 32], ValidatorExposureInfo> =
         std::collections::HashMap::new();
