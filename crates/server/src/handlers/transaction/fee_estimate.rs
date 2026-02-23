@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -56,8 +56,11 @@ pub enum FeeEstimateError {
         stack: String,
     },
 
-    #[error("Relay chain not configured")]
-    RelayChainNotConfigured { transaction: String },
+    #[error("Relay chain error")]
+    RelayChain {
+        source: RelayChainError,
+        transaction: String,
+    },
 }
 
 impl IntoResponse for FeeEstimateError {
@@ -89,11 +92,18 @@ impl IntoResponse for FeeEstimateError {
                 cause,
                 stack,
             ),
-            FeeEstimateError::RelayChainNotConfigured { transaction } => {
-                let cause = "Relay chain not configured".to_string();
+            FeeEstimateError::RelayChain {
+                source,
+                transaction,
+            } => {
+                let status = match source {
+                    RelayChainError::NotConfigured => StatusCode::BAD_REQUEST,
+                    RelayChainError::ConnectionFailed(_) => StatusCode::SERVICE_UNAVAILABLE,
+                };
+                let cause = source.to_string();
                 (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    503,
+                    status,
+                    status.as_u16(),
                     None,
                     "Unable to fetch fee info",
                     transaction,
@@ -153,13 +163,16 @@ pub async fn fee_estimate_rc(
     Json(body): Json<FeeEstimateRequest>,
 ) -> Result<Json<FeeEstimateResponse>, FeeEstimateError> {
     let tx = body.tx.as_deref().unwrap_or_default();
-    let relay_client = state.get_relay_chain_client().ok_or_else(|| {
-        FeeEstimateError::RelayChainNotConfigured {
-            transaction: tx.to_string(),
-        }
-    })?;
+    let relay_client =
+        state
+            .get_relay_chain_client()
+            .await
+            .map_err(|e| FeeEstimateError::RelayChain {
+                source: e,
+                transaction: tx.to_string(),
+            })?;
 
-    fee_estimate_internal(relay_client, body).await
+    fee_estimate_internal(&relay_client, body).await
 }
 
 async fn fee_estimate_internal(

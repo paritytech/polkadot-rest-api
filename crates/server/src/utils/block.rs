@@ -475,17 +475,16 @@ mod tests {
             legacy_rpc,
             rpc_client,
             chain_info,
-            relay_client: None,
-            relay_rpc_client: None,
-            relay_chain_info: None,
+            relay_client: Arc::new(tokio::sync::OnceCell::new()),
+            relay_rpc_client: Arc::new(tokio::sync::OnceCell::new()),
+            relay_chain_info: Arc::new(tokio::sync::OnceCell::new()),
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
             chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
             chain_config: Arc::new(polkadot_rest_api_config::Config::single_chain(
                 polkadot_rest_api_config::ChainConfig::default(),
             )),
             route_registry: crate::routes::RouteRegistry::new(),
-            relay_chain_rpc: None,
-            lazy_relay_rpc: Arc::new(tokio::sync::OnceCell::new()),
+            relay_chain_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 

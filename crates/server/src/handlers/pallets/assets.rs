@@ -148,9 +148,7 @@ async fn handle_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at
@@ -158,16 +156,11 @@ async fn handle_use_rc_block(
         .ok_or(PalletError::AtParameterRequired)?
         .parse::<BlockId>()?;
 
-    let rc_resolved_block = resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .expect("relay chain client checked above"),
-        state
-            .get_relay_chain_rpc()
-            .expect("relay chain rpc checked above"),
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
+    let rc_resolved_block =
+        resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 

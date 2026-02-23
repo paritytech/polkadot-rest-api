@@ -12,7 +12,7 @@ use crate::handlers::blocks::{
     CommonBlockError, ParaInclusionsError, ParaInclusionsQueryParams,
     fetch_para_inclusions_from_client,
 };
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils::{self, BlockId, ResolvedBlock};
 use axum::{
     Json,
@@ -25,10 +25,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum RcParaInclusionsError {
-    #[error(
-        "Relay chain not configured. Set SAS_SUBSTRATE_MULTI_CHAIN_URL to enable relay chain endpoints."
-    )]
-    RelayChainNotConfigured,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 
     #[error(transparent)]
     ParaInclusionsError(#[from] ParaInclusionsError),
@@ -37,11 +35,15 @@ pub enum RcParaInclusionsError {
 impl IntoResponse for RcParaInclusionsError {
     fn into_response(self) -> Response {
         match self {
-            RcParaInclusionsError::RelayChainNotConfigured => {
+            RcParaInclusionsError::RelayChain(ref err) => {
+                let status = match err {
+                    RelayChainError::NotConfigured => StatusCode::BAD_REQUEST,
+                    RelayChainError::ConnectionFailed(_) => StatusCode::SERVICE_UNAVAILABLE,
+                };
                 let body = Json(json!({
-                    "error": "Relay chain not configured. Set SAS_SUBSTRATE_MULTI_CHAIN_URL to enable relay chain endpoints.",
+                    "error": self.to_string(),
                 }));
-                (StatusCode::SERVICE_UNAVAILABLE, body).into_response()
+                (status, body).into_response()
             }
             RcParaInclusionsError::ParaInclusionsError(inner) => inner.into_response(),
         }
@@ -78,7 +80,8 @@ pub async fn get_rc_block_para_inclusions(
 ) -> Result<Response, RcParaInclusionsError> {
     let relay_client = state
         .get_relay_chain_client()
-        .ok_or(RcParaInclusionsError::RelayChainNotConfigured)?;
+        .await
+        .map_err(RcParaInclusionsError::RelayChain)?;
 
     let block_id_parsed = block_id
         .parse::<utils::BlockId>()

@@ -4,7 +4,7 @@
 use crate::extractors::JsonQuery;
 use crate::handlers::blocks::common::convert_digest_items_to_logs;
 use crate::handlers::blocks::types::{BlockHeaderResponse, convert_digest_logs_to_sidecar_format};
-use crate::state::AppState;
+use crate::state::{AppState, RelayChainError};
 use crate::utils::{self, RcBlockError, fetch_block_timestamp, find_ah_blocks_in_rc_block_at};
 use axum::{
     Json,
@@ -55,10 +55,8 @@ pub enum GetBlockHeadHeaderError {
     #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
     UseRcBlockNotSupported,
 
-    #[error(
-        "useRcBlock parameter requires relay chain API to be available. Please configure SAS_SUBSTRATE_MULTI_CHAIN_URL"
-    )]
-    RelayChainNotConfigured,
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
 
     #[error("Failed to get client at block: {0}")]
     ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
@@ -67,9 +65,14 @@ pub enum GetBlockHeadHeaderError {
 impl IntoResponse for GetBlockHeadHeaderError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
-            GetBlockHeadHeaderError::UseRcBlockNotSupported
-            | GetBlockHeadHeaderError::RelayChainNotConfigured => {
+            GetBlockHeadHeaderError::UseRcBlockNotSupported => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockHeadHeaderError::RelayChain(RelayChainError::NotConfigured) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockHeadHeaderError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetBlockHeadHeaderError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
@@ -184,13 +187,9 @@ async fn handle_use_rc_block(
         return Err(GetBlockHeadHeaderError::UseRcBlockNotSupported);
     }
 
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(GetBlockHeadHeaderError::RelayChainNotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
 
-    let relay_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(GetBlockHeadHeaderError::RelayChainNotConfigured)?;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
 
     let rc_client_at_block = if params.finalized {
         relay_client

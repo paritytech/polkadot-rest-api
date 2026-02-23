@@ -408,9 +408,7 @@ async fn handle_use_rc_block(
     }
 
     // Validate relay chain connection is configured
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
+    state.get_relay_chain_client().await?;
 
     // Parse the relay chain block ID
     let rc_block_id = params
@@ -420,16 +418,11 @@ async fn handle_use_rc_block(
         .parse::<utils::BlockId>()?;
 
     // Resolve the relay chain block
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .ok_or(PalletError::RelayChainNotConfigured)?,
-        state
-            .get_relay_chain_rpc()
-            .ok_or(PalletError::RelayChainNotConfigured)?,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     // Find Asset Hub blocks in the relay chain block
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
@@ -502,9 +495,7 @@ async fn handle_dispatchable_item_use_rc_block(
     }
 
     // Validate relay chain connection is configured
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
+    state.get_relay_chain_client().await?;
 
     // Parse the relay chain block ID
     let rc_block_id = params
@@ -514,16 +505,11 @@ async fn handle_dispatchable_item_use_rc_block(
         .parse::<utils::BlockId>()?;
 
     // Resolve the relay chain block
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state
-            .get_relay_chain_rpc_client()
-            .ok_or(PalletError::RelayChainNotConfigured)?,
-        state
-            .get_relay_chain_rpc()
-            .ok_or(PalletError::RelayChainNotConfigured)?,
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     // Find Asset Hub blocks in the relay chain block
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
@@ -842,22 +828,16 @@ pub async fn rc_pallets_dispatchables(
     Path(pallet_id): Path<String>,
     JsonQuery(params): JsonQuery<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
 
     let block_id = params
         .at
         .as_ref()
         .map(|s| s.parse::<utils::BlockId>())
         .transpose()?;
-    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+    let resolved = utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id).await?;
 
     let client_at_block = relay_client.at_block(resolved.number).await?;
     let metadata = client_at_block.metadata();
@@ -922,22 +902,16 @@ pub async fn rc_pallet_dispatchable_item(
     Path((pallet_id, dispatchable_id)): Path<(String, String)>,
     JsonQuery(params): JsonQuery<RcPalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
 
     let block_id = params
         .at
         .as_ref()
         .map(|s| s.parse::<utils::BlockId>())
         .transpose()?;
-    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+    let resolved = utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id).await?;
 
     let client_at_block = relay_client.at_block(resolved.number).await?;
     let metadata = client_at_block.metadata();

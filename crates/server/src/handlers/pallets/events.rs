@@ -213,9 +213,7 @@ async fn handle_events_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at
@@ -223,12 +221,11 @@ async fn handle_events_use_rc_block(
         .ok_or(PalletError::AtParameterRequired)?
         .parse::<utils::BlockId>()?;
 
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().expect("checked above"),
-        state.get_relay_chain_rpc().expect("checked above"),
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
@@ -277,9 +274,7 @@ async fn handle_event_item_use_rc_block(
         return Err(PalletError::UseRcBlockNotSupported);
     }
 
-    if state.get_relay_chain_client().is_none() {
-        return Err(PalletError::RelayChainNotConfigured);
-    }
+    state.get_relay_chain_client().await?;
 
     let rc_block_id = params
         .at
@@ -287,12 +282,11 @@ async fn handle_event_item_use_rc_block(
         .ok_or(PalletError::AtParameterRequired)?
         .parse::<utils::BlockId>()?;
 
-    let rc_resolved_block = utils::resolve_block_with_rpc(
-        state.get_relay_chain_rpc_client().expect("checked above"),
-        state.get_relay_chain_rpc().expect("checked above"),
-        Some(rc_block_id),
-    )
-    .await?;
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
 
     let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block).await?;
 
@@ -530,22 +524,16 @@ pub async fn rc_pallet_events(
     Path(pallet_id): Path<String>,
     JsonQuery(params): JsonQuery<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
 
     let block_id = params
         .at
         .as_ref()
         .map(|s: &String| s.parse::<utils::BlockId>())
         .transpose()?;
-    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+    let resolved = utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id).await?;
 
     let client_at_block = relay_client.at_block(resolved.number).await?;
     let metadata = client_at_block.metadata();
@@ -592,22 +580,16 @@ pub async fn rc_pallet_event_item(
     Path((pallet_id, event_item_id)): Path<(String, String)>,
     JsonQuery(params): JsonQuery<RcPalletItemQueryParams>,
 ) -> Result<Response, PalletError> {
-    let relay_client = state
-        .get_relay_chain_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc_client = state
-        .get_relay_chain_rpc_client()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
-    let relay_rpc = state
-        .get_relay_chain_rpc()
-        .ok_or(PalletError::RelayChainNotConfigured)?;
+    let relay_client = state.get_relay_chain_client().await?;
+    let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
 
     let block_id = params
         .at
         .as_ref()
         .map(|s: &String| s.parse::<utils::BlockId>())
         .transpose()?;
-    let resolved = utils::resolve_block_with_rpc(relay_rpc_client, relay_rpc, block_id).await?;
+    let resolved = utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id).await?;
 
     let client_at_block = relay_client.at_block(resolved.number).await?;
     let metadata = client_at_block.metadata();
