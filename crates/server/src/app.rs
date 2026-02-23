@@ -6,7 +6,7 @@ use axum::{
     Router,
     http::{StatusCode, header},
     middleware,
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
     routing::get,
 };
 use include_dir::{Dir, include_dir};
@@ -15,9 +15,12 @@ use utoipa::OpenApi;
 
 static DOCS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../docs/dist");
 
+async fn redirect_docs() -> Redirect {
+    Redirect::permanent("/docs/index.html")
+}
+
 async fn serve_docs(uri: axum::http::Uri) -> Response {
-    let path = uri.path().trim_start_matches("/docs");
-    let path = path.trim_start_matches('/');
+    let path = uri.path().trim_start_matches("/docs/");
     let path = if path.is_empty() { "index.html" } else { path };
 
     match DOCS_DIR.get_file(path) {
@@ -96,8 +99,9 @@ pub fn create_app(state: AppState) -> Router {
             "/api-docs/openapi.json",
             get(|| async { axum::Json(ApiDoc::openapi()) }),
         )
-        // Serve embedded docs static site at /docs
-        .route("/docs", get(serve_docs))
+        // Serve embedded docs static site
+        // /docs redirects to /docs/index.html so relative asset paths resolve correctly
+        .route("/docs", get(redirect_docs))
         .route("/docs/*path", get(serve_docs));
 
     // Add metrics endpoints if enabled (separate from v1 routes, no prefix)
