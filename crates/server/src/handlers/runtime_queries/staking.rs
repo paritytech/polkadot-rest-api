@@ -1265,7 +1265,7 @@ pub struct DecodedActiveEraInfo {
 }
 
 /// Force era status enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Decode)]
 pub enum ForceEra {
     NotForcing,
     ForceNew,
@@ -1301,22 +1301,16 @@ pub async fn get_validator_count(
 pub async fn get_force_era(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Option<ForceEra> {
-    let storage_addr = subxt::dynamic::storage::<(), u8>("Staking", "ForceEra");
+    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "ForceEra");
     let value = client_at_block
         .storage()
         .fetch(storage_addr, ())
         .await
         .ok()?;
 
-    // ForceEra is an enum: 0=NotForcing, 1=ForceNew, 2=ForceNone, 3=ForceAlways
-    let variant = value.decode().ok()?;
-    Some(match variant {
-        0 => ForceEra::NotForcing,
-        1 => ForceEra::ForceNew,
-        2 => ForceEra::ForceNone,
-        3 => ForceEra::ForceAlways,
-        _ => ForceEra::NotForcing,
-    })
+    // Get raw bytes and decode the ForceEra enum
+    let bytes = value.into_bytes();
+    ForceEra::decode(&mut &bytes[..]).ok()
 }
 
 /// Get the active era info with start timestamp from Staking::ActiveEra.
