@@ -317,11 +317,11 @@ pub fn categorize_events(
     let mut on_initialize_events = Vec::new();
     let mut on_finalize_events = Vec::new();
     // Create event vectors for each extrinsic with pre-allocated capacity
-    let avg_events_per_ext = if num_extrinsics > 0 {
-        (parsed_events.len() / num_extrinsics).max(4)
-    } else {
-        4
-    };
+    let avg_events_per_ext = parsed_events
+        .len()
+        .checked_div(num_extrinsics)
+        .unwrap_or(4)
+        .max(4);
     let mut per_extrinsic_events: Vec<Vec<Event>> = (0..num_extrinsics)
         .map(|_| Vec::with_capacity(avg_events_per_ext))
         .collect();
