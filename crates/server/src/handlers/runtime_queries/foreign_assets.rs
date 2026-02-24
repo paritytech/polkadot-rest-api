@@ -7,7 +7,6 @@
 //! ForeignAssets uses XCM Location as the asset identifier key.
 
 use crate::handlers::common::xcm_types::{BLAKE2_128_HASH_LEN, Location};
-use futures::StreamExt;
 use parity_scale_codec::Decode;
 use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig, ext::scale_decode::DecodeAsType};
@@ -387,26 +386,26 @@ pub async fn get_all_foreign_asset_balances(
             .fetch(storage_addr, (location.clone(), account_bytes))
             .await;
 
-        if let Ok(value) = result {
-            if let Ok(asset_account) = value.decode() {
-                // Skip zero-balance entries
-                if asset_account.balance == 0 {
-                    continue;
-                }
-
-                let is_frozen = matches!(
-                    asset_account.status,
-                    AssetAccountStatus::Frozen | AssetAccountStatus::Blocked
-                );
-                let is_sufficient = matches!(asset_account.reason, ExistenceReason::Sufficient);
-
-                balances.push(DecodedForeignAssetBalance {
-                    location,
-                    balance: asset_account.balance,
-                    is_frozen,
-                    is_sufficient,
-                });
+        if let Ok(value) = result
+            && let Ok(asset_account) = value.decode()
+        {
+            // Skip zero-balance entries
+            if asset_account.balance == 0 {
+                continue;
             }
+
+            let is_frozen = matches!(
+                asset_account.status,
+                AssetAccountStatus::Frozen | AssetAccountStatus::Blocked
+            );
+            let is_sufficient = matches!(asset_account.reason, ExistenceReason::Sufficient);
+
+            balances.push(DecodedForeignAssetBalance {
+                location,
+                balance: asset_account.balance,
+                is_frozen,
+                is_sufficient,
+            });
         }
     }
 

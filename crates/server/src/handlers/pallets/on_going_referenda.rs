@@ -17,7 +17,6 @@ use crate::handlers::runtime_queries::referenda as referenda_queries;
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
-use crate::utils::run_with_concurrency;
 use axum::{
     Json,
     extract::State,

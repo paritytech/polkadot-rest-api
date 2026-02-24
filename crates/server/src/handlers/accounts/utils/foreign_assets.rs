@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::handlers::accounts::{AccountsError, ForeignAssetBalance};
-use crate::handlers::common::xcm_types::{BLAKE2_128_HASH_LEN, Location};
+use crate::handlers::common::xcm_types::Location;
 use crate::handlers::runtime_queries::foreign_assets as foreign_assets_queries;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::Encode;
 use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 

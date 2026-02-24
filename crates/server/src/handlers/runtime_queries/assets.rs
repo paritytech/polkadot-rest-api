@@ -241,10 +241,8 @@ pub async fn get_all_asset_ids(
         // Key structure: Twox128("Assets") + Twox128("Asset") + Blake2_128Concat(asset_id)
         // Skip 48 bytes (16+16+16) to get to the raw asset_id
         let key = entry.key_bytes();
-        if key.len() >= 52 {
-            if let Ok(asset_id) = u32::decode(&mut &key[48..]) {
-                asset_ids.push(asset_id);
-            }
+        if key.len() >= 52 && let Ok(asset_id) = u32::decode(&mut &key[48..]) {
+            asset_ids.push(asset_id);
         }
     }
 

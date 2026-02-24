@@ -1539,8 +1539,6 @@ pub struct DecodedValidatorPrefsEntry {
 pub async fn iter_staking_validators(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Option<Vec<DecodedValidatorPrefsEntry>> {
-    use futures::StreamExt;
-
     let storage_addr = subxt::dynamic::storage::<([u8; 32],), ()>("Staking", "Validators");
 
     let mut stream = client_at_block
@@ -1588,8 +1586,6 @@ pub async fn iter_era_stakers_overview_keys(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     era: u32,
 ) -> Option<Vec<[u8; 32]>> {
-    use futures::StreamExt;
-
     let storage_addr =
         subxt::dynamic::storage::<(u32, [u8; 32]), ()>("Staking", "ErasStakersOverview");
 
@@ -1659,8 +1655,6 @@ struct UnappliedSlashStorage {
 pub async fn iter_unapplied_slashes(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Vec<DecodedUnappliedSlash> {
-    use futures::StreamExt;
-
     let storage_addr = subxt::dynamic::storage::<(u32,), ()>("Staking", "UnappliedSlashes");
 
     let mut stream = match client_at_block.storage().iter(storage_addr, ()).await {
