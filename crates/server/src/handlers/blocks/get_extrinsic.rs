@@ -121,30 +121,36 @@ async fn handle_use_rc_block(
     let rc_block_number = rc_resolved_block.number.to_string();
     let rc_block_hash = rc_resolved_block.hash.clone();
 
-    let mut results = Vec::new();
-    for ah_block in ah_blocks {
-        let client_at_block = state
-            .client
-            .at_block(ah_block.number)
-            .await
-            .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+    let results = futures::future::try_join_all(ah_blocks.into_iter().map(|ah_block| {
+        let state = &state;
+        let params = &params;
+        let rc_block_hash = &rc_block_hash;
+        let rc_block_number = &rc_block_number;
+        async move {
+            let client_at_block = state
+                .client
+                .at_block(ah_block.number)
+                .await
+                .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
 
-        let mut response = build_extrinsic_response(
-            &state,
-            &ah_block.hash,
-            ah_block.number,
-            extrinsic_index,
-            &client_at_block,
-            &params,
-        )
-        .await?;
+            let mut response = build_extrinsic_response(
+                state,
+                &ah_block.hash,
+                ah_block.number,
+                extrinsic_index,
+                &client_at_block,
+                params,
+            )
+            .await?;
 
-        response.rc_block_hash = Some(rc_block_hash.clone());
-        response.rc_block_number = Some(rc_block_number.clone());
-        response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+            response.rc_block_hash = Some(rc_block_hash.clone());
+            response.rc_block_number = Some(rc_block_number.clone());
+            response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
-        results.push(response);
-    }
+            Ok::<_, GetBlockError>(response)
+        }
+    }))
+    .await?;
 
     Ok(Json(json!(results)).into_response())
 }
@@ -174,13 +180,13 @@ async fn build_extrinsic_response(
         return Err(GetBlockError::ExtrinsicIndexNotFound);
     }
 
-    let (_on_initialize, per_extrinsic_events, _on_finalize, extrinsic_outcomes) =
+    let (_on_initialize, mut per_extrinsic_events, _on_finalize, extrinsic_outcomes) =
         categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
     associate_events_with_extrinsics(
         &mut extrinsics_with_events,
-        &per_extrinsic_events,
+        &mut per_extrinsic_events,
         &extrinsic_outcomes,
     );
 
