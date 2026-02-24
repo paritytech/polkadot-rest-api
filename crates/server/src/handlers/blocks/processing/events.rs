@@ -226,7 +226,7 @@ async fn fetch_block_events_impl(
 ) -> Result<Vec<ParsedEvent>, GetBlockError> {
     // Get the type resolver from metadata for type-aware enum serialization
     let metadata = client_at_block.metadata();
-    let resolver = metadata.types().clone();
+    let resolver = metadata.types();
 
     // Use dynamic storage address for System::Events
     let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
@@ -235,7 +235,7 @@ async fn fetch_block_events_impl(
     // Decode events once using the visitor pattern which provides all needed data:
     // phase, pallet_name, event_name, and typed fields
     let events_with_types = events_value
-        .visit(EventsVisitor::new(&resolver))
+        .visit(EventsVisitor::new(resolver))
         .map_err(|e| {
             tracing::warn!(
                 "Failed to decode events for block {}: {:?}",
@@ -249,7 +249,7 @@ async fn fetch_block_events_impl(
 
     let mut parsed_events = Vec::with_capacity(events_with_types.len());
 
-    for event_info in &events_with_types {
+    for event_info in events_with_types {
         let phase = match event_info.phase {
             VisitorEventPhase::Initialization => EventPhase::Initialization,
             VisitorEventPhase::ApplyExtrinsic(idx) => EventPhase::ApplyExtrinsic(idx),
@@ -260,12 +260,13 @@ async fn fetch_block_events_impl(
         // (basic enums as strings, non-basic enums as objects)
         let event_data: Vec<Value> = event_info
             .fields
-            .iter()
+            .into_iter()
             .map(|event_field| {
-                let json_value = event_field.value.clone();
-                let type_name = event_field.type_name.as_ref();
+                let json_value = event_field.value;
+                let type_name = event_field.type_name;
+                let type_name_ref = type_name.as_deref();
 
-                if let Some(tn) = type_name {
+                if let Some(tn) = type_name_ref {
                     if tn == "AccountId32" || tn == "MultiAddress" || tn == "AccountId" {
                         let with_hex = convert_bytes_to_hex(json_value.clone());
                         if let Some(ss58_value) =
@@ -287,14 +288,14 @@ async fn fetch_block_events_impl(
                     }
                 }
                 // Apply remaining transformations (bytes to hex, numbers to strings, camelCase keys)
-                transform_json_unified(json_value.clone(), None)
+                transform_json_unified(json_value, None)
             })
             .collect();
 
         parsed_events.push(ParsedEvent {
             phase,
-            pallet_name: event_info.pallet_name.clone(),
-            event_name: event_info.event_name.clone(),
+            pallet_name: event_info.pallet_name,
+            event_name: event_info.event_name,
             event_data,
         });
     }
@@ -315,8 +316,15 @@ pub fn categorize_events(
 ) {
     let mut on_initialize_events = Vec::new();
     let mut on_finalize_events = Vec::new();
-    // Create empty event vectors for each extrinsic
-    let mut per_extrinsic_events: Vec<Vec<Event>> = vec![Vec::new(); num_extrinsics];
+    // Create event vectors for each extrinsic with pre-allocated capacity
+    let avg_events_per_ext = if num_extrinsics > 0 {
+        (parsed_events.len() / num_extrinsics).max(4)
+    } else {
+        4
+    };
+    let mut per_extrinsic_events: Vec<Vec<Event>> = (0..num_extrinsics)
+        .map(|_| Vec::with_capacity(avg_events_per_ext))
+        .collect();
     // Create default outcomes for each extrinsic (success=false, pays_fee=None)
     let mut extrinsic_outcomes: Vec<ExtrinsicOutcome> =
         vec![ExtrinsicOutcome::default(); num_extrinsics];

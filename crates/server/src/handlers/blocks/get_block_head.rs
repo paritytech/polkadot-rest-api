@@ -206,28 +206,34 @@ async fn handle_use_rc_block(
     let rc_block_number = rc_resolved_block.number.to_string();
     let rc_block_hash = rc_resolved_block.hash.clone();
 
-    let mut results = Vec::new();
-    for ah_block in ah_blocks {
-        let client_at_block = state
-            .client
-            .at_block(ah_block.number)
-            .await
-            .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+    let results = futures::future::try_join_all(ah_blocks.into_iter().map(|ah_block| {
+        let state = &state;
+        let params = &params;
+        let rc_block_hash = &rc_block_hash;
+        let rc_block_number = &rc_block_number;
+        async move {
+            let client_at_block = state
+                .client
+                .at_block(ah_block.number)
+                .await
+                .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
 
-        let mut response = build_head_block_response(
-            &state,
-            &client_at_block,
-            &params,
-            Some(true), // For useRcBlock, blocks are always considered finalized
-        )
-        .await?;
+            let mut response = build_head_block_response(
+                state,
+                &client_at_block,
+                params,
+                Some(true), // For useRcBlock, blocks are always considered finalized
+            )
+            .await?;
 
-        response.rc_block_hash = Some(rc_block_hash.clone());
-        response.rc_block_number = Some(rc_block_number.clone());
-        response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+            response.rc_block_hash = Some(rc_block_hash.clone());
+            response.rc_block_number = Some(rc_block_number.clone());
+            response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
-        results.push(response);
-    }
+            Ok::<_, GetBlockError>(response)
+        }
+    }))
+    .await?;
 
     Ok(Json(json!(results)).into_response())
 }
@@ -281,21 +287,37 @@ async fn build_head_block_response(
 
     // Populate fee info for signed extrinsics that pay fees (unless noFees=true)
     if !params.no_fees {
-        let spec_version = client_at_block.spec_version();
-        let client_at_parent = state.client.at_block(header.parent_hash).await?;
+        let fee_indices: Vec<usize> = extrinsics_with_events
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.signature.is_some() && e.pays_fee == Some(true))
+            .map(|(i, _)| i)
+            .collect();
 
-        for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
-            if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
-                extrinsic.info = extract_fee_info_for_extrinsic(
-                    state,
-                    &client_at_parent,
-                    &extrinsic.raw_hex,
-                    &extrinsic.events,
-                    extrinsic_outcomes.get(i),
-                    spec_version,
-                    &state.chain_info.spec_name,
-                )
-                .await;
+        if !fee_indices.is_empty() {
+            let spec_version = client_at_block.spec_version();
+            let client_at_parent = state.client.at_block(header.parent_hash).await?;
+
+            let fee_futures: Vec<_> = fee_indices
+                .iter()
+                .map(|&i| {
+                    let extrinsic = &extrinsics_with_events[i];
+                    extract_fee_info_for_extrinsic(
+                        state,
+                        &client_at_parent,
+                        &extrinsic.raw_hex,
+                        &extrinsic.events,
+                        extrinsic_outcomes.get(i),
+                        spec_version,
+                        &state.chain_info.spec_name,
+                    )
+                })
+                .collect();
+
+            let fee_results = futures::future::join_all(fee_futures).await;
+
+            for (idx, fee_info) in fee_indices.into_iter().zip(fee_results) {
+                extrinsics_with_events[idx].info = fee_info;
             }
         }
     }

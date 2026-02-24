@@ -85,32 +85,36 @@ async fn handle_use_rc_block(
     let rc_block_number = rc_resolved_block.number.to_string();
     let rc_block_hash = rc_resolved_block.hash.clone();
 
-    let mut results = Vec::new();
-    for ah_block in ah_blocks {
-        // Create client_at_block for this Asset Hub block
-        let client_at_block = state
-            .client
-            .at_block(ah_block.number)
-            .await
-            .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+    let results = futures::future::try_join_all(ah_blocks.into_iter().map(|ah_block| {
+        let state = &state;
+        let params = &params;
+        let rc_block_hash = &rc_block_hash;
+        let rc_block_number = &rc_block_number;
+        async move {
+            let client_at_block = state
+                .client
+                .at_block(ah_block.number)
+                .await
+                .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
 
-        let mut response = build_block_response_for_hash(
-            &state,
-            &ah_block.hash,
-            ah_block.number,
-            true,
-            &client_at_block,
-            &params,
-        )
-        .await?;
+            let mut response = build_block_response_for_hash(
+                state,
+                &ah_block.hash,
+                ah_block.number,
+                true,
+                &client_at_block,
+                params,
+            )
+            .await?;
 
-        response.rc_block_hash = Some(rc_block_hash.clone());
-        response.rc_block_number = Some(rc_block_number.clone());
+            response.rc_block_hash = Some(rc_block_hash.clone());
+            response.rc_block_number = Some(rc_block_number.clone());
+            response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
 
-        response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
-
-        results.push(response);
-    }
+            Ok::<_, GetBlockError>(response)
+        }
+    }))
+    .await?;
 
     Ok(Json(json!(results)).into_response())
 }

@@ -146,42 +146,39 @@ pub async fn extract_fee_info_for_extrinsic(
     };
 
     // Priority 2: queryFeeDetails + calc_partial_fee (post-dispatch calculation)
-    if let Some(ref actual_weight_str) = actual_weight_str {
-        if let Some(fee_details_opt) = fee_details_result {
-            if let Some(fee_details_response) = fee_details_opt {
-                state.fee_details_cache.set_available(spec_version, true);
+    if let Some(ref actual_weight_str) = actual_weight_str
+        && let Some(fee_details_opt) = fee_details_result
+    {
+        if let Some(fee_details_response) = fee_details_opt {
+            state.fee_details_cache.set_available(spec_version, true);
 
-                if let Some(fee_details) = utils::parse_fee_details(&fee_details_response)
-                    && let Some((ref query_info, ref estimated_weight)) = query_info_result
-                    && let Ok(partial_fee) = utils::calculate_accurate_fee(
-                        &fee_details,
-                        estimated_weight,
-                        actual_weight_str,
-                    )
-                {
-                    let mut info = transform_fee_info(query_info.clone());
+            if let Some(fee_details) = utils::parse_fee_details(&fee_details_response)
+                && let Some((ref query_info, ref estimated_weight)) = query_info_result
+                && let Ok(partial_fee) =
+                    utils::calculate_accurate_fee(&fee_details, estimated_weight, actual_weight_str)
+            {
+                let mut info = transform_fee_info(query_info.clone());
 
-                    if let Some(outcome) = outcome {
-                        if let Some(ref actual_weight) = outcome.actual_weight
-                            && let Some(weight_value) = actual_weight_to_json(actual_weight)
-                        {
-                            info.insert("weight".to_string(), weight_value);
-                        }
-                        if let Some(ref class) = outcome.class {
-                            info.insert("class".to_string(), Value::String(class.clone()));
-                        }
+                if let Some(outcome) = outcome {
+                    if let Some(ref actual_weight) = outcome.actual_weight
+                        && let Some(weight_value) = actual_weight_to_json(actual_weight)
+                    {
+                        info.insert("weight".to_string(), weight_value);
                     }
-
-                    info.insert("partialFee".to_string(), Value::String(partial_fee));
-                    info.insert(
-                        "kind".to_string(),
-                        Value::String("postDispatch".to_string()),
-                    );
-                    return info;
+                    if let Some(ref class) = outcome.class {
+                        info.insert("class".to_string(), Value::String(class.clone()));
+                    }
                 }
-            } else {
-                state.fee_details_cache.set_available(spec_version, false);
+
+                info.insert("partialFee".to_string(), Value::String(partial_fee));
+                info.insert(
+                    "kind".to_string(),
+                    Value::String("postDispatch".to_string()),
+                );
+                return info;
             }
+        } else {
+            state.fee_details_cache.set_available(spec_version, false);
         }
     }
 

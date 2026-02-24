@@ -87,7 +87,7 @@ async fn extract_extrinsics_impl(
 ) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
     // Get the type resolver from metadata for type-aware enum serialization
     let metadata = client_at_block.metadata();
-    let resolver = metadata.types().clone();
+    let resolver = metadata.types();
 
     let extrinsics = match client_at_block.extrinsics().fetch().await {
         Ok(exts) => exts,
@@ -102,7 +102,7 @@ async fn extract_extrinsics_impl(
         }
     };
 
-    let mut result = Vec::new();
+    let mut result = Vec::with_capacity(16);
 
     for extrinsic_result in extrinsics.iter() {
         // In new subxt, iter() returns Results since decoding can fail
@@ -198,7 +198,7 @@ async fn extract_extrinsics_impl(
             // - Preserving arrays for Vec<T> sequences
             // - Converting byte arrays to hex
             // - Basic enums as strings, non-basic enums as objects
-            match field.visit(JsonVisitor::new(ss58_prefix, &resolver)) {
+            match field.visit(JsonVisitor::new(ss58_prefix, resolver)) {
                 Ok(json_value) => {
                     args_map.insert(field_key, json_value);
                 }

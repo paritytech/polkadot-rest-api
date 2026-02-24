@@ -866,7 +866,7 @@ pub fn convert_bytes_to_hex(value: JsonValue) -> JsonValue {
             }
 
             for (_, v) in map.iter_mut() {
-                *v = convert_bytes_to_hex(v.clone());
+                *v = convert_bytes_to_hex(std::mem::take(v));
             }
             JsonValue::Object(map)
         }
