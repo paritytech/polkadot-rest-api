@@ -154,8 +154,6 @@ pub struct AssetAccountLegacy {
 /// Approval structure from Asset/PoolAssets/ForeignAssets::Approvals storage.
 #[derive(Debug, Clone, Decode)]
 pub struct AssetApproval {
-    #[codec(compact)]
     pub amount: u128,
-    #[codec(compact)]
     pub deposit: u128,
 }
