@@ -19,6 +19,7 @@
 
 pub mod asset_conversion;
 pub mod assets;
+pub mod assets_common;
 pub mod balances;
 pub mod foreign_assets;
 pub mod governance;

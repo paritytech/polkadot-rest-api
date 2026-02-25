@@ -12,8 +12,11 @@
 //! - `Assets::Account` - Account balances for assets
 //! - `Assets::Approvals` - Approval amounts for asset transfers
 
+use super::assets_common::{
+    AssetAccount, AssetAccountLegacy, AssetApproval, AssetDetails, AssetMetadata, format_account_id,
+};
 use parity_scale_codec::Decode;
-use sp_core::crypto::{AccountId32, Ss58Codec};
+use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
 
@@ -42,125 +45,10 @@ pub enum AssetsStorageError {
 }
 
 // ================================================================================================
-// SCALE Decode Types - Assets::Asset (with DecodeAsType for dynamic storage)
-// ================================================================================================
-
-/// Asset status enum for modern runtimes.
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-pub enum AssetStatus {
-    Live,
-    Frozen,
-    Destroying,
-}
-
-impl AssetStatus {
-    /// Returns the status as a string for API responses.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            AssetStatus::Live => "Live",
-            AssetStatus::Frozen => "Frozen",
-            AssetStatus::Destroying => "Destroying",
-        }
-    }
-}
-
-/// Asset details from Assets::Asset storage.
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-pub struct AssetDetails {
-    pub owner: [u8; 32],
-    pub issuer: [u8; 32],
-    pub admin: [u8; 32],
-    pub freezer: [u8; 32],
-    pub supply: u128,
-    pub deposit: u128,
-    pub min_balance: u128,
-    pub is_sufficient: bool,
-    pub accounts: u32,
-    pub sufficients: u32,
-    pub approvals: u32,
-    pub status: AssetStatus,
-}
-
-// ================================================================================================
-// SCALE Decode Types - Assets::Metadata (with DecodeAsType for dynamic storage)
-// ================================================================================================
-
-/// Asset metadata from Assets::Metadata storage.
-#[derive(Debug, Clone, Decode, subxt::ext::scale_decode::DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-pub struct AssetMetadataStorage {
-    pub deposit: u128,
-    pub name: Vec<u8>,
-    pub symbol: Vec<u8>,
-    pub decimals: u8,
-    pub is_frozen: bool,
-}
-
-// ================================================================================================
-// SCALE Decode Types - Assets::Account
-// ================================================================================================
-
-/// Account status for an asset account (modern runtimes).
-#[derive(Debug, Clone, Decode)]
-enum AccountStatus {
-    Liquid,
-    Frozen,
-    Blocked,
-}
-
-impl AccountStatus {
-    fn is_frozen(&self) -> bool {
-        matches!(self, AccountStatus::Frozen | AccountStatus::Blocked)
-    }
-}
-
-/// Existence reason for an asset account (modern runtimes).
-#[derive(Debug, Clone, Decode)]
-#[allow(dead_code)]
-enum ExistenceReason {
-    Consumer,
-    Sufficient,
-    DepositHeld(u128),
-    DepositRefunded,
-    DepositFrom([u8; 32], u128),
-}
-
-impl ExistenceReason {
-    fn is_sufficient(&self) -> bool {
-        matches!(self, ExistenceReason::Sufficient)
-    }
-}
-
-/// Modern AssetAccount structure (current runtimes with status/reason fields).
-#[derive(Debug, Clone, Decode)]
-struct AssetAccountModern {
-    balance: u128,
-    status: AccountStatus,
-    reason: ExistenceReason,
-}
-
-/// Legacy AssetAccount structure (older runtimes with is_frozen/sufficient booleans).
-#[derive(Debug, Clone, Decode)]
-struct AssetAccountLegacy {
-    balance: u128,
-    is_frozen: bool,
-    sufficient: bool,
-}
-
-// ================================================================================================
 // SCALE Decode Types - Assets::Approvals
 // ================================================================================================
 
-/// Asset approval from Assets::Approvals storage.
-#[derive(Debug, Clone, Decode)]
-struct AssetApprovalStorage {
-    #[codec(compact)]
-    amount: u128,
-    #[codec(compact)]
-    deposit: u128,
-}
+// Note: AssetApproval is defined in assets_common module
 
 // ================================================================================================
 // Public Data Types (Decoded/Formatted)
@@ -297,7 +185,7 @@ pub async fn get_asset_metadata(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     asset_id: u32,
 ) -> Result<Option<DecodedAssetMetadata>, AssetsStorageError> {
-    let storage_addr = subxt::dynamic::storage::<_, AssetMetadataStorage>("Assets", "Metadata");
+    let storage_addr = subxt::dynamic::storage::<_, AssetMetadata>("Assets", "Metadata");
 
     let value = match client_at_block
         .storage()
@@ -308,7 +196,7 @@ pub async fn get_asset_metadata(
         Err(_) => return Ok(None),
     };
 
-    let metadata: AssetMetadataStorage = value
+    let metadata: AssetMetadata = value
         .decode()
         .map_err(|e| AssetsStorageError::DecodeFailed(e.to_string()))?;
 
@@ -409,7 +297,7 @@ fn decode_asset_balance(
     raw_bytes: &[u8],
 ) -> Result<Option<DecodedAssetBalance>, AssetsStorageError> {
     // Try modern format first (balance, status, reason)
-    if let Ok(account) = AssetAccountModern::decode(&mut &raw_bytes[..]) {
+    if let Ok(account) = AssetAccount::decode(&mut &raw_bytes[..]) {
         return Ok(Some(DecodedAssetBalance {
             balance: account.balance.to_string(),
             is_frozen: account.status.is_frozen(),
@@ -436,7 +324,7 @@ fn decode_asset_balance(
 fn decode_asset_approval(
     raw_bytes: &[u8],
 ) -> Result<Option<DecodedAssetApproval>, AssetsStorageError> {
-    if let Ok(approval) = AssetApprovalStorage::decode(&mut &raw_bytes[..]) {
+    if let Ok(approval) = AssetApproval::decode(&mut &raw_bytes[..]) {
         return Ok(Some(DecodedAssetApproval {
             amount: approval.amount.to_string(),
             deposit: approval.deposit.to_string(),
@@ -449,21 +337,14 @@ fn decode_asset_approval(
 }
 
 // ================================================================================================
-// Helper Functions
-// ================================================================================================
-
-/// Format a 32-byte account ID as SS58 address.
-fn format_account_id(bytes: &[u8; 32], ss58_prefix: u16) -> String {
-    AccountId32::from(*bytes).to_ss58check_with_version(ss58_prefix.into())
-}
-
-// ================================================================================================
 // Tests
 // ================================================================================================
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::handlers::runtime_queries::assets_common::{
+        AccountStatus, AssetStatus, ExistenceReason,
+    };
 
     #[test]
     fn test_asset_status_as_str() {

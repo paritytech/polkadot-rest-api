@@ -272,7 +272,7 @@ async fn fetch_timestamp(client_at_block: &ClientAtBlock) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::handlers::pallets::common::AssetStatus;
+    use crate::handlers::runtime_queries::assets_common::AssetStatus;
 
     #[test]
     fn test_pool_asset_info_serialization() {
@@ -357,12 +357,9 @@ mod tests {
 
     #[test]
     fn test_asset_status_as_str() {
-        assert_eq!(pool_assets_queries::AssetStatus::Live.as_str(), "Live");
-        assert_eq!(pool_assets_queries::AssetStatus::Frozen.as_str(), "Frozen");
-        assert_eq!(
-            pool_assets_queries::AssetStatus::Destroying.as_str(),
-            "Destroying"
-        );
+        assert_eq!(AssetStatus::Live.as_str(), "Live");
+        assert_eq!(AssetStatus::Frozen.as_str(), "Frozen");
+        assert_eq!(AssetStatus::Destroying.as_str(), "Destroying");
     }
 
     #[test]

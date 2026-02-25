@@ -6,94 +6,16 @@
 //! This module provides standalone functions for querying ForeignAssets pallet storage items.
 //! ForeignAssets uses XCM Location as the asset identifier key.
 
+use super::assets_common::{
+    AccountStatus, AssetAccount, AssetDetails, AssetMetadata, ExistenceReason,
+};
 use crate::handlers::common::xcm_types::{BLAKE2_128_HASH_LEN, Location};
 use parity_scale_codec::Decode;
 use sp_core::crypto::AccountId32;
-use subxt::{OnlineClientAtBlock, SubstrateConfig, ext::scale_decode::DecodeAsType};
+use subxt::{OnlineClientAtBlock, SubstrateConfig};
 
-// ================================================================================================
-// SCALE Decode Types
-// ================================================================================================
-
-/// Asset status enum
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-enum AssetStatus {
-    Live,
-    Frozen,
-    Destroying,
-}
-
-impl AssetStatus {
-    fn as_str(&self) -> &'static str {
-        match self {
-            AssetStatus::Live => "Live",
-            AssetStatus::Frozen => "Frozen",
-            AssetStatus::Destroying => "Destroying",
-        }
-    }
-}
-
-/// Asset details from ForeignAssets::Asset storage
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-struct AssetDetails {
-    owner: [u8; 32],
-    issuer: [u8; 32],
-    admin: [u8; 32],
-    freezer: [u8; 32],
-    supply: u128,
-    deposit: u128,
-    min_balance: u128,
-    is_sufficient: bool,
-    accounts: u32,
-    sufficients: u32,
-    approvals: u32,
-    status: AssetStatus,
-}
-
-/// Asset metadata from ForeignAssets::Metadata storage
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-struct AssetMetadataStorage {
-    deposit: u128,
-    name: Vec<u8>,
-    symbol: Vec<u8>,
-    decimals: u8,
-    is_frozen: bool,
-}
-
-/// Account status enum (modern runtimes)
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-pub enum AssetAccountStatus {
-    Liquid,
-    Frozen,
-    Blocked,
-}
-
-/// Existence reason enum
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-#[allow(dead_code)]
-enum ExistenceReason {
-    Consumer,
-    Sufficient,
-    DepositHeld(u128),
-    DepositRefunded,
-    DepositFrom([u8; 32], u128),
-}
-
-/// Asset account from ForeignAssets::Account storage
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-#[allow(dead_code)]
-struct AssetAccount {
-    balance: u128,
-    status: AssetAccountStatus,
-    reason: ExistenceReason,
-    extra: (),
-}
+// Note: All SCALE decode types (AssetStatus, AssetDetails, AssetMetadata,
+// AccountStatus, ExistenceReason, AssetAccount) are imported from the assets_common module.
 
 // ================================================================================================
 // Public Data Types
@@ -271,7 +193,7 @@ pub async fn iter_foreign_asset_metadata(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Option<Vec<DecodedForeignAssetMetadata>> {
     let storage_addr =
-        subxt::dynamic::storage::<(Location,), AssetMetadataStorage>("ForeignAssets", "Metadata");
+        subxt::dynamic::storage::<(Location,), AssetMetadata>("ForeignAssets", "Metadata");
 
     let mut stream = client_at_block
         .storage()
@@ -349,7 +271,7 @@ pub async fn get_foreign_asset_balance(
 
     let is_frozen = matches!(
         asset_account.status,
-        AssetAccountStatus::Frozen | AssetAccountStatus::Blocked
+        AccountStatus::Frozen | AccountStatus::Blocked
     );
     let is_sufficient = matches!(asset_account.reason, ExistenceReason::Sufficient);
 
@@ -396,7 +318,7 @@ pub async fn get_all_foreign_asset_balances(
 
             let is_frozen = matches!(
                 asset_account.status,
-                AssetAccountStatus::Frozen | AssetAccountStatus::Blocked
+                AccountStatus::Frozen | AccountStatus::Blocked
             );
             let is_sufficient = matches!(asset_account.reason, ExistenceReason::Sufficient);
 
@@ -413,26 +335,16 @@ pub async fn get_all_foreign_asset_balances(
 }
 
 // ================================================================================================
-// Convenience Aliases
+// Additional Query Functions
 // ================================================================================================
 
-/// Alias for `iter_foreign_asset_locations` - iterates all asset locations.
-/// Returns Result for easier error handling in callers.
-pub async fn iter_all_foreign_asset_locations(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<Vec<Location>, &'static str> {
-    iter_foreign_asset_locations(client_at_block)
-        .await
-        .ok_or("Failed to iterate ForeignAssets::Asset storage")
-}
-
 /// Get foreign asset account balance for a specific (location, account) pair.
-/// Returns None if the account doesn't exist or has zero balance.
+/// Returns None if the account doesn't exist, has zero balance, or decoding fails.
 pub async fn get_foreign_asset_account(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     location: &Location,
     account_bytes: &[u8; 32],
-) -> Result<Option<DecodedForeignAssetBalance>, &'static str> {
+) -> Option<DecodedForeignAssetBalance> {
     let storage_addr =
         subxt::dynamic::storage::<(Location, [u8; 32]), AssetAccount>("ForeignAssets", "Account");
 
@@ -447,26 +359,23 @@ pub async fn get_foreign_asset_account(
                 Ok(asset_account) => {
                     // Skip zero-balance entries
                     if asset_account.balance == 0 {
-                        return Ok(None);
+                        return None;
                     }
 
-                    let is_frozen = matches!(
-                        asset_account.status,
-                        AssetAccountStatus::Frozen | AssetAccountStatus::Blocked
-                    );
-                    let is_sufficient = matches!(asset_account.reason, ExistenceReason::Sufficient);
+                    let is_frozen = asset_account.status.is_frozen();
+                    let is_sufficient = asset_account.reason.is_sufficient();
 
-                    Ok(Some(DecodedForeignAssetBalance {
+                    Some(DecodedForeignAssetBalance {
                         location: location.clone(),
                         balance: asset_account.balance,
                         is_frozen,
                         is_sufficient,
-                    }))
+                    })
                 }
-                Err(_) => Err("Failed to decode ForeignAssets::Account"),
+                Err(_) => None,
             }
         }
-        Err(_) => Ok(None), // No entry for this (location, account) pair
+        Err(_) => None, // No entry for this (location, account) pair
     }
 }
 

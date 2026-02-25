@@ -19,9 +19,9 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 pub async fn query_all_foreign_asset_locations(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<Location>, AccountsError> {
-    foreign_assets_queries::iter_all_foreign_asset_locations(client_at_block)
+    foreign_assets_queries::iter_foreign_asset_locations(client_at_block)
         .await
-        .map_err(|_| AccountsError::PalletNotAvailable("ForeignAssets".to_string()))
+        .ok_or_else(|| AccountsError::PalletNotAvailable("ForeignAssets".to_string()))
 }
 
 /// Query foreign asset balances for a specific account.
@@ -48,7 +48,7 @@ pub async fn query_foreign_assets(
         )
         .await
         {
-            Ok(Some(decoded)) => {
+            Some(decoded) => {
                 // Skip zero-balance entries
                 if decoded.balance == 0 {
                     continue;
@@ -64,15 +64,7 @@ pub async fn query_foreign_assets(
                     is_sufficient: decoded.is_sufficient,
                 });
             }
-            Ok(None) => {
-                // No entry for this (location, account) pair -- skip
-                continue;
-            }
-            Err(e) => {
-                tracing::debug!(
-                    "Failed to fetch foreign asset account for location, attempting fallback: {:?}",
-                    e
-                );
+            None => {
                 // Try fallback decode using the centralized raw fetch
                 if let Ok(Some(fb)) =
                     try_fallback_foreign_asset_account(client_at_block, location, &account_bytes)
