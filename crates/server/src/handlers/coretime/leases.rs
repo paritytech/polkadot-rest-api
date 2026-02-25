@@ -9,7 +9,10 @@
 
 use crate::extractors::JsonQuery;
 use crate::handlers::coretime::common::{
-    AtResponse, CORE_MASK_SIZE, CoretimeError, CoretimeQueryParams, has_broker_pallet,
+    AtResponse, CoretimeError, CoretimeQueryParams, has_broker_pallet,
+};
+use crate::handlers::runtime_queries::broker::{
+    self as broker_queries, LeaseRecordItem, WorkloadInfo,
 };
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
@@ -19,11 +22,11 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use parity_scale_codec::{Decode, Encode};
 use primitive_types::H256;
 use serde::Serialize;
 use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
+
 // ============================================================================
 // Response Types
 // ============================================================================
@@ -49,44 +52,6 @@ pub struct CoretimeLeasesResponse {
     pub at: AtResponse,
     /// List of active leases with their assigned cores.
     pub leases: Vec<LeaseWithCore>,
-}
-
-// ============================================================================
-// Internal SCALE Decode Types
-// ============================================================================
-
-/// Internal representation of a lease record from Broker::Leases storage.
-/// Matches the PalletBrokerLeaseRecordItem type from the Broker pallet.
-#[derive(Debug, Clone, Decode, Encode)]
-pub struct LeaseRecordItem {
-    /// The timeslice until which the lease is valid.
-    pub until: u32,
-    /// The task ID (parachain ID).
-    pub task: u32,
-}
-
-/// Workload info extracted from Broker::Workload storage.
-#[derive(Debug, Clone)]
-struct WorkloadInfo {
-    core: u32,
-    task: Option<u32>,
-}
-
-/// On-chain ScheduleItem from Broker::Workload (current format).
-/// Workload value is `Vec<ScheduleItem>`.
-#[derive(Debug, Clone, scale_decode::DecodeAsType)]
-struct WorkloadScheduleItem {
-    #[allow(dead_code)]
-    mask: [u8; CORE_MASK_SIZE],
-    assignment: WorkloadAssignment,
-}
-
-/// On-chain CoreAssignment enum from the Broker pallet.
-#[derive(Debug, Clone, scale_decode::DecodeAsType)]
-enum WorkloadAssignment {
-    Idle,
-    Pool,
-    Task(u32),
 }
 
 // ============================================================================
@@ -191,101 +156,56 @@ pub async fn coretime_leases(
 }
 
 // ============================================================================
-// Helper Functions
+// Helper Functions (wrappers around runtime_queries::broker)
 // ============================================================================
 
 /// Fetches all leases from Broker::Leases storage.
 pub async fn fetch_leases(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<LeaseRecordItem>, CoretimeError> {
-    // Broker::Leases is a StorageValue that contains a BoundedVec of LeaseRecordItem
-    let leases_addr = subxt::dynamic::storage::<(), ()>("Broker", "Leases");
-
-    let leases_value = match client_at_block.storage().fetch(leases_addr, ()).await {
-        Ok(value) => value,
-        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => {
-            // No leases storage entry means no leases
-            return Ok(vec![]);
-        }
-        Err(_) => {
-            return Err(CoretimeError::StorageFetchFailed {
+    broker_queries::get_leases(client_at_block)
+        .await
+        .map_err(|e| match e {
+            broker_queries::BrokerStorageError::StorageFetchFailed { pallet, entry } => {
+                CoretimeError::StorageFetchFailed { pallet, entry }
+            }
+            broker_queries::BrokerStorageError::StorageDecodeFailed {
+                pallet,
+                entry,
+                details,
+            } => CoretimeError::StorageDecodeFailed {
+                pallet,
+                entry,
+                details,
+            },
+            _ => CoretimeError::StorageFetchFailed {
                 pallet: "Broker",
                 entry: "Leases",
-            });
-        }
-    };
-
-    let raw_bytes = leases_value.into_bytes();
-
-    // Decode as a Vec<LeaseRecordItem>
-    // The storage value is a BoundedVec which decodes as a regular Vec
-    let leases: Vec<LeaseRecordItem> = Vec::<LeaseRecordItem>::decode(&mut &raw_bytes[..])
-        .map_err(|e| CoretimeError::StorageDecodeFailed {
-            pallet: "Broker",
-            entry: "Leases",
-            details: e.to_string(),
-        })?;
-
-    Ok(leases)
+            },
+        })
 }
 
 /// Fetches all workload entries from Broker::Workload storage map.
 async fn fetch_workloads(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<WorkloadInfo>, CoretimeError> {
-    // Broker::Workload is a StorageMap with CoreIndex (u16) as key
-    let workload_addr = subxt::dynamic::storage::<(u16,), ()>("Broker", "Workload");
-
-    let mut workloads = Vec::new();
-
-    // Iterate over all workload entries
-    let mut iter = client_at_block
-        .storage()
-        .iter(workload_addr, ())
+    broker_queries::iter_workloads(client_at_block)
         .await
-        .map_err(|e| CoretimeError::StorageIterationError {
-            pallet: "Broker",
-            entry: "Workload",
-            details: e.to_string(),
-        })?;
-
-    while let Some(result) = iter.next().await {
-        let entry = match result {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::warn!("Error iterating workload: {:?}", e);
-                continue;
-            }
-        };
-
-        // Extract core index using subxt's key decoder
-        let core: u32 = match entry.key() {
-            Ok(storage_key) => match storage_key.decode() {
-                Ok(key) => key.0 as u32,
-                Err(_) => continue,
+        .map_err(|e| match e {
+            broker_queries::BrokerStorageError::StorageIterationError {
+                pallet,
+                entry,
+                details,
+            } => CoretimeError::StorageIterationError {
+                pallet,
+                entry,
+                details,
             },
-            Err(_) => continue,
-        };
-
-        // Decode workload value into typed struct and extract task
-        let task = entry
-            .value()
-            .decode_as::<Vec<WorkloadScheduleItem>>()
-            .ok()
-            .and_then(extract_task_from_workload);
-
-        workloads.push(WorkloadInfo { core, task });
-    }
-
-    Ok(workloads)
-}
-
-/// Extracts the task ID from a typed workload schedule.
-fn extract_task_from_workload(items: Vec<WorkloadScheduleItem>) -> Option<u32> {
-    items.first().and_then(|item| match item.assignment {
-        WorkloadAssignment::Task(id) => Some(id),
-        _ => None,
-    })
+            _ => CoretimeError::StorageFetchFailed {
+                pallet: "Broker",
+                entry: "Workload",
+            },
+        })
 }
 
 // ============================================================================
@@ -295,97 +215,9 @@ fn extract_task_from_workload(items: Vec<WorkloadScheduleItem>) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parity_scale_codec::Encode;
 
-    // ------------------------------------------------------------------------
-    // extract_task_from_workload tests
-    // ------------------------------------------------------------------------
-
-    #[test]
-    fn test_extract_task_from_workload_empty() {
-        assert_eq!(extract_task_from_workload(vec![]), None);
-    }
-
-    #[test]
-    fn test_extract_task_from_workload_task() {
-        let items = vec![WorkloadScheduleItem {
-            mask: [0u8; CORE_MASK_SIZE],
-            assignment: WorkloadAssignment::Task(2000),
-        }];
-        assert_eq!(extract_task_from_workload(items), Some(2000));
-    }
-
-    #[test]
-    fn test_extract_task_from_workload_idle() {
-        let items = vec![WorkloadScheduleItem {
-            mask: [0u8; CORE_MASK_SIZE],
-            assignment: WorkloadAssignment::Idle,
-        }];
-        assert_eq!(extract_task_from_workload(items), None);
-    }
-
-    #[test]
-    fn test_extract_task_from_workload_pool() {
-        let items = vec![WorkloadScheduleItem {
-            mask: [0u8; CORE_MASK_SIZE],
-            assignment: WorkloadAssignment::Pool,
-        }];
-        assert_eq!(extract_task_from_workload(items), None);
-    }
-
-    // ------------------------------------------------------------------------
-    // LeaseRecordItem decode tests
-    // ------------------------------------------------------------------------
-
-    #[test]
-    fn test_lease_record_item_decode() {
-        // LeaseRecordItem { until: u32, task: u32 }
-        // SCALE encoding: until (4 bytes LE) + task (4 bytes LE)
-        let until: u32 = 1234567;
-        let task: u32 = 2000;
-
-        let mut encoded = until.to_le_bytes().to_vec();
-        encoded.extend_from_slice(&task.to_le_bytes());
-
-        let decoded = LeaseRecordItem::decode(&mut &encoded[..]).unwrap();
-        assert_eq!(decoded.until, 1234567);
-        assert_eq!(decoded.task, 2000);
-    }
-
-    #[test]
-    fn test_lease_record_item_vec_decode() {
-        // Vec<LeaseRecordItem> with 2 items
-        let lease1 = LeaseRecordItem {
-            until: 100,
-            task: 2000,
-        };
-        let lease2 = LeaseRecordItem {
-            until: 200,
-            task: 2001,
-        };
-
-        // SCALE encode as Vec
-        let encoded = vec![lease1.clone(), lease2.clone()].encode();
-
-        let decoded: Vec<LeaseRecordItem> =
-            Vec::<LeaseRecordItem>::decode(&mut &encoded[..]).unwrap();
-
-        assert_eq!(decoded.len(), 2);
-        assert_eq!(decoded[0].until, 100);
-        assert_eq!(decoded[0].task, 2000);
-        assert_eq!(decoded[1].until, 200);
-        assert_eq!(decoded[1].task, 2001);
-    }
-
-    #[test]
-    fn test_lease_record_item_empty_vec_decode() {
-        let encoded: Vec<u8> = Vec::<LeaseRecordItem>::new().encode();
-
-        let decoded: Vec<LeaseRecordItem> =
-            Vec::<LeaseRecordItem>::decode(&mut &encoded[..]).unwrap();
-
-        assert!(decoded.is_empty());
-    }
+    // NOTE: Decode tests for LeaseRecordItem, WorkloadScheduleItem, WorkloadAssignment
+    // have been moved to the runtime_queries::broker module where these types are now defined.
 
     // ------------------------------------------------------------------------
     // LeaseWithCore serialization tests
