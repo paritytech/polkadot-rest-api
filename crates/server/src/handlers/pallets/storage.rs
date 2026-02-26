@@ -755,19 +755,15 @@ fn decode_storage_value(
             // For now, try common decodings
             if let Ok(type_id) = plain.parse::<u32>() {
                 match type_id {
-                    4 => {
+                    4 if bytes.len() >= 4 => {
                         // u32
-                        if bytes.len() >= 4 {
-                            let value = u32::from_le_bytes(bytes[..4].try_into().unwrap_or([0; 4]));
-                            return Ok(serde_json::Value::String(value.to_string()));
-                        }
+                        let value = u32::from_le_bytes(bytes[..4].try_into().unwrap_or([0; 4]));
+                        return Ok(serde_json::Value::String(value.to_string()));
                     }
-                    8 => {
+                    8 if bytes.len() >= 8 => {
                         // u64
-                        if bytes.len() >= 8 {
-                            let value = u64::from_le_bytes(bytes[..8].try_into().unwrap_or([0; 8]));
-                            return Ok(serde_json::Value::String(value.to_string()));
-                        }
+                        let value = u64::from_le_bytes(bytes[..8].try_into().unwrap_or([0; 8]));
+                        return Ok(serde_json::Value::String(value.to_string()));
                     }
                     _ => {}
                 }
