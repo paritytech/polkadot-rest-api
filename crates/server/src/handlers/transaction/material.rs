@@ -452,7 +452,7 @@ async fn material_versioned_internal(
         .to_string();
 
     // Get genesis hash and chain name
-    let genesis_hash = client.genesis_hash().to_string();
+    let genesis_hash = format!("{:#x}", client.genesis_hash());
     let chain_name: String = rpc_client
         .request("system_chain", subxt_rpcs::rpc_params![])
         .await
@@ -621,7 +621,7 @@ async fn material_internal(
         };
 
     // Get genesis hash
-    let genesis_hash = client.genesis_hash().to_string();
+    let genesis_hash = format!("{:#x}", client.genesis_hash());
 
     // Get chain name
     let chain_name = rpc_client
