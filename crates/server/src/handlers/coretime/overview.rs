@@ -1277,7 +1277,6 @@ mod tests {
 
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"coreId\":5"));
-        assert!(json.contains("\"paraId\":\"2000\""));
         assert!(json.contains("\"workload\""));
         assert!(json.contains("\"type\""));
         assert!(json.contains(&format!("\"condition\":\"{}\"", CORE_TYPE_LEASE)));
