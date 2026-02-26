@@ -238,7 +238,7 @@ async fn build_rc_block_response(
 
             let fee_results = futures::future::join_all(fee_futures).await;
 
-            for (idx, fee_info) in fee_indices.into_iter().zip(fee_results.into_iter()) {
+            for (idx, fee_info) in fee_indices.into_iter().zip(fee_results) {
                 extrinsics_with_events[idx].info = fee_info;
             }
         }
