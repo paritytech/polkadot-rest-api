@@ -60,8 +60,7 @@ pub async fn get_staking_info(
         return handle_use_rc_block(state, account, params).await;
     }
 
-    let client_at_block =
-        utils::resolve_client_at_block(&state.client, params.at.as_ref()).await?;
+    let client_at_block = utils::resolve_client_at_block(&state.client, params.at.as_ref()).await?;
     let resolved_block = utils::ResolvedBlock {
         hash: format!("{:#x}", client_at_block.block_hash()),
         number: client_at_block.block_number(),

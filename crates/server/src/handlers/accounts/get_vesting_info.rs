@@ -59,8 +59,7 @@ pub async fn get_vesting_info(
         return handle_use_rc_block(state, account, params).await;
     }
 
-    let client_at_block =
-        utils::resolve_client_at_block(&state.client, params.at.as_ref()).await?;
+    let client_at_block = utils::resolve_client_at_block(&state.client, params.at.as_ref()).await?;
     let resolved_block = utils::ResolvedBlock {
         hash: format!("{:#x}", client_at_block.block_hash()),
         number: client_at_block.block_number(),
@@ -153,8 +152,7 @@ async fn handle_use_rc_block(
                 number: ah_block.number,
             };
             let client_at_block = state.client.at_block(ah_resolved.number).await?;
-            let raw_info =
-                query_vesting_info(&client_at_block, account, &ah_resolved).await?;
+            let raw_info = query_vesting_info(&client_at_block, account, &ah_resolved).await?;
 
             let response = format_response(
                 &raw_info,
