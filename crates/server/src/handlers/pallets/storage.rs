@@ -10,7 +10,7 @@
 // which is large by design. Boxing would add indirection without significant benefit.
 #![allow(clippy::result_large_err)]
 
-use crate::extractors::JsonQuery;
+use crate::extractors::{JsonQuery, QsQuery};
 use crate::handlers::pallets::common::{
     PalletError, RcPalletQueryParams, resolve_block_for_pallet,
 };
@@ -135,7 +135,8 @@ pub enum DeprecationInfo {
 pub struct StorageItemQueryParams {
     pub at: Option<String>,
     /// Storage keys for map types (format: ?keys[]=key1&keys[]=key2)
-    #[serde(default, rename = "keys[]")]
+    /// Note: serde_qs handles bracket notation automatically, no rename needed
+    #[serde(default)]
     pub keys: Vec<String>,
     /// When true, include storage item metadata in response
     #[serde(default)]
@@ -364,7 +365,7 @@ async fn handle_use_rc_block(
 pub async fn get_pallets_storage_item(
     State(state): State<AppState>,
     Path((pallet_id, storage_item_id)): Path<(String, String)>,
-    JsonQuery(params): JsonQuery<StorageItemQueryParams>,
+    QsQuery(params): QsQuery<StorageItemQueryParams>,
 ) -> Result<Response, PalletError> {
     if params.use_rc_block {
         return handle_storage_item_use_rc_block(state, pallet_id, storage_item_id, params).await;
@@ -705,12 +706,167 @@ fn get_original_pallet_name(
     }
 }
 
+/// Hash a key using the specified hasher type
+fn hash_key(key_bytes: &[u8], hasher: &str) -> Vec<u8> {
+    use sp_crypto_hashing::{blake2_128, blake2_256, twox_64, twox_128, twox_256};
+
+    match hasher {
+        "Blake2_128" => blake2_128(key_bytes).to_vec(),
+        "Blake2_256" => blake2_256(key_bytes).to_vec(),
+        "Blake2_128Concat" => {
+            let mut result = blake2_128(key_bytes).to_vec();
+            result.extend_from_slice(key_bytes);
+            result
+        }
+        "Twox64Concat" => {
+            let mut result = twox_64(key_bytes).to_vec();
+            result.extend_from_slice(key_bytes);
+            result
+        }
+        "Twox128" => twox_128(key_bytes).to_vec(),
+        "Twox256" => twox_256(key_bytes).to_vec(),
+        "Identity" => key_bytes.to_vec(),
+        _ => {
+            // Unknown hasher, use identity as fallback
+            key_bytes.to_vec()
+        }
+    }
+}
+
+/// Encode a storage key value to bytes based on expected type
+///
+/// For V14+ metadata, `key_type_id` is a type ID that can be looked up.
+/// For older metadata, `key_type_id` is a type name string like "T::AccountId".
+///
+/// The function handles:
+/// - SS58 addresses (AccountId)
+/// - Hex-encoded bytes (0x...)
+/// - Numeric types (u8, u16, u32, u64, u128) with proper sizing based on type hint
+/// - Boolean values
+fn encode_key_value(key: &str, key_type_id: &str) -> Result<Vec<u8>, PalletError> {
+    use sp_core::crypto::Ss58Codec;
+
+    // First, try to decode as hex - this is explicit and takes priority
+    if let Some(hex_str) = key.strip_prefix("0x")
+        && let Ok(bytes) = hex::decode(hex_str)
+    {
+        return Ok(bytes);
+    }
+
+    // Try to decode as SS58 address (for AccountId keys)
+    if let Ok(account_id) = sp_core::crypto::AccountId32::from_ss58check(key) {
+        let bytes: &[u8; 32] = account_id.as_ref();
+        return Ok(bytes.to_vec());
+    }
+
+    // Use type hint to determine encoding
+    // For V14+, key_type_id is a number; for older versions it's a type name
+    let type_hint = key_type_id.to_lowercase();
+
+    // Check for known type patterns
+    if type_hint.contains("bool") || key == "true" || key == "false" {
+        let value: bool = key.parse().unwrap_or(false);
+        return Ok(vec![value as u8]);
+    }
+
+    // Handle numeric types - check type hint first for proper sizing
+    if type_hint.contains("u8")
+        && !type_hint.contains("u128")
+        && let Ok(num) = key.parse::<u8>()
+    {
+        return Ok(vec![num]);
+    }
+
+    if type_hint.contains("u16")
+        && !type_hint.contains("u128")
+        && let Ok(num) = key.parse::<u16>()
+    {
+        return Ok(num.to_le_bytes().to_vec());
+    }
+
+    if type_hint.contains("u32")
+        && !type_hint.contains("u128")
+        && let Ok(num) = key.parse::<u32>()
+    {
+        return Ok(num.to_le_bytes().to_vec());
+    }
+
+    if type_hint.contains("u64")
+        && !type_hint.contains("u128")
+        && let Ok(num) = key.parse::<u64>()
+    {
+        return Ok(num.to_le_bytes().to_vec());
+    }
+
+    if type_hint.contains("u128")
+        && let Ok(num) = key.parse::<u128>()
+    {
+        return Ok(num.to_le_bytes().to_vec());
+    }
+
+    // For V14+ type IDs, we don't have the type name directly
+    // Try to infer from the value format
+    if key_type_id.parse::<u32>().is_ok() {
+        // It's a V14+ type ID - try to parse value intelligently
+        return decode_key_value_auto(key);
+    }
+
+    // Fallback for older metadata with type names
+    decode_key_value_auto(key)
+}
+
+/// Auto-detect and decode a key value when type is unknown
+fn decode_key_value_auto(key: &str) -> Result<Vec<u8>, PalletError> {
+    use sp_core::crypto::Ss58Codec;
+
+    // Try SS58 address
+    if let Ok(account_id) = sp_core::crypto::AccountId32::from_ss58check(key) {
+        let bytes: &[u8; 32] = account_id.as_ref();
+        return Ok(bytes.to_vec());
+    }
+
+    // Try hex
+    if let Some(hex_str) = key.strip_prefix("0x")
+        && let Ok(bytes) = hex::decode(hex_str)
+    {
+        return Ok(bytes);
+    }
+
+    // Try boolean
+    if key == "true" {
+        return Ok(vec![1]);
+    }
+    if key == "false" {
+        return Ok(vec![0]);
+    }
+
+    // Try parsing as number
+    // Default to u32 for numeric keys since block numbers, indices, etc. are typically u32
+    // This matches Substrate's common conventions
+    if let Ok(num) = key.parse::<u32>() {
+        return Ok(num.to_le_bytes().to_vec());
+    }
+
+    if let Ok(num) = key.parse::<u64>() {
+        return Ok(num.to_le_bytes().to_vec());
+    }
+
+    if let Ok(num) = key.parse::<u128>() {
+        return Ok(num.to_le_bytes().to_vec());
+    }
+
+    Err(PalletError::PalletNotFound(format!(
+        "Unable to encode key '{}'",
+        key
+    )))
+}
+
 /// Build storage key from pallet name, storage item name, and optional keys
 fn build_storage_key(
     pallet_name: &str,
     storage_name: &str,
     keys: &[String],
-    _storage_type: &StorageTypeInfo,
+    storage_type: &StorageTypeInfo,
 ) -> Result<String, PalletError> {
     use sp_crypto_hashing::twox_128;
 
@@ -718,17 +874,36 @@ fn build_storage_key(
     let pallet_hash = twox_128(pallet_name.as_bytes());
     let storage_hash = twox_128(storage_name.as_bytes());
 
-    let mut key = Vec::with_capacity(32 + keys.len() * 32);
+    let mut key = Vec::with_capacity(32 + keys.len() * 64);
     key.extend_from_slice(&pallet_hash);
     key.extend_from_slice(&storage_hash);
 
-    // For maps, we need to hash the keys based on the hasher type
-    // For now, we only support plain storage (no keys)
-    // TODO: Add support for map key hashing based on hasher type
+    // For maps, hash each key using the corresponding hasher
     if !keys.is_empty() {
-        return Err(PalletError::PalletNotFound(
-            "Map storage keys not yet supported".to_string(),
-        ));
+        let (hashers, key_type) = match storage_type {
+            StorageTypeInfo::Map { map } => (&map.hashers, &map.key),
+            StorageTypeInfo::Plain { .. } => {
+                return Err(PalletError::PalletNotFound(
+                    "Keys provided for plain storage type".to_string(),
+                ));
+            }
+        };
+
+        // Validate key count matches hasher count
+        if keys.len() != hashers.len() {
+            return Err(PalletError::PalletNotFound(format!(
+                "Expected {} key(s) but got {}",
+                hashers.len(),
+                keys.len()
+            )));
+        }
+
+        // Hash each key with its corresponding hasher
+        for (key_str, hasher) in keys.iter().zip(hashers.iter()) {
+            let key_bytes = encode_key_value(key_str, key_type)?;
+            let hashed_key = hash_key(&key_bytes, hasher);
+            key.extend_from_slice(&hashed_key);
+        }
     }
 
     Ok(format!("0x{}", hex::encode(key)))
@@ -1928,7 +2103,8 @@ fn build_storage_response_v16(
 pub struct RcStorageItemQueryParams {
     pub at: Option<String>,
     /// Storage keys for map types (format: ?keys[]=key1&keys[]=key2)
-    #[serde(default, rename = "keys[]")]
+    /// Note: serde_qs handles bracket notation automatically, no rename needed
+    #[serde(default)]
     pub keys: Vec<String>,
     #[serde(default)]
     pub metadata: bool,
@@ -2005,7 +2181,7 @@ pub async fn rc_get_pallets_storage(
 pub async fn rc_get_pallets_storage_item(
     State(state): State<AppState>,
     Path((pallet_id, storage_item_id)): Path<(String, String)>,
-    JsonQuery(params): JsonQuery<RcStorageItemQueryParams>,
+    QsQuery(params): QsQuery<RcStorageItemQueryParams>,
 ) -> Result<Response, PalletError> {
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_rpc = state.get_relay_chain_rpc().await?;
