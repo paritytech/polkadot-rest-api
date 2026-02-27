@@ -60,13 +60,11 @@ pub async fn get_staking_info(
         return handle_use_rc_block(state, account, params).await;
     }
 
-    let block_id = params
-        .at
-        .as_ref()
-        .map(|s| s.parse::<utils::BlockId>())
-        .transpose()?;
-    let resolved_block = utils::resolve_block(&state, block_id).await?;
-    let client_at_block = state.client.at_block(resolved_block.number).await?;
+    let client_at_block = utils::resolve_client_at_block(&state.client, params.at.as_ref()).await?;
+    let resolved_block = utils::ResolvedBlock {
+        hash: format!("{:#x}", client_at_block.block_hash()),
+        number: client_at_block.block_number(),
+    };
 
     let raw_info = query_staking_info(
         &client_at_block,
@@ -193,33 +191,40 @@ async fn handle_use_rc_block(
     let rc_block_hash = rc_resolved.hash.clone();
     let rc_block_number = rc_resolved.number.to_string();
 
-    // Process each AH block
-    let mut results = Vec::new();
-    for ah_block in ah_blocks {
-        let ah_resolved = utils::ResolvedBlock {
-            hash: ah_block.hash.clone(),
-            number: ah_block.number,
-        };
-        let client_at_block = state.client.at_block(ah_resolved.number).await?;
-        let raw_info = query_staking_info(
-            &client_at_block,
-            &account,
-            &ah_resolved,
-            params.include_claimed_rewards,
-            state.chain_info.ss58_prefix,
-            &state.chain_info.spec_name,
-        )
-        .await?;
+    // Process all AH blocks concurrently
+    let include_claimed_rewards = params.include_claimed_rewards;
+    let results = futures::future::try_join_all(ah_blocks.into_iter().map(|ah_block| {
+        let state = &state;
+        let account = &account;
+        let rc_block_hash = &rc_block_hash;
+        let rc_block_number = &rc_block_number;
+        async move {
+            let ah_resolved = utils::ResolvedBlock {
+                hash: ah_block.hash.clone(),
+                number: ah_block.number,
+            };
+            let client_at_block = state.client.at_block(ah_resolved.number).await?;
+            let raw_info = query_staking_info(
+                &client_at_block,
+                account,
+                &ah_resolved,
+                include_claimed_rewards,
+                state.chain_info.ss58_prefix,
+                &state.chain_info.spec_name,
+            )
+            .await?;
 
-        let response = format_response(
-            &raw_info,
-            Some(rc_block_hash.clone()),
-            Some(rc_block_number.clone()),
-            fetch_block_timestamp(&client_at_block).await,
-        );
+            let response = format_response(
+                &raw_info,
+                Some(rc_block_hash.clone()),
+                Some(rc_block_number.clone()),
+                fetch_block_timestamp(&client_at_block).await,
+            );
 
-        results.push(response);
-    }
+            Ok::<_, AccountsError>(response)
+        }
+    }))
+    .await?;
 
     Ok(Json(results).into_response())
 }
