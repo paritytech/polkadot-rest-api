@@ -118,12 +118,14 @@ pub struct EventField {
     params(
         ("palletId" = String, Path, description = "Pallet name or index"),
         ("at" = Option<String>, description = "Block identifier (number or hash)"),
-        ("onlyIds" = Option<bool>, description = "Only return event names")
+        ("onlyIds" = Option<bool>, description = "Only return event names"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Pallet events", body = Object),
         (status = 400, description = "Invalid request"),
         (status = 404, description = "Pallet not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -165,12 +167,14 @@ pub async fn get_pallet_events(
         ("palletId" = String, Path, description = "Pallet name or index"),
         ("eventItemId" = String, Path, description = "Event name"),
         ("at" = Option<String>, description = "Block identifier (number or hash)"),
-        ("metadata" = Option<bool>, description = "Include full event metadata")
+        ("metadata" = Option<bool>, description = "Include full event metadata"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Event item details", body = Object),
         (status = 400, description = "Invalid request"),
         (status = 404, description = "Pallet or event not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -516,6 +520,7 @@ fn extract_event_item_from_metadata(
     responses(
         (status = 200, description = "Relay chain pallet events", body = Object),
         (status = 400, description = "Invalid pallet"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -572,6 +577,7 @@ pub async fn rc_pallet_events(
     responses(
         (status = 200, description = "Relay chain event details", body = Object),
         (status = 404, description = "Pallet or event not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

@@ -31,6 +31,7 @@ Update all client URLs by prepending `/v1` to existing paths.
 - **Numeric fields**: All u16 and u32 fields are now returned as numbers instead of strings. This is an intentional divergence to provide more accurate JSON types, while maintaining safety for large values (u128 is still returned as a string).
 - **HTTP status codes**: Error responses (e.g., pallet missing at a requested block) now return 400 or 404 instead of 500.
 - **Price fix**: `/v1/coretime/info` — The `currentCorePrice` calculation has been corrected. The previous calculation was faulty. See [PR #175](https://github.com/paritytech/polkadot-rest-api/pull/175).
+- **Removed field**: The field `paraId` was removed from the response of `/v1/coretime/overview`. See [PR #251](https://github.com/paritytech/polkadot-rest-api/pull/251).
 
 ### Query parameter changes
 

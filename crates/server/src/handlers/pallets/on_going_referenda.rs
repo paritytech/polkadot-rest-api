@@ -172,6 +172,7 @@ struct DecidingDetails {
     ),
     responses(
         (status = 200, description = "Active referenda", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -464,6 +465,7 @@ pub struct RcOnGoingReferendaQueryParams {
     ),
     responses(
         (status = 200, description = "Active referenda from relay chain", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

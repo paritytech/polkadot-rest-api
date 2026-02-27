@@ -234,6 +234,7 @@ fn parse_metadata_params(
     responses(
         (status = 200, description = "Transaction material", body = Object),
         (status = 400, description = "Invalid parameters"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -257,6 +258,7 @@ pub async fn material(
     ),
     responses(
         (status = 200, description = "Relay chain transaction material", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -310,6 +312,7 @@ fn parse_metadata_version(version_str: &str) -> Result<u32, MaterialError> {
     responses(
         (status = 200, description = "Transaction material with versioned metadata", body = Object),
         (status = 400, description = "Invalid parameters"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -335,6 +338,7 @@ pub async fn material_versioned(
     ),
     responses(
         (status = 200, description = "Relay chain transaction material with versioned metadata", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

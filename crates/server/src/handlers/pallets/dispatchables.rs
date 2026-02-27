@@ -243,6 +243,7 @@ pub struct PalletDispatchableItemResponse {
     responses(
         (status = 200, description = "Pallet dispatchables", body = Object),
         (status = 400, description = "Invalid pallet"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -317,13 +318,13 @@ pub async fn get_pallets_dispatchables(
 /// - `503 Service Unavailable`: RPC connection lost.
 #[utoipa::path(
     get,
-    path = "/v1/pallets/{palletId}/dispatchables/{dispatchableItemId}",
+    path = "/v1/pallets/{palletId}/dispatchables/{dispatchableId}",
     tag = "pallets",
     summary = "Pallet dispatchable details",
     description = "Returns a single dispatchable call defined in a pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("dispatchableItemId" = String, Path, description = "Name of the dispatchable"),
+        ("dispatchableId" = String, Path, description = "Name of the dispatchable"),
         ("at" = Option<String>, description = "Block hash or number to query at"),
         ("metadata" = Option<bool>, description = "Include metadata"),
         ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
@@ -331,6 +332,7 @@ pub async fn get_pallets_dispatchables(
     responses(
         (status = 200, description = "Dispatchable details", body = Object),
         (status = 404, description = "Dispatchable not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -820,6 +822,7 @@ fn simplify_type_name(type_name: &str) -> String {
     responses(
         (status = 200, description = "Relay chain pallet dispatchables", body = Object),
         (status = 400, description = "Invalid pallet"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -881,19 +884,20 @@ pub async fn rc_pallets_dispatchables(
 /// Returns a specific dispatchable from the relay chain's pallet metadata.
 #[utoipa::path(
     get,
-    path = "/v1/rc/pallets/{palletId}/dispatchables/{dispatchableItemId}",
+    path = "/v1/rc/pallets/{palletId}/dispatchables/{dispatchableId}",
     tag = "rc",
     summary = "RC pallet dispatchable details",
     description = "Returns a single dispatchable call from a relay chain pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("dispatchableItemId" = String, Path, description = "Name of the dispatchable"),
+        ("dispatchableId" = String, Path, description = "Name of the dispatchable"),
         ("at" = Option<String>, description = "Block hash or number to query at"),
         ("metadata" = Option<bool>, description = "Include metadata")
     ),
     responses(
         (status = 200, description = "Relay chain dispatchable details", body = Object),
         (status = 404, description = "Dispatchable not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

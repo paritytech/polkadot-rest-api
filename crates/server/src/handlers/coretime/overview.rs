@@ -104,8 +104,6 @@ pub struct CoreTypeDetails {
 pub struct CoreInfo {
     /// The core index.
     pub core_id: u32,
-    /// The para/task ID assigned to this core.
-    pub para_id: String,
     /// Current workload information.
     pub workload: WorkloadInfo,
     /// Planned future work for this core.
@@ -339,6 +337,7 @@ struct WorkplanWithSchedule {
     responses(
         (status = 200, description = "Coretime overview", body = Object),
         (status = 400, description = "Invalid block identifier"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -545,10 +544,14 @@ async fn handle_coretime_chain_overview(
         .into_iter()
         .map(|wl| {
             let workload_info = extract_workload_info(&wl.items);
-            let para_id = workload_info.task.clone();
 
             // Determine core type
-            let core_type = determine_core_type(&para_id, &system_paras, &reservations, &lease_map);
+            let core_type = determine_core_type(
+                &workload_info.task,
+                &system_paras,
+                &reservations,
+                &lease_map,
+            );
 
             // Filter workplan entries for this core
             let core_workplan: Vec<WorkplanEntry> = workplans
@@ -566,7 +569,6 @@ async fn handle_coretime_chain_overview(
 
             CoreInfo {
                 core_id: wl.core,
-                para_id,
                 workload: workload_info,
                 workplan: core_workplan,
                 core_type,
@@ -587,14 +589,14 @@ async fn handle_coretime_chain_overview(
 
 /// Determines the core type based on reservations and leases.
 fn determine_core_type(
-    para_id: &str,
+    task_id: &str,
     system_paras: &[String],
     reservations: &[ReservationInfo],
     lease_map: &std::collections::HashMap<String, u32>,
 ) -> CoreType {
-    if system_paras.contains(&para_id.to_string()) {
+    if system_paras.contains(&task_id.to_string()) {
         // It's in reservations
-        if para_id == TASK_POOL {
+        if task_id == TASK_POOL {
             CoreType {
                 condition: CORE_TYPE_ONDEMAND.to_string(),
                 details: None,
@@ -603,7 +605,7 @@ fn determine_core_type(
             // Find the mask for this reservation
             let mask = reservations
                 .iter()
-                .find(|r| r.task == para_id)
+                .find(|r| r.task == task_id)
                 .map(|r| r.mask.clone());
             CoreType {
                 condition: CORE_TYPE_RESERVATION.to_string(),
@@ -613,7 +615,7 @@ fn determine_core_type(
                 }),
             }
         }
-    } else if let Some(&until) = lease_map.get(para_id) {
+    } else if let Some(&until) = lease_map.get(task_id) {
         // It's a lease
         CoreType {
             condition: CORE_TYPE_LEASE.to_string(),
@@ -1257,7 +1259,6 @@ mod tests {
     fn test_core_info_serialization() {
         let info = CoreInfo {
             core_id: 5,
-            para_id: "2000".to_string(),
             workload: WorkloadInfo {
                 is_pool: false,
                 is_task: true,
@@ -1277,7 +1278,6 @@ mod tests {
 
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"coreId\":5"));
-        assert!(json.contains("\"paraId\":\"2000\""));
         assert!(json.contains("\"workload\""));
         assert!(json.contains("\"type\""));
         assert!(json.contains(&format!("\"condition\":\"{}\"", CORE_TYPE_LEASE)));
@@ -1296,7 +1296,6 @@ mod tests {
             },
             cores: vec![CoreInfo {
                 core_id: 0,
-                para_id: "1000".to_string(),
                 workload: WorkloadInfo {
                     is_pool: false,
                     is_task: true,

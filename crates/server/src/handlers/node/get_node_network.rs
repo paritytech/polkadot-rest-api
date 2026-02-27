@@ -81,6 +81,7 @@ where
     description = "Returns the node's network information including peer count, syncing status, and local peer ID.",
     responses(
         (status = 200, description = "Node network information", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

@@ -221,6 +221,7 @@ impl IntoResponse for MetadataBlobError {
     responses(
         (status = 200, description = "Metadata blob", body = Object),
         (status = 400, description = "Invalid parameters"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -240,6 +241,7 @@ pub async fn metadata_blob(
     request_body(content = Object, description = "Request with 'tx' field and optional 'at' block"),
     responses(
         (status = 200, description = "Metadata blob", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

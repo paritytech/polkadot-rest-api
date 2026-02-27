@@ -195,6 +195,7 @@ pub fn transform_properties(properties: Value) -> Value {
     responses(
         (status = 200, description = "Runtime specification", body = Object),
         (status = 400, description = "Invalid block parameter"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

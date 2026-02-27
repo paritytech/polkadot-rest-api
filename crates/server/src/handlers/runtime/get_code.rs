@@ -105,6 +105,7 @@ pub struct AtBlockParam {
     responses(
         (status = 200, description = "Runtime code", body = Object),
         (status = 400, description = "Invalid block parameter"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

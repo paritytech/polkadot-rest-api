@@ -161,6 +161,7 @@ fn default_depth() -> String {
     responses(
         (status = 200, description = "Parachain inclusion information", body = Object),
         (status = 400, description = "Invalid parameters"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
