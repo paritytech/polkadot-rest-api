@@ -49,6 +49,7 @@ scale-decode = { version = "0.16", features = ["derive"] }
 scale-type-resolver = { version = "0.2.0", features = ["visitor"] }
 scale-info-legacy = "0.4.0"
 merkleized-metadata = "0.5"
+tikv-jemallocator = "0.6"
 prometheus = "0.13"
 lazy_static = "1.4"
 regex = "1.10"

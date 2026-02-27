@@ -1,6 +1,9 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 use polkadot_rest_api::{app, logging, state};
 use polkadot_rest_api_config::SidecarConfig;
 use std::net::{IpAddr, SocketAddr};
