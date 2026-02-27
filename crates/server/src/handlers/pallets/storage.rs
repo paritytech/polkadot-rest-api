@@ -798,7 +798,9 @@ fn encode_key_value(key: &str, key_type_id: &str) -> Result<Vec<u8>, PalletError
         return Ok(num.to_le_bytes().to_vec());
     }
 
-    if type_hint.contains("u128") && let Ok(num) = key.parse::<u128>() {
+    if type_hint.contains("u128")
+        && let Ok(num) = key.parse::<u128>()
+    {
         return Ok(num.to_le_bytes().to_vec());
     }
 
