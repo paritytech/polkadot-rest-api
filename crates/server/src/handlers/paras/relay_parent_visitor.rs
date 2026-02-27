@@ -39,7 +39,6 @@ pub enum ExtractedValue {
     NotFound,
 }
 
-
 /// Error type for visitor operations
 #[derive(Debug, thiserror::Error)]
 pub enum VisitorError {
@@ -85,7 +84,10 @@ impl<'r, R> RelayParentExtractor<'r, R> {
     fn is_looking_for_relay_parent(&self) -> bool {
         matches!(
             self.path.as_slice(),
-            [FieldContext::ValidationData, FieldContext::RelayParentNumber]
+            [
+                FieldContext::ValidationData,
+                FieldContext::RelayParentNumber
+            ]
         )
     }
 }
@@ -294,4 +296,3 @@ impl<'r, R: TypeResolver> Visitor for RelayParentExtractor<'r, R> {
         Ok(ExtractedValue::NotFound)
     }
 }
-
