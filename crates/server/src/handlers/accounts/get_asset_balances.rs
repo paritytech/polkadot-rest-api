@@ -44,6 +44,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
     responses(
         (status = 200, description = "Account asset balances", body = AssetBalancesResponse),
         (status = 400, description = "Invalid parameters"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

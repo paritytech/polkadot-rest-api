@@ -60,6 +60,7 @@ struct PoolAssetApproval {
     responses(
         (status = 200, description = "Pool asset approval information", body = PoolAssetApprovalResponse),
         (status = 400, description = "Invalid parameters"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

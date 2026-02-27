@@ -38,7 +38,8 @@ use polkadot_rest_api_config::ChainType;
     description = "Returns staking information for a given stash account on the relay chain.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded stash account address"),
-        ("at" = Option<String>, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, description = "Block identifier (number or hash)"),
+        ("includeClaimedRewards" = Option<bool>, description = "When true, include claimed rewards in the response")
     ),
     responses(
         (status = 200, description = "Staking information", body = RcStakingInfoResponse),

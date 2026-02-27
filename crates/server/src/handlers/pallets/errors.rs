@@ -191,6 +191,7 @@ pub struct PalletErrorItemResponse {
     responses(
         (status = 200, description = "Pallet errors", body = Object),
         (status = 400, description = "Invalid pallet"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -236,6 +237,7 @@ pub async fn get_pallet_errors(
     responses(
         (status = 200, description = "Error details", body = Object),
         (status = 404, description = "Error not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -594,6 +596,7 @@ fn simplify_type_name(type_name: &str) -> String {
     responses(
         (status = 200, description = "Relay chain pallet errors", body = Object),
         (status = 400, description = "Invalid pallet"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -650,6 +653,7 @@ pub async fn rc_pallet_errors(
     responses(
         (status = 200, description = "Relay chain error details", body = Object),
         (status = 404, description = "Error not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

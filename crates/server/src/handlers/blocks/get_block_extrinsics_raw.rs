@@ -100,6 +100,7 @@ pub struct BlockRawResponse {
     responses(
         (status = 200, description = "Raw block data with hex-encoded extrinsics", body = Object),
         (status = 400, description = "Invalid block identifier"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

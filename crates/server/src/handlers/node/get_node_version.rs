@@ -64,6 +64,7 @@ pub struct NodeVersionResponse {
     description = "Returns the node's version information including client version, implementation name, and chain name.",
     responses(
         (status = 200, description = "Node version information", body = NodeVersionResponse),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

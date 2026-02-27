@@ -152,6 +152,7 @@ struct PalletConstantsInfo {
     responses(
         (status = 200, description = "Pallet constants", body = Object),
         (status = 400, description = "Invalid pallet"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -226,6 +227,7 @@ pub async fn pallets_constants(
         (status = 200, description = "Constant value", body = Object),
         (status = 400, description = "Invalid parameters"),
         (status = 404, description = "Constant not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -508,6 +510,7 @@ fn extract_pallet_constants(
     responses(
         (status = 200, description = "Relay chain pallet constants", body = Object),
         (status = 400, description = "Invalid pallet"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -582,6 +585,7 @@ pub async fn rc_pallets_constants(
     responses(
         (status = 200, description = "Relay chain constant value", body = Object),
         (status = 404, description = "Constant not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
