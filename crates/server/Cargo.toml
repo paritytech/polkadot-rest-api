@@ -57,6 +57,7 @@ url = "2.5"
 http-body-util = "0.1"
 utoipa = { version = "5", features = ["axum_extras"] }
 serde_urlencoded = "0.7.1"
+serde_qs = "0.13"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
