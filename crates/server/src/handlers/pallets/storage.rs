@@ -209,6 +209,7 @@ fn extract_default_bytes<G>(default: &DecodeDifferent<G, Vec<u8>>) -> String {
     responses(
         (status = 200, description = "Pallet storage items", body = Object),
         (status = 400, description = "Invalid pallet or parameters"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -356,6 +357,7 @@ async fn handle_use_rc_block(
         (status = 200, description = "Storage item value", body = Object),
         (status = 400, description = "Invalid parameters"),
         (status = 404, description = "Storage item not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -1949,6 +1951,7 @@ pub struct RcStorageItemQueryParams {
     responses(
         (status = 200, description = "Relay chain pallet storage items", body = Object),
         (status = 400, description = "Invalid pallet or parameters"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -1995,6 +1998,7 @@ pub async fn rc_get_pallets_storage(
         (status = 200, description = "Relay chain storage item value", body = Object),
         (status = 400, description = "Invalid parameters"),
         (status = 404, description = "Storage item not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

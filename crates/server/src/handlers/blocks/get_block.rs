@@ -43,7 +43,7 @@ use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
     responses(
         (status = 200, description = "Block information", body = Object),
         (status = 400, description = "Invalid block identifier"),
-        (status = 404, description = "Block not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

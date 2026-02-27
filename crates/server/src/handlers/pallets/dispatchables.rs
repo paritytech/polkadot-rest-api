@@ -243,6 +243,7 @@ pub struct PalletDispatchableItemResponse {
     responses(
         (status = 200, description = "Pallet dispatchables", body = Object),
         (status = 400, description = "Invalid pallet"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -331,6 +332,7 @@ pub async fn get_pallets_dispatchables(
     responses(
         (status = 200, description = "Dispatchable details", body = Object),
         (status = 404, description = "Dispatchable not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -820,6 +822,7 @@ fn simplify_type_name(type_name: &str) -> String {
     responses(
         (status = 200, description = "Relay chain pallet dispatchables", body = Object),
         (status = 400, description = "Invalid pallet"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -894,6 +897,7 @@ pub async fn rc_pallets_dispatchables(
     responses(
         (status = 200, description = "Relay chain dispatchable details", body = Object),
         (status = 404, description = "Dispatchable not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

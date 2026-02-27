@@ -60,6 +60,7 @@ pub struct CoretimeReservationsResponse {
     responses(
         (status = 200, description = "Coretime reservations", body = Object),
         (status = 400, description = "Invalid block identifier"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

@@ -51,6 +51,7 @@ pub struct BlocksRangeQueryParams {
     responses(
         (status = 200, description = "Array of block information", body = Vec<Object>),
         (status = 400, description = "Invalid range parameter"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

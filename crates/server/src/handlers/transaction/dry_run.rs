@@ -245,6 +245,7 @@ impl From<subxt::error::RuntimeApiError> for DryRunError {
     responses(
         (status = 200, description = "Dry run result", body = Object),
         (status = 400, description = "Invalid transaction"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -265,6 +266,7 @@ pub async fn dry_run(
     responses(
         (status = 200, description = "Dry run result", body = Object),
         (status = 400, description = "Invalid transaction"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

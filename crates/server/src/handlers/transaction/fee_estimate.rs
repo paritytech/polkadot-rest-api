@@ -135,6 +135,7 @@ impl IntoResponse for FeeEstimateError {
     responses(
         (status = 200, description = "Fee estimate", body = FeeEstimateResponse),
         (status = 400, description = "Invalid transaction"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -155,6 +156,7 @@ pub async fn fee_estimate(
     responses(
         (status = 200, description = "Fee estimate", body = FeeEstimateResponse),
         (status = 400, description = "Invalid transaction"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

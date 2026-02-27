@@ -183,6 +183,7 @@ struct RewardPoolStorageV1 {
     responses(
         (status = 200, description = "Nomination pools information", body = Object),
         (status = 400, description = "Not supported on this chain"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -224,6 +225,7 @@ pub async fn pallets_nomination_pools_info(
     responses(
         (status = 200, description = "Pool details", body = Object),
         (status = 404, description = "Pool not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

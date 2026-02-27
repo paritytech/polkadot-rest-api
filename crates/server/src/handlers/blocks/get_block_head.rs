@@ -113,6 +113,7 @@ impl Default for BlockHeadQueryParams {
     ),
     responses(
         (status = 200, description = "Latest block information", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

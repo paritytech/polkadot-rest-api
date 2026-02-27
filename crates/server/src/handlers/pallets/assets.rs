@@ -95,6 +95,7 @@ pub struct PalletsAssetsInfoResponse {
     responses(
         (status = 200, description = "Asset information", body = Object),
         (status = 404, description = "Asset not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

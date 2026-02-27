@@ -113,6 +113,7 @@ impl IntoResponse for GetBlockHeadHeaderError {
     ),
     responses(
         (status = 200, description = "Block header information", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

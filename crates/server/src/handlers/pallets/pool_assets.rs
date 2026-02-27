@@ -97,6 +97,7 @@ pub struct PalletsPoolAssetsInfoResponse {
     responses(
         (status = 200, description = "Pool asset information", body = Object),
         (status = 404, description = "Pool asset not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

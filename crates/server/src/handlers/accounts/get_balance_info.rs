@@ -49,6 +49,7 @@ use serde_json::json;
     responses(
         (status = 200, description = "Account balance information", body = BalanceInfoResponse),
         (status = 400, description = "Invalid account or block parameter"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

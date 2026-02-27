@@ -53,7 +53,7 @@ use super::types::{
     responses(
         (status = 200, description = "Extrinsic details", body = Object),
         (status = 400, description = "Invalid block identifier or extrinsic index"),
-        (status = 404, description = "Extrinsic not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

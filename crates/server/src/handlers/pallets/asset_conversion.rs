@@ -92,6 +92,7 @@ pub struct LiquidityPoolsResponse {
     ),
     responses(
         (status = 200, description = "Next available ID", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -193,6 +194,7 @@ async fn handle_next_id_with_rc_block(
     ),
     responses(
         (status = 200, description = "Liquidity pools", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

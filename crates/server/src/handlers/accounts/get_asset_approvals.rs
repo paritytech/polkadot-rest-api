@@ -59,6 +59,7 @@ struct AssetApproval {
     responses(
         (status = 200, description = "Asset approval information", body = AssetApprovalResponse),
         (status = 400, description = "Invalid parameters"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
