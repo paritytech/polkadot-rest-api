@@ -747,10 +747,10 @@ fn encode_key_value(key: &str, key_type_id: &str) -> Result<Vec<u8>, PalletError
     use sp_core::crypto::Ss58Codec;
 
     // First, try to decode as hex - this is explicit and takes priority
-    if let Some(hex_str) = key.strip_prefix("0x") {
-        if let Ok(bytes) = hex::decode(hex_str) {
-            return Ok(bytes);
-        }
+    if let Some(hex_str) = key.strip_prefix("0x")
+        && let Ok(bytes) = hex::decode(hex_str)
+    {
+        return Ok(bytes);
     }
 
     // Try to decode as SS58 address (for AccountId keys)
@@ -770,34 +770,36 @@ fn encode_key_value(key: &str, key_type_id: &str) -> Result<Vec<u8>, PalletError
     }
 
     // Handle numeric types - check type hint first for proper sizing
-    if type_hint.contains("u8") && !type_hint.contains("u128") {
-        if let Ok(num) = key.parse::<u8>() {
-            return Ok(vec![num]);
-        }
+    if type_hint.contains("u8")
+        && !type_hint.contains("u128")
+        && let Ok(num) = key.parse::<u8>()
+    {
+        return Ok(vec![num]);
     }
 
-    if type_hint.contains("u16") && !type_hint.contains("u128") {
-        if let Ok(num) = key.parse::<u16>() {
-            return Ok(num.to_le_bytes().to_vec());
-        }
+    if type_hint.contains("u16")
+        && !type_hint.contains("u128")
+        && let Ok(num) = key.parse::<u16>()
+    {
+        return Ok(num.to_le_bytes().to_vec());
     }
 
-    if type_hint.contains("u32") && !type_hint.contains("u128") {
-        if let Ok(num) = key.parse::<u32>() {
-            return Ok(num.to_le_bytes().to_vec());
-        }
+    if type_hint.contains("u32")
+        && !type_hint.contains("u128")
+        && let Ok(num) = key.parse::<u32>()
+    {
+        return Ok(num.to_le_bytes().to_vec());
     }
 
-    if type_hint.contains("u64") && !type_hint.contains("u128") {
-        if let Ok(num) = key.parse::<u64>() {
-            return Ok(num.to_le_bytes().to_vec());
-        }
+    if type_hint.contains("u64")
+        && !type_hint.contains("u128")
+        && let Ok(num) = key.parse::<u64>()
+    {
+        return Ok(num.to_le_bytes().to_vec());
     }
 
-    if type_hint.contains("u128") {
-        if let Ok(num) = key.parse::<u128>() {
-            return Ok(num.to_le_bytes().to_vec());
-        }
+    if type_hint.contains("u128") && let Ok(num) = key.parse::<u128>() {
+        return Ok(num.to_le_bytes().to_vec());
     }
 
     // For V14+ type IDs, we don't have the type name directly
@@ -822,10 +824,10 @@ fn decode_key_value_auto(key: &str) -> Result<Vec<u8>, PalletError> {
     }
 
     // Try hex
-    if let Some(hex_str) = key.strip_prefix("0x") {
-        if let Ok(bytes) = hex::decode(hex_str) {
-            return Ok(bytes);
-        }
+    if let Some(hex_str) = key.strip_prefix("0x")
+        && let Ok(bytes) = hex::decode(hex_str)
+    {
+        return Ok(bytes);
     }
 
     // Try boolean
