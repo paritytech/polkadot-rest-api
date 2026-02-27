@@ -16,21 +16,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use subxt::{OnlineClient, SubstrateConfig};
 use thiserror::Error;
+use tracing::warn;
 
-#[derive(DecodeAsType)]
-struct SetValidationData {
-    data: BasicParachainInherentData,
-}
-
-#[derive(DecodeAsType)]
-struct BasicParachainInherentData {
-    validation_data: PersistedValidationData,
-}
-
-#[derive(DecodeAsType)]
-struct PersistedValidationData {
-    relay_parent_number: u64,
-}
+use super::relay_parent_visitor;
 
 #[derive(DecodeAsType)]
 struct CandidateIncludedEvent {
@@ -267,11 +255,34 @@ async fn extract_relay_parent_number(
         };
 
         if ext.pallet_name() == "ParachainSystem" && ext.call_name() == "set_validation_data" {
-            let call_data: SetValidationData = ext
-                .decode_call_data_as()
-                .map_err(|e| ParasInclusionError::DecodeFailed(e.to_string()))?;
+            // Use visitor pattern to extract relay_parent_number from metadata type registry
+            let metadata = client_at_block.metadata_ref();
+            let types = metadata.types();
 
-            return Ok(call_data.data.validation_data.relay_parent_number);
+            for field in ext.iter_call_data_fields() {
+                let visitor = relay_parent_visitor::RelayParentExtractor::new(types);
+                match field.visit(visitor) {
+                    Ok(relay_parent_visitor::ExtractedValue::Found(relay_parent_number)) => {
+                        return Ok(relay_parent_number as u64);
+                    }
+                    Ok(relay_parent_visitor::ExtractedValue::NotFound) => {
+                        // Continue to next field
+                    }
+                    Err(e) => {
+                        warn!(
+                            %block_hash,
+                            error = %e,
+                            "Failed to extract relay_parent_number"
+                        );
+                        return Err(ParasInclusionError::DecodeFailed(e.to_string()));
+                    }
+                }
+            }
+
+            // If we found the extrinsic but couldn't extract the value from any field
+            return Err(ParasInclusionError::DecodeFailed(
+                "Could not extract relay_parent_number from set_validation_data fields".to_string(),
+            ));
         }
     }
 
