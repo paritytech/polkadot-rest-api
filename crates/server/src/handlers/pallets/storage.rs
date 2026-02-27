@@ -855,9 +855,8 @@ fn decode_key_value_auto(key: &str) -> Result<Vec<u8>, PalletError> {
         return Ok(num.to_le_bytes().to_vec());
     }
 
-    // Last resort: raw bytes (unlikely to be correct but better than failing)
     Err(PalletError::PalletNotFound(format!(
-        "Unable to encode key '{}' - provide as hex (0x...) or valid SS58 address",
+        "Unable to encode key '{}'",
         key
     )))
 }
