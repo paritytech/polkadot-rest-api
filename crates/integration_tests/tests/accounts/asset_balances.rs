@@ -364,6 +364,45 @@ async fn test_asset_balances_use_rc_block_empty() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn test_asset_balances_hex_address() -> Result<()> {
+    let local_client = get_client().await?;
+
+    let account_id = test_accounts::ALICE_HEX;
+    let endpoint = format!("/accounts/{}/asset-balances", account_id);
+
+    println!(
+        "\n{} Testing asset balances with hex address",
+        "Testing".cyan().bold()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    let response_obj = local_json.as_object().unwrap();
+    assert!(
+        response_obj.contains_key("at"),
+        "Response missing 'at' field"
+    );
+    assert!(
+        response_obj.contains_key("assets"),
+        "Response missing 'assets' field"
+    );
+
+    println!("{} Hex address validated!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
 fn get_fixture_path(filename: &str) -> Result<PathBuf> {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let fixture_path = PathBuf::from(manifest_dir)
