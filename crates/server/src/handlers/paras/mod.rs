@@ -4,5 +4,6 @@
 //! Handlers for parachain-related endpoints.
 
 pub mod paras_inclusion;
+mod relay_parent_visitor;
 
 pub use paras_inclusion::get_paras_inclusion;
