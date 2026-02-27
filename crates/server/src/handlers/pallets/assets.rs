@@ -4,10 +4,8 @@
 //! Handler for /pallets/assets/{assetId}/asset-info endpoint.
 
 use crate::extractors::JsonQuery;
-use crate::handlers::pallets::common::{
-    AssetDetails, AssetMetadataStorage, AtResponse, ClientAtBlock, PalletError, format_account_id,
-    resolve_block_for_pallet,
-};
+use crate::handlers::pallets::common::{AtResponse, PalletError, resolve_block_for_pallet};
+use crate::handlers::runtime_queries::assets as assets_queries;
 use crate::state::AppState;
 use crate::utils::{
     BlockId, DEFAULT_CONCURRENCY, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
@@ -226,59 +224,47 @@ async fn handle_use_rc_block(
 // Helper Functions
 // ============================================================================
 
-/// Fetches asset details from Assets::Asset storage.
+/// Fetches asset details from Assets::Asset storage using runtime_queries module.
 async fn fetch_asset_info(
-    client_at_block: &ClientAtBlock,
+    client_at_block: &subxt::OnlineClientAtBlock<subxt::SubstrateConfig>,
     asset_id: u32,
     ss58_prefix: u16,
 ) -> Option<AssetInfo> {
-    // Query Assets pallet with typed return
-    let asset_addr = subxt::dynamic::storage::<_, AssetDetails>("Assets", "Asset");
-    let details = client_at_block
-        .storage()
-        .fetch(asset_addr, (asset_id,))
+    let decoded = assets_queries::get_asset_info(client_at_block, asset_id, ss58_prefix)
         .await
-        .ok()?
-        .decode()
-        .ok()?;
+        .ok()??;
 
     Some(AssetInfo {
-        owner: format_account_id(&details.owner, ss58_prefix),
-        issuer: format_account_id(&details.issuer, ss58_prefix),
-        admin: format_account_id(&details.admin, ss58_prefix),
-        freezer: format_account_id(&details.freezer, ss58_prefix),
-        supply: details.supply.to_string(),
-        deposit: details.deposit.to_string(),
-        min_balance: details.min_balance.to_string(),
-        is_sufficient: details.is_sufficient,
-        accounts: details.accounts.to_string(),
-        sufficients: details.sufficients.to_string(),
-        approvals: details.approvals.to_string(),
-        status: details.status.as_str().to_string(),
+        owner: decoded.owner,
+        issuer: decoded.issuer,
+        admin: decoded.admin,
+        freezer: decoded.freezer,
+        supply: decoded.supply,
+        deposit: decoded.deposit,
+        min_balance: decoded.min_balance,
+        is_sufficient: decoded.is_sufficient,
+        accounts: decoded.accounts,
+        sufficients: decoded.sufficients,
+        approvals: decoded.approvals,
+        status: decoded.status,
     })
 }
 
-/// Fetches asset metadata from Assets::Metadata storage.
+/// Fetches asset metadata from Assets::Metadata storage using runtime_queries module.
 async fn fetch_asset_metadata(
-    client_at_block: &ClientAtBlock,
+    client_at_block: &subxt::OnlineClientAtBlock<subxt::SubstrateConfig>,
     asset_id: u32,
 ) -> Option<AssetMetadata> {
-    // Query Assets pallet with typed return
-    let metadata_addr = subxt::dynamic::storage::<_, AssetMetadataStorage>("Assets", "Metadata");
-    let metadata = client_at_block
-        .storage()
-        .fetch(metadata_addr, (asset_id,))
+    let decoded = assets_queries::get_asset_metadata(client_at_block, asset_id)
         .await
-        .ok()?
-        .decode()
-        .ok()?;
+        .ok()??;
 
     Some(AssetMetadata {
-        deposit: metadata.deposit.to_string(),
-        name: format!("0x{}", hex::encode(&metadata.name)),
-        symbol: format!("0x{}", hex::encode(&metadata.symbol)),
-        decimals: metadata.decimals.to_string(),
-        is_frozen: metadata.is_frozen,
+        deposit: decoded.deposit,
+        name: decoded.name,
+        symbol: decoded.symbol,
+        decimals: decoded.decimals,
+        is_frozen: decoded.is_frozen,
     })
 }
 

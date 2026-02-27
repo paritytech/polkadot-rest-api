@@ -111,6 +111,14 @@ enum RewardDestinationType {
     None,
 }
 
+/// Validator preferences structure
+#[derive(Debug, Clone, Decode)]
+struct ValidatorPrefsStorage {
+    #[codec(compact)]
+    commission: u32, // Perbill
+    blocked: bool,
+}
+
 /// Nominations structure
 #[derive(Debug, Clone, Decode)]
 struct Nominations {
@@ -1243,4 +1251,447 @@ fn decode_ledger_claimed_eras(raw_bytes: &[u8], era: u32) -> Option<bool> {
     }
 
     None
+}
+
+// ================================================================================================
+// Additional Staking Progress Queries
+// ================================================================================================
+
+/// Decoded active era information with start timestamp.
+#[derive(Debug, Clone)]
+pub struct DecodedActiveEraInfo {
+    pub index: u32,
+    pub start: Option<u64>,
+}
+
+/// Force era status enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Decode)]
+pub enum ForceEra {
+    NotForcing,
+    ForceNew,
+    ForceNone,
+    ForceAlways,
+}
+
+impl ForceEra {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ForceEra::NotForcing => "NotForcing",
+            ForceEra::ForceNew => "ForceNew",
+            ForceEra::ForceNone => "ForceNone",
+            ForceEra::ForceAlways => "ForceAlways",
+        }
+    }
+}
+
+/// Get the ideal validator count from Staking::ValidatorCount.
+pub async fn get_validator_count(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<u32> {
+    let storage_addr = subxt::dynamic::storage::<(), u32>("Staking", "ValidatorCount");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    value.decode().ok()
+}
+
+/// Get the force era status from Staking::ForceEra.
+pub async fn get_force_era(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<ForceEra> {
+    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "ForceEra");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+
+    // Get raw bytes and decode the ForceEra enum
+    let bytes = value.into_bytes();
+    ForceEra::decode(&mut &bytes[..]).ok()
+}
+
+/// Get the active era info with start timestamp from Staking::ActiveEra.
+pub async fn get_active_era_info(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<DecodedActiveEraInfo> {
+    let storage_addr = subxt::dynamic::storage::<(), ()>("Staking", "ActiveEra");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+
+    let raw_bytes = value.into_bytes();
+
+    // Try direct decode first
+    if let Ok(era_info) = ActiveEraInfo::decode(&mut &raw_bytes[..]) {
+        return Some(DecodedActiveEraInfo {
+            index: era_info.index,
+            start: era_info.start,
+        });
+    }
+
+    // Try with Option wrapper
+    if let Ok(Some(era_info)) = Option::<ActiveEraInfo>::decode(&mut &raw_bytes[..]) {
+        return Some(DecodedActiveEraInfo {
+            index: era_info.index,
+            start: era_info.start,
+        });
+    }
+
+    None
+}
+
+/// Get the current session index from Session::CurrentIndex.
+pub async fn get_session_current_index(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<u32> {
+    let storage_addr = subxt::dynamic::storage::<(), u32>("Session", "CurrentIndex");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    value.decode().ok()
+}
+
+/// Get the session validators from Session::Validators.
+pub async fn get_session_validators(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    ss58_prefix: u16,
+) -> Option<Vec<String>> {
+    let storage_addr = subxt::dynamic::storage::<(), ()>("Session", "Validators");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+
+    let raw_bytes = value.into_bytes();
+    let validators: Vec<[u8; 32]> = Vec::decode(&mut &raw_bytes[..]).ok()?;
+
+    Some(
+        validators
+            .into_iter()
+            .map(|bytes| AccountId32::from(bytes).to_ss58check_with_version(ss58_prefix.into()))
+            .collect(),
+    )
+}
+
+/// Get the current timestamp from Timestamp::Now.
+pub async fn get_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> Option<u64> {
+    let storage_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    value.decode().ok()
+}
+
+/// Get the bonded eras from Staking::BondedEras.
+/// Returns a list of (era_index, session_index) pairs.
+pub async fn get_bonded_eras(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<Vec<(u32, u32)>> {
+    let storage_addr = subxt::dynamic::storage::<(), ()>("Staking", "BondedEras");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+
+    let raw_bytes = value.into_bytes();
+    Vec::<(u32, u32)>::decode(&mut &raw_bytes[..]).ok()
+}
+
+// ================================================================================================
+// Babe Pallet Queries (used for session/era progress calculations)
+// ================================================================================================
+
+/// Get the current slot from Babe::CurrentSlot.
+pub async fn get_babe_current_slot(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<u64> {
+    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "CurrentSlot");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    value.decode().ok()
+}
+
+/// Get the current epoch index from Babe::EpochIndex.
+pub async fn get_babe_epoch_index(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<u64> {
+    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "EpochIndex");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    value.decode().ok()
+}
+
+/// Get the genesis slot from Babe::GenesisSlot.
+pub async fn get_babe_genesis_slot(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<u64> {
+    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "GenesisSlot");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+    value.decode().ok()
+}
+
+/// Get skipped epochs from Babe::SkippedEpochs.
+/// Returns a list of (epoch_index, skipped_session_count) pairs.
+pub async fn get_babe_skipped_epochs(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<Vec<(u64, u32)>> {
+    let storage_addr = subxt::dynamic::storage::<(), ()>("Babe", "SkippedEpochs");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+
+    let raw_bytes = value.into_bytes();
+    Vec::<(u64, u32)>::decode(&mut &raw_bytes[..]).ok()
+}
+
+/// Era election status enum (legacy, removed in newer runtimes).
+#[derive(Debug, Clone)]
+pub enum EraElectionStatus {
+    /// Election is closed
+    Close,
+    /// Election is open at the given block number
+    Open(u32),
+}
+
+/// Get the era election status from Staking::EraElectionStatus.
+/// Note: This storage item was removed in newer runtimes (post multi-phase election).
+/// Returns None if the storage item doesn't exist.
+pub async fn get_era_election_status(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<EraElectionStatus> {
+    let storage_addr = subxt::dynamic::storage::<(), ()>("Staking", "EraElectionStatus");
+    let value = client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()?;
+
+    let raw_bytes = value.into_bytes();
+
+    // EraElectionStatus is an enum:
+    // 0 = Close
+    // 1 = Open(BlockNumber)
+    if raw_bytes.is_empty() {
+        return None;
+    }
+
+    match raw_bytes[0] {
+        0 => Some(EraElectionStatus::Close),
+        1 => {
+            // Decode the block number (u32) from remaining bytes
+            if raw_bytes.len() >= 5 {
+                let block_num = u32::decode(&mut &raw_bytes[1..]).ok()?;
+                Some(EraElectionStatus::Open(block_num))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+// ================================================================================================
+// Staking Validators Iteration
+// ================================================================================================
+
+/// Decoded validator preferences entry from Staking::Validators iteration.
+#[derive(Debug, Clone)]
+pub struct DecodedValidatorPrefsEntry {
+    /// Validator account ID (raw 32 bytes)
+    pub validator: [u8; 32],
+    /// Commission percentage (Perbill - parts per billion)
+    pub commission: u32,
+    /// Whether the validator is blocked from receiving new nominations
+    pub blocked: bool,
+}
+
+/// Iterate all entries in Staking::Validators storage.
+/// Returns a list of (validator_account, preferences) for all registered validators.
+pub async fn iter_staking_validators(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Option<Vec<DecodedValidatorPrefsEntry>> {
+    let storage_addr = subxt::dynamic::storage::<([u8; 32],), ()>("Staking", "Validators");
+
+    let mut stream = client_at_block
+        .storage()
+        .iter(storage_addr, ())
+        .await
+        .ok()?;
+
+    let mut validators = Vec::new();
+
+    while let Some(entry_result) = stream.next().await {
+        let entry = match entry_result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let key_bytes = entry.key_bytes();
+        let value_bytes = entry.value().bytes();
+
+        // For Twox64Concat hasher, the account_id (32 bytes) is always the last
+        // 32 bytes of the key
+        if key_bytes.len() < 32 {
+            continue;
+        }
+
+        let mut validator = [0u8; 32];
+        validator.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
+
+        // Decode ValidatorPrefs: { commission: Perbill (u32), blocked: bool }
+        if let Ok(prefs) = ValidatorPrefsStorage::decode(&mut &value_bytes[..]) {
+            validators.push(DecodedValidatorPrefsEntry {
+                validator,
+                commission: prefs.commission,
+                blocked: prefs.blocked,
+            });
+        }
+    }
+
+    Some(validators)
+}
+
+/// Iterate ErasStakersOverview keys for a given era to get active validator set.
+/// Returns a list of validator account IDs (raw 32 bytes) that are active in the era.
+pub async fn iter_era_stakers_overview_keys(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+) -> Option<Vec<[u8; 32]>> {
+    let storage_addr =
+        subxt::dynamic::storage::<(u32, [u8; 32]), ()>("Staking", "ErasStakersOverview");
+
+    let mut stream = client_at_block
+        .storage()
+        .iter(storage_addr, (era,))
+        .await
+        .ok()?;
+
+    let mut validators = Vec::new();
+
+    while let Some(entry_result) = stream.next().await {
+        let entry = match entry_result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let key_bytes = entry.key_bytes();
+
+        // For Twox64Concat hasher on the second key (AccountId32),
+        // the account_id (32 bytes) is always the last 32 bytes of the key.
+        if key_bytes.len() < 32 {
+            continue;
+        }
+
+        let mut validator = [0u8; 32];
+        validator.copy_from_slice(&key_bytes[key_bytes.len() - 32..]);
+        validators.push(validator);
+    }
+
+    Some(validators)
+}
+
+// ================================================================================================
+// Unapplied Slashes Iteration
+// ================================================================================================
+
+/// Decoded unapplied slash entry from Staking::UnappliedSlashes iteration.
+#[derive(Debug, Clone)]
+pub struct DecodedUnappliedSlash {
+    /// Era index
+    pub era: u32,
+    /// Validator account ID (raw 32 bytes)
+    pub validator: [u8; 32],
+    /// Own stake slashed
+    pub own: u128,
+    /// Other nominators slashed: (account, amount)
+    pub others: Vec<([u8; 32], u128)>,
+    /// Reporters (accounts that reported the slash)
+    pub reporters: Vec<[u8; 32]>,
+    /// Payout amount
+    pub payout: u128,
+}
+
+/// Internal storage type for UnappliedSlash
+#[derive(Debug, Clone, Decode)]
+struct UnappliedSlashStorage {
+    validator: [u8; 32],
+    own: u128,
+    others: Vec<([u8; 32], u128)>,
+    reporters: Vec<[u8; 32]>,
+    payout: u128,
+}
+
+/// Iterate all entries in Staking::UnappliedSlashes storage.
+/// Returns a list of unapplied slashes across all eras.
+pub async fn iter_unapplied_slashes(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Vec<DecodedUnappliedSlash> {
+    let storage_addr = subxt::dynamic::storage::<(u32,), ()>("Staking", "UnappliedSlashes");
+
+    let mut stream = match client_at_block.storage().iter(storage_addr, ()).await {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+
+    let mut result = Vec::new();
+
+    while let Some(entry_result) = stream.next().await {
+        let entry = match entry_result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let key_bytes = entry.key_bytes();
+        let value_bytes = entry.value().bytes();
+
+        // Key format: 16 bytes pallet prefix + 16 bytes entry prefix + 8 bytes twox64 hash + 4 bytes era
+        // Total: 44 bytes, era starts at byte 40
+        let era: u32 = if key_bytes.len() >= 44 {
+            u32::decode(&mut &key_bytes[40..44]).unwrap_or(0)
+        } else {
+            continue;
+        };
+
+        let slashes: Vec<UnappliedSlashStorage> =
+            match Vec::<UnappliedSlashStorage>::decode(&mut &value_bytes[..]) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+
+        for slash in slashes {
+            result.push(DecodedUnappliedSlash {
+                era,
+                validator: slash.validator,
+                own: slash.own,
+                others: slash.others,
+                reporters: slash.reporters,
+                payout: slash.payout,
+            });
+        }
+    }
+
+    result
 }

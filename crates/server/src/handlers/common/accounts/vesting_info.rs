@@ -3,26 +3,11 @@
 
 //! Common vesting info utilities shared across handler modules.
 
+use crate::handlers::runtime_queries::balances as balances_queries;
 use crate::utils::ResolvedBlock;
-use parity_scale_codec::Decode;
 use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
-
-// ================================================================================================
-// SCALE Decode Types for Vesting::Vesting storage
-// ================================================================================================
-
-/// Vesting schedule structure matching Polkadot SDK's VestingInfo type.
-/// See: polkadot-sdk/substrate/frame/vesting/src/vesting_info.rs
-///
-/// Fields are NOT compact-encoded in the actual runtime.
-#[derive(Debug, Clone, Decode)]
-struct VestingSchedule {
-    locked: u128,
-    per_block: u128,
-    starting_block: u32,
-}
 
 // ================================================================================================
 // Error Types
@@ -86,14 +71,6 @@ pub struct DecodedVestingSchedule {
     pub starting_block: String,
 }
 
-/// Raw vesting schedule from storage (internal)
-#[derive(Debug, Clone)]
-struct RawVestingSchedule {
-    locked: u128,
-    per_block: u128,
-    starting_block: u64,
-}
-
 // ================================================================================================
 // Core Query Function
 // ================================================================================================
@@ -121,8 +98,8 @@ pub async fn query_vesting_info(
         return Err(VestingQueryError::VestingPalletNotAvailable);
     }
 
-    // Query vesting schedules
-    let vesting_schedules = query_vesting_schedules(client_at_block, account).await?;
+    // Use centralized query function
+    let vesting_schedules = balances_queries::get_vesting_schedules(client_at_block, account).await;
 
     // Convert to decoded schedules
     let schedules: Vec<DecodedVestingSchedule> = vesting_schedules
@@ -141,61 +118,4 @@ pub async fn query_vesting_info(
         },
         schedules,
     })
-}
-
-// ================================================================================================
-// Storage Queries
-// ================================================================================================
-
-async fn query_vesting_schedules(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-    account: &AccountId32,
-) -> Result<Vec<RawVestingSchedule>, VestingQueryError> {
-    // Build the storage address for Vesting::Vesting(account)
-    let storage_addr = subxt::dynamic::storage::<_, ()>("Vesting", "Vesting");
-    let account_bytes: [u8; 32] = *account.as_ref();
-
-    let storage_value = client_at_block
-        .storage()
-        .fetch(storage_addr, (account_bytes,))
-        .await;
-
-    if let Ok(value) = storage_value {
-        let raw_bytes = value.into_bytes();
-        decode_vesting_schedules(&raw_bytes)
-    } else {
-        Ok(Vec::new())
-    }
-}
-
-/// Decode vesting schedules from raw SCALE bytes.
-///
-/// The storage type is `BoundedVec<VestingInfo<Balance, BlockNumber>, MaxVestingSchedules>`
-/// which encodes as a Vec with a compact length prefix followed by the VestingInfo structs.
-fn decode_vesting_schedules(
-    raw_bytes: &[u8],
-) -> Result<Vec<RawVestingSchedule>, VestingQueryError> {
-    // Try decoding as Vec<VestingSchedule> - matches Polkadot SDK's VestingInfo type
-    if let Ok(schedules) = Vec::<VestingSchedule>::decode(&mut &raw_bytes[..]) {
-        return Ok(schedules
-            .into_iter()
-            .map(|s| RawVestingSchedule {
-                locked: s.locked,
-                per_block: s.per_block,
-                starting_block: s.starting_block as u64,
-            })
-            .collect());
-    }
-
-    // Try decoding as single VestingSchedule (legacy support)
-    if let Ok(schedule) = VestingSchedule::decode(&mut &raw_bytes[..]) {
-        return Ok(vec![RawVestingSchedule {
-            locked: schedule.locked,
-            per_block: schedule.per_block,
-            starting_block: schedule.starting_block as u64,
-        }]);
-    }
-
-    // If decoding fails, return empty (no vesting)
-    Ok(Vec::new())
 }

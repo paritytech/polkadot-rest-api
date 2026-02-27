@@ -3,48 +3,11 @@
 
 //! Common proxy info utilities shared across handler modules.
 
+use crate::handlers::runtime_queries::balances as balances_queries;
 use crate::utils::ResolvedBlock;
-use parity_scale_codec::Decode;
-use sp_core::crypto::{AccountId32, Ss58Codec};
+use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
-
-// ================================================================================================
-// SCALE Decode Types for Proxy::Proxies storage
-// ================================================================================================
-
-/// Proxy definition structure
-/// Note: proxy_type is stored as u8 (variant index) since the actual enum varies by runtime
-#[derive(Debug, Clone, Decode)]
-struct ProxyDefinition {
-    delegate: [u8; 32],
-    proxy_type: u8, // Variant index - mapped to name later
-    delay: u32,
-}
-
-/// Proxies storage value: (BoundedVec<ProxyDefinition>, Balance)
-/// We decode as (Vec<ProxyDefinition>, u128)
-#[derive(Debug, Clone, Decode)]
-struct ProxiesStorageValue {
-    definitions: Vec<ProxyDefinition>,
-    deposit: u128,
-}
-
-/// Map proxy type variant index to common names
-/// These are the common proxy types across Polkadot/Kusama runtimes
-fn proxy_type_name(index: u8) -> String {
-    match index {
-        0 => "Any".to_string(),
-        1 => "NonTransfer".to_string(),
-        2 => "Governance".to_string(),
-        3 => "Staking".to_string(),
-        4 => "IdentityJudgement".to_string(),
-        5 => "CancelProxy".to_string(),
-        6 => "Auction".to_string(),
-        7 => "NominationPools".to_string(),
-        _ => format!("Unknown({})", index),
-    }
-}
 
 // ================================================================================================
 // Error Types
@@ -110,6 +73,22 @@ pub struct DecodedProxyDefinition {
     pub delay: String,
 }
 
+/// Map proxy type variant index to common names
+/// These are the common proxy types across Polkadot/Kusama runtimes
+fn proxy_type_name(index: u8) -> String {
+    match index {
+        0 => "Any".to_string(),
+        1 => "NonTransfer".to_string(),
+        2 => "Governance".to_string(),
+        3 => "Staking".to_string(),
+        4 => "IdentityJudgement".to_string(),
+        5 => "CancelProxy".to_string(),
+        6 => "Auction".to_string(),
+        7 => "NominationPools".to_string(),
+        _ => format!("Unknown({})", index),
+    }
+}
+
 // ================================================================================================
 // Core Query Function
 // ================================================================================================
@@ -139,18 +118,19 @@ pub async fn query_proxy_info(
         return Err(ProxyQueryError::ProxyPalletNotAvailable);
     }
 
-    // Build the storage address for Proxy::Proxies(account)
-    let storage_addr = subxt::dynamic::storage::<_, ()>("Proxy", "Proxies");
-    let account_bytes: [u8; 32] = *account.as_ref();
-
-    let storage_value = client_at_block
-        .storage()
-        .fetch(storage_addr, (account_bytes,))
-        .await;
-
-    let (delegated_accounts, deposit_held) = if let Ok(value) = storage_value {
-        let raw_bytes = value.into_bytes();
-        decode_proxy_info(&raw_bytes, ss58_prefix)?
+    // Use centralized query function
+    let (delegated_accounts, deposit_held) = if let Some((proxies, deposit)) =
+        balances_queries::get_proxy_definitions(client_at_block, account, ss58_prefix).await
+    {
+        let definitions = proxies
+            .into_iter()
+            .map(|p| DecodedProxyDefinition {
+                delegate: p.delegate,
+                proxy_type: proxy_type_name(p.proxy_type),
+                delay: p.delay.to_string(),
+            })
+            .collect();
+        (definitions, deposit.to_string())
     } else {
         (Vec::new(), "0".to_string())
     };
@@ -163,36 +143,4 @@ pub async fn query_proxy_info(
         delegated_accounts,
         deposit_held,
     })
-}
-
-// ================================================================================================
-// Proxy Info Decoding
-// ================================================================================================
-
-/// Decode proxy info from raw SCALE bytes
-/// The storage value is a tuple: (Vec<ProxyDefinition>, Balance)
-fn decode_proxy_info(
-    raw_bytes: &[u8],
-    ss58_prefix: u16,
-) -> Result<(Vec<DecodedProxyDefinition>, String), ProxyQueryError> {
-    // Decode as ProxiesStorageValue
-    if let Ok(proxies) = ProxiesStorageValue::decode(&mut &raw_bytes[..]) {
-        let definitions = proxies
-            .definitions
-            .into_iter()
-            .map(|def| {
-                let account_id = AccountId32::from(def.delegate);
-                DecodedProxyDefinition {
-                    delegate: account_id.to_ss58check_with_version(ss58_prefix.into()),
-                    proxy_type: proxy_type_name(def.proxy_type),
-                    delay: def.delay.to_string(),
-                }
-            })
-            .collect();
-
-        return Ok((definitions, proxies.deposit.to_string()));
-    }
-
-    // If decoding fails, return empty
-    Ok((Vec::new(), "0".to_string()))
 }
