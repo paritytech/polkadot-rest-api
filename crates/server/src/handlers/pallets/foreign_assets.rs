@@ -120,11 +120,13 @@ struct AssetMetadataStorage {
     summary = "Foreign assets",
     description = "Returns all foreign assets with their details and metadata. Foreign assets use XCM MultiLocation as their identifier.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Foreign assets list", body = Object),
         (status = 400, description = "Not supported on this chain"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

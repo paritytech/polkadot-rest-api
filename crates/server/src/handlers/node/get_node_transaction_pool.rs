@@ -120,6 +120,7 @@ pub struct TransactionPoolResponse {
     ),
     responses(
         (status = 200, description = "Transaction pool entries", body = TransactionPoolResponse),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

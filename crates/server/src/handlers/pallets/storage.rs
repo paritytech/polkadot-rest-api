@@ -209,6 +209,7 @@ fn extract_default_bytes<G>(default: &DecodeDifferent<G, Vec<u8>>) -> String {
     responses(
         (status = 200, description = "Pallet storage items", body = Object),
         (status = 400, description = "Invalid pallet or parameters"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -348,7 +349,7 @@ async fn handle_use_rc_block(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("storageItemId" = String, Path, description = "Name of the storage item"),
         ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("keys" = Option<String>, description = "Storage key arguments"),
+        ("keys[]" = Option<Vec<String>>, description = "Storage key arguments"),
         ("metadata" = Option<bool>, description = "Include metadata for the storage item"),
         ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
@@ -356,6 +357,7 @@ async fn handle_use_rc_block(
         (status = 200, description = "Storage item value", body = Object),
         (status = 400, description = "Invalid parameters"),
         (status = 404, description = "Storage item not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -1949,6 +1951,7 @@ pub struct RcStorageItemQueryParams {
     responses(
         (status = 200, description = "Relay chain pallet storage items", body = Object),
         (status = 400, description = "Invalid pallet or parameters"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -1988,13 +1991,14 @@ pub async fn rc_get_pallets_storage(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("storageItemId" = String, Path, description = "Name of the storage item"),
         ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("keys" = Option<String>, description = "Storage key arguments"),
+        ("keys[]" = Option<Vec<String>>, description = "Storage key arguments"),
         ("metadata" = Option<bool>, description = "Include metadata for the storage item")
     ),
     responses(
         (status = 200, description = "Relay chain storage item value", body = Object),
         (status = 400, description = "Invalid parameters"),
         (status = 404, description = "Storage item not found"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

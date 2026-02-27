@@ -166,6 +166,7 @@ struct SessionEraProgress {
     ),
     responses(
         (status = 200, description = "Staking progress information", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -337,6 +338,7 @@ pub async fn pallets_staking_progress(
     ),
     responses(
         (status = 200, description = "Relay chain staking progress", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

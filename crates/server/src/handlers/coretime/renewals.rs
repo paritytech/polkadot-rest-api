@@ -156,6 +156,7 @@ pub struct CoretimeRenewalsResponse {
     responses(
         (status = 200, description = "Coretime renewals", body = Object),
         (status = 400, description = "Invalid block identifier"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

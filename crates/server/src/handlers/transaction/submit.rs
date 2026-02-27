@@ -157,6 +157,7 @@ fn is_parse_error(err: &subxt_rpcs::Error) -> bool {
     responses(
         (status = 200, description = "Transaction hash", body = Object),
         (status = 400, description = "Invalid transaction"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

@@ -69,6 +69,7 @@ impl IntoResponse for CapabilitiesError {
     responses(
         (status = 200, description = "Chain capabilities", body = CapabilitiesResponse),
         (status = 400, description = "Invalid block parameter"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

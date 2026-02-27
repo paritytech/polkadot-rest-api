@@ -166,6 +166,7 @@ struct StatusRecord {
     responses(
         (status = 200, description = "Coretime info", body = Object),
         (status = 400, description = "Invalid block identifier"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

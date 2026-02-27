@@ -154,6 +154,7 @@ pub struct RuntimeMetadataResponse {
     responses(
         (status = 200, description = "Runtime metadata", body = Object),
         (status = 400, description = "Invalid block parameter"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -207,6 +208,7 @@ pub async fn runtime_metadata(
     responses(
         (status = 200, description = "List of available metadata versions", body = Vec<String>),
         (status = 400, description = "Invalid block parameter"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -264,6 +266,7 @@ pub async fn runtime_metadata_versions(
     responses(
         (status = 200, description = "Runtime metadata at specified version", body = Object),
         (status = 400, description = "Invalid version format or block parameter"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

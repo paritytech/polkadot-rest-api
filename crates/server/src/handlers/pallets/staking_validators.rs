@@ -90,6 +90,7 @@ struct ActiveEraInfo {
     ),
     responses(
         (status = 200, description = "Validator information", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -135,6 +136,7 @@ pub async fn pallets_staking_validators(
     ),
     responses(
         (status = 200, description = "Relay chain validator information", body = Object),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]

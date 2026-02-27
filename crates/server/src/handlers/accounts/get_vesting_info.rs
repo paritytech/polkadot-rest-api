@@ -45,6 +45,7 @@ use sp_core::crypto::AccountId32;
     responses(
         (status = 200, description = "Vesting information", body = VestingInfoResponse),
         (status = 400, description = "Invalid parameters"),
+        (status = 503, description = "Service unavailable"),
         (status = 500, description = "Internal server error")
     )
 )]
