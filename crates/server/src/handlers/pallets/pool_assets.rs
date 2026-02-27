@@ -91,7 +91,8 @@ pub struct PalletsPoolAssetsInfoResponse {
     description = "Returns details for a specific pool asset including supply, admin, and metadata.",
     params(
         ("assetId" = String, Path, description = "Pool asset ID"),
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Pool asset information", body = Object),

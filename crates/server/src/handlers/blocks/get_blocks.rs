@@ -45,7 +45,8 @@ pub struct BlocksRangeQueryParams {
         ("eventDocs" = Option<bool>, description = "Include documentation for events"),
         ("extrinsicDocs" = Option<bool>, description = "Include documentation for extrinsics"),
         ("noFees" = Option<bool>, description = "Skip fee calculation for extrinsics"),
-        ("useRcBlock" = Option<bool>, description = "Treat range as Relay Chain blocks")
+        ("useRcBlock" = Option<bool>, description = "Treat range as Relay Chain blocks"),
+        ("useEvmFormat" = Option<bool>, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
     ),
     responses(
         (status = 200, description = "Array of block information", body = Vec<Object>),

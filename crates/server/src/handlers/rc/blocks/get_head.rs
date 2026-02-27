@@ -157,7 +157,9 @@ impl IntoResponse for GetRcBlockHeadError {
         ("finalized" = Option<bool>, description = "When true returns finalized head (default: true)"),
         ("eventDocs" = Option<bool>, description = "Include event documentation"),
         ("extrinsicDocs" = Option<bool>, description = "Include extrinsic documentation"),
-        ("noFees" = Option<bool>, description = "Skip fee calculation")
+        ("noFees" = Option<bool>, description = "Skip fee calculation"),
+        ("decodedXcmMsgs" = Option<bool>, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, description = "Filter XCM messages by parachain ID")
     ),
     responses(
         (status = 200, description = "Relay chain head block", body = Object),

@@ -118,7 +118,8 @@ pub struct EventField {
     params(
         ("palletId" = String, Path, description = "Pallet name or index"),
         ("at" = Option<String>, description = "Block identifier (number or hash)"),
-        ("onlyIds" = Option<bool>, description = "Only return event names")
+        ("onlyIds" = Option<bool>, description = "Only return event names"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Pallet events", body = Object),
@@ -165,7 +166,8 @@ pub async fn get_pallet_events(
         ("palletId" = String, Path, description = "Pallet name or index"),
         ("eventItemId" = String, Path, description = "Event name"),
         ("at" = Option<String>, description = "Block identifier (number or hash)"),
-        ("metadata" = Option<bool>, description = "Include full event metadata")
+        ("metadata" = Option<bool>, description = "Include full event metadata"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Event item details", body = Object),

@@ -108,7 +108,8 @@ impl Default for BlockHeadQueryParams {
         ("noFees" = Option<bool>, description = "Skip fee calculation for extrinsics"),
         ("decodedXcmMsgs" = Option<bool>, description = "Decode and include XCM messages"),
         ("paraId" = Option<u32>, description = "Filter XCM messages by parachain ID"),
-        ("useRcBlock" = Option<bool>, description = "When true, use relay chain head to find corresponding Asset Hub blocks")
+        ("useRcBlock" = Option<bool>, description = "When true, use relay chain head to find corresponding Asset Hub blocks"),
+        ("useEvmFormat" = Option<bool>, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
     ),
     responses(
         (status = 200, description = "Latest block information", body = Object),

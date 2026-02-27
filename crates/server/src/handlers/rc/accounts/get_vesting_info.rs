@@ -28,7 +28,6 @@ use polkadot_rest_api_config::ChainType;
 ///
 /// Query Parameters:
 /// - `at` (optional): Block identifier (hash or height) - defaults to latest finalized
-/// - `includeClaimable` (optional): When true, calculate vested amounts
 #[utoipa::path(
     get,
     path = "/v1/rc/accounts/{accountId}/vesting-info",
@@ -37,8 +36,7 @@ use polkadot_rest_api_config::ChainType;
     description = "Returns vesting information for a given account on the relay chain.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
-        ("at" = Option<String>, description = "Block identifier (number or hash)"),
-        ("includeClaimable" = Option<bool>, description = "When true, calculate vested amounts")
+        ("at" = Option<String>, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Vesting information", body = RcVestingInfoResponse),

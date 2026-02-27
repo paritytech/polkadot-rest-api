@@ -41,7 +41,8 @@ use sp_core::crypto::AccountId32;
     params(
         ("accountId" = String, Path, description = "SS58-encoded stash account address"),
         ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier"),
+        ("includeClaimedRewards" = Option<bool>, description = "When true, include claimed rewards in the response")
     ),
     responses(
         (status = 200, description = "Staking information", body = StakingInfoResponse),

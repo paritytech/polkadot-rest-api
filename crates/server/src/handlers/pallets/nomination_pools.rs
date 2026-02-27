@@ -177,7 +177,8 @@ struct RewardPoolStorageV1 {
     summary = "Nomination pools info",
     description = "Returns global nomination pools statistics and configuration.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Nomination pools information", body = Object),
@@ -217,7 +218,8 @@ pub async fn pallets_nomination_pools_info(
     description = "Returns details for a specific nomination pool.",
     params(
         ("poolId" = String, Path, description = "Pool ID"),
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Pool details", body = Object),

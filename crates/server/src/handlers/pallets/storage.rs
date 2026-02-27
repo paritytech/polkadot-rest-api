@@ -348,7 +348,7 @@ async fn handle_use_rc_block(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("storageItemId" = String, Path, description = "Name of the storage item"),
         ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("keys" = Option<String>, description = "Storage key arguments"),
+        ("keys[]" = Option<Vec<String>>, description = "Storage key arguments"),
         ("metadata" = Option<bool>, description = "Include metadata for the storage item"),
         ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
     ),
@@ -1988,7 +1988,7 @@ pub async fn rc_get_pallets_storage(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("storageItemId" = String, Path, description = "Name of the storage item"),
         ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("keys" = Option<String>, description = "Storage key arguments"),
+        ("keys[]" = Option<Vec<String>>, description = "Storage key arguments"),
         ("metadata" = Option<bool>, description = "Include metadata for the storage item")
     ),
     responses(

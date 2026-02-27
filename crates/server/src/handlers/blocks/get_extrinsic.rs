@@ -47,7 +47,8 @@ use super::types::{
         ("eventDocs" = Option<bool>, description = "Include documentation for events"),
         ("extrinsicDocs" = Option<bool>, description = "Include documentation for extrinsics"),
         ("noFees" = Option<bool>, description = "Skip fee calculation"),
-        ("useRcBlock" = Option<bool>, description = "When true, treat blockId as Relay Chain block and return Asset Hub extrinsics")
+        ("useRcBlock" = Option<bool>, description = "When true, treat blockId as Relay Chain block and return Asset Hub extrinsics"),
+        ("useEvmFormat" = Option<bool>, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
     ),
     responses(
         (status = 200, description = "Extrinsic details", body = Object),

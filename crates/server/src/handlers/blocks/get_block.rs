@@ -34,9 +34,11 @@ use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
         ("eventDocs" = Option<bool>, description = "Include documentation for events"),
         ("extrinsicDocs" = Option<bool>, description = "Include documentation for extrinsics"),
         ("noFees" = Option<bool>, description = "Skip fee calculation for extrinsics"),
+        ("finalizedKey" = Option<bool>, description = "When true (default), include finalized status in response"),
         ("decodedXcmMsgs" = Option<bool>, description = "Decode and include XCM messages"),
         ("paraId" = Option<u32>, description = "Filter XCM messages by parachain ID"),
-        ("useRcBlock" = Option<bool>, description = "Treat blockId as Relay Chain block and return Asset Hub blocks")
+        ("useRcBlock" = Option<bool>, description = "Treat blockId as Relay Chain block and return Asset Hub blocks"),
+        ("useEvmFormat" = Option<bool>, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
     ),
     responses(
         (status = 200, description = "Block information", body = Object),
