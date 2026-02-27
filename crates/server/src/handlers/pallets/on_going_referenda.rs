@@ -8,24 +8,23 @@
 //! as parachains don't have governance.
 
 use crate::extractors::JsonQuery;
+use crate::handlers::common::xcm_types::format_number_with_commas;
 use crate::handlers::pallets::common::{
     AtResponse, ClientAtBlock, PalletError, format_account_id, resolve_block_for_pallet,
 };
+use crate::handlers::runtime_queries::governance as governance_queries;
+use crate::handlers::runtime_queries::referenda as referenda_queries;
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
-use crate::utils::run_with_concurrency;
 use axum::{
     Json,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use futures::stream::StreamExt;
 use polkadot_rest_api_config::ChainType;
-use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
-use subxt::error::StorageError;
 
 // ============================================================================
 // Query Parameters
@@ -91,69 +90,6 @@ pub struct Deposit {
 pub struct DecidingStatus {
     pub since: String,
     pub confirming: Option<String>,
-}
-
-// ============================================================================
-// Scale Decode Types - For direct decoding from storage
-// ============================================================================
-
-/// Referendum status enum - we only care about Ongoing variant
-#[derive(Debug, DecodeAsType)]
-enum ReferendumStatus {
-    Ongoing(Box<OngoingDetails>),
-    #[allow(dead_code)]
-    Approved(u32, Option<DepositDetails>, Option<DepositDetails>),
-    #[allow(dead_code)]
-    Rejected(u32, Option<DepositDetails>, Option<DepositDetails>),
-    #[allow(dead_code)]
-    Cancelled(u32, Option<DepositDetails>, Option<DepositDetails>),
-    #[allow(dead_code)]
-    TimedOut(u32, Option<DepositDetails>, Option<DepositDetails>),
-    #[allow(dead_code)]
-    Killed(u32),
-}
-
-/// Details for ongoing referenda - extract only what we need
-#[derive(Debug, DecodeAsType)]
-struct OngoingDetails {
-    track: u16,
-    #[allow(dead_code)]
-    origin: scale_value::Value<()>,
-    #[allow(dead_code)]
-    proposal: scale_value::Value<()>,
-    enactment: EnactmentType,
-    submitted: u32,
-    decision_deposit: Option<DepositDetails>,
-    #[allow(dead_code)]
-    submission_deposit: DepositDetails,
-    deciding: Option<DecidingDetails>,
-    #[allow(dead_code)]
-    tally: scale_value::Value<()>,
-    #[allow(dead_code)]
-    in_queue: bool,
-    #[allow(dead_code)]
-    alarm: Option<scale_value::Value<()>>,
-}
-
-/// Enactment type enum
-#[derive(Debug, DecodeAsType)]
-enum EnactmentType {
-    After(u32),
-    At(u32),
-}
-
-/// Deposit details
-#[derive(Debug, DecodeAsType)]
-struct DepositDetails {
-    who: [u8; 32],
-    amount: u128,
-}
-
-/// Deciding status details
-#[derive(Debug, DecodeAsType)]
-struct DecidingDetails {
-    since: u32,
-    confirming: Option<u32>,
 }
 
 // ============================================================================
@@ -279,88 +215,49 @@ async fn fetch_ongoing_referenda(
     let mut referenda = Vec::new();
 
     // First, get the ReferendumCount to know how many referenda have been created
-    // Use u32 as decode target - Subxt handles decoding automatically
-    let count_addr = subxt::dynamic::storage::<(), u32>("Referenda", "ReferendumCount");
-    let referendum_count: u32 = match client_at_block.storage().fetch(count_addr, ()).await {
-        Ok(storage_val) => match storage_val.decode() {
-            Ok(count) => count,
-            Err(e) => {
-                tracing::warn!("Failed to decode ReferendumCount: {:?}", e);
-                return Err(PalletError::StorageDecodeFailed {
-                    pallet: "Referenda",
-                    entry: "ReferendumCount",
+    let referendum_count: u32 =
+        match governance_queries::get_referendum_count(client_at_block).await {
+            Some(count) => count,
+            None => {
+                // The pallet or storage entry doesn't exist at this block
+                return Err(PalletError::PalletNotAvailableAtBlock {
+                    module: "api.query.referenda".to_string(),
+                    block_height: block_height.to_string(),
                 });
             }
-        },
-        Err(e) => {
-            // Match on concrete StorageError types instead of string matching
-            match &e {
-                StorageError::PalletNameNotFound(name) => {
-                    tracing::warn!(
-                        "Referenda pallet '{}' not found at block {}",
-                        name,
-                        block_height
-                    );
-                    return Err(PalletError::PalletNotAvailableAtBlock {
-                        module: "api.query.referenda".to_string(),
-                        block_height: block_height.to_string(),
-                    });
-                }
-                StorageError::StorageEntryNotFound {
-                    pallet_name,
-                    entry_name,
-                } => {
-                    tracing::warn!(
-                        "Storage entry '{}.{}' not found at block {}",
-                        pallet_name,
-                        entry_name,
-                        block_height
-                    );
-                    return Err(PalletError::PalletNotAvailableAtBlock {
-                        module: "api.query.referenda".to_string(),
-                        block_height: block_height.to_string(),
-                    });
-                }
-                _ => {
-                    tracing::warn!("Failed to fetch ReferendumCount: {:?}", e);
-                    return Err(PalletError::StorageFetchFailed {
-                        pallet: "Referenda",
-                        entry: "ReferendumCount",
-                    });
-                }
-            }
-        }
-    };
-
-    // Query all referendum IDs with bounded concurrency
-    let futures = (0..referendum_count).map(|ref_id| {
-        let storage_addr =
-            subxt::dynamic::storage::<_, ReferendumStatus>("Referenda", "ReferendumInfoFor");
-        let client = client_at_block.clone();
-        async move {
-            let result = client.storage().fetch(storage_addr, (ref_id,)).await;
-            let decoded: Option<ReferendumStatus> = match result {
-                Ok(val) => val.decode().ok(),
-                Err(_) => None,
-            };
-            (ref_id, decoded)
-        }
-    });
-
-    let mut stream = std::pin::pin!(run_with_concurrency(50, futures));
-    while let Some((ref_id, decoded)) = stream.next().await {
-        let decoded = match decoded {
-            Some(d) => d,
-            None => continue,
         };
 
-        // Extract ongoing referendum info using the typed struct
-        if let Some((track, ongoing)) = extract_ongoing_from_status(decoded, ref_id, ss58_prefix) {
-            // Filter to only include track 0 (Root) and track 1 (WhitelistedCaller)
-            if track == 0 || track == 1 {
-                referenda.push(ongoing);
+    // Iterate in batches from highest ID to lowest (ongoing referenda are usually recent)
+    // Use concurrent requests for better performance
+    let batch_size = 50;
+    let mut id = referendum_count.saturating_sub(1) as i64;
+
+    while id >= 0 {
+        let batch_start = (id - batch_size as i64 + 1).max(0) as u32;
+        let batch_end = id as u32;
+
+        // Fetch batch using centralized query
+        let results =
+            referenda_queries::iter_referenda_batch(client_at_block, batch_start, batch_end).await;
+
+        for (ref_id, decoded) in results {
+            let decoded = match decoded {
+                Some(d) => d,
+                None => continue,
+            };
+
+            // Extract ongoing referendum info using the centralized function
+            if let Some((track, ongoing)) =
+                referenda_queries::extract_ongoing_referendum(decoded, ref_id)
+            {
+                // Filter to only include track 0 (Root) and track 1 (WhitelistedCaller)
+                if track == 0 || track == 1 {
+                    referenda.push(convert_to_referendum_info(ongoing, ss58_prefix));
+                }
             }
         }
+
+        id -= batch_size as i64;
     }
 
     // Sort by ID in descending order to match Sidecar's ordering (highest ID first)
@@ -373,72 +270,41 @@ async fn fetch_ongoing_referenda(
     Ok(referenda)
 }
 
-/// Extract ongoing referendum info from decoded ReferendumStatus
-/// Returns (track, ReferendumInfo) tuple for filtering
-fn extract_ongoing_from_status(
-    status: ReferendumStatus,
-    id: u32,
+/// Convert decoded ongoing referendum to handler's ReferendumInfo format
+fn convert_to_referendum_info(
+    decoded: referenda_queries::DecodedOngoingReferendum,
     ss58_prefix: u16,
-) -> Option<(u16, ReferendumInfo)> {
-    match status {
-        ReferendumStatus::Ongoing(ongoing) => {
-            let ongoing = *ongoing; // Unbox
-            let track = ongoing.track;
+) -> ReferendumInfo {
+    use referenda_queries::DecodedEnactment;
 
-            // Extract enactment in Sidecar format
-            let enactment = match ongoing.enactment {
-                EnactmentType::After(blocks) => EnactmentInfo {
-                    after: Some(blocks.to_string()),
-                    at: None,
-                },
-                EnactmentType::At(block) => EnactmentInfo {
-                    after: None,
-                    at: Some(block.to_string()),
-                },
-            };
+    let enactment = match decoded.enactment {
+        DecodedEnactment::After(blocks) => EnactmentInfo {
+            after: Some(blocks.to_string()),
+            at: None,
+        },
+        DecodedEnactment::At(block) => EnactmentInfo {
+            after: None,
+            at: Some(block.to_string()),
+        },
+    };
 
-            // Extract decision deposit
-            let decision_deposit = ongoing.decision_deposit.map(|d| Deposit {
-                who: format_account_id(&d.who, ss58_prefix),
-                amount: d.amount.to_string(),
-            });
+    let decision_deposit = decoded.decision_deposit.map(|d| Deposit {
+        who: format_account_id(&d.who, ss58_prefix),
+        amount: d.amount.to_string(),
+    });
 
-            // Extract deciding status
-            let deciding = ongoing.deciding.map(|d| DecidingStatus {
-                since: d.since.to_string(),
-                confirming: d.confirming.map(|c| c.to_string()),
-            });
+    let deciding = decoded.deciding.map(|d| DecidingStatus {
+        since: d.since.to_string(),
+        confirming: d.confirming.map(|c| c.to_string()),
+    });
 
-            // Format ID with comma like Sidecar does (e.g., "1,308" instead of "1308")
-            let formatted_id = format_id_with_comma(id);
-
-            Some((
-                track,
-                ReferendumInfo {
-                    id: formatted_id,
-                    decision_deposit,
-                    enactment,
-                    submitted: ongoing.submitted.to_string(),
-                    deciding,
-                },
-            ))
-        }
-        _ => None, // Not ongoing, skip
+    ReferendumInfo {
+        id: format_number_with_commas(decoded.id as u128),
+        decision_deposit,
+        enactment,
+        submitted: decoded.submitted.to_string(),
+        deciding,
     }
-}
-
-/// Format ID with comma separator like Sidecar (e.g., 1308 -> "1,308")
-fn format_id_with_comma(id: u32) -> String {
-    let s = id.to_string();
-    let mut result = String::new();
-    let chars: Vec<char> = s.chars().collect();
-    for (i, c) in chars.iter().enumerate() {
-        if i > 0 && (chars.len() - i).is_multiple_of(3) {
-            result.push(',');
-        }
-        result.push(*c);
-    }
-    result
 }
 
 // ============================================================================
@@ -517,47 +383,47 @@ mod tests {
     use super::*;
 
     // ========================================================================
-    // format_id_with_comma tests
+    // format_number_with_commas tests (centralized function)
     // ========================================================================
 
     #[test]
-    fn test_format_id_with_comma_single_digit() {
-        assert_eq!(format_id_with_comma(1), "1");
-        assert_eq!(format_id_with_comma(9), "9");
+    fn test_format_number_with_commas_single_digit() {
+        assert_eq!(format_number_with_commas(1), "1");
+        assert_eq!(format_number_with_commas(9), "9");
     }
 
     #[test]
-    fn test_format_id_with_comma_double_digit() {
-        assert_eq!(format_id_with_comma(10), "10");
-        assert_eq!(format_id_with_comma(99), "99");
+    fn test_format_number_with_commas_double_digit() {
+        assert_eq!(format_number_with_commas(10), "10");
+        assert_eq!(format_number_with_commas(99), "99");
     }
 
     #[test]
-    fn test_format_id_with_comma_triple_digit() {
-        assert_eq!(format_id_with_comma(100), "100");
-        assert_eq!(format_id_with_comma(999), "999");
+    fn test_format_number_with_commas_triple_digit() {
+        assert_eq!(format_number_with_commas(100), "100");
+        assert_eq!(format_number_with_commas(999), "999");
     }
 
     #[test]
-    fn test_format_id_with_comma_four_digits() {
-        assert_eq!(format_id_with_comma(1000), "1,000");
-        assert_eq!(format_id_with_comma(1308), "1,308");
-        assert_eq!(format_id_with_comma(1339), "1,339");
-        assert_eq!(format_id_with_comma(1349), "1,349");
-        assert_eq!(format_id_with_comma(9999), "9,999");
+    fn test_format_number_with_commas_four_digits() {
+        assert_eq!(format_number_with_commas(1000), "1,000");
+        assert_eq!(format_number_with_commas(1308), "1,308");
+        assert_eq!(format_number_with_commas(1339), "1,339");
+        assert_eq!(format_number_with_commas(1349), "1,349");
+        assert_eq!(format_number_with_commas(9999), "9,999");
     }
 
     #[test]
-    fn test_format_id_with_comma_large_numbers() {
-        assert_eq!(format_id_with_comma(10000), "10,000");
-        assert_eq!(format_id_with_comma(100000), "100,000");
-        assert_eq!(format_id_with_comma(1000000), "1,000,000");
-        assert_eq!(format_id_with_comma(1234567), "1,234,567");
+    fn test_format_number_with_commas_large_numbers() {
+        assert_eq!(format_number_with_commas(10000), "10,000");
+        assert_eq!(format_number_with_commas(100000), "100,000");
+        assert_eq!(format_number_with_commas(1000000), "1,000,000");
+        assert_eq!(format_number_with_commas(1234567), "1,234,567");
     }
 
     #[test]
-    fn test_format_id_with_comma_zero() {
-        assert_eq!(format_id_with_comma(0), "0");
+    fn test_format_number_with_commas_zero() {
+        assert_eq!(format_number_with_commas(0), "0");
     }
 
     // ========================================================================

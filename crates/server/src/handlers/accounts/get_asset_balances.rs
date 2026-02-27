@@ -5,6 +5,7 @@ use super::types::{AccountsError, AssetBalancesQueryParams, AssetBalancesRespons
 use super::utils::validate_and_parse_address;
 use crate::extractors::JsonQuery;
 use crate::handlers::accounts::utils::{query_all_assets_id, query_assets};
+use crate::handlers::runtime_queries::assets as assets_queries;
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
@@ -80,24 +81,18 @@ async fn query_asset_balances(
     block: &utils::ResolvedBlock,
     asset_ids: &[u32],
 ) -> Result<AssetBalancesResponse, AccountsError> {
-    let storage_query = ("Assets", "Account");
-    let assets_exists = client_at_block.storage().entry(storage_query).is_ok();
-
-    if !assets_exists {
+    // Check if Assets pallet is available using centralized function
+    if !assets_queries::is_assets_pallet_available(client_at_block) {
         return Err(AccountsError::PalletNotAvailable("Assets".to_string()));
     }
 
     // Determine which assets to query
     let assets_to_query = if asset_ids.is_empty() {
-        // Query all asset IDs
-        let assets = query_all_assets_id(client_at_block).await;
-        match assets {
-            Ok(ids) => ids,
-            Err(e) => {
-                tracing::warn!("Failed to query all asset IDs: {e}");
-                return Err(AccountsError::PalletNotAvailable("Assets".to_string()));
-            }
-        }
+        // Query all asset IDs using centralized function
+        query_all_assets_id(client_at_block).await.map_err(|e| {
+            tracing::warn!("Failed to query all asset IDs: {e}");
+            AccountsError::PalletNotAvailable("Assets".to_string())
+        })?
     } else {
         asset_ids.to_vec()
     };

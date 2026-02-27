@@ -9,9 +9,10 @@
 
 use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
-    AssetDetails, AssetMetadataStorage, AtResponse, ClientAtBlock, PalletError, format_account_id,
-    resolve_block_for_pallet,
+    AtResponse, ClientAtBlock, PalletError, resolve_block_for_pallet,
 };
+use crate::handlers::runtime_queries::pool_assets as pool_assets_queries;
+use crate::handlers::runtime_queries::staking as staking_queries;
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -221,29 +222,23 @@ async fn fetch_pool_asset_info(
     asset_id: u32,
     ss58_prefix: u16,
 ) -> Option<PoolAssetInfo> {
-    // Query PoolAssets pallet with typed return
-    let asset_addr = subxt::dynamic::storage::<_, AssetDetails>("PoolAssets", "Asset");
-    let details = client_at_block
-        .storage()
-        .fetch(asset_addr, (asset_id,))
+    let info = pool_assets_queries::get_pool_asset_info(client_at_block, asset_id, ss58_prefix)
         .await
-        .ok()?
-        .decode()
-        .ok()?;
+        .ok()??;
 
     Some(PoolAssetInfo {
-        owner: format_account_id(&details.owner, ss58_prefix),
-        issuer: format_account_id(&details.issuer, ss58_prefix),
-        admin: format_account_id(&details.admin, ss58_prefix),
-        freezer: format_account_id(&details.freezer, ss58_prefix),
-        supply: details.supply.to_string(),
-        deposit: details.deposit.to_string(),
-        min_balance: details.min_balance.to_string(),
-        is_sufficient: details.is_sufficient,
-        accounts: details.accounts.to_string(),
-        sufficients: details.sufficients.to_string(),
-        approvals: details.approvals.to_string(),
-        status: details.status.as_str().to_string(),
+        owner: info.owner,
+        issuer: info.issuer,
+        admin: info.admin,
+        freezer: info.freezer,
+        supply: info.supply,
+        deposit: info.deposit,
+        min_balance: info.min_balance,
+        is_sufficient: info.is_sufficient,
+        accounts: info.accounts,
+        sufficients: info.sufficients,
+        approvals: info.approvals,
+        status: info.status,
     })
 }
 
@@ -252,36 +247,24 @@ async fn fetch_pool_asset_meta_data(
     client_at_block: &ClientAtBlock,
     asset_id: u32,
 ) -> Option<PoolAssetMetadata> {
-    // Query PoolAssets pallet with typed return
-    let metadata_addr =
-        subxt::dynamic::storage::<_, AssetMetadataStorage>("PoolAssets", "Metadata");
-    let metadata = client_at_block
-        .storage()
-        .fetch(metadata_addr, (asset_id,))
+    let metadata = pool_assets_queries::get_pool_asset_metadata(client_at_block, asset_id)
         .await
-        .ok()?
-        .decode()
-        .ok()?;
+        .ok()??;
 
     Some(PoolAssetMetadata {
-        deposit: metadata.deposit.to_string(),
-        name: format!("0x{}", hex::encode(&metadata.name)),
-        symbol: format!("0x{}", hex::encode(&metadata.symbol)),
-        decimals: metadata.decimals.to_string(),
+        deposit: metadata.deposit,
+        name: metadata.name,
+        symbol: metadata.symbol,
+        decimals: metadata.decimals,
         is_frozen: metadata.is_frozen,
     })
 }
 
 /// Fetches timestamp from Timestamp::Now storage.
 async fn fetch_timestamp(client_at_block: &ClientAtBlock) -> Option<String> {
-    let timestamp_addr = subxt::dynamic::storage::<(), u64>("Timestamp", "Now");
-    let timestamp = client_at_block
-        .storage()
-        .fetch(timestamp_addr, ())
+    staking_queries::get_timestamp(client_at_block)
         .await
-        .ok()?;
-    let timestamp_value = timestamp.decode().ok()?;
-    Some(timestamp_value.to_string())
+        .map(|ts| ts.to_string())
 }
 
 // ============================================================================
@@ -291,7 +274,7 @@ async fn fetch_timestamp(client_at_block: &ClientAtBlock) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::handlers::pallets::common::AssetStatus;
+    use crate::handlers::runtime_queries::assets_common::AssetStatus;
 
     #[test]
     fn test_pool_asset_info_serialization() {

@@ -10,6 +10,7 @@ use crate::extractors::JsonQuery;
 use crate::handlers::pallets::common::{
     AtResponse, PalletError, format_account_id, resolve_block_for_pallet,
 };
+use crate::handlers::runtime_queries::nomination_pools as nomination_pools_queries;
 use crate::state::AppState;
 use crate::utils;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
@@ -19,7 +20,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use parity_scale_codec::Decode;
 use polkadot_rest_api_config::ChainType;
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
@@ -76,94 +76,6 @@ pub struct NominationPoolResponse {
     pub rc_block_number: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ah_timestamp: Option<String>,
-}
-
-// ============================================================================
-// Internal SCALE Decode Types
-// ============================================================================
-
-#[derive(Debug, Clone, Decode)]
-enum PoolState {
-    Open,
-    Blocked,
-    Destroying,
-}
-
-impl PoolState {
-    fn as_str(&self) -> &'static str {
-        match self {
-            PoolState::Open => "Open",
-            PoolState::Blocked => "Blocked",
-            PoolState::Destroying => "Destroying",
-        }
-    }
-}
-
-/// Bonded pool storage format (modern version with commission)
-#[derive(Debug, Clone, Decode)]
-struct BondedPoolStorageV2 {
-    commission: CommissionStorage,
-    member_counter: u32,
-    points: u128,
-    roles: PoolRolesStorage,
-    state: PoolState,
-}
-
-/// Bonded pool storage format (legacy without commission)
-#[derive(Debug, Clone, Decode)]
-struct BondedPoolStorageV1 {
-    points: u128,
-    state: PoolState,
-    member_counter: u32,
-    roles: PoolRolesStorage,
-}
-
-#[derive(Debug, Clone, Decode)]
-struct CommissionStorage {
-    current: Option<(u32, [u8; 32])>, // (Perbill, AccountId)
-    max: Option<u32>,                 // Perbill
-    change_rate: Option<CommissionChangeRate>,
-    throttle_from: Option<u32>, // BlockNumber
-    claim_permission: Option<CommissionClaimPermission>,
-}
-
-#[derive(Debug, Clone, Decode)]
-struct CommissionChangeRate {
-    max_increase: u32, // Perbill
-    min_delay: u32,    // BlockNumber
-}
-
-#[derive(Debug, Clone, Decode)]
-enum CommissionClaimPermission {
-    Permissionless,
-    #[allow(dead_code)]
-    Account([u8; 32]),
-}
-
-#[derive(Debug, Clone, Decode)]
-struct PoolRolesStorage {
-    depositor: [u8; 32],
-    root: Option<[u8; 32]>,
-    nominator: Option<[u8; 32]>,
-    bouncer: Option<[u8; 32]>,
-}
-
-/// Reward pool storage format (modern with commission)
-#[derive(Debug, Clone, Decode)]
-struct RewardPoolStorageV2 {
-    last_recorded_reward_counter: u128,
-    last_recorded_total_payouts: u128,
-    total_rewards_claimed: u128,
-    total_commission_pending: u128,
-    total_commission_claimed: u128,
-}
-
-/// Reward pool storage format (legacy without commission)
-#[derive(Debug, Clone, Decode)]
-struct RewardPoolStorageV1 {
-    last_recorded_reward_counter: u128,
-    last_recorded_total_payouts: u128,
-    total_rewards_claimed: u128,
 }
 
 // ============================================================================
@@ -487,8 +399,7 @@ async fn build_nomination_pools_info(
 // Helper Functions - Storage Value Fetchers
 // ============================================================================
 
-/// Generic function to fetch and decode a storage value.
-/// Uses `DecodeAsType` for type-guided decoding.
+/// Generic function to fetch and decode a storage value using centralized query module.
 async fn fetch_storage_value<T>(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     pallet: &str,
@@ -497,9 +408,7 @@ async fn fetch_storage_value<T>(
 where
     T: DecodeAsType,
 {
-    let addr = subxt::dynamic::storage::<(), scale_value::Value>(pallet, entry);
-    let storage_value = client_at_block.storage().fetch(addr, ()).await.ok()?;
-    storage_value.decode_as().ok()
+    nomination_pools_queries::get_storage_value(client_at_block, pallet, entry).await
 }
 
 // ============================================================================
@@ -512,36 +421,23 @@ async fn fetch_bonded_pool(
     pool_id: u32,
     ss58_prefix: u16,
 ) -> Option<JsonValue> {
-    let addr = subxt::dynamic::storage::<_, scale_value::Value>("NominationPools", "BondedPools");
-    let raw_bytes = match client_at_block.storage().fetch(addr, (pool_id,)).await {
-        Ok(value) => value.into_bytes(),
-        Err(_) => return None,
-    };
+    use nomination_pools_queries::DecodedBondedPool;
 
-    // Try modern V2 format first (with commission)
-    // Using raw Decode since we're confident about the exact byte layout
-    let mut cursor = &raw_bytes[..];
-    if let Ok(storage) = BondedPoolStorageV2::decode(&mut cursor) {
-        // Sanity check: ensure all bytes were consumed
-        if cursor.is_empty() {
-            return Some(bonded_pool_v2_to_json(&storage, ss58_prefix));
-        }
+    let decoded = nomination_pools_queries::get_bonded_pool(client_at_block, pool_id).await?;
+
+    match decoded {
+        DecodedBondedPool::V2(storage) => Some(bonded_pool_v2_to_json(&storage, ss58_prefix)),
+        DecodedBondedPool::V1(storage) => Some(bonded_pool_v1_to_json(&storage, ss58_prefix)),
     }
-
-    // Fall back to V1 format (legacy without commission)
-    let mut cursor = &raw_bytes[..];
-    if let Ok(storage) = BondedPoolStorageV1::decode(&mut cursor) {
-        // Sanity check: ensure all bytes were consumed
-        if cursor.is_empty() {
-            return Some(bonded_pool_v1_to_json(&storage, ss58_prefix));
-        }
-    }
-
-    None
 }
 
 /// Converts V2 bonded pool storage to JSON matching Sidecar output format.
-fn bonded_pool_v2_to_json(storage: &BondedPoolStorageV2, ss58_prefix: u16) -> JsonValue {
+fn bonded_pool_v2_to_json(
+    storage: &nomination_pools_queries::BondedPoolStorageV2,
+    ss58_prefix: u16,
+) -> JsonValue {
+    use nomination_pools_queries::CommissionClaimPermission;
+
     json!({
         "commission": {
             "current": storage.commission.current.as_ref().map(|(perbill, _account)| {
@@ -575,7 +471,10 @@ fn bonded_pool_v2_to_json(storage: &BondedPoolStorageV2, ss58_prefix: u16) -> Js
 }
 
 /// Converts V1 bonded pool storage to JSON matching Sidecar output format.
-fn bonded_pool_v1_to_json(storage: &BondedPoolStorageV1, ss58_prefix: u16) -> JsonValue {
+fn bonded_pool_v1_to_json(
+    storage: &nomination_pools_queries::BondedPoolStorageV1,
+    ss58_prefix: u16,
+) -> JsonValue {
     json!({
         "commission": {
             "current": null,
@@ -601,44 +500,26 @@ async fn fetch_reward_pool(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     pool_id: u32,
 ) -> Option<JsonValue> {
-    let addr = subxt::dynamic::storage::<_, scale_value::Value>("NominationPools", "RewardPools");
-    let raw_bytes = match client_at_block.storage().fetch(addr, (pool_id,)).await {
-        Ok(value) => value.into_bytes(),
-        Err(_) => return None,
-    };
+    use nomination_pools_queries::DecodedRewardPool;
 
-    // Try modern V2 format first (with commission tracking)
-    // Using raw Decode since we're confident about the exact byte layout
-    let mut cursor = &raw_bytes[..];
-    if let Ok(storage) = RewardPoolStorageV2::decode(&mut cursor) {
-        // Sanity check: ensure all bytes were consumed
-        if cursor.is_empty() {
-            return Some(json!({
-                "lastRecordedRewardCounter": storage.last_recorded_reward_counter.to_string(),
-                "lastRecordedTotalPayouts": storage.last_recorded_total_payouts.to_string(),
-                "totalRewardsClaimed": storage.total_rewards_claimed.to_string(),
-                "totalCommissionPending": storage.total_commission_pending.to_string(),
-                "totalCommissionClaimed": storage.total_commission_claimed.to_string()
-            }));
-        }
+    let decoded = nomination_pools_queries::get_reward_pool(client_at_block, pool_id).await?;
+
+    match decoded {
+        DecodedRewardPool::V2(storage) => Some(json!({
+            "lastRecordedRewardCounter": storage.last_recorded_reward_counter.to_string(),
+            "lastRecordedTotalPayouts": storage.last_recorded_total_payouts.to_string(),
+            "totalRewardsClaimed": storage.total_rewards_claimed.to_string(),
+            "totalCommissionPending": storage.total_commission_pending.to_string(),
+            "totalCommissionClaimed": storage.total_commission_claimed.to_string()
+        })),
+        DecodedRewardPool::V1(storage) => Some(json!({
+            "lastRecordedRewardCounter": storage.last_recorded_reward_counter.to_string(),
+            "lastRecordedTotalPayouts": storage.last_recorded_total_payouts.to_string(),
+            "totalRewardsClaimed": storage.total_rewards_claimed.to_string(),
+            "totalCommissionPending": "0",
+            "totalCommissionClaimed": "0"
+        })),
     }
-
-    // Fall back to V1 format (legacy without commission)
-    let mut cursor = &raw_bytes[..];
-    if let Ok(storage) = RewardPoolStorageV1::decode(&mut cursor) {
-        // Sanity check: ensure all bytes were consumed
-        if cursor.is_empty() {
-            return Some(json!({
-                "lastRecordedRewardCounter": storage.last_recorded_reward_counter.to_string(),
-                "lastRecordedTotalPayouts": storage.last_recorded_total_payouts.to_string(),
-                "totalRewardsClaimed": storage.total_rewards_claimed.to_string(),
-                "totalCommissionPending": "0",
-                "totalCommissionClaimed": "0"
-            }));
-        }
-    }
-
-    None
 }
 
 // ============================================================================
@@ -648,6 +529,7 @@ async fn fetch_reward_pool(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nomination_pools_queries::PoolState;
 
     #[test]
     fn test_pool_state_as_str() {

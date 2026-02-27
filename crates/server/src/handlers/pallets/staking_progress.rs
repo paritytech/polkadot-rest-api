@@ -9,6 +9,7 @@ use crate::handlers::pallets::constants::{
     derive_election_lookahead, get_asset_hub_babe_params, get_babe_epoch_duration,
     is_bad_staking_block,
 };
+use crate::handlers::runtime_queries::staking as staking_queries;
 use crate::state::{AppState, RelayChainError};
 use crate::utils::{
     BlockId, DEFAULT_CONCURRENCY, fetch_block_timestamp, rc_block::find_ah_blocks_in_rc_block,
@@ -20,7 +21,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use hex;
 use parity_scale_codec::Decode;
 use polkadot_rest_api_config::ChainType;
 use serde::{Deserialize, Serialize};
@@ -89,12 +89,32 @@ struct ActiveEraInfo {
     start: Option<u64>,
 }
 
+impl From<staking_queries::DecodedActiveEraInfo> for ActiveEraInfo {
+    fn from(info: staking_queries::DecodedActiveEraInfo) -> Self {
+        ActiveEraInfo {
+            index: info.index,
+            start: info.start,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Decode)]
 enum ForceEra {
     NotForcing,
     ForceNew,
     ForceNone,
     ForceAlways,
+}
+
+impl From<staking_queries::ForceEra> for ForceEra {
+    fn from(fe: staking_queries::ForceEra) -> Self {
+        match fe {
+            staking_queries::ForceEra::NotForcing => ForceEra::NotForcing,
+            staking_queries::ForceEra::ForceNew => ForceEra::ForceNew,
+            staking_queries::ForceEra::ForceNone => ForceEra::ForceNone,
+            staking_queries::ForceEra::ForceAlways => ForceEra::ForceAlways,
+        }
+    }
 }
 
 impl ForceEra {
@@ -116,19 +136,19 @@ impl ForceEra {
     }
 }
 
-#[derive(Debug, Clone, Decode)]
-struct UnappliedSlashStorage {
-    validator: [u8; 32],
-    own: u128,
-    others: Vec<([u8; 32], u128)>,
-    reporters: Vec<[u8; 32]>,
-    payout: u128,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Decode)]
 enum ElectionStatus {
     Close,
     Open(u32),
+}
+
+impl From<staking_queries::EraElectionStatus> for ElectionStatus {
+    fn from(status: staking_queries::EraElectionStatus) -> Self {
+        match status {
+            staking_queries::EraElectionStatus::Close => ElectionStatus::Close,
+            staking_queries::EraElectionStatus::Open(block) => ElectionStatus::Open(block),
+        }
+    }
 }
 
 impl ElectionStatus {
@@ -649,18 +669,9 @@ async fn handle_use_rc_block(
 async fn fetch_validator_count(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u32, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(), u32>("Staking", "ValidatorCount");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_validator_count(client_at_block)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
-            pallet: "Staking",
-            entry: "ValidatorCount",
-        })?;
-    value
-        .decode()
-        .map_err(|_| PalletError::StorageDecodeFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Staking",
             entry: "ValidatorCount",
         })
@@ -669,196 +680,82 @@ async fn fetch_validator_count(
 async fn fetch_force_era(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<ForceEra, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "ForceEra");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_force_era(client_at_block)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
+        .map(ForceEra::from)
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Staking",
             entry: "ForceEra",
-        })?;
-    let bytes = value.into_bytes();
-    ForceEra::decode(&mut &bytes[..]).map_err(|_| PalletError::StorageDecodeFailed {
-        pallet: "Staking",
-        entry: "ForceEra",
-    })
+        })
 }
 
 async fn fetch_active_era(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<ActiveEraInfo, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "ActiveEra");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_active_era_info(client_at_block)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to fetch Staking.ActiveEra: {:?}", e);
-            PalletError::ActiveEraNotFound
-        })?;
-
-    let bytes = value.into_bytes();
-    tracing::debug!("Staking.ActiveEra raw bytes: {:?}", hex::encode(&bytes));
-
-    if let Ok(era_info) = ActiveEraInfo::decode(&mut &bytes[..]) {
-        tracing::debug!("Decoded ActiveEraInfo directly: index={}", era_info.index);
-        return Ok(era_info);
-    }
-
-    let option_value: Option<ActiveEraInfo> = Option::<ActiveEraInfo>::decode(&mut &bytes[..])
-        .map_err(|e| {
-            tracing::error!("Failed to decode Staking.ActiveEra: {:?}", e);
-            PalletError::ActiveEraNotFound
-        })?;
-
-    option_value.ok_or_else(|| {
-        tracing::error!("Staking.ActiveEra is None (no active era at this block)");
-        PalletError::ActiveEraNotFound
-    })
+        .map(ActiveEraInfo::from)
+        .ok_or(PalletError::ActiveEraNotFound)
 }
 
 async fn fetch_bonded_eras(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<(u32, u32)>, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "BondedEras");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_bonded_eras(client_at_block)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Staking",
             entry: "BondedEras",
-        })?;
-    let bytes = value.into_bytes();
-    Vec::<(u32, u32)>::decode(&mut &bytes[..]).map_err(|_| PalletError::StorageDecodeFailed {
-        pallet: "Staking",
-        entry: "BondedEras",
-    })
+        })
 }
 
 async fn fetch_staking_validators(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
 ) -> Result<Vec<String>, PalletError> {
-    // Try Staking.Validators first (this storage entry may exist in some chains)
-    let staking_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "Validators");
-    if let Ok(value) = client_at_block.storage().fetch(staking_addr, ()).await {
-        let bytes = value.into_bytes();
-        if let Ok(validators) = Vec::<[u8; 32]>::decode(&mut &bytes[..]) {
-            tracing::debug!(
-                "Found {} validators in Staking.Validators",
-                validators.len()
-            );
-            return Ok(validators
-                .iter()
-                .map(|v| format_account_id(v, ss58_prefix))
-                .collect());
-        }
-    }
-
-    // Fall back to Session.Validators
-    let session_addr = subxt::dynamic::storage::<(), scale_value::Value>("Session", "Validators");
-    let value = client_at_block
-        .storage()
-        .fetch(session_addr, ())
+    // Use the centralized session validators query
+    staking_queries::get_session_validators(client_at_block, ss58_prefix)
         .await
-        .map_err(|e| {
-            tracing::debug!("Failed to fetch Session.Validators: {:?}", e);
-            PalletError::StorageFetchFailed {
-                pallet: "Session",
-                entry: "Validators",
-            }
-        })?;
-
-    let bytes = value.into_bytes();
-    let validators: Vec<[u8; 32]> = Vec::<[u8; 32]>::decode(&mut &bytes[..]).map_err(|e| {
-        tracing::debug!("Failed to decode Session.Validators: {:?}", e);
-        PalletError::StorageDecodeFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Session",
             entry: "Validators",
-        }
-    })?;
-
-    Ok(validators
-        .iter()
-        .map(|v| format_account_id(v, ss58_prefix))
-        .collect())
+        })
 }
 
 async fn fetch_unapplied_slashes(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
 ) -> Vec<UnappliedSlash> {
-    // Use (u32,) for the key type since UnappliedSlashes is a map with era as key
-    let storage_addr =
-        subxt::dynamic::storage::<(u32,), scale_value::Value>("Staking", "UnappliedSlashes");
-    // Pass () as partial keys to iterate over all entries
-    let mut stream = match client_at_block.storage().iter(storage_addr, ()).await {
-        Ok(s) => s,
-        Err(_) => return vec![],
-    };
+    // Use centralized iteration function
+    let slashes = staking_queries::iter_unapplied_slashes(client_at_block).await;
 
-    let mut result = Vec::new();
-
-    while let Some(entry_result) = stream.next().await {
-        let entry = match entry_result {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-
-        // Get key bytes and value bytes
-        let key_bytes = entry.key_bytes();
-        let value_bytes = entry.value().bytes();
-
-        // Key format: 16 bytes pallet prefix + 16 bytes entry prefix + 8 bytes twox64 hash + 4 bytes era
-        // Total: 44 bytes, era starts at byte 40
-        let era: u32 = if key_bytes.len() >= 44 {
-            u32::decode(&mut &key_bytes[40..44]).unwrap_or(0)
-        } else {
-            continue;
-        };
-        let slashes: Vec<UnappliedSlashStorage> =
-            match Vec::<UnappliedSlashStorage>::decode(&mut &value_bytes[..]) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-
-        for slash in slashes {
-            result.push(UnappliedSlash {
-                era: era.to_string(),
-                validator: format_account_id(&slash.validator, ss58_prefix),
-                own: slash.own.to_string(),
-                others: slash
-                    .others
-                    .iter()
-                    .map(|(acc, amount)| (format_account_id(acc, ss58_prefix), amount.to_string()))
-                    .collect(),
-                reporters: slash
-                    .reporters
-                    .iter()
-                    .map(|acc| format_account_id(acc, ss58_prefix))
-                    .collect(),
-                payout: slash.payout.to_string(),
-            });
-        }
-    }
-
-    result
+    slashes
+        .into_iter()
+        .map(|slash| UnappliedSlash {
+            era: slash.era.to_string(),
+            validator: format_account_id(&slash.validator, ss58_prefix),
+            own: slash.own.to_string(),
+            others: slash
+                .others
+                .iter()
+                .map(|(acc, amount)| (format_account_id(acc, ss58_prefix), amount.to_string()))
+                .collect(),
+            reporters: slash
+                .reporters
+                .iter()
+                .map(|acc| format_account_id(acc, ss58_prefix))
+                .collect(),
+            payout: slash.payout.to_string(),
+        })
+        .collect()
 }
 
 async fn fetch_election_status(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Option<ElectionStatus> {
-    let storage_addr =
-        subxt::dynamic::storage::<(), scale_value::Value>("Staking", "EraElectionStatus");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_era_election_status(client_at_block)
         .await
-        .ok()?;
-    let bytes = value.into_bytes();
-    ElectionStatus::decode(&mut &bytes[..]).ok()
+        .map(ElectionStatus::from)
 }
 
 // ============================================================================
@@ -923,12 +820,9 @@ async fn derive_session_era_progress_asset_hub(
     })?;
 
     // Fetch timestamp
-    let timestamp_str = fetch_block_timestamp(client_at_block)
+    let timestamp = staking_queries::get_timestamp(client_at_block)
         .await
         .ok_or(PalletError::TimestampFetchFailed)?;
-    let timestamp: u64 = timestamp_str
-        .parse()
-        .map_err(|_| PalletError::TimestampParseFailed)?;
 
     // Fetch active era and bonded eras
     let active_era_info = fetch_active_era(client_at_block).await?;
@@ -995,14 +889,9 @@ async fn derive_session_era_progress_asset_hub(
 async fn fetch_relay_skipped_epochs(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Vec<(u64, u32)> {
-    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Babe", "SkippedEpochs");
-    let value = match client_at_block.storage().fetch(storage_addr, ()).await {
-        Ok(v) => v,
-        Err(_) => return vec![],
-    };
-
-    let bytes = value.into_bytes();
-    Vec::<(u64, u32)>::decode(&mut &bytes[..]).unwrap_or_default()
+    staking_queries::get_babe_skipped_epochs(client_at_block)
+        .await
+        .unwrap_or_default()
 }
 
 /// Calculate the session index from epoch index, accounting for skipped epochs.
@@ -1034,18 +923,9 @@ fn calculate_session_from_skipped_epochs(epoch_index: u64, skipped_epochs: &[(u6
 async fn fetch_babe_current_slot(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u64, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "CurrentSlot");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_babe_current_slot(client_at_block)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
-            pallet: "Babe",
-            entry: "CurrentSlot",
-        })?;
-    value
-        .decode()
-        .map_err(|_| PalletError::StorageDecodeFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Babe",
             entry: "CurrentSlot",
         })
@@ -1054,18 +934,9 @@ async fn fetch_babe_current_slot(
 async fn fetch_babe_epoch_index(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u64, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "EpochIndex");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_babe_epoch_index(client_at_block)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
-            pallet: "Babe",
-            entry: "EpochIndex",
-        })?;
-    value
-        .decode()
-        .map_err(|_| PalletError::StorageDecodeFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Babe",
             entry: "EpochIndex",
         })
@@ -1074,18 +945,9 @@ async fn fetch_babe_epoch_index(
 async fn fetch_babe_genesis_slot(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u64, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(), u64>("Babe", "GenesisSlot");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_babe_genesis_slot(client_at_block)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
-            pallet: "Babe",
-            entry: "GenesisSlot",
-        })?;
-    value
-        .decode()
-        .map_err(|_| PalletError::StorageDecodeFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Babe",
             entry: "GenesisSlot",
         })
@@ -1094,18 +956,9 @@ async fn fetch_babe_genesis_slot(
 async fn fetch_session_current_index(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<u32, PalletError> {
-    let storage_addr = subxt::dynamic::storage::<(), u32>("Session", "CurrentIndex");
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, ())
+    staking_queries::get_session_current_index(client_at_block)
         .await
-        .map_err(|_| PalletError::StorageFetchFailed {
-            pallet: "Session",
-            entry: "CurrentIndex",
-        })?;
-    value
-        .decode()
-        .map_err(|_| PalletError::StorageDecodeFailed {
+        .ok_or(PalletError::StorageFetchFailed {
             pallet: "Session",
             entry: "CurrentIndex",
         })
