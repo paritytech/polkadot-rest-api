@@ -49,7 +49,6 @@ scale-decode = { version = "0.16", features = ["derive"] }
 scale-type-resolver = { version = "0.2.0", features = ["visitor"] }
 scale-info-legacy = "0.4.0"
 merkleized-metadata = "0.5"
-tikv-jemallocator = "0.6"
 prometheus = "0.13"
 lazy_static = "1.4"
 regex = "1.10"
@@ -58,6 +57,9 @@ url = "2.5"
 http-body-util = "0.1"
 utoipa = { version = "5", features = ["axum_extras"] }
 serde_urlencoded = "0.7.1"
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+tikv-jemallocator = "0.6"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
