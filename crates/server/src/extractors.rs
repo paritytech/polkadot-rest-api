@@ -11,6 +11,61 @@ use axum::response::{IntoResponse, Response};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
+// ============================================================================
+// QsQuery - Query extractor with bracket notation support (keys[]=val)
+// ============================================================================
+
+/// A query extractor that supports PHP-style bracket notation for arrays.
+///
+/// Uses `serde_qs` instead of `serde_urlencoded` to properly parse:
+/// - `keys[]=val1&keys[]=val2` -> Vec with ["val1", "val2"]
+/// - `keys[0]=val1&keys[1]=val2` -> Vec with ["val1", "val2"]
+///
+/// This is required for Sidecar API compatibility where storage keys are
+/// passed as `?keys[]=key1&keys[]=key2`.
+pub struct QsQuery<T>(pub T);
+
+impl<T, S> axum::extract::FromRequestParts<S> for QsQuery<T>
+where
+    T: DeserializeOwned + Send,
+    S: Send + Sync,
+{
+    type Rejection = Response;
+
+    fn from_request_parts<'life0, 'life1, 'async_trait>(
+        parts: &'life0 mut axum::http::request::Parts,
+        _state: &'life1 S,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self, Self::Rejection>> + Send + 'async_trait>,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async move {
+            let raw_query = parts.uri.query().unwrap_or("");
+
+            // Use non-strict mode to handle URL-encoded brackets (%5B%5D)
+            // Strict mode requires raw brackets which browsers typically encode
+            let config = serde_qs::Config::new(5, false);
+
+            match config.deserialize_str::<T>(raw_query) {
+                Ok(value) => Ok(QsQuery(value)),
+                Err(e) => Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": format!("Failed to deserialize query string: {}", e) })),
+                )
+                    .into_response()),
+            }
+        })
+    }
+}
+
+// ============================================================================
+// JsonQuery - Standard query extractor with JSON error responses
+// ============================================================================
+
 /// A wrapper around [`Query<T>`] that returns JSON error responses on rejection.
 ///
 /// Axum's default `Query<T>` returns plain-text errors when deserialization fails
