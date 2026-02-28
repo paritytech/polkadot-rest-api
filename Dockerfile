@@ -6,6 +6,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
 	pkg-config \
 	libssl-dev \
+	make \
+	gcc \
+	libc6-dev \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Copy workspace files
