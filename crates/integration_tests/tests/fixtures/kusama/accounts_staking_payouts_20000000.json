@@ -1,0 +1,14 @@
+{
+  "at": {
+    "hash": "0xd6569aa31090df7fcf834ed5e265652d01e587d65071da246090d33ead0770f0",
+    "height": "20000000"
+  },
+  "erasPayouts": [
+    {
+      "era": "5735",
+      "totalEraRewardPoints": "5730840",
+      "totalEraPayout": "932316509227653",
+      "payouts": []
+    }
+  ]
+}

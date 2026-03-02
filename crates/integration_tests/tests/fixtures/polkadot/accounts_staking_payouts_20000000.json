@@ -1,0 +1,24 @@
+{
+  "at": {
+    "hash": "0xde2f6847c0cfed45b7a088fe0a726941a848a1337f185978483ef32a4efddfb4",
+    "height": "20000000"
+  },
+  "erasPayouts": [
+    {
+      "era": "1388",
+      "totalEraRewardPoints": "29634560",
+      "totalEraPayout": "3490713342049155",
+      "payouts": [
+        {
+          "validatorId": "16SpacegeUTft9v3ts27CEC3tJaxgvE4uZeCctThFH3Vb24p",
+          "nominatorStakingPayout": "360870787431",
+          "claimed": false,
+          "totalValidatorRewardPoints": "100860",
+          "validatorCommission": "30000000",
+          "totalValidatorExposure": "25862932975351093",
+          "nominatorExposure": "10000000495009"
+        }
+      ]
+    }
+  ]
+}
