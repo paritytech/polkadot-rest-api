@@ -1,0 +1,14 @@
+{
+  "at": {
+    "hash": "0x96974dcd54b94f973aefd8c0b36e59fc8d58b20885ae753f3cfb45515462899b",
+    "height": "5000000"
+  },
+  "delegatedAccounts": [
+    {
+      "delegate": "HeyRMRK7L7APFpBrBqeY62dNhFKVGP4JgwQpcog2VTb3RMU",
+      "proxyType": "NonTransfer",
+      "delay": "0"
+    }
+  ],
+  "depositHeld": "6690999690"
+}
