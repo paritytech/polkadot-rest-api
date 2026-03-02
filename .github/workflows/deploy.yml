@@ -44,6 +44,7 @@ jobs:
   build_docker:
     name: Build docker image (${{ matrix.platform }})
     needs: [set-variables]
+    environment: ${{ github.event_name == 'push' && 'main_n_tags' || null }}
     strategy:
       matrix:
         include:
@@ -79,8 +80,8 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
-          outputs: type=image,name=docker.io/paritytech/polkadot-rest-api,push-by-digest=true,name-canonical=true,push=${{ github.event_name == 'push' }}
-
+          outputs: type=image,name=docker.io/paritytech/polkadot-rest-api,push-by-digest=true,name-canonical=true
+          push: ${{ github.event_name == 'push' }}
       - name: Export digest
         if: github.event_name == 'push'
         run: |
