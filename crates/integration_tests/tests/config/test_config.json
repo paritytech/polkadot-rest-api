@@ -450,6 +450,56 @@
         },
         "fixture_path": "polkadot/coretime_info_24000000.json",
         "description": "Test coretime info endpoint at Polkadot block 24,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/balance-info",
+        "block_height": null,
+        "account_id": "16SpacegeUTft9v3ts27CEC3tJaxgvE4uZeCctThFH3Vb24p",
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "polkadot/accounts_balance_info_20000000.json",
+        "description": "Test accounts balance-info endpoint at Polkadot block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/vesting-info",
+        "block_height": null,
+        "account_id": "16SpacegeUTft9v3ts27CEC3tJaxgvE4uZeCctThFH3Vb24p",
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "polkadot/accounts_vesting_info_20000000.json",
+        "description": "Test accounts vesting-info endpoint at Polkadot block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/proxy-info",
+        "block_height": null,
+        "account_id": "13UVJyLnbVp9RBZYFwFGyDvVd1y27Tt8tkntv6Q7JVPhFsTB",
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "polkadot/accounts_proxy_info_20000000.json",
+        "description": "Test accounts proxy-info endpoint at Polkadot block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/staking-info",
+        "block_height": null,
+        "account_id": "16SpacegeUTft9v3ts27CEC3tJaxgvE4uZeCctThFH3Vb24p",
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "polkadot/accounts_staking_info_20000000.json",
+        "description": "Test accounts staking-info endpoint at Polkadot block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/staking-payouts",
+        "block_height": null,
+        "account_id": "16SpacegeUTft9v3ts27CEC3tJaxgvE4uZeCctThFH3Vb24p",
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "polkadot/accounts_staking_payouts_20000000.json",
+        "description": "Test accounts staking-payouts endpoint at Polkadot block 20,000,000"
       }
     ],
     "kusama": [
@@ -664,6 +714,56 @@
         },
         "fixture_path": "kusama/coretime_info_29000000.json",
         "description": "Test coretime info endpoint at Kusama block 29,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/balance-info",
+        "block_height": null,
+        "account_id": "HYxzaXwkydDNAy3R8UnCvfprNm74TwwSELpyXSRoqmy9AQY",
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "kusama/accounts_balance_info_20000000.json",
+        "description": "Test accounts balance-info endpoint at Kusama block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/vesting-info",
+        "block_height": null,
+        "account_id": "HYxzaXwkydDNAy3R8UnCvfprNm74TwwSELpyXSRoqmy9AQY",
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "kusama/accounts_vesting_info_20000000.json",
+        "description": "Test accounts vesting-info endpoint at Kusama block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/proxy-info",
+        "block_height": null,
+        "account_id": "HYxzaXwkydDNAy3R8UnCvfprNm74TwwSELpyXSRoqmy9AQY",
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "kusama/accounts_proxy_info_20000000.json",
+        "description": "Test accounts proxy-info endpoint at Kusama block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/staking-info",
+        "block_height": null,
+        "account_id": "HYxzaXwkydDNAy3R8UnCvfprNm74TwwSELpyXSRoqmy9AQY",
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "kusama/accounts_staking_info_20000000.json",
+        "description": "Test accounts staking-info endpoint at Kusama block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/staking-payouts",
+        "block_height": null,
+        "account_id": "HYxzaXwkydDNAy3R8UnCvfprNm74TwwSELpyXSRoqmy9AQY",
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "kusama/accounts_staking_payouts_20000000.json",
+        "description": "Test accounts staking-payouts endpoint at Kusama block 20,000,000"
       }
     ],
     "asset-hub-polkadot": [
@@ -1380,6 +1480,90 @@
         "query_params": {},
         "fixture_path": "asset-hub-polkadot/blocks_12273189.json",
         "description": "Test block endpoint at Asset Hub Polkadot block 12,273,189 (ChargeAssetTxPayment signed extension)"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/balance-info",
+        "block_height": null,
+        "account_id": "15uPcYeUE2XaMiMJuR6W7QGW2LsLdKXX7F3PxKG8gcizPh3X",
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_balance_info_10260000.json",
+        "description": "Test accounts balance-info endpoint at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/asset-balances",
+        "block_height": null,
+        "account_id": "15uPcYeUE2XaMiMJuR6W7QGW2LsLdKXX7F3PxKG8gcizPh3X",
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_asset_balances_10260000.json",
+        "description": "Test accounts asset-balances endpoint at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/pool-asset-balances",
+        "block_height": null,
+        "account_id": "15uPcYeUE2XaMiMJuR6W7QGW2LsLdKXX7F3PxKG8gcizPh3X",
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_pool_asset_balances_10260000.json",
+        "description": "Test accounts pool-asset-balances endpoint at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/foreign-asset-balances",
+        "block_height": null,
+        "account_id": "15uPcYeUE2XaMiMJuR6W7QGW2LsLdKXX7F3PxKG8gcizPh3X",
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_foreign_asset_balances_10260000.json",
+        "description": "Test accounts foreign-asset-balances endpoint at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/asset-approvals",
+        "block_height": null,
+        "account_id": "15uPcYeUE2XaMiMJuR6W7QGW2LsLdKXX7F3PxKG8gcizPh3X",
+        "query_params": {
+          "at": "10260000",
+          "assetId": "1984",
+          "delegate": "14yx4vPAACZRhoDQm1dyvXD3QdRQyCRRCe5tj1zPomhhS29a"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_asset_approvals_10260000.json",
+        "description": "Test accounts asset-approvals endpoint at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/pool-asset-approvals",
+        "block_height": null,
+        "account_id": "15uPcYeUE2XaMiMJuR6W7QGW2LsLdKXX7F3PxKG8gcizPh3X",
+        "query_params": {
+          "at": "10260000",
+          "assetId": "0",
+          "delegate": "14yx4vPAACZRhoDQm1dyvXD3QdRQyCRRCe5tj1zPomhhS29a"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_pool_asset_approvals_10260000.json",
+        "description": "Test accounts pool-asset-approvals endpoint at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/vesting-info",
+        "block_height": null,
+        "account_id": "15uPcYeUE2XaMiMJuR6W7QGW2LsLdKXX7F3PxKG8gcizPh3X",
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_vesting_info_10260000.json",
+        "description": "Test accounts vesting-info endpoint at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/proxy-info",
+        "block_height": null,
+        "account_id": "15uPcYeUE2XaMiMJuR6W7QGW2LsLdKXX7F3PxKG8gcizPh3X",
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_proxy_info_10260000.json",
+        "description": "Test accounts proxy-info endpoint at Asset Hub Polkadot block 10,260,000"
       }
     ],
     "asset-hub-kusama": [
@@ -1642,6 +1826,90 @@
         },
         "fixture_path": "asset-hub-kusama/blocks_range_12949861-12949863_use_evm_format.json",
         "description": "Test blocks range endpoint with useEvmFormat parameter at Asset Hub Kusama blocks 12,949,861-12,949,863"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/balance-info",
+        "block_height": null,
+        "account_id": "HKKT5DjFaUE339m7ZWS2yutjecbUpBcDQZHw2EF7SFqSFJH",
+        "query_params": {
+          "at": "5000000"
+        },
+        "fixture_path": "asset-hub-kusama/accounts_balance_info_5000000.json",
+        "description": "Test accounts balance-info endpoint at Asset Hub Kusama block 5,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/asset-balances",
+        "block_height": null,
+        "account_id": "HKKT5DjFaUE339m7ZWS2yutjecbUpBcDQZHw2EF7SFqSFJH",
+        "query_params": {
+          "at": "5000000"
+        },
+        "fixture_path": "asset-hub-kusama/accounts_asset_balances_5000000.json",
+        "description": "Test accounts asset-balances endpoint at Asset Hub Kusama block 5,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/pool-asset-balances",
+        "block_height": null,
+        "account_id": "HKKT5DjFaUE339m7ZWS2yutjecbUpBcDQZHw2EF7SFqSFJH",
+        "query_params": {
+          "at": "7000000"
+        },
+        "fixture_path": "asset-hub-kusama/accounts_pool_asset_balances_7000000.json",
+        "description": "Test accounts pool-asset-balances endpoint at Asset Hub Kusama block 7,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/foreign-asset-balances",
+        "block_height": null,
+        "account_id": "HKKT5DjFaUE339m7ZWS2yutjecbUpBcDQZHw2EF7SFqSFJH",
+        "query_params": {
+          "at": "5000000"
+        },
+        "fixture_path": "asset-hub-kusama/accounts_foreign_asset_balances_5000000.json",
+        "description": "Test accounts foreign-asset-balances endpoint at Asset Hub Kusama block 5,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/proxy-info",
+        "block_height": null,
+        "account_id": "HKKT5DjFaUE339m7ZWS2yutjecbUpBcDQZHw2EF7SFqSFJH",
+        "query_params": {
+          "at": "5000000"
+        },
+        "fixture_path": "asset-hub-kusama/accounts_proxy_info_5000000.json",
+        "description": "Test accounts proxy-info endpoint at Asset Hub Kusama block 5,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/asset-approvals",
+        "block_height": null,
+        "account_id": "HKKT5DjFaUE339m7ZWS2yutjecbUpBcDQZHw2EF7SFqSFJH",
+        "query_params": {
+          "at": "5000000",
+          "assetId": "8",
+          "delegate": "HeyRMRK7L7APFpBrBqeY62dNhFKVGP4JgwQpcog2VTb3RMU"
+        },
+        "fixture_path": "asset-hub-kusama/accounts_asset_approvals_5000000.json",
+        "description": "Test accounts asset-approvals endpoint at Asset Hub Kusama block 5,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/pool-asset-approvals",
+        "block_height": null,
+        "account_id": "HKKT5DjFaUE339m7ZWS2yutjecbUpBcDQZHw2EF7SFqSFJH",
+        "query_params": {
+          "at": "7000000",
+          "assetId": "0",
+          "delegate": "HeyRMRK7L7APFpBrBqeY62dNhFKVGP4JgwQpcog2VTb3RMU"
+        },
+        "fixture_path": "asset-hub-kusama/accounts_pool_asset_approvals_7000000.json",
+        "description": "Test accounts pool-asset-approvals endpoint at Asset Hub Kusama block 7,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/vesting-info",
+        "block_height": null,
+        "account_id": "HKKT5DjFaUE339m7ZWS2yutjecbUpBcDQZHw2EF7SFqSFJH",
+        "query_params": {
+          "at": "10000000"
+        },
+        "fixture_path": "asset-hub-kusama/accounts_vesting_info_10000000.json",
+        "description": "Test accounts vesting-info endpoint at Asset Hub Kusama block 10,000,000"
       }
     ],
     "coretime-kusama": [
