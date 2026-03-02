@@ -408,6 +408,7 @@ fn get_fixture_path(filename: &str) -> Result<PathBuf> {
     let fixture_path = PathBuf::from(manifest_dir)
         .join("tests")
         .join("fixtures")
+        .join("asset-hub-polkadot")
         .join(filename);
 
     if !fixture_path.exists() {
