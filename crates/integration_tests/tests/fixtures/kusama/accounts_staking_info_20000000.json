@@ -1,0 +1,18 @@
+{
+  "at": {
+    "hash": "0xd6569aa31090df7fcf834ed5e265652d01e587d65071da246090d33ead0770f0",
+    "height": "20000000"
+  },
+  "controller": "FtNPvNSJeZTb7gGb2bbbiqpWJqy5suSRK97Q5Dfk4paD2nP",
+  "rewardDestination": {
+    "stash": null
+  },
+  "numSlashingSpans": "2",
+  "nominations": null,
+  "staking": {
+    "stash": "HYxzaXwkydDNAy3R8UnCvfprNm74TwwSELpyXSRoqmy9AQY",
+    "total": "100000000000",
+    "active": "100000000000",
+    "unlocking": []
+  }
+}

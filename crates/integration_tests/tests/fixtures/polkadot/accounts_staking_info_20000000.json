@@ -1,0 +1,18 @@
+{
+  "at": {
+    "hash": "0xde2f6847c0cfed45b7a088fe0a726941a848a1337f185978483ef32a4efddfb4",
+    "height": "20000000"
+  },
+  "controller": "16SpacegeUTft9v3ts27CEC3tJaxgvE4uZeCctThFH3Vb24p",
+  "rewardDestination": {
+    "stash": null
+  },
+  "numSlashingSpans": "0",
+  "nominations": null,
+  "staking": {
+    "stash": "16SpacegeUTft9v3ts27CEC3tJaxgvE4uZeCctThFH3Vb24p",
+    "total": "10000000495009",
+    "active": "10000000495009",
+    "unlocking": []
+  }
+}
