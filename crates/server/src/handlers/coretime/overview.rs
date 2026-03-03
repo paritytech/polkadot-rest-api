@@ -24,11 +24,15 @@ use crate::extractors::JsonQuery;
 use crate::handlers::coretime::common::{
     AtResponse, CORE_TYPE_BULK, CORE_TYPE_LEASE, CORE_TYPE_ONDEMAND, CORE_TYPE_RESERVATION,
     CoreAssignment, CoretimeError, CoretimeQueryParams, ScheduleItem, TASK_POOL, has_broker_pallet,
-    has_coretime_assignment_provider_pallet, has_paras_pallet,
+    has_coretime_assignment_provider_pallet,
 };
 use crate::handlers::coretime::leases::fetch_leases;
 use crate::handlers::coretime::regions::{RegionInfo, fetch_regions};
 use crate::handlers::coretime::reservations::{ReservationInfo, fetch_reservations};
+use crate::handlers::runtime_queries::coretime_assignment_provider::{
+    RelayCoreAssignment, RelayCoreDescriptorRaw,
+};
+use crate::handlers::runtime_queries::{broker, coretime_assignment_provider, paras};
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
 use axum::{
@@ -37,10 +41,8 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use parity_scale_codec::Decode;
 use polkadot_rest_api_config::ChainType;
 use primitive_types::H256;
-use scale_decode::DecodeAsType;
 use serde::Serialize;
 use std::str::FromStr;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
@@ -208,87 +210,6 @@ pub struct RelayOverviewResponse {
 }
 
 // ============================================================================
-// Internal Types for Relay Chain
-// ============================================================================
-
-/// Internal type for decoding CoreAssignment from relay chain.
-/// Matches pallet_broker::CoreAssignment.
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-enum RelayCoreAssignment {
-    Idle,
-    Pool,
-    Task(u32),
-}
-
-/// Internal type for decoding AssignmentState from relay chain.
-/// Note: ratio and remaining are PartsOf57600(u16) on-chain, DecodeAsType handles newtype unwrapping.
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-struct RelayAssignmentState {
-    ratio: u16,
-    remaining: u16,
-}
-
-/// Internal type for decoding WorkState from relay chain.
-/// Note: assignments is Vec<(CoreAssignment, AssignmentState)> - a Vec of TUPLES.
-/// step is PartsOf57600(u16) on-chain.
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-struct RelayWorkState {
-    // Assignments as tuples (CoreAssignment, AssignmentState)
-    assignments: Vec<(RelayCoreAssignment, RelayAssignmentState)>,
-    end_hint: Option<u32>,
-    pos: u16,
-    step: u16,
-}
-
-/// Internal type for decoding QueueDescriptor from relay chain.
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-struct RelayQueueState {
-    first: u32,
-    last: u32,
-}
-
-/// Internal type for decoding CoreDescriptor from relay chain.
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-struct RelayCoreDescriptorRaw {
-    queue: Option<RelayQueueState>,
-    current_work: Option<RelayWorkState>,
-}
-
-/// On-chain ParaLifecycle enum for DecodeAsType decoding.
-/// Matches polkadot_runtime_parachains::paras::ParaLifecycle.
-#[derive(Debug, Clone, DecodeAsType)]
-enum ParaLifecycleType {
-    Onboarding,
-    Parathread,
-    Parachain,
-    UpgradingParathread,
-    DowngradingParachain,
-    OffboardingParathread,
-    OffboardingParachain,
-}
-
-impl ParaLifecycleType {
-    fn as_str(&self) -> &'static str {
-        match self {
-            ParaLifecycleType::Onboarding => "Onboarding",
-            ParaLifecycleType::Parathread => "Parathread",
-            ParaLifecycleType::Parachain => "Parachain",
-            ParaLifecycleType::UpgradingParathread => "UpgradingParathread",
-            ParaLifecycleType::DowngradingParachain => "DowngradingParachain",
-            ParaLifecycleType::OffboardingParathread => "OffboardingParathread",
-            ParaLifecycleType::OffboardingParachain => "OffboardingParachain",
-        }
-    }
-}
-
-/// Parachain lifecycle from relay chain.
-#[derive(Debug, Clone)]
-struct ParaLifecycle {
-    para_id: u32,
-    lifecycle_type: Option<String>,
-}
-
-// ============================================================================
 // Internal Types
 // ============================================================================
 
@@ -395,11 +316,17 @@ async fn handle_relay_chain_overview(
     }
 
     // Fetch all data in parallel
-    let (descriptors, schedules, lifecycles) = tokio::try_join!(
+    let (descriptors, schedules, lifecycles_result) = tokio::join!(
         fetch_core_descriptors(client_at_block),
         fetch_core_schedules(client_at_block),
-        fetch_para_lifecycles(client_at_block)
-    )?;
+        paras::get_para_lifecycles(client_at_block)
+    );
+
+    let descriptors = descriptors?;
+    let schedules = schedules?;
+    let lifecycles = lifecycles_result.map_err(|e| CoretimeError::StorageQueryFailed {
+        details: e.to_string(),
+    })?;
 
     // Build a map of para_id -> lifecycle for quick lookup
     let lifecycle_map: std::collections::HashMap<u32, String> = lifecycles
@@ -698,171 +625,62 @@ fn schedule_item_to_workload_info(item: &ScheduleItem) -> WorkloadInfo {
 // Helper Functions - Data Fetching (specific to overview endpoint)
 // ============================================================================
 
+/// Converts broker::ScheduleItem to common::ScheduleItem.
+fn convert_broker_schedule_item(item: &broker::ScheduleItem) -> ScheduleItem {
+    let assignment = match &item.assignment {
+        broker::CoreAssignment::Idle => CoreAssignment::Idle,
+        broker::CoreAssignment::Pool => CoreAssignment::Pool,
+        broker::CoreAssignment::Task(id) => CoreAssignment::Task(*id),
+    };
+    ScheduleItem {
+        mask: item.mask,
+        assignment,
+    }
+}
+
 /// Fetches all workload entries from Broker::Workload storage with full schedule data.
 ///
-/// Uses DecodeAsType for efficient typed decoding (no intermediate scale_value::Value).
+/// Uses the centralized runtime_queries::broker module for storage access.
 async fn fetch_workloads_full(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<WorkloadWithSchedule>, CoretimeError> {
-    let workload_addr = subxt::dynamic::storage::<(u16,), Vec<ScheduleItem>>("Broker", "Workload");
-
-    let mut workloads = Vec::new();
-
-    let mut iter = client_at_block
-        .storage()
-        .iter(workload_addr, ())
+    let broker_workloads = broker::iter_workloads_full(client_at_block)
         .await
-        .map_err(|e| CoretimeError::StorageIterationError {
-            pallet: "Broker",
-            entry: "Workload",
+        .map_err(|e| CoretimeError::StorageQueryFailed {
             details: e.to_string(),
         })?;
 
-    while let Some(result) = iter.next().await {
-        let entry = match result {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::warn!("Error iterating workload: {:?}", e);
-                continue;
-            }
-        };
-
-        // Extract core from key using subxt's structured key API
-        let core: u32 = match entry
-            .key()
-            .ok()
-            .and_then(|k| k.part(0))
-            .and_then(|p| p.decode_as::<u16>().ok().flatten())
-        {
-            Some(c) => c as u32,
-            None => continue,
-        };
-
-        // Decode workload value as Vec<ScheduleItem> using DecodeAsType
-        let items = match entry.value().decode_as::<Vec<ScheduleItem>>() {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!("Failed to decode workload for core {}: {:?}", core, e);
-                Vec::new()
-            }
-        };
-
-        workloads.push(WorkloadWithSchedule { core, items });
-    }
-
-    // Sort by core
-    workloads.sort_by_key(|w| w.core);
+    let workloads = broker_workloads
+        .into_iter()
+        .map(|w| WorkloadWithSchedule {
+            core: w.core,
+            items: w.items.iter().map(convert_broker_schedule_item).collect(),
+        })
+        .collect();
 
     Ok(workloads)
 }
 
 /// Fetches all workplan entries from Broker::Workplan storage.
 ///
-/// Note: Workplan is a StorageMap with a tuple key (Timeslice, CoreIndex) and OptionQuery value.
-/// Pallet definition: StorageMap<_, Twox64Concat, (Timeslice, CoreIndex), Schedule, OptionQuery>
+/// Uses the centralized runtime_queries::broker module for storage access.
 async fn fetch_workplans(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<WorkplanWithSchedule>, CoretimeError> {
-    // The key is a tuple (Timeslice, CoreIndex) = (u32, u16)
-    // For subxt, we specify it as (u32, u16) and access parts separately
-    let workplan_addr =
-        subxt::dynamic::storage::<(u32, u16), Vec<ScheduleItem>>("Broker", "Workplan");
-
-    let mut workplans = Vec::new();
-
-    let mut iter = client_at_block
-        .storage()
-        .iter(workplan_addr, ())
+    let broker_workplans = broker::iter_workplans(client_at_block)
         .await
-        .map_err(|e| CoretimeError::StorageIterationError {
-            pallet: "Broker",
-            entry: "Workplan",
+        .map_err(|e| CoretimeError::StorageQueryFailed {
             details: e.to_string(),
         })?;
 
-    while let Some(result) = iter.next().await {
-        let entry = match result {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::warn!("Error iterating workplan: {:?}", e);
-                continue;
-            }
-        };
-
-        // Extract (timeslice, core) from key
-        let key = match entry.key() {
-            Ok(k) => k,
-            Err(e) => {
-                tracing::warn!("Failed to parse workplan key: {:?}", e);
-                continue;
-            }
-        };
-
-        // Try to decode as tuple first (single key component)
-        let (timeslice, core): (u32, u32) = if let Some((t, c)) = key
-            .part(0)
-            .and_then(|p| p.decode_as::<(u32, u16)>().ok().flatten())
-        {
-            (t, c as u32)
-        } else {
-            // Fallback: try as separate key parts (in case subxt treats tuple keys differently)
-            let timeslice = match key
-                .part(0)
-                .and_then(|p| p.decode_as::<u32>().ok().flatten())
-            {
-                Some(t) => t,
-                None => {
-                    tracing::warn!("Failed to decode workplan timeslice");
-                    continue;
-                }
-            };
-            let core = match key
-                .part(1)
-                .and_then(|p| p.decode_as::<u16>().ok().flatten())
-            {
-                Some(c) => c as u32,
-                None => {
-                    tracing::warn!("Failed to decode workplan core");
-                    continue;
-                }
-            };
-            (timeslice, core)
-        };
-
-        // Decode workplan value using DecodeAsType
-        // Try Vec<ScheduleItem> first, then Option<Vec<ScheduleItem>> as fallback
-        let items = match entry.value().decode_as::<Vec<ScheduleItem>>() {
-            Ok(v) => v,
-            Err(_) => {
-                // OptionQuery might wrap the value - try Option<Vec<ScheduleItem>>
-                match entry.value().decode_as::<Option<Vec<ScheduleItem>>>() {
-                    Ok(Some(v)) => v,
-                    Ok(None) => Vec::new(),
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to decode workplan for timeslice {}, core {}: {:?}",
-                            timeslice,
-                            core,
-                            e
-                        );
-                        Vec::new()
-                    }
-                }
-            }
-        };
-
-        // Only add non-empty workplans
-        if !items.is_empty() {
-            workplans.push(WorkplanWithSchedule {
-                core,
-                timeslice,
-                items,
-            });
-        }
-    }
-
-    // Sort by core, then timeslice
-    workplans.sort_by(|a, b| a.core.cmp(&b.core).then(a.timeslice.cmp(&b.timeslice)));
+    let workplans = broker_workplans
+        .into_iter()
+        .map(|w| WorkplanWithSchedule {
+            core: w.core,
+            timeslice: w.timeslice,
+            items: w.items.iter().map(convert_broker_schedule_item).collect(),
+        })
+        .collect();
 
     Ok(workplans)
 }
@@ -873,91 +691,15 @@ async fn fetch_workplans(
 
 /// Fetches all core descriptors from CoretimeAssignmentProvider::CoreDescriptors storage.
 ///
-/// Note: CoreDescriptors uses Twox256 hasher which is opaque - the key cannot be extracted
-/// from the storage key. We query specific core indices directly instead of iterating.
-///
-/// Queries are sent in parallel batches to minimize round-trip latency. Each batch fires
-/// BATCH_SIZE concurrent RPC requests. If an entire batch returns only empty descriptors
-/// (after we've already found some), we stop — no more cores exist beyond that point.
+/// Delegates to the centralized runtime_queries module for storage access.
 async fn fetch_core_descriptors(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<(u32, RelayCoreDescriptorRaw)>, CoretimeError> {
-    // Batch size for parallel queries. Sends this many concurrent RPC requests per round.
-    // Typical relay chains have ~80-100 active cores, so 2-3 batches suffice.
-    const BATCH_SIZE: u32 = 50;
-    // Safety ceiling — stop even if batches never come back fully empty.
-    const MAX_CORES: u32 = 500;
-
-    let addr = subxt::dynamic::storage::<(u32,), RelayCoreDescriptorRaw>(
-        "CoretimeAssignmentProvider",
-        "CoreDescriptors",
-    );
-
-    let mut descriptors = Vec::new();
-    let mut batch_start = 0u32;
-
-    loop {
-        let batch_end = (batch_start + BATCH_SIZE).min(MAX_CORES);
-
-        // Fire all queries in this batch concurrently (batch is already
-        // bounded by BATCH_SIZE so no extra concurrency limiting needed)
-        let futures: Vec<_> = (batch_start..batch_end)
-            .map(|core_idx| {
-                let addr = addr.clone();
-                async move {
-                    let result = client_at_block.storage().fetch(addr, (core_idx,)).await;
-                    (core_idx, result)
-                }
-            })
-            .collect();
-
-        let results = futures::future::join_all(futures).await;
-
-        let mut batch_found_any = false;
-        for (core_idx, result) in results {
-            match result {
-                Ok(value) => match value.decode_as::<RelayCoreDescriptorRaw>() {
-                    Ok(descriptor) => {
-                        // CoreDescriptors uses ValueQuery: non-existent cores return
-                        // a default descriptor with queue: None, current_work: None.
-                        let is_empty =
-                            descriptor.current_work.is_none() && descriptor.queue.is_none();
-                        if !is_empty {
-                            batch_found_any = true;
-                            descriptors.push((core_idx, descriptor));
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to decode core descriptor for core {}: {:?}",
-                            core_idx,
-                            e
-                        );
-                    }
-                },
-                Err(e) => {
-                    tracing::warn!(
-                        "Error fetching core descriptor for core {}: {:?}",
-                        core_idx,
-                        e
-                    );
-                }
-            }
-        }
-
-        batch_start = batch_end;
-
-        // Stop if this entire batch was empty (after we've found at least some cores)
-        // or we've reached the safety ceiling.
-        if (!batch_found_any && !descriptors.is_empty()) || batch_start >= MAX_CORES {
-            break;
-        }
-    }
-
-    // Sort by core index (parallel results may arrive out of order)
-    descriptors.sort_by_key(|(core, _)| *core);
-
-    Ok(descriptors)
+    coretime_assignment_provider::get_core_descriptors(client_at_block)
+        .await
+        .map_err(|e| CoretimeError::StorageQueryFailed {
+            details: e.to_string(),
+        })
 }
 
 /// Fetches core schedules from CoretimeAssignmentProvider::CoreSchedules storage.
@@ -976,66 +718,6 @@ async fn fetch_core_schedules(
     // For now, return empty as the main info is in CoreDescriptors.current_work.
     tracing::debug!("CoreSchedules uses opaque hasher - returning empty array");
     Ok(Vec::new())
-}
-
-/// Fetches all parachain lifecycles from Paras::ParaLifecycles storage.
-async fn fetch_para_lifecycles(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<Vec<ParaLifecycle>, CoretimeError> {
-    // Check if the Paras pallet exists
-    if !has_paras_pallet(client_at_block) {
-        return Ok(Vec::new());
-    }
-
-    let lifecycles_addr =
-        subxt::dynamic::storage::<(u32,), ParaLifecycleType>("Paras", "ParaLifecycles");
-
-    let mut lifecycles = Vec::new();
-
-    let mut iter = client_at_block
-        .storage()
-        .iter(lifecycles_addr, ())
-        .await
-        .map_err(|e| CoretimeError::StorageIterationError {
-            pallet: "Paras",
-            entry: "ParaLifecycles",
-            details: e.to_string(),
-        })?;
-
-    while let Some(result) = iter.next().await {
-        let entry = match result {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::warn!("Error iterating para lifecycles: {:?}", e);
-                continue;
-            }
-        };
-
-        // Extract para_id from key
-        let para_id: u32 = match entry
-            .key()
-            .ok()
-            .and_then(|k| k.part(0))
-            .and_then(|p| p.decode_as::<u32>().ok().flatten())
-        {
-            Some(id) => id,
-            None => continue,
-        };
-
-        // Decode the lifecycle type using DecodeAsType
-        let lifecycle_type = entry
-            .value()
-            .decode_as::<ParaLifecycleType>()
-            .ok()
-            .map(|lt| lt.as_str().to_string());
-
-        lifecycles.push(ParaLifecycle {
-            para_id,
-            lifecycle_type,
-        });
-    }
-
-    Ok(lifecycles)
 }
 
 // ============================================================================
