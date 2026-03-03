@@ -129,7 +129,7 @@ pub async fn get_storage_value<T>(
 where
     T: DecodeAsType,
 {
-    let addr = subxt::dynamic::storage::<(), scale_value::Value>(pallet, entry);
+    let addr = subxt::dynamic::storage::<(), ()>(pallet, entry);
     let storage_value = client_at_block.storage().fetch(addr, ()).await.ok()?;
     storage_value.decode_as().ok()
 }
@@ -140,7 +140,7 @@ pub async fn get_bonded_pool(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     pool_id: u32,
 ) -> Option<DecodedBondedPool> {
-    let addr = subxt::dynamic::storage::<_, scale_value::Value>("NominationPools", "BondedPools");
+    let addr = subxt::dynamic::storage::<_, ()>("NominationPools", "BondedPools");
     let raw_bytes = match client_at_block.storage().fetch(addr, (pool_id,)).await {
         Ok(value) => value.into_bytes(),
         Err(_) => return None,
@@ -173,7 +173,7 @@ pub async fn get_reward_pool(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     pool_id: u32,
 ) -> Option<DecodedRewardPool> {
-    let addr = subxt::dynamic::storage::<_, scale_value::Value>("NominationPools", "RewardPools");
+    let addr = subxt::dynamic::storage::<_, ()>("NominationPools", "RewardPools");
     let raw_bytes = match client_at_block.storage().fetch(addr, (pool_id,)).await {
         Ok(value) => value.into_bytes(),
         Err(_) => return None,
