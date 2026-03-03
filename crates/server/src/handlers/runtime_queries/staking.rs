@@ -967,7 +967,7 @@ pub async fn get_era_exposures_bulk(
 
     // Try paged staking first (ErasStakersOverview + ErasStakersPaged)
     // Key type: (u32, [u8; 32]) for (era, validator)
-    let overview_addr = subxt::dynamic::storage::<(u32, [u8; 32]), scale_value::Value>(
+    let overview_addr = subxt::dynamic::storage::<(u32, [u8; 32]), ()>(
         "Staking",
         "ErasStakersOverview",
     );
@@ -1010,7 +1010,7 @@ pub async fn get_era_exposures_bulk(
     // If we found paged staking data, fetch the paged exposures for this era
     if found_paged && !validator_map.is_empty() {
         // Key type: (u32, [u8; 32], u32) for (era, validator, page)
-        let paged_addr = subxt::dynamic::storage::<(u32, [u8; 32], u32), scale_value::Value>(
+        let paged_addr = subxt::dynamic::storage::<(u32, [u8; 32], u32), ()>(
             "Staking",
             "ErasStakersPaged",
         );
@@ -1056,7 +1056,7 @@ pub async fn get_era_exposures_bulk(
 
     // Fall back to legacy ErasStakersClipped
     // Key type: (u32, [u8; 32]) for (era, validator)
-    let clipped_addr = subxt::dynamic::storage::<(u32, [u8; 32]), scale_value::Value>(
+    let clipped_addr = subxt::dynamic::storage::<(u32, [u8; 32]), ()>(
         "Staking",
         "ErasStakersClipped",
     );
@@ -1301,7 +1301,7 @@ pub async fn get_validator_count(
 pub async fn get_force_era(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Option<ForceEra> {
-    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "ForceEra");
+    let storage_addr = subxt::dynamic::storage::<(), ()>("Staking", "ForceEra");
     let value = client_at_block
         .storage()
         .fetch(storage_addr, ())
