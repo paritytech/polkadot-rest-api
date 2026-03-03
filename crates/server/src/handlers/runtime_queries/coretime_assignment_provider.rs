@@ -27,7 +27,10 @@ pub enum CoretimeAssignmentProviderStorageError {
 
     /// Failed to decode storage value.
     #[error("Failed to decode CoretimeAssignmentProvider::{entry}: {details}")]
-    StorageDecodeFailed { entry: &'static str, details: String },
+    StorageDecodeFailed {
+        entry: &'static str,
+        details: String,
+    },
 }
 
 // ================================================================================================

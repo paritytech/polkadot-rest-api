@@ -667,11 +667,11 @@ async fn fetch_workloads_full(
 async fn fetch_workplans(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<WorkplanWithSchedule>, CoretimeError> {
-    let broker_workplans = broker::iter_workplans(client_at_block)
-        .await
-        .map_err(|e| CoretimeError::StorageQueryFailed {
+    let broker_workplans = broker::iter_workplans(client_at_block).await.map_err(|e| {
+        CoretimeError::StorageQueryFailed {
             details: e.to_string(),
-        })?;
+        }
+    })?;
 
     let workplans = broker_workplans
         .into_iter()

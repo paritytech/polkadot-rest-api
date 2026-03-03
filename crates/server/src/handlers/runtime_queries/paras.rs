@@ -100,10 +100,7 @@ pub struct ParaLifecycle {
 
 /// Checks if the Paras pallet exists on this chain.
 pub fn has_paras_pallet(client_at_block: &OnlineClientAtBlock<SubstrateConfig>) -> bool {
-    client_at_block
-        .metadata()
-        .pallet_by_name("Paras")
-        .is_some()
+    client_at_block.metadata().pallet_by_name("Paras").is_some()
 }
 
 /// Fetches all parachain lifecycles from Paras::ParaLifecycles storage.

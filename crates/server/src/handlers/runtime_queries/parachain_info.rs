@@ -28,7 +28,10 @@ pub enum ParachainInfoStorageError {
 
     /// Failed to decode storage value.
     #[error("Failed to decode ParachainInfo::{entry}: {details}")]
-    StorageDecodeFailed { entry: &'static str, details: String },
+    StorageDecodeFailed {
+        entry: &'static str,
+        details: String,
+    },
 }
 
 // ================================================================================================
@@ -49,10 +52,10 @@ pub async fn get_parachain_id(
         .await
         .map_err(|_| ParachainInfoStorageError::PalletNotAvailable)?;
 
-    result.decode().map_err(|e| {
-        ParachainInfoStorageError::StorageDecodeFailed {
+    result
+        .decode()
+        .map_err(|e| ParachainInfoStorageError::StorageDecodeFailed {
             entry: "ParachainId",
             details: e.to_string(),
-        }
-    })
+        })
 }

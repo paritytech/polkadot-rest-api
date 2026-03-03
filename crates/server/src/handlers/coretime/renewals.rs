@@ -14,9 +14,7 @@ use crate::extractors::JsonQuery;
 use crate::handlers::coretime::common::{
     AtResponse, CoretimeError, CoretimeQueryParams, has_broker_pallet,
 };
-use crate::handlers::runtime_queries::broker::{
-    self, CompletionStatus, PotentialRenewalRecord,
-};
+use crate::handlers::runtime_queries::broker::{self, CompletionStatus, PotentialRenewalRecord};
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
 use axum::{
@@ -176,11 +174,7 @@ async fn fetch_potential_renewals(
 }
 
 /// Converts a PotentialRenewalRecord to the API response RenewalInfo.
-fn convert_to_renewal_info(
-    core: u32,
-    when: u32,
-    record: &PotentialRenewalRecord,
-) -> RenewalInfo {
+fn convert_to_renewal_info(core: u32, when: u32, record: &PotentialRenewalRecord) -> RenewalInfo {
     let (completion_type, mask, task) = match &record.completion {
         CompletionStatus::Complete(items) => {
             if let Some(first_item) = items.first() {

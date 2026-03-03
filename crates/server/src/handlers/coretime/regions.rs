@@ -153,11 +153,11 @@ pub async fn fetch_regions(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     ss58_prefix: u16,
 ) -> Result<Vec<RegionInfo>, CoretimeError> {
-    let region_entries = broker::get_regions(client_at_block)
-        .await
-        .map_err(|e| CoretimeError::StorageQueryFailed {
+    let region_entries = broker::get_regions(client_at_block).await.map_err(|e| {
+        CoretimeError::StorageQueryFailed {
             details: e.to_string(),
-        })?;
+        }
+    })?;
 
     let mut regions = Vec::new();
 

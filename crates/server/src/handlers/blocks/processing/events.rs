@@ -13,6 +13,7 @@
 // and could potentially simplify most of the code in this module.
 // See: https://github.com/polkadot-api/polkadot-rest-api/pull/XXX#discussion_rXXXXXXXXX
 
+use crate::handlers::runtime_queries::system;
 use crate::state::AppState;
 use serde_json::Value;
 
@@ -228,9 +229,8 @@ async fn fetch_block_events_impl(
     let metadata = client_at_block.metadata();
     let resolver = metadata.types();
 
-    // Use dynamic storage address for System::Events
-    let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
-    let events_value = client_at_block.storage().fetch(addr, ()).await?;
+    // Fetch events using runtime_queries module
+    let events_value = system::get_events_raw(client_at_block).await?;
 
     // Decode events once using the visitor pattern which provides all needed data:
     // phase, pallet_name, event_name, and typed fields
