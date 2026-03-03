@@ -14,7 +14,7 @@
 //! - `Broker::Status` - Broker status
 //! - `Broker::Workload` - Core workload assignments
 
-use parity_scale_codec::Decode;
+use parity_scale_codec::{Decode, Encode};
 use subxt::ext::scale_decode::DecodeAsType;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
@@ -372,6 +372,419 @@ pub async fn get_timeslice_period(
             pallet: "Broker",
             constant: "TimeslicePeriod",
         })
+}
+
+// ================================================================================================
+// Region Types and Queries
+// ================================================================================================
+
+/// CoreMask size in bytes (80 bits = 10 bytes).
+pub const CORE_MASK_SIZE: usize = 10;
+
+/// RegionId from the Broker pallet storage key.
+/// Matches the pallet_broker::RegionId type.
+#[derive(Debug, Clone, Decode, Encode, DecodeAsType)]
+#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+pub struct RegionId {
+    /// The begin timeslice of this region.
+    pub begin: u32,
+    /// The core index this region is for.
+    pub core: u16,
+    /// The CoreMask (80 bits = 10 bytes).
+    pub mask: [u8; CORE_MASK_SIZE],
+}
+
+/// RegionRecord from the Broker pallet storage value.
+/// Matches the pallet_broker::RegionRecord<AccountId, Balance> type.
+#[derive(Debug, Clone, Decode, Encode, DecodeAsType)]
+#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+pub struct RegionRecord {
+    /// The end timeslice of this region.
+    pub end: u32,
+    /// The owner of this region (Option<AccountId32>).
+    pub owner: Option<[u8; 32]>,
+    /// The amount paid for this region (optional).
+    pub paid: Option<u128>,
+}
+
+/// A region entry combining the key (RegionId) and value (RegionRecord).
+#[derive(Debug, Clone)]
+pub struct RegionEntry {
+    /// The region ID from the storage key.
+    pub id: RegionId,
+    /// The region record from the storage value (may be None if decoding fails).
+    pub record: Option<RegionRecord>,
+}
+
+/// Fetches all regions from Broker::Regions storage map.
+///
+/// Returns a vector of RegionEntry containing both the key (RegionId) and value (RegionRecord).
+pub async fn get_regions(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Result<Vec<RegionEntry>, BrokerStorageError> {
+    let regions_addr = subxt::dynamic::storage::<(u32, u16, [u8; CORE_MASK_SIZE]), RegionRecord>(
+        "Broker", "Regions",
+    );
+
+    let mut regions = Vec::new();
+
+    let mut iter = client_at_block
+        .storage()
+        .iter(regions_addr, ())
+        .await
+        .map_err(|e| BrokerStorageError::StorageIterationError {
+            pallet: "Broker",
+            entry: "Regions",
+            details: e.to_string(),
+        })?;
+
+    while let Some(result) = iter.next().await {
+        let entry = match result {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Error iterating regions: {:?}", e);
+                continue;
+            }
+        };
+
+        // Extract RegionId from storage key using subxt's structured key API
+        let region_id = match entry
+            .key()
+            .ok()
+            .and_then(|k| k.part(0))
+            .and_then(|p| p.decode_as::<RegionId>().ok().flatten())
+        {
+            Some(id) => id,
+            None => {
+                tracing::warn!("Failed to decode RegionId from key");
+                continue;
+            }
+        };
+
+        // Decode RegionRecord directly using typed DecodeAsType
+        let record = match entry.value().decode_as::<RegionRecord>() {
+            Ok(r) => Some(r),
+            Err(e1) => {
+                tracing::warn!("Failed to decode as RegionRecord: {:?}", e1);
+                // Try decoding as Option<RegionRecord> (some runtimes wrap it)
+                match entry.value().decode_as::<Option<RegionRecord>>() {
+                    Ok(opt) => opt,
+                    Err(e2) => {
+                        tracing::warn!("Failed to decode as Option<RegionRecord>: {:?}", e2);
+                        None
+                    }
+                }
+            }
+        };
+
+        regions.push(RegionEntry {
+            id: region_id,
+            record,
+        });
+    }
+
+    Ok(regions)
+}
+
+// ================================================================================================
+// Potential Renewal Types and Queries
+// ================================================================================================
+
+/// CoreMask type (80 bits = 10 bytes).
+pub type CoreMask = [u8; CORE_MASK_SIZE];
+
+/// Storage key data offset (pallet hash 16 + entry hash 16 + twox64 8 = 40).
+const STORAGE_KEY_DATA_OFFSET: usize = 40;
+
+/// Renewal key size (u16 core + u32 when = 6 bytes).
+const RENEWAL_KEY_DATA_SIZE: usize = std::mem::size_of::<u16>() + std::mem::size_of::<u32>();
+
+/// Minimum length of the storage key to extract renewal ID fields.
+const RENEWAL_KEY_MIN_LENGTH: usize = STORAGE_KEY_DATA_OFFSET + RENEWAL_KEY_DATA_SIZE;
+
+/// CompletionStatus enum matching the Broker pallet.
+#[derive(Debug, Clone, DecodeAsType)]
+#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+pub enum CompletionStatus {
+    Partial(CoreMask),
+    Complete(Vec<ScheduleItem>),
+}
+
+/// PotentialRenewalRecord matching the Broker pallet storage value.
+#[derive(Debug, Clone, DecodeAsType)]
+#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
+pub struct PotentialRenewalRecord {
+    pub price: u128,
+    pub completion: CompletionStatus,
+}
+
+/// A potential renewal entry combining key and value.
+#[derive(Debug, Clone)]
+pub struct PotentialRenewalEntry {
+    /// The core index.
+    pub core: u32,
+    /// The timeslice when this renewal becomes available.
+    pub when: u32,
+    /// The renewal record.
+    pub record: PotentialRenewalRecord,
+}
+
+/// Fetches all potential renewals from Broker::PotentialRenewals storage map.
+pub async fn get_potential_renewals(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Result<Vec<PotentialRenewalEntry>, BrokerStorageError> {
+    let renewals_addr = subxt::dynamic::storage::<(u16, u32), PotentialRenewalRecord>(
+        "Broker",
+        "PotentialRenewals",
+    );
+
+    let mut renewals = Vec::new();
+
+    let mut iter = client_at_block
+        .storage()
+        .iter(renewals_addr, ())
+        .await
+        .map_err(|e| BrokerStorageError::StorageIterationError {
+            pallet: "Broker",
+            entry: "PotentialRenewals",
+            details: e.to_string(),
+        })?;
+
+    while let Some(result) = iter.next().await {
+        let entry = match result {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Error iterating potential renewals: {:?}", e);
+                continue;
+            }
+        };
+
+        // Extract key fields (core, when) from storage key bytes
+        let key_bytes = entry.key_bytes();
+        let Some((core, when)) = extract_renewal_key(key_bytes) else {
+            tracing::warn!("PotentialRenewals key too short: {} bytes", key_bytes.len());
+            continue;
+        };
+
+        // Decode the storage value
+        let record = match entry.value().decode() {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to decode PotentialRenewalRecord for core={}, when={}: {:?}",
+                    core,
+                    when,
+                    e
+                );
+                continue;
+            }
+        };
+
+        renewals.push(PotentialRenewalEntry { core, when, record });
+    }
+
+    Ok(renewals)
+}
+
+/// Extracts (core, when) from storage key bytes using SCALE decoding.
+fn extract_renewal_key(key_bytes: &[u8]) -> Option<(u32, u32)> {
+    if key_bytes.len() < RENEWAL_KEY_MIN_LENGTH {
+        return None;
+    }
+
+    // Position cursor at the start of the key data (after pallet hash + entry hash + twox64)
+    let cursor = &mut &key_bytes[STORAGE_KEY_DATA_OFFSET..];
+
+    // Decode core (u16) and when (u32) using SCALE codec
+    let core = u16::decode(cursor).ok()? as u32;
+    let when = u32::decode(cursor).ok()?;
+
+    Some((core, when))
+}
+
+// ================================================================================================
+// Workload and Workplan Full Iteration
+// ================================================================================================
+
+/// Workload entry with full schedule information.
+#[derive(Debug, Clone)]
+pub struct WorkloadWithSchedule {
+    /// The core index.
+    pub core: u32,
+    /// The schedule items.
+    pub items: Vec<ScheduleItem>,
+}
+
+/// Workplan entry with full schedule information.
+#[derive(Debug, Clone)]
+pub struct WorkplanWithSchedule {
+    /// The core index.
+    pub core: u32,
+    /// The timeslice this workplan is for.
+    pub timeslice: u32,
+    /// The schedule items.
+    pub items: Vec<ScheduleItem>,
+}
+
+/// Fetches all workload entries from Broker::Workload storage with full schedule data.
+pub async fn iter_workloads_full(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Result<Vec<WorkloadWithSchedule>, BrokerStorageError> {
+    let workload_addr = subxt::dynamic::storage::<(u16,), Vec<ScheduleItem>>("Broker", "Workload");
+
+    let mut workloads = Vec::new();
+
+    let mut iter = client_at_block
+        .storage()
+        .iter(workload_addr, ())
+        .await
+        .map_err(|e| BrokerStorageError::StorageIterationError {
+            pallet: "Broker",
+            entry: "Workload",
+            details: e.to_string(),
+        })?;
+
+    while let Some(result) = iter.next().await {
+        let entry = match result {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Error iterating workload: {:?}", e);
+                continue;
+            }
+        };
+
+        // Extract core from key using subxt's structured key API
+        let core: u32 = match entry
+            .key()
+            .ok()
+            .and_then(|k| k.part(0))
+            .and_then(|p| p.decode_as::<u16>().ok().flatten())
+        {
+            Some(c) => c as u32,
+            None => continue,
+        };
+
+        // Decode workload value as Vec<ScheduleItem> using DecodeAsType
+        let items = match entry.value().decode_as::<Vec<ScheduleItem>>() {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("Failed to decode workload for core {}: {:?}", core, e);
+                Vec::new()
+            }
+        };
+
+        workloads.push(WorkloadWithSchedule { core, items });
+    }
+
+    // Sort by core
+    workloads.sort_by_key(|w| w.core);
+
+    Ok(workloads)
+}
+
+/// Fetches all workplan entries from Broker::Workplan storage with full schedule data.
+pub async fn iter_workplans(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+) -> Result<Vec<WorkplanWithSchedule>, BrokerStorageError> {
+    let workplan_addr =
+        subxt::dynamic::storage::<(u32, u16), Vec<ScheduleItem>>("Broker", "Workplan");
+
+    let mut workplans = Vec::new();
+
+    let mut iter = client_at_block
+        .storage()
+        .iter(workplan_addr, ())
+        .await
+        .map_err(|e| BrokerStorageError::StorageIterationError {
+            pallet: "Broker",
+            entry: "Workplan",
+            details: e.to_string(),
+        })?;
+
+    while let Some(result) = iter.next().await {
+        let entry = match result {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Error iterating workplan: {:?}", e);
+                continue;
+            }
+        };
+
+        // Extract (timeslice, core) from key
+        let key = match entry.key() {
+            Ok(k) => k,
+            Err(e) => {
+                tracing::warn!("Failed to parse workplan key: {:?}", e);
+                continue;
+            }
+        };
+
+        // Try to decode as tuple first (single key component)
+        let (timeslice, core): (u32, u32) = if let Some((t, c)) = key
+            .part(0)
+            .and_then(|p| p.decode_as::<(u32, u16)>().ok().flatten())
+        {
+            (t, c as u32)
+        } else {
+            // Fallback: try as separate key parts
+            let timeslice = match key
+                .part(0)
+                .and_then(|p| p.decode_as::<u32>().ok().flatten())
+            {
+                Some(t) => t,
+                None => {
+                    tracing::warn!("Failed to decode workplan timeslice");
+                    continue;
+                }
+            };
+            let core = match key
+                .part(1)
+                .and_then(|p| p.decode_as::<u16>().ok().flatten())
+            {
+                Some(c) => c as u32,
+                None => {
+                    tracing::warn!("Failed to decode workplan core");
+                    continue;
+                }
+            };
+            (timeslice, core)
+        };
+
+        // Decode workplan value using DecodeAsType
+        let items = match entry.value().decode_as::<Vec<ScheduleItem>>() {
+            Ok(v) => v,
+            Err(_) => {
+                // OptionQuery might wrap the value
+                match entry.value().decode_as::<Option<Vec<ScheduleItem>>>() {
+                    Ok(Some(v)) => v,
+                    Ok(None) => Vec::new(),
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to decode workplan for timeslice {}, core {}: {:?}",
+                            timeslice,
+                            core,
+                            e
+                        );
+                        Vec::new()
+                    }
+                }
+            }
+        };
+
+        // Only add non-empty workplans
+        if !items.is_empty() {
+            workplans.push(WorkplanWithSchedule {
+                core,
+                timeslice,
+                items,
+            });
+        }
+    }
+
+    // Sort by core, then timeslice
+    workplans.sort_by(|a, b| a.core.cmp(&b.core).then(a.timeslice.cmp(&b.timeslice)));
+
+    Ok(workplans)
 }
 
 // ================================================================================================
