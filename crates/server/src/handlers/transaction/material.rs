@@ -437,11 +437,8 @@ async fn material_versioned_internal(
     let tx_version = client_at.transaction_version().to_string();
 
     // Get available metadata versions
-    let versions_method = subxt::dynamic::runtime_api_call::<_, Vec<u32>>(
-        "Metadata",
-        "metadata_versions",
-        (),
-    );
+    let versions_method =
+        subxt::dynamic::runtime_api_call::<_, Vec<u32>>("Metadata", "metadata_versions", ());
     let available_versions_result = client_at.runtime_apis().call(versions_method).await;
 
     let available_versions: Vec<u32> = match available_versions_result {
@@ -561,11 +558,8 @@ async fn material_internal(
                 let number = client_at.block_number().to_string();
                 let spec_version = client_at.spec_version().to_string();
                 let tx_version = client_at.transaction_version().to_string();
-                let method = subxt::dynamic::runtime_api_call::<_, RuntimeVersion>(
-                    "Core",
-                    "version",
-                    (),
-                );
+                let method =
+                    subxt::dynamic::runtime_api_call::<_, RuntimeVersion>("Core", "version", ());
                 let runtime_version = client_at.runtime_apis().call(method).await?;
 
                 (hash, number, spec_version, tx_version, runtime_version)

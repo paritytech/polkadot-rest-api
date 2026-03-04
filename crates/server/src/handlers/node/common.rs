@@ -637,12 +637,7 @@ fn extract_max_block_weight(metadata: &RuntimeMetadataPrefixed) -> Option<u64> {
         _ => return None,
     };
 
-    let decoded = BlockWeights::decode_as_type(
-        &mut &constant_value[..],
-        type_id,
-        registry,
-    )
-    .ok()?;
+    let decoded = BlockWeights::decode_as_type(&mut &constant_value[..], type_id, registry).ok()?;
     Some(decoded.max_block.ref_time)
 }
 
@@ -669,12 +664,7 @@ fn extract_max_block_length(metadata: &RuntimeMetadataPrefixed, class: &str) -> 
         _ => return None,
     };
 
-    let decoded = BlockLength::decode_as_type(
-        &mut &constant_value[..],
-        type_id,
-        registry,
-    )
-    .ok()?;
+    let decoded = BlockLength::decode_as_type(&mut &constant_value[..], type_id, registry).ok()?;
 
     let length = match class {
         "normal" => decoded.max.normal,
@@ -708,12 +698,7 @@ fn extract_operational_fee_multiplier(metadata: &RuntimeMetadataPrefixed) -> Opt
         _ => return None,
     };
 
-    let decoded = u8::decode_as_type(
-        &mut &constant_value[..],
-        type_id,
-        registry,
-    )
-    .ok()?;
+    let decoded = u8::decode_as_type(&mut &constant_value[..], type_id, registry).ok()?;
     Some(decoded as u128)
 }
 
