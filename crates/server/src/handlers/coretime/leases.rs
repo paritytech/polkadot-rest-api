@@ -216,7 +216,7 @@ async fn fetch_workloads(
 mod tests {
     use super::*;
 
-    // NOTE: Decode tests for LeaseRecordItem, WorkloadScheduleItem, WorkloadAssignment
+    // NOTE: Decode tests for LeaseRecordItem, ScheduleItem, CoreAssignment
     // have been moved to the runtime_queries::broker module where these types are now defined.
 
     // ------------------------------------------------------------------------

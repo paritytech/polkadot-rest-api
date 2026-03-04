@@ -70,7 +70,7 @@ pub enum BrokerStorageError {
 // ================================================================================================
 
 /// Lease record item from Broker::Leases.
-#[derive(Debug, Clone, Decode)]
+#[derive(Debug, Clone, Decode, Encode)]
 pub struct LeaseRecordItem {
     pub until: u32,
     pub task: u32,
@@ -102,23 +102,6 @@ impl CoreAssignment {
             CoreAssignment::Task(id) => id.to_string(),
         }
     }
-}
-
-/// Workload schedule item with assignment info.
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-pub struct WorkloadScheduleItem {
-    pub mask: [u8; 10],
-    pub assignment: WorkloadAssignment,
-}
-
-/// Workload assignment variants.
-#[derive(Debug, Clone, Decode, DecodeAsType)]
-#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
-pub enum WorkloadAssignment {
-    Idle,
-    Pool,
-    Task(u32),
 }
 
 // ================================================================================================
@@ -237,7 +220,7 @@ pub async fn iter_workloads(
         // Decode workload value into typed struct and extract task
         let task = entry
             .value()
-            .decode_as::<Vec<WorkloadScheduleItem>>()
+            .decode_as::<Vec<ScheduleItem>>()
             .ok()
             .and_then(extract_task_from_workload);
 
@@ -248,9 +231,9 @@ pub async fn iter_workloads(
 }
 
 /// Extracts the task ID from a typed workload schedule.
-fn extract_task_from_workload(items: Vec<WorkloadScheduleItem>) -> Option<u32> {
+fn extract_task_from_workload(items: Vec<ScheduleItem>) -> Option<u32> {
     items.first().and_then(|item| match item.assignment {
-        WorkloadAssignment::Task(id) => Some(id),
+        CoreAssignment::Task(id) => Some(id),
         _ => None,
     })
 }
@@ -800,5 +783,149 @@ mod tests {
         assert_eq!(CoreAssignment::Idle.to_task_string(), "idle");
         assert_eq!(CoreAssignment::Pool.to_task_string(), "pool");
         assert_eq!(CoreAssignment::Task(1000).to_task_string(), "1000");
+    }
+
+    // ------------------------------------------------------------------------
+    // extract_task_from_workload tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_extract_task_from_workload_empty() {
+        assert_eq!(extract_task_from_workload(vec![]), None);
+    }
+
+    #[test]
+    fn test_extract_task_from_workload_task() {
+        let items = vec![ScheduleItem {
+            mask: [0u8; CORE_MASK_SIZE],
+            assignment: CoreAssignment::Task(2000),
+        }];
+        assert_eq!(extract_task_from_workload(items), Some(2000));
+    }
+
+    #[test]
+    fn test_extract_task_from_workload_idle() {
+        let items = vec![ScheduleItem {
+            mask: [0u8; CORE_MASK_SIZE],
+            assignment: CoreAssignment::Idle,
+        }];
+        assert_eq!(extract_task_from_workload(items), None);
+    }
+
+    #[test]
+    fn test_extract_task_from_workload_pool() {
+        let items = vec![ScheduleItem {
+            mask: [0u8; CORE_MASK_SIZE],
+            assignment: CoreAssignment::Pool,
+        }];
+        assert_eq!(extract_task_from_workload(items), None);
+    }
+
+    // ------------------------------------------------------------------------
+    // LeaseRecordItem decode tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_lease_record_item_decode() {
+        // LeaseRecordItem { until: u32, task: u32 }
+        // SCALE encoding: until (4 bytes LE) + task (4 bytes LE)
+        let until: u32 = 1234567;
+        let task: u32 = 2000;
+
+        let mut encoded = until.to_le_bytes().to_vec();
+        encoded.extend_from_slice(&task.to_le_bytes());
+
+        let decoded = LeaseRecordItem::decode(&mut &encoded[..]).unwrap();
+        assert_eq!(decoded.until, 1234567);
+        assert_eq!(decoded.task, 2000);
+    }
+
+    #[test]
+    fn test_lease_record_item_vec_decode() {
+        // Vec<LeaseRecordItem> with 2 items
+        let lease1 = LeaseRecordItem {
+            until: 100,
+            task: 2000,
+        };
+        let lease2 = LeaseRecordItem {
+            until: 200,
+            task: 2001,
+        };
+
+        // SCALE encode as Vec
+        let encoded = vec![lease1.clone(), lease2.clone()].encode();
+
+        let decoded: Vec<LeaseRecordItem> =
+            Vec::<LeaseRecordItem>::decode(&mut &encoded[..]).unwrap();
+
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded[0].until, 100);
+        assert_eq!(decoded[0].task, 2000);
+        assert_eq!(decoded[1].until, 200);
+        assert_eq!(decoded[1].task, 2001);
+    }
+
+    #[test]
+    fn test_lease_record_item_empty_vec_decode() {
+        let encoded: Vec<u8> = Vec::<LeaseRecordItem>::new().encode();
+
+        let decoded: Vec<LeaseRecordItem> =
+            Vec::<LeaseRecordItem>::decode(&mut &encoded[..]).unwrap();
+
+        assert!(decoded.is_empty());
+    }
+
+    // ------------------------------------------------------------------------
+    // extract_renewal_key tests
+    // ------------------------------------------------------------------------
+
+    /// Helper to create a mock storage key with the given core and when values.
+    fn make_storage_key(core: u16, when: u32) -> Vec<u8> {
+        let mut key_bytes = vec![0u8; STORAGE_KEY_DATA_OFFSET];
+        // Append SCALE-encoded core and when
+        key_bytes.extend(core.encode());
+        key_bytes.extend(when.encode());
+        key_bytes
+    }
+
+    #[test]
+    fn test_extract_renewal_key_valid() {
+        let key_bytes = make_storage_key(5, 1000);
+        let result = extract_renewal_key(&key_bytes);
+        assert_eq!(result, Some((5, 1000)));
+    }
+
+    #[test]
+    fn test_extract_renewal_key_large_core() {
+        let key_bytes = make_storage_key(1000, 50000);
+        let result = extract_renewal_key(&key_bytes);
+        assert_eq!(result, Some((1000, 50000)));
+    }
+
+    #[test]
+    fn test_extract_renewal_key_too_short() {
+        let key_bytes = vec![0u8; RENEWAL_KEY_MIN_LENGTH - 1];
+        assert_eq!(extract_renewal_key(&key_bytes), None);
+    }
+
+    #[test]
+    fn test_extract_renewal_key_empty() {
+        assert_eq!(extract_renewal_key(&[]), None);
+    }
+
+    // ------------------------------------------------------------------------
+    // Storage key constants tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_storage_key_constants() {
+        // STORAGE_KEY_DATA_OFFSET = pallet hash (16) + entry hash (16) + twox64 (8) = 40
+        assert_eq!(STORAGE_KEY_DATA_OFFSET, 40);
+
+        // RENEWAL_KEY_DATA_SIZE = sizeof(u16) + sizeof(u32) = 2 + 4 = 6
+        assert_eq!(RENEWAL_KEY_DATA_SIZE, 6);
+
+        // RENEWAL_KEY_MIN_LENGTH = STORAGE_KEY_DATA_OFFSET + RENEWAL_KEY_DATA_SIZE = 40 + 6 = 46
+        assert_eq!(RENEWAL_KEY_MIN_LENGTH, 46);
     }
 }

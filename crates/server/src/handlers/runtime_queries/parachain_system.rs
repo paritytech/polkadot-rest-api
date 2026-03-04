@@ -1,13 +1,14 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! ParachainSystem and ParachainInfo pallet storage query functions.
+//! ParachainSystem pallet storage query functions.
 //!
-//! This module provides standalone functions for querying parachain-specific storage items.
+//! This module provides standalone functions for querying ParachainSystem pallet storage items.
 //!
 //! # Storage Items Covered
 //! - `ParachainSystem::LastRelayChainBlockNumber` - Last relay chain block number
-//! - `ParachainInfo::ParachainId` - This parachain's ID
+//!
+//! Note: `ParachainInfo::ParachainId` queries are in the `parachain_info` module.
 
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
@@ -72,29 +73,4 @@ pub async fn get_last_relay_block_number(
             Ok(None)
         }
     }
-}
-
-/// Fetches the parachain ID from ParachainInfo pallet.
-///
-/// Returns an error if this is not a parachain (pallet doesn't exist).
-pub async fn get_parachain_id(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<u32, ParachainStorageError> {
-    let addr = subxt::dynamic::storage::<(), u32>("ParachainInfo", "ParachainId");
-
-    let result = client_at_block
-        .storage()
-        .fetch(addr, ())
-        .await
-        .map_err(|_| ParachainStorageError::PalletNotAvailable {
-            pallet: "ParachainInfo",
-        })?;
-
-    result
-        .decode()
-        .map_err(|e| ParachainStorageError::StorageDecodeFailed {
-            pallet: "ParachainInfo",
-            entry: "ParachainId",
-            details: e.to_string(),
-        })
 }

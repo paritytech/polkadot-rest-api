@@ -14,7 +14,9 @@ use crate::extractors::JsonQuery;
 use crate::handlers::coretime::common::{
     AtResponse, CoretimeError, CoretimeQueryParams, has_broker_pallet,
 };
-use crate::handlers::runtime_queries::broker::{self, CompletionStatus, PotentialRenewalRecord};
+use crate::handlers::runtime_queries::broker::{
+    self, BrokerStorageError, CompletionStatus, PotentialRenewalRecord,
+};
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
 use axum::{
@@ -150,19 +152,25 @@ async fn fetch_potential_renewals(
 ) -> Result<Vec<RenewalInfo>, CoretimeError> {
     let renewal_entries = broker::get_potential_renewals(client_at_block)
         .await
-        .map_err(|e| {
-            // Check for specific storage errors
-            let err_str = e.to_string();
-            if err_str.contains("StorageEntryNotFound") || err_str.contains("not found") {
-                CoretimeError::StorageItemNotAvailableAtBlock {
-                    pallet: "Broker",
-                    entry: "PotentialRenewals",
-                }
-            } else {
-                CoretimeError::StorageQueryFailed {
-                    details: e.to_string(),
-                }
-            }
+        .map_err(|e| match e {
+            BrokerStorageError::StorageFetchFailed { pallet, entry }
+            | BrokerStorageError::StorageIterationError {
+                pallet,
+                entry,
+                details: _,
+            } => CoretimeError::StorageItemNotAvailableAtBlock { pallet, entry },
+            BrokerStorageError::StorageDecodeFailed {
+                pallet,
+                entry,
+                details,
+            } => CoretimeError::StorageDecodeFailed {
+                pallet,
+                entry,
+                details,
+            },
+            _ => CoretimeError::StorageQueryFailed {
+                details: e.to_string(),
+            },
         })?;
 
     let renewals = renewal_entries
