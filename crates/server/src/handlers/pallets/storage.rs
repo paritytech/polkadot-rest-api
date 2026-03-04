@@ -4,7 +4,7 @@
 //! Handler for `/pallets/{palletId}/storage` and `/pallets/{palletId}/storage/{storageItemId}` endpoints.
 //!
 //! Returns storage item metadata for a pallet, matching Sidecar's response format.
-//! Supports all metadata versions V9-V16.
+//! Uses subxt's cached metadata for all metadata versions.
 
 // Allow large error types - PalletError contains subxt::error::OnlineClientAtBlockError
 // which is large by design. Boxing would add indirection without significant benefit.
@@ -19,8 +19,6 @@ use crate::utils;
 use crate::utils::format::to_camel_case;
 use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{Json, extract::Path, extract::State, response::IntoResponse, response::Response};
-use frame_metadata::decode_different::DecodeDifferent;
-use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
 use parity_scale_codec::Decode;
 use polkadot_rest_api_config::ChainType;
 use serde::Serialize;
@@ -168,31 +166,6 @@ pub struct PalletsStorageItemResponse {
 }
 
 // ============================================================================
-// Helper Functions
-// ============================================================================
-
-fn extract_str<'a>(s: &'a DecodeDifferent<&'static str, String>) -> &'a str {
-    match s {
-        DecodeDifferent::Decoded(v) => v.as_str(),
-        DecodeDifferent::Encode(s) => s,
-    }
-}
-
-fn extract_docs(docs: &DecodeDifferent<&'static [&'static str], Vec<String>>) -> String {
-    match docs {
-        DecodeDifferent::Decoded(v) => v.join("\n"),
-        DecodeDifferent::Encode(s) => s.join("\n"),
-    }
-}
-
-fn extract_default_bytes<G>(default: &DecodeDifferent<G, Vec<u8>>) -> String {
-    match default {
-        DecodeDifferent::Decoded(v) => format!("0x{}", hex::encode(v)),
-        DecodeDifferent::Encode(_) => "0x".to_string(),
-    }
-}
-
-// ============================================================================
 // Main Handler
 // ============================================================================
 
@@ -232,30 +205,8 @@ pub async fn get_pallets_storage(
         number: resolved.client_at_block.block_number(),
     };
     let metadata = resolved.client_at_block.metadata();
-    let response =
-        build_storage_response_subxt(&metadata, &pallet_id, &resolved_block, params.only_ids)?;
+    let response = build_storage_response(&metadata, &pallet_id, &resolved_block, params.only_ids)?;
     Ok(Json(response).into_response())
-}
-
-/// Fetch raw RuntimeMetadata via RPC and decode it
-async fn fetch_runtime_metadata(
-    rpc_client: &RpcClient,
-    block_hash: &str,
-) -> Result<RuntimeMetadata, PalletError> {
-    let metadata_hex: String = rpc_client
-        .request("state_getMetadata", rpc_params![block_hash])
-        .await
-        .map_err(|e| PalletError::PalletNotFound(format!("Failed to fetch metadata: {}", e)))?;
-
-    let hex_str = metadata_hex.strip_prefix("0x").unwrap_or(&metadata_hex);
-    let metadata_bytes = hex::decode(hex_str).map_err(|e| {
-        PalletError::PalletNotFound(format!("Failed to decode metadata hex: {}", e))
-    })?;
-
-    let metadata_prefixed = RuntimeMetadataPrefixed::decode(&mut &metadata_bytes[..])
-        .map_err(|e| PalletError::PalletNotFound(format!("Failed to decode metadata: {}", e)))?;
-
-    Ok(metadata_prefixed.1)
 }
 
 /// Handle useRcBlock parameter - find Asset Hub blocks within a Relay Chain block
@@ -298,8 +249,9 @@ async fn handle_use_rc_block(
             number: ah_block.number,
         };
 
-        // Fetch raw metadata via RPC for full version support
-        let metadata = fetch_runtime_metadata(&state.rpc_client, &ah_block.hash).await?;
+        // Use subxt's cached metadata (same pattern as all other handlers)
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+        let metadata = client_at_block.metadata();
 
         let mut response =
             build_storage_response(&metadata, &pallet_id, &ah_resolved_block, params.only_ids)?;
@@ -378,7 +330,7 @@ pub async fn get_pallets_storage_item(
     };
     let block_hash = &resolved.at.hash;
     let metadata = resolved.client_at_block.metadata();
-    let response = build_storage_item_response_subxt(
+    let response = build_storage_item_response(
         &state.rpc_client,
         &metadata,
         &pallet_id,
@@ -433,7 +385,9 @@ async fn handle_storage_item_use_rc_block(
             number: ah_block.number,
         };
 
-        let metadata = fetch_runtime_metadata(&state.rpc_client, &ah_block.hash).await?;
+        // Use subxt's cached metadata (same pattern as all other handlers)
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+        let metadata = client_at_block.metadata();
 
         let mut response = build_storage_item_response(
             &state.rpc_client,
@@ -477,230 +431,6 @@ async fn handle_storage_item_use_rc_block(
     Ok(Json(json!(results)).into_response())
 }
 
-/// Build storage item response - query actual storage value
-#[allow(clippy::too_many_arguments)]
-async fn build_storage_item_response(
-    rpc_client: &RpcClient,
-    metadata: &RuntimeMetadata,
-    pallet_id: &str,
-    storage_item_id: &str,
-    keys: &[String],
-    resolved_block: &utils::ResolvedBlock,
-    include_metadata: bool,
-    block_hash: &str,
-) -> Result<PalletsStorageItemResponse, PalletError> {
-    // First get the storage metadata to find the item and build the key
-    let storage_response = build_storage_response(metadata, pallet_id, resolved_block, false)?;
-
-    let storage_items = match &storage_response.items {
-        StorageItems::Full(items) => items,
-        StorageItems::OnlyIds(_) => {
-            return Err(PalletError::StorageItemNotFound {
-                pallet: pallet_id.to_string(),
-                item: storage_item_id.to_string(),
-            });
-        }
-    };
-
-    // Find the storage item by name (case-insensitive)
-    let storage_item = storage_items
-        .iter()
-        .find(|item| item.name.eq_ignore_ascii_case(storage_item_id))
-        .ok_or_else(|| PalletError::StorageItemNotFound {
-            pallet: pallet_id.to_string(),
-            item: storage_item_id.to_string(),
-        })?;
-
-    // Get the original pallet name (PascalCase) for storage key building
-    let original_pallet_name = get_original_pallet_name(metadata, pallet_id)?;
-
-    // Build storage key and query value - use original (PascalCase) pallet name
-    let storage_key = build_storage_key(
-        &original_pallet_name,
-        &storage_item.name,
-        keys,
-        &storage_item.ty,
-    )?;
-
-    // Query storage value via RPC
-    let value_hex: Option<String> = rpc_client
-        .request("state_getStorage", rpc_params![&storage_key, block_hash])
-        .await
-        .ok();
-
-    // Decode value - for now return as raw hex or decoded number for simple types
-    let value = decode_storage_value(value_hex, &storage_item.ty)?;
-
-    let metadata_field = if include_metadata {
-        Some(storage_item.clone())
-    } else {
-        None
-    };
-
-    Ok(PalletsStorageItemResponse {
-        at: AtResponse {
-            hash: resolved_block.hash.clone(),
-            height: resolved_block.number.to_string(),
-        },
-        pallet: storage_response.pallet,
-        pallet_index: storage_response.pallet_index,
-        storage_item: to_camel_case(&storage_item.name),
-        keys: keys.to_vec(),
-        value,
-        metadata: metadata_field,
-        rc_block_hash: None,
-        rc_block_number: None,
-        ah_timestamp: None,
-    })
-}
-
-/// Get the original pallet name (PascalCase) from metadata
-fn get_original_pallet_name(
-    metadata: &RuntimeMetadata,
-    pallet_id: &str,
-) -> Result<String, PalletError> {
-    use RuntimeMetadata::*;
-
-    match metadata {
-        V14(meta) => {
-            if let Ok(idx) = pallet_id.parse::<u8>() {
-                meta.pallets
-                    .iter()
-                    .find(|p| p.index == idx)
-                    .map(|p| p.name.clone())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            } else {
-                meta.pallets
-                    .iter()
-                    .find(|p| p.name.eq_ignore_ascii_case(pallet_id))
-                    .map(|p| p.name.clone())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            }
-        }
-        V15(meta) => {
-            if let Ok(idx) = pallet_id.parse::<u8>() {
-                meta.pallets
-                    .iter()
-                    .find(|p| p.index == idx)
-                    .map(|p| p.name.clone())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            } else {
-                meta.pallets
-                    .iter()
-                    .find(|p| p.name.eq_ignore_ascii_case(pallet_id))
-                    .map(|p| p.name.clone())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            }
-        }
-        V16(meta) => {
-            if let Ok(idx) = pallet_id.parse::<u8>() {
-                meta.pallets
-                    .iter()
-                    .find(|p| p.index == idx)
-                    .map(|p| p.name.clone())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            } else {
-                meta.pallets
-                    .iter()
-                    .find(|p| p.name.eq_ignore_ascii_case(pallet_id))
-                    .map(|p| p.name.clone())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            }
-        }
-        // For older versions (V9-V13), pallet name comes from module.name
-        V9(meta) => {
-            let DecodeDifferent::Decoded(modules) = &meta.modules else {
-                return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-            };
-            if let Ok(idx) = pallet_id.parse::<usize>() {
-                modules
-                    .get(idx)
-                    .map(|m| extract_str(&m.name).to_string())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            } else {
-                modules
-                    .iter()
-                    .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-                    .map(|m| extract_str(&m.name).to_string())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            }
-        }
-        V10(meta) => {
-            let DecodeDifferent::Decoded(modules) = &meta.modules else {
-                return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-            };
-            if let Ok(idx) = pallet_id.parse::<usize>() {
-                modules
-                    .get(idx)
-                    .map(|m| extract_str(&m.name).to_string())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            } else {
-                modules
-                    .iter()
-                    .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-                    .map(|m| extract_str(&m.name).to_string())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            }
-        }
-        V11(meta) => {
-            let DecodeDifferent::Decoded(modules) = &meta.modules else {
-                return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-            };
-            if let Ok(idx) = pallet_id.parse::<usize>() {
-                modules
-                    .get(idx)
-                    .map(|m| extract_str(&m.name).to_string())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            } else {
-                modules
-                    .iter()
-                    .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-                    .map(|m| extract_str(&m.name).to_string())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            }
-        }
-        V12(meta) => {
-            let DecodeDifferent::Decoded(modules) = &meta.modules else {
-                return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-            };
-            if let Ok(idx) = pallet_id.parse::<u8>() {
-                modules
-                    .iter()
-                    .find(|m| m.index == idx)
-                    .map(|m| extract_str(&m.name).to_string())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            } else {
-                modules
-                    .iter()
-                    .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-                    .map(|m| extract_str(&m.name).to_string())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            }
-        }
-        V13(meta) => {
-            let DecodeDifferent::Decoded(modules) = &meta.modules else {
-                return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-            };
-            if let Ok(idx) = pallet_id.parse::<u8>() {
-                modules
-                    .iter()
-                    .find(|m| m.index == idx)
-                    .map(|m| extract_str(&m.name).to_string())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            } else {
-                modules
-                    .iter()
-                    .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-                    .map(|m| extract_str(&m.name).to_string())
-                    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
-            }
-        }
-        _ => Err(PalletError::PalletNotFound(
-            "Unsupported metadata version".to_string(),
-        )),
-    }
-}
-
 /// Hash a key using the specified hasher type
 fn hash_key(key_bytes: &[u8], hasher: &str) -> Vec<u8> {
     use sp_crypto_hashing::{blake2_128, blake2_256, twox_64, twox_128, twox_256};
@@ -730,8 +460,8 @@ fn hash_key(key_bytes: &[u8], hasher: &str) -> Vec<u8> {
 
 /// Encode a storage key value to bytes based on expected type
 ///
-/// For V14+ metadata, `key_type_id` is a type ID that can be looked up.
-/// For older metadata, `key_type_id` is a type name string like "T::AccountId".
+/// `key_type_id` is a numeric type ID string from subxt's normalized metadata.
+/// Subxt normalizes all metadata versions (V9-V16) to use numeric type IDs.
 ///
 /// The function handles:
 /// - SS58 addresses (AccountId)
@@ -754,8 +484,7 @@ fn encode_key_value(key: &str, key_type_id: &str) -> Result<Vec<u8>, PalletError
         return Ok(bytes.to_vec());
     }
 
-    // Use type hint to determine encoding
-    // For V14+, key_type_id is a number; for older versions it's a type name
+    // Use type hint to determine encoding (numeric type ID from subxt)
     let type_hint = key_type_id.to_lowercase();
 
     // Check for known type patterns
@@ -799,14 +528,7 @@ fn encode_key_value(key: &str, key_type_id: &str) -> Result<Vec<u8>, PalletError
         return Ok(num.to_le_bytes().to_vec());
     }
 
-    // For V14+ type IDs, we don't have the type name directly
-    // Try to infer from the value format
-    if key_type_id.parse::<u32>().is_ok() {
-        // It's a V14+ type ID - try to parse value intelligently
-        return decode_key_value_auto(key);
-    }
-
-    // Fallback for older metadata with type names
+    // Numeric type ID — infer encoding from the value format
     decode_key_value_auto(key)
 }
 
@@ -976,1119 +698,6 @@ fn decode_storage_value(
     }
 }
 
-/// Build storage response from RuntimeMetadata for all supported versions
-fn build_storage_response(
-    metadata: &RuntimeMetadata,
-    pallet_id: &str,
-    resolved_block: &utils::ResolvedBlock,
-    only_ids: bool,
-) -> Result<PalletsStorageResponse, PalletError> {
-    use RuntimeMetadata::*;
-
-    // Get full response from version-specific builder
-    let full_response = match metadata {
-        V9(meta) => build_storage_response_v9(meta, pallet_id, resolved_block),
-        V10(meta) => build_storage_response_v10(meta, pallet_id, resolved_block),
-        V11(meta) => build_storage_response_v11(meta, pallet_id, resolved_block),
-        V12(meta) => build_storage_response_v12(meta, pallet_id, resolved_block),
-        V13(meta) => build_storage_response_v13(meta, pallet_id, resolved_block),
-        V14(meta) => build_storage_response_v14(meta, pallet_id, resolved_block),
-        V15(meta) => build_storage_response_v15(meta, pallet_id, resolved_block),
-        V16(meta) => build_storage_response_v16(meta, pallet_id, resolved_block),
-        _ => {
-            return Err(PalletError::PalletNotFound(
-                "Unsupported metadata version".to_string(),
-            ));
-        }
-    }?;
-
-    // If only_ids requested, convert full items to just names
-    if only_ids {
-        let names: Vec<String> = match &full_response.items {
-            StorageItems::Full(items) => items.iter().map(|item| item.name.clone()).collect(),
-            StorageItems::OnlyIds(names) => names.clone(),
-        };
-        Ok(PalletsStorageResponse {
-            at: full_response.at.clone(),
-            pallet: full_response.pallet.clone(),
-            pallet_index: full_response.pallet_index.clone(),
-            items: StorageItems::OnlyIds(names),
-            rc_block_hash: None,
-            rc_block_number: None,
-            ah_timestamp: None,
-        })
-    } else {
-        Ok(full_response)
-    }
-}
-
-// ============================================================================
-// Hasher conversion helpers
-// ============================================================================
-
-fn hasher_to_string_v9(hasher: &frame_metadata::v9::StorageHasher) -> String {
-    use frame_metadata::v9::StorageHasher;
-    match hasher {
-        StorageHasher::Blake2_128 => "Blake2_128".to_string(),
-        StorageHasher::Blake2_256 => "Blake2_256".to_string(),
-        StorageHasher::Blake2_128Concat => "Blake2_128Concat".to_string(),
-        StorageHasher::Twox128 => "Twox128".to_string(),
-        StorageHasher::Twox256 => "Twox256".to_string(),
-        StorageHasher::Twox64Concat => "Twox64Concat".to_string(),
-    }
-}
-fn hasher_to_string_v10(hasher: &frame_metadata::v10::StorageHasher) -> String {
-    use frame_metadata::v10::StorageHasher;
-    match hasher {
-        StorageHasher::Blake2_128 => "Blake2_128".to_string(),
-        StorageHasher::Blake2_256 => "Blake2_256".to_string(),
-        StorageHasher::Blake2_128Concat => "Blake2_128Concat".to_string(),
-        StorageHasher::Twox128 => "Twox128".to_string(),
-        StorageHasher::Twox256 => "Twox256".to_string(),
-        StorageHasher::Twox64Concat => "Twox64Concat".to_string(),
-    }
-}
-
-fn hasher_to_string_v11(hasher: &frame_metadata::v11::StorageHasher) -> String {
-    use frame_metadata::v11::StorageHasher;
-    match hasher {
-        StorageHasher::Blake2_128 => "Blake2_128".to_string(),
-        StorageHasher::Blake2_256 => "Blake2_256".to_string(),
-        StorageHasher::Blake2_128Concat => "Blake2_128Concat".to_string(),
-        StorageHasher::Twox128 => "Twox128".to_string(),
-        StorageHasher::Twox256 => "Twox256".to_string(),
-        StorageHasher::Twox64Concat => "Twox64Concat".to_string(),
-        StorageHasher::Identity => "Identity".to_string(),
-    }
-}
-
-fn hasher_to_string_v12(hasher: &frame_metadata::v12::StorageHasher) -> String {
-    use frame_metadata::v12::StorageHasher;
-    match hasher {
-        StorageHasher::Blake2_128 => "Blake2_128".to_string(),
-        StorageHasher::Blake2_256 => "Blake2_256".to_string(),
-        StorageHasher::Blake2_128Concat => "Blake2_128Concat".to_string(),
-        StorageHasher::Twox128 => "Twox128".to_string(),
-        StorageHasher::Twox256 => "Twox256".to_string(),
-        StorageHasher::Twox64Concat => "Twox64Concat".to_string(),
-        StorageHasher::Identity => "Identity".to_string(),
-    }
-}
-
-fn hasher_to_string_v13(hasher: &frame_metadata::v13::StorageHasher) -> String {
-    use frame_metadata::v13::StorageHasher;
-    match hasher {
-        StorageHasher::Blake2_128 => "Blake2_128".to_string(),
-        StorageHasher::Blake2_256 => "Blake2_256".to_string(),
-        StorageHasher::Blake2_128Concat => "Blake2_128Concat".to_string(),
-        StorageHasher::Twox128 => "Twox128".to_string(),
-        StorageHasher::Twox256 => "Twox256".to_string(),
-        StorageHasher::Twox64Concat => "Twox64Concat".to_string(),
-        StorageHasher::Identity => "Identity".to_string(),
-    }
-}
-
-fn hasher_to_string_v14(hasher: &frame_metadata::v14::StorageHasher) -> String {
-    use frame_metadata::v14::StorageHasher;
-    match hasher {
-        StorageHasher::Blake2_128 => "Blake2_128".to_string(),
-        StorageHasher::Blake2_256 => "Blake2_256".to_string(),
-        StorageHasher::Blake2_128Concat => "Blake2_128Concat".to_string(),
-        StorageHasher::Twox128 => "Twox128".to_string(),
-        StorageHasher::Twox256 => "Twox256".to_string(),
-        StorageHasher::Twox64Concat => "Twox64Concat".to_string(),
-        StorageHasher::Identity => "Identity".to_string(),
-    }
-}
-
-fn hasher_to_string_v16(hasher: &frame_metadata::v16::StorageHasher) -> String {
-    use frame_metadata::v16::StorageHasher;
-    match hasher {
-        StorageHasher::Blake2_128 => "Blake2_128".to_string(),
-        StorageHasher::Blake2_256 => "Blake2_256".to_string(),
-        StorageHasher::Blake2_128Concat => "Blake2_128Concat".to_string(),
-        StorageHasher::Twox128 => "Twox128".to_string(),
-        StorageHasher::Twox256 => "Twox256".to_string(),
-        StorageHasher::Twox64Concat => "Twox64Concat".to_string(),
-        StorageHasher::Identity => "Identity".to_string(),
-    }
-}
-
-// ============================================================================
-// Type formatting helper (for PortableRegistry in V14+)
-// Sidecar returns type IDs as strings, not resolved type names.
-// TODO: Consider resolving type names from the registry for better readability
-// if Sidecar compatibility is not required.
-// ============================================================================
-
-fn format_type_id(_types: &scale_info::PortableRegistry, type_id: u32) -> String {
-    type_id.to_string()
-}
-
-// ============================================================================
-// V16 deprecation helper
-// ============================================================================
-
-fn extract_deprecation_info_v16(
-    info: &frame_metadata::v16::ItemDeprecationInfo<scale_info::form::PortableForm>,
-) -> DeprecationInfo {
-    use frame_metadata::v16::ItemDeprecationInfo;
-    match info {
-        ItemDeprecationInfo::NotDeprecated => DeprecationInfo::NotDeprecated(None),
-        ItemDeprecationInfo::DeprecatedWithoutNote => DeprecationInfo::Deprecated {
-            note: None,
-            since: None,
-        },
-        ItemDeprecationInfo::Deprecated { note, since } => DeprecationInfo::Deprecated {
-            note: Some(note.to_string()),
-            since: since.as_ref().map(|s| s.to_string()),
-        },
-    }
-}
-
-// ============================================================================
-// Version-specific Response Builders
-// ============================================================================
-//
-// The following builders are organized by metadata version groups:
-//
-// GROUP 1: V9-V11 (Legacy, DecodeDifferent, no pallet index field)
-//   - Use array position as pallet index
-//   - Types encoded as strings via DecodeDifferent
-//   - No NMap support
-//   - Only difference between versions: StorageHasher enum variants
-//
-// GROUP 2: V12-V13 (Legacy, DecodeDifferent, has pallet index field)
-//   - Pallets have explicit .index field
-//   - V13 adds NMap storage type support
-//
-// GROUP 3: V14-V15 (Modern, PortableRegistry)
-//   - Use scale_info::PortableRegistry for type resolution
-//   - Types referenced by ID, not string names
-//   - Identical structure (V15 reuses V14's StorageHasher)
-//
-// GROUP 4: V16 (Modern, PortableRegistry, with deprecation)
-//   - Same as V14/V15 but adds deprecation_info field
-//
-// Note: Full consolidation via traits is not practical because each version
-// has distinct Rust types from frame_metadata crate that are not trait-compatible.
-// A macro could reduce source code duplication but wouldn't change the compiled output.
-// ============================================================================
-
-// ============================================================================
-// V9 Response Builder (no index field - use array position)
-// ============================================================================
-
-fn build_storage_response_v9(
-    meta: &frame_metadata::v9::RuntimeMetadataV9,
-    pallet_id: &str,
-    resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, PalletError> {
-    use frame_metadata::v9::{StorageEntryModifier, StorageEntryType};
-
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    // Find module by name (case-insensitive) or numeric index (array position)
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
-        modules
-            .get(idx)
-            .map(|m| (m, idx as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .enumerate()
-            .find(|(_, m)| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|(i, m)| (m, i as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    let items = if let Some(storage) = &module.storage {
-        let DecodeDifferent::Decoded(storage_meta) = storage else {
-            return Ok(PalletsStorageResponse {
-                at: AtResponse {
-                    hash: resolved_block.hash.clone(),
-                    height: resolved_block.number.to_string(),
-                },
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: StorageItems::Full(vec![]),
-                rc_block_hash: None,
-                rc_block_number: None,
-                ah_timestamp: None,
-            });
-        };
-
-        let DecodeDifferent::Decoded(entries) = &storage_meta.entries else {
-            return Ok(PalletsStorageResponse {
-                at: AtResponse {
-                    hash: resolved_block.hash.clone(),
-                    height: resolved_block.number.to_string(),
-                },
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: StorageItems::Full(vec![]),
-                rc_block_hash: None,
-                rc_block_number: None,
-                ah_timestamp: None,
-            });
-        };
-
-        entries
-            .iter()
-            .map(|entry| {
-                let modifier = match entry.modifier {
-                    StorageEntryModifier::Optional => "Optional",
-                    StorageEntryModifier::Default => "Default",
-                };
-
-                let ty = match &entry.ty {
-                    StorageEntryType::Plain(ty) => StorageTypeInfo::Plain {
-                        plain: extract_str(ty).to_string(),
-                    },
-                    StorageEntryType::Map {
-                        hasher, key, value, ..
-                    } => StorageTypeInfo::Map {
-                        map: MapTypeInfo {
-                            hashers: vec![hasher_to_string_v9(hasher)],
-                            key: extract_str(key).to_string(),
-                            value: extract_str(value).to_string(),
-                        },
-                    },
-                    StorageEntryType::DoubleMap {
-                        hasher,
-                        key1,
-                        key2,
-                        value,
-                        key2_hasher,
-                    } => StorageTypeInfo::Map {
-                        map: MapTypeInfo {
-                            hashers: vec![
-                                hasher_to_string_v9(hasher),
-                                hasher_to_string_v9(key2_hasher),
-                            ],
-                            key: format!("({}, {})", extract_str(key1), extract_str(key2)),
-                            value: extract_str(value).to_string(),
-                        },
-                    },
-                };
-
-                StorageItemMetadata {
-                    name: extract_str(&entry.name).to_string(),
-                    modifier: modifier.to_string(),
-                    ty,
-                    fallback: extract_default_bytes(&entry.default),
-                    docs: extract_docs(&entry.documentation),
-                    deprecation_info: DeprecationInfo::NotDeprecated(None),
-                }
-            })
-            .collect()
-    } else {
-        vec![]
-    };
-
-    Ok(PalletsStorageResponse {
-        at: AtResponse {
-            hash: resolved_block.hash.clone(),
-            height: resolved_block.number.to_string(),
-        },
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        items: StorageItems::Full(items),
-        rc_block_hash: None,
-        rc_block_number: None,
-        ah_timestamp: None,
-    })
-}
-
-// ============================================================================
-// V10 Response Builder
-// ============================================================================
-
-fn build_storage_response_v10(
-    meta: &frame_metadata::v10::RuntimeMetadataV10,
-    pallet_id: &str,
-    resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, PalletError> {
-    use frame_metadata::v10::{StorageEntryModifier, StorageEntryType};
-
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
-        modules
-            .get(idx)
-            .map(|m| (m, idx as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .enumerate()
-            .find(|(_, m)| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|(i, m)| (m, i as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    let items = if let Some(storage) = &module.storage {
-        let DecodeDifferent::Decoded(storage_meta) = storage else {
-            return Ok(PalletsStorageResponse {
-                at: AtResponse {
-                    hash: resolved_block.hash.clone(),
-                    height: resolved_block.number.to_string(),
-                },
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: StorageItems::Full(vec![]),
-                rc_block_hash: None,
-                rc_block_number: None,
-                ah_timestamp: None,
-            });
-        };
-
-        let DecodeDifferent::Decoded(entries) = &storage_meta.entries else {
-            return Ok(PalletsStorageResponse {
-                at: AtResponse {
-                    hash: resolved_block.hash.clone(),
-                    height: resolved_block.number.to_string(),
-                },
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: StorageItems::Full(vec![]),
-                rc_block_hash: None,
-                rc_block_number: None,
-                ah_timestamp: None,
-            });
-        };
-
-        entries
-            .iter()
-            .map(|entry| {
-                let modifier = match entry.modifier {
-                    StorageEntryModifier::Optional => "Optional",
-                    StorageEntryModifier::Default => "Default",
-                };
-
-                let ty = match &entry.ty {
-                    StorageEntryType::Plain(ty) => StorageTypeInfo::Plain {
-                        plain: extract_str(ty).to_string(),
-                    },
-                    StorageEntryType::Map {
-                        hasher, key, value, ..
-                    } => StorageTypeInfo::Map {
-                        map: MapTypeInfo {
-                            hashers: vec![hasher_to_string_v10(hasher)],
-                            key: extract_str(key).to_string(),
-                            value: extract_str(value).to_string(),
-                        },
-                    },
-                    StorageEntryType::DoubleMap {
-                        hasher,
-                        key1,
-                        key2,
-                        value,
-                        key2_hasher,
-                    } => StorageTypeInfo::Map {
-                        map: MapTypeInfo {
-                            hashers: vec![
-                                hasher_to_string_v10(hasher),
-                                hasher_to_string_v10(key2_hasher),
-                            ],
-                            key: format!("({}, {})", extract_str(key1), extract_str(key2)),
-                            value: extract_str(value).to_string(),
-                        },
-                    },
-                };
-
-                StorageItemMetadata {
-                    name: extract_str(&entry.name).to_string(),
-                    modifier: modifier.to_string(),
-                    ty,
-                    fallback: extract_default_bytes(&entry.default),
-                    docs: extract_docs(&entry.documentation),
-                    deprecation_info: DeprecationInfo::NotDeprecated(None),
-                }
-            })
-            .collect()
-    } else {
-        vec![]
-    };
-
-    Ok(PalletsStorageResponse {
-        at: AtResponse {
-            hash: resolved_block.hash.clone(),
-            height: resolved_block.number.to_string(),
-        },
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        items: StorageItems::Full(items),
-        rc_block_hash: None,
-        rc_block_number: None,
-        ah_timestamp: None,
-    })
-}
-
-// ============================================================================
-// V11 Response Builder
-// ============================================================================
-
-fn build_storage_response_v11(
-    meta: &frame_metadata::v11::RuntimeMetadataV11,
-    pallet_id: &str,
-    resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, PalletError> {
-    use frame_metadata::v11::{StorageEntryModifier, StorageEntryType};
-
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    let (module, module_index) = if let Ok(idx) = pallet_id.parse::<usize>() {
-        modules
-            .get(idx)
-            .map(|m| (m, idx as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    } else {
-        modules
-            .iter()
-            .enumerate()
-            .find(|(_, m)| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-            .map(|(i, m)| (m, i as u8))
-            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?
-    };
-
-    let pallet_name = extract_str(&module.name).to_string();
-
-    let items = if let Some(storage) = &module.storage {
-        let DecodeDifferent::Decoded(storage_meta) = storage else {
-            return Ok(PalletsStorageResponse {
-                at: AtResponse {
-                    hash: resolved_block.hash.clone(),
-                    height: resolved_block.number.to_string(),
-                },
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: StorageItems::Full(vec![]),
-                rc_block_hash: None,
-                rc_block_number: None,
-                ah_timestamp: None,
-            });
-        };
-
-        let DecodeDifferent::Decoded(entries) = &storage_meta.entries else {
-            return Ok(PalletsStorageResponse {
-                at: AtResponse {
-                    hash: resolved_block.hash.clone(),
-                    height: resolved_block.number.to_string(),
-                },
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: StorageItems::Full(vec![]),
-                rc_block_hash: None,
-                rc_block_number: None,
-                ah_timestamp: None,
-            });
-        };
-
-        entries
-            .iter()
-            .map(|entry| {
-                let modifier = match entry.modifier {
-                    StorageEntryModifier::Optional => "Optional",
-                    StorageEntryModifier::Default => "Default",
-                };
-
-                let ty = match &entry.ty {
-                    StorageEntryType::Plain(ty) => StorageTypeInfo::Plain {
-                        plain: extract_str(ty).to_string(),
-                    },
-                    StorageEntryType::Map {
-                        hasher, key, value, ..
-                    } => StorageTypeInfo::Map {
-                        map: MapTypeInfo {
-                            hashers: vec![hasher_to_string_v11(hasher)],
-                            key: extract_str(key).to_string(),
-                            value: extract_str(value).to_string(),
-                        },
-                    },
-                    StorageEntryType::DoubleMap {
-                        hasher,
-                        key1,
-                        key2,
-                        value,
-                        key2_hasher,
-                    } => {
-                        let combined_key =
-                            format!("({}, {})", extract_str(key1), extract_str(key2));
-                        StorageTypeInfo::Map {
-                            map: MapTypeInfo {
-                                hashers: vec![
-                                    hasher_to_string_v11(hasher),
-                                    hasher_to_string_v11(key2_hasher),
-                                ],
-                                key: combined_key,
-                                value: extract_str(value).to_string(),
-                            },
-                        }
-                    }
-                };
-
-                StorageItemMetadata {
-                    name: extract_str(&entry.name).to_string(),
-                    modifier: modifier.to_string(),
-                    ty,
-                    fallback: extract_default_bytes(&entry.default),
-                    docs: extract_docs(&entry.documentation),
-                    deprecation_info: DeprecationInfo::NotDeprecated(None),
-                }
-            })
-            .collect()
-    } else {
-        vec![]
-    };
-
-    Ok(PalletsStorageResponse {
-        at: AtResponse {
-            hash: resolved_block.hash.clone(),
-            height: resolved_block.number.to_string(),
-        },
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        items: StorageItems::Full(items),
-        rc_block_hash: None,
-        rc_block_number: None,
-        ah_timestamp: None,
-    })
-}
-
-// ============================================================================
-// V12 Response Builder (has index field)
-// ============================================================================
-
-fn build_storage_response_v12(
-    meta: &frame_metadata::v12::RuntimeMetadataV12,
-    pallet_id: &str,
-    resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, PalletError> {
-    use frame_metadata::v12::{StorageEntryModifier, StorageEntryType};
-
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    // V12+ has .index field
-    let module = if let Ok(idx) = pallet_id.parse::<u8>() {
-        modules.iter().find(|m| m.index == idx)
-    } else {
-        modules
-            .iter()
-            .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-    }
-    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let pallet_name = extract_str(&module.name).to_string();
-    let module_index = module.index;
-
-    let items = if let Some(storage) = &module.storage {
-        let DecodeDifferent::Decoded(storage_meta) = storage else {
-            return Ok(PalletsStorageResponse {
-                at: AtResponse {
-                    hash: resolved_block.hash.clone(),
-                    height: resolved_block.number.to_string(),
-                },
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: StorageItems::Full(vec![]),
-                rc_block_hash: None,
-                rc_block_number: None,
-                ah_timestamp: None,
-            });
-        };
-
-        let DecodeDifferent::Decoded(entries) = &storage_meta.entries else {
-            return Ok(PalletsStorageResponse {
-                at: AtResponse {
-                    hash: resolved_block.hash.clone(),
-                    height: resolved_block.number.to_string(),
-                },
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: StorageItems::Full(vec![]),
-                rc_block_hash: None,
-                rc_block_number: None,
-                ah_timestamp: None,
-            });
-        };
-
-        entries
-            .iter()
-            .map(|entry| {
-                let modifier = match entry.modifier {
-                    StorageEntryModifier::Optional => "Optional",
-                    StorageEntryModifier::Default => "Default",
-                };
-
-                let ty = match &entry.ty {
-                    StorageEntryType::Plain(ty) => StorageTypeInfo::Plain {
-                        plain: extract_str(ty).to_string(),
-                    },
-                    StorageEntryType::Map {
-                        hasher, key, value, ..
-                    } => StorageTypeInfo::Map {
-                        map: MapTypeInfo {
-                            hashers: vec![hasher_to_string_v12(hasher)],
-                            key: extract_str(key).to_string(),
-                            value: extract_str(value).to_string(),
-                        },
-                    },
-                    StorageEntryType::DoubleMap {
-                        hasher,
-                        key1,
-                        key2,
-                        value,
-                        key2_hasher,
-                    } => {
-                        let combined_key =
-                            format!("({}, {})", extract_str(key1), extract_str(key2));
-                        StorageTypeInfo::Map {
-                            map: MapTypeInfo {
-                                hashers: vec![
-                                    hasher_to_string_v12(hasher),
-                                    hasher_to_string_v12(key2_hasher),
-                                ],
-                                key: combined_key,
-                                value: extract_str(value).to_string(),
-                            },
-                        }
-                    }
-                };
-
-                StorageItemMetadata {
-                    name: extract_str(&entry.name).to_string(),
-                    modifier: modifier.to_string(),
-                    ty,
-                    fallback: extract_default_bytes(&entry.default),
-                    docs: extract_docs(&entry.documentation),
-                    deprecation_info: DeprecationInfo::NotDeprecated(None),
-                }
-            })
-            .collect()
-    } else {
-        vec![]
-    };
-
-    Ok(PalletsStorageResponse {
-        at: AtResponse {
-            hash: resolved_block.hash.clone(),
-            height: resolved_block.number.to_string(),
-        },
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        items: StorageItems::Full(items),
-        rc_block_hash: None,
-        rc_block_number: None,
-        ah_timestamp: None,
-    })
-}
-
-// ============================================================================
-// V13 Response Builder (adds NMap)
-// ============================================================================
-
-fn build_storage_response_v13(
-    meta: &frame_metadata::v13::RuntimeMetadataV13,
-    pallet_id: &str,
-    resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, PalletError> {
-    use frame_metadata::v13::{StorageEntryModifier, StorageEntryType};
-
-    let DecodeDifferent::Decoded(modules) = &meta.modules else {
-        return Err(PalletError::PalletNotFound(pallet_id.to_string()));
-    };
-
-    let module = if let Ok(idx) = pallet_id.parse::<u8>() {
-        modules.iter().find(|m| m.index == idx)
-    } else {
-        modules
-            .iter()
-            .find(|m| extract_str(&m.name).eq_ignore_ascii_case(pallet_id))
-    }
-    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let pallet_name = extract_str(&module.name).to_string();
-    let module_index = module.index;
-
-    let items = if let Some(storage) = &module.storage {
-        let DecodeDifferent::Decoded(storage_meta) = storage else {
-            return Ok(PalletsStorageResponse {
-                at: AtResponse {
-                    hash: resolved_block.hash.clone(),
-                    height: resolved_block.number.to_string(),
-                },
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: StorageItems::Full(vec![]),
-                rc_block_hash: None,
-                rc_block_number: None,
-                ah_timestamp: None,
-            });
-        };
-
-        let DecodeDifferent::Decoded(entries) = &storage_meta.entries else {
-            return Ok(PalletsStorageResponse {
-                at: AtResponse {
-                    hash: resolved_block.hash.clone(),
-                    height: resolved_block.number.to_string(),
-                },
-                pallet: pallet_name.to_lowercase(),
-                pallet_index: module_index.to_string(),
-                items: StorageItems::Full(vec![]),
-                rc_block_hash: None,
-                rc_block_number: None,
-                ah_timestamp: None,
-            });
-        };
-
-        entries
-            .iter()
-            .map(|entry| {
-                let modifier = match entry.modifier {
-                    StorageEntryModifier::Optional => "Optional",
-                    StorageEntryModifier::Default => "Default",
-                };
-
-                let ty = match &entry.ty {
-                    StorageEntryType::Plain(ty) => StorageTypeInfo::Plain {
-                        plain: extract_str(ty).to_string(),
-                    },
-                    StorageEntryType::Map {
-                        hasher, key, value, ..
-                    } => StorageTypeInfo::Map {
-                        map: MapTypeInfo {
-                            hashers: vec![hasher_to_string_v13(hasher)],
-                            key: extract_str(key).to_string(),
-                            value: extract_str(value).to_string(),
-                        },
-                    },
-                    StorageEntryType::DoubleMap {
-                        hasher,
-                        key1,
-                        key2,
-                        value,
-                        key2_hasher,
-                    } => {
-                        let combined_key =
-                            format!("({}, {})", extract_str(key1), extract_str(key2));
-                        StorageTypeInfo::Map {
-                            map: MapTypeInfo {
-                                hashers: vec![
-                                    hasher_to_string_v13(hasher),
-                                    hasher_to_string_v13(key2_hasher),
-                                ],
-                                key: combined_key,
-                                value: extract_str(value).to_string(),
-                            },
-                        }
-                    }
-                    StorageEntryType::NMap {
-                        keys,
-                        hashers,
-                        value,
-                    } => {
-                        let keys_str = match keys {
-                            DecodeDifferent::Decoded(k) => {
-                                if k.len() == 1 {
-                                    k[0].to_string()
-                                } else {
-                                    format!("({})", k.join(", "))
-                                }
-                            }
-                            DecodeDifferent::Encode(k) => {
-                                if k.len() == 1 {
-                                    k[0].to_string()
-                                } else {
-                                    format!("({})", k.join(", "))
-                                }
-                            }
-                        };
-                        let hashers_vec = match hashers {
-                            DecodeDifferent::Decoded(h) => {
-                                h.iter().map(hasher_to_string_v13).collect()
-                            }
-                            DecodeDifferent::Encode(_) => vec![],
-                        };
-                        StorageTypeInfo::Map {
-                            map: MapTypeInfo {
-                                hashers: hashers_vec,
-                                key: keys_str,
-                                value: extract_str(value).to_string(),
-                            },
-                        }
-                    }
-                };
-
-                StorageItemMetadata {
-                    name: extract_str(&entry.name).to_string(),
-                    modifier: modifier.to_string(),
-                    ty,
-                    fallback: extract_default_bytes(&entry.default),
-                    docs: extract_docs(&entry.documentation),
-                    deprecation_info: DeprecationInfo::NotDeprecated(None),
-                }
-            })
-            .collect()
-    } else {
-        vec![]
-    };
-
-    Ok(PalletsStorageResponse {
-        at: AtResponse {
-            hash: resolved_block.hash.clone(),
-            height: resolved_block.number.to_string(),
-        },
-        pallet: pallet_name.to_lowercase(),
-        pallet_index: module_index.to_string(),
-        items: StorageItems::Full(items),
-        rc_block_hash: None,
-        rc_block_number: None,
-        ah_timestamp: None,
-    })
-}
-
-// ============================================================================
-// V14 Response Builder (uses PortableRegistry)
-// Note: V14 and V15 are structurally identical. V15's StorageHasher is the same
-// as V14's. They could share implementation via a trait, but frame_metadata
-// types are not trait-compatible across versions.
-// ============================================================================
-
-fn build_storage_response_v14(
-    meta: &frame_metadata::v14::RuntimeMetadataV14,
-    pallet_id: &str,
-    resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, PalletError> {
-    use frame_metadata::v14::{StorageEntryModifier, StorageEntryType};
-
-    let pallet = if let Ok(idx) = pallet_id.parse::<u8>() {
-        meta.pallets.iter().find(|p| p.index == idx)
-    } else {
-        meta.pallets
-            .iter()
-            .find(|p| p.name.eq_ignore_ascii_case(pallet_id))
-    }
-    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let items = if let Some(storage) = &pallet.storage {
-        storage
-            .entries
-            .iter()
-            .map(|entry| {
-                let modifier = match entry.modifier {
-                    StorageEntryModifier::Optional => "Optional",
-                    StorageEntryModifier::Default => "Default",
-                };
-
-                let ty = match &entry.ty {
-                    StorageEntryType::Plain(ty) => StorageTypeInfo::Plain {
-                        plain: format_type_id(&meta.types, ty.id),
-                    },
-                    StorageEntryType::Map {
-                        hashers,
-                        key,
-                        value,
-                    } => StorageTypeInfo::Map {
-                        map: MapTypeInfo {
-                            hashers: hashers.iter().map(hasher_to_string_v14).collect(),
-                            key: format_type_id(&meta.types, key.id),
-                            value: format_type_id(&meta.types, value.id),
-                        },
-                    },
-                };
-
-                StorageItemMetadata {
-                    name: entry.name.clone(),
-                    modifier: modifier.to_string(),
-                    ty,
-                    fallback: format!("0x{}", hex::encode(&entry.default)),
-                    docs: entry.docs.join("\n"),
-                    deprecation_info: DeprecationInfo::NotDeprecated(None),
-                }
-            })
-            .collect()
-    } else {
-        vec![]
-    };
-
-    Ok(PalletsStorageResponse {
-        at: AtResponse {
-            hash: resolved_block.hash.clone(),
-            height: resolved_block.number.to_string(),
-        },
-        pallet: pallet.name.to_lowercase(),
-        pallet_index: pallet.index.to_string(),
-        items: StorageItems::Full(items),
-        rc_block_hash: None,
-        rc_block_number: None,
-        ah_timestamp: None,
-    })
-}
-
-// ============================================================================
-// V15 Response Builder
-// ============================================================================
-
-fn build_storage_response_v15(
-    meta: &frame_metadata::v15::RuntimeMetadataV15,
-    pallet_id: &str,
-    resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, PalletError> {
-    use frame_metadata::v15::{StorageEntryModifier, StorageEntryType};
-
-    let pallet = if let Ok(idx) = pallet_id.parse::<u8>() {
-        meta.pallets.iter().find(|p| p.index == idx)
-    } else {
-        meta.pallets
-            .iter()
-            .find(|p| p.name.eq_ignore_ascii_case(pallet_id))
-    }
-    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let items = if let Some(storage) = &pallet.storage {
-        storage
-            .entries
-            .iter()
-            .map(|entry| {
-                let modifier = match entry.modifier {
-                    StorageEntryModifier::Optional => "Optional",
-                    StorageEntryModifier::Default => "Default",
-                };
-
-                let ty = match &entry.ty {
-                    StorageEntryType::Plain(ty) => StorageTypeInfo::Plain {
-                        plain: format_type_id(&meta.types, ty.id),
-                    },
-                    StorageEntryType::Map {
-                        hashers,
-                        key,
-                        value,
-                    } => StorageTypeInfo::Map {
-                        map: MapTypeInfo {
-                            hashers: hashers.iter().map(hasher_to_string_v14).collect(),
-                            key: format_type_id(&meta.types, key.id),
-                            value: format_type_id(&meta.types, value.id),
-                        },
-                    },
-                };
-
-                StorageItemMetadata {
-                    name: entry.name.clone(),
-                    modifier: modifier.to_string(),
-                    ty,
-                    fallback: format!("0x{}", hex::encode(&entry.default)),
-                    docs: entry.docs.join("\n"),
-                    deprecation_info: DeprecationInfo::NotDeprecated(None),
-                }
-            })
-            .collect()
-    } else {
-        vec![]
-    };
-
-    Ok(PalletsStorageResponse {
-        at: AtResponse {
-            hash: resolved_block.hash.clone(),
-            height: resolved_block.number.to_string(),
-        },
-        pallet: pallet.name.to_lowercase(),
-        pallet_index: pallet.index.to_string(),
-        items: StorageItems::Full(items),
-        rc_block_hash: None,
-        rc_block_number: None,
-        ah_timestamp: None,
-    })
-}
-
-// ============================================================================
-// V16 Response Builder (adds deprecation_info)
-// ============================================================================
-
-fn build_storage_response_v16(
-    meta: &frame_metadata::v16::RuntimeMetadataV16,
-    pallet_id: &str,
-    resolved_block: &utils::ResolvedBlock,
-) -> Result<PalletsStorageResponse, PalletError> {
-    use frame_metadata::v16::{StorageEntryModifier, StorageEntryType};
-
-    let pallet = if let Ok(idx) = pallet_id.parse::<u8>() {
-        meta.pallets.iter().find(|p| p.index == idx)
-    } else {
-        meta.pallets
-            .iter()
-            .find(|p| p.name.eq_ignore_ascii_case(pallet_id))
-    }
-    .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))?;
-
-    let items = if let Some(storage) = &pallet.storage {
-        storage
-            .entries
-            .iter()
-            .map(|entry| {
-                let modifier = match entry.modifier {
-                    StorageEntryModifier::Optional => "Optional",
-                    StorageEntryModifier::Default => "Default",
-                };
-
-                let ty = match &entry.ty {
-                    StorageEntryType::Plain(ty) => StorageTypeInfo::Plain {
-                        plain: format_type_id(&meta.types, ty.id),
-                    },
-                    StorageEntryType::Map {
-                        hashers,
-                        key,
-                        value,
-                    } => StorageTypeInfo::Map {
-                        map: MapTypeInfo {
-                            hashers: hashers.iter().map(hasher_to_string_v16).collect(),
-                            key: format_type_id(&meta.types, key.id),
-                            value: format_type_id(&meta.types, value.id),
-                        },
-                    },
-                };
-
-                StorageItemMetadata {
-                    name: entry.name.clone(),
-                    modifier: modifier.to_string(),
-                    ty,
-                    fallback: format!("0x{}", hex::encode(&entry.default)),
-                    docs: entry.docs.join("\n"),
-                    deprecation_info: extract_deprecation_info_v16(&entry.deprecation_info),
-                }
-            })
-            .collect()
-    } else {
-        vec![]
-    };
-
-    Ok(PalletsStorageResponse {
-        at: AtResponse {
-            hash: resolved_block.hash.clone(),
-            height: resolved_block.number.to_string(),
-        },
-        pallet: pallet.name.to_lowercase(),
-        pallet_index: pallet.index.to_string(),
-        items: StorageItems::Full(items),
-        rc_block_hash: None,
-        rc_block_number: None,
-        ah_timestamp: None,
-    })
-}
-
 // ============================================================================
 // RC (Relay Chain) Handlers
 // ============================================================================
@@ -2131,6 +740,7 @@ pub async fn rc_get_pallets_storage(
     Path(pallet_id): Path<String>,
     JsonQuery(params): JsonQuery<RcPalletQueryParams>,
 ) -> Result<Response, PalletError> {
+    let relay_client = state.get_relay_chain_client().await?;
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_rpc = state.get_relay_chain_rpc().await?;
 
@@ -2142,8 +752,8 @@ pub async fn rc_get_pallets_storage(
     let resolved =
         crate::utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id).await?;
 
-    let block_hash = resolved.hash.clone();
-    let metadata = fetch_runtime_metadata(&relay_rpc_client, &block_hash).await?;
+    let client_at_block = relay_client.at_block(resolved.number).await?;
+    let metadata = client_at_block.metadata();
 
     let response = build_storage_response(&metadata, &pallet_id, &resolved, params.only_ids)?;
     Ok(Json(response).into_response())
@@ -2178,6 +788,7 @@ pub async fn rc_get_pallets_storage_item(
     Path((pallet_id, storage_item_id)): Path<(String, String)>,
     QsQuery(params): QsQuery<RcStorageItemQueryParams>,
 ) -> Result<Response, PalletError> {
+    let relay_client = state.get_relay_chain_client().await?;
     let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
     let relay_rpc = state.get_relay_chain_rpc().await?;
 
@@ -2190,7 +801,8 @@ pub async fn rc_get_pallets_storage_item(
         crate::utils::resolve_block_with_rpc(&relay_rpc_client, &relay_rpc, block_id).await?;
 
     let block_hash = resolved.hash.clone();
-    let metadata = fetch_runtime_metadata(&relay_rpc_client, &block_hash).await?;
+    let client_at_block = relay_client.at_block(resolved.number).await?;
+    let metadata = client_at_block.metadata();
 
     let response = build_storage_item_response(
         &relay_rpc_client,
@@ -2208,11 +820,11 @@ pub async fn rc_get_pallets_storage_item(
 }
 
 // ============================================================================
-// Subxt-based builders (V14+ fast path using subxt's cached metadata)
+// Subxt-based builders (all metadata versions V9-V16 via subxt's cached metadata)
 // ============================================================================
 
-/// Build storage response using subxt's Metadata (V14+ only, uses cached metadata).
-fn build_storage_response_subxt(
+/// Build storage response using subxt's Metadata (all versions V9-V16 via cached metadata).
+fn build_storage_response(
     metadata: &Metadata,
     pallet_id: &str,
     resolved_block: &utils::ResolvedBlock,
@@ -2300,9 +912,9 @@ fn build_storage_response_subxt(
     }
 }
 
-/// Build storage item response using subxt's Metadata (V14+ only).
+/// Build storage item response using subxt's Metadata (all versions V9-V16 via cached metadata).
 #[allow(clippy::too_many_arguments)]
-async fn build_storage_item_response_subxt(
+async fn build_storage_item_response(
     rpc_client: &RpcClient,
     metadata: &Metadata,
     pallet_id: &str,
@@ -2312,8 +924,7 @@ async fn build_storage_item_response_subxt(
     include_metadata: bool,
     block_hash: &str,
 ) -> Result<PalletsStorageItemResponse, PalletError> {
-    let storage_response =
-        build_storage_response_subxt(metadata, pallet_id, resolved_block, false)?;
+    let storage_response = build_storage_response(metadata, pallet_id, resolved_block, false)?;
 
     let storage_items = match &storage_response.items {
         StorageItems::Full(items) => items,
