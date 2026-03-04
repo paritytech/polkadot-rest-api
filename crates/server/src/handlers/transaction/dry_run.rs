@@ -4,6 +4,7 @@
 use crate::state::{AppState, RelayChainError};
 use crate::utils::BlockId;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
+use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sp_core::crypto::Ss58Codec;
@@ -31,6 +32,125 @@ pub struct DryRunFailure {
     pub transaction: String,
     pub cause: String,
     pub stack: String,
+}
+
+// ============================================================================
+// SCALE Decode Types for DryRunApi response
+// ============================================================================
+
+/// Top-level Result from DryRunApi.dry_run_call:
+/// Result<CallDryRunEffects, XcmDryRunApiError>
+#[derive(Debug, DecodeAsType)]
+enum DryRunApiResult {
+    Ok(CallDryRunEffects),
+    Err(DryRunApiError),
+}
+
+/// CallDryRunEffects — we only need execution_result
+#[derive(Debug, DecodeAsType)]
+struct CallDryRunEffects {
+    execution_result: DispatchResultWithInfo,
+}
+
+/// DispatchResultWithPostInfo = Result<PostDispatchInfo, DispatchErrorWithPostInfo>
+#[derive(Debug, DecodeAsType)]
+enum DispatchResultWithInfo {
+    Ok(PostDispatchInfo),
+    Err(DispatchErrorWithPostInfo),
+}
+
+/// PostDispatchInfo
+#[derive(Debug, DecodeAsType, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PostDispatchInfo {
+    actual_weight: Option<Weight>,
+    pays_fee: PaysFee,
+}
+
+/// Weight
+#[derive(Debug, DecodeAsType, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Weight {
+    ref_time: u64,
+    proof_size: u64,
+}
+
+/// PaysFee enum
+#[derive(Debug, DecodeAsType, Serialize)]
+enum PaysFee {
+    Yes,
+    No,
+}
+
+/// DispatchErrorWithPostInfo
+#[derive(Debug, DecodeAsType, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DispatchErrorWithPostInfo {
+    post_info: PostDispatchInfo,
+    error: DispatchError,
+}
+
+/// DispatchError — we keep the variant names and serialize the inner data
+#[derive(Debug, DecodeAsType, Serialize)]
+enum DispatchError {
+    Other,
+    CannotLookup,
+    BadOrigin,
+    Module(ModuleError),
+    ConsumerRemaining,
+    NoProviders,
+    TooManyConsumers,
+    Token(TokenError),
+    Arithmetic(ArithmeticError),
+    Transactional(TransactionalError),
+    Exhausted,
+    Corruption,
+    Unavailable,
+    RootNotAllowed,
+}
+
+/// Module-specific dispatch error
+#[derive(Debug, DecodeAsType, Serialize)]
+struct ModuleError {
+    index: u8,
+    error: [u8; 4],
+}
+
+/// Token error variants
+#[derive(Debug, DecodeAsType, Serialize)]
+enum TokenError {
+    FundsUnavailable,
+    OnlyProvider,
+    BelowMinimum,
+    CannotCreate,
+    UnknownAsset,
+    Frozen,
+    Unsupported,
+    CannotCreateHold,
+    NotExpendable,
+    Blocked,
+}
+
+/// Arithmetic error variants
+#[derive(Debug, DecodeAsType, Serialize)]
+enum ArithmeticError {
+    Underflow,
+    Overflow,
+    DivisionByZero,
+}
+
+/// Transactional error variants
+#[derive(Debug, DecodeAsType, Serialize)]
+enum TransactionalError {
+    LimitReached,
+    NoLayer,
+}
+
+/// XcmDryRunApiError — keep as opaque since it's rarely hit
+#[derive(Debug, DecodeAsType, Serialize)]
+enum DryRunApiError {
+    Unimplemented,
+    VersionedConversionFailed,
 }
 
 #[derive(Debug, Error)]
@@ -340,7 +460,7 @@ async fn dry_run_internal(
     let call = subxt::dynamic::Value::from_bytes(tx_bytes);
 
     // Call DryRunApi.dry_run_call(origin, call)
-    let method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
+    let method = subxt::dynamic::runtime_api_call::<_, DryRunApiResult>(
         "DryRunApi",
         "dry_run_call",
         (origin, call),
@@ -385,83 +505,25 @@ fn decode_ss58_address(address: &str) -> Result<[u8; 32], String> {
 }
 
 fn parse_result_to_response(
-    result: scale_value::Value<()>,
+    result: DryRunApiResult,
     _tx: &str,
 ) -> Result<Json<DryRunResponse>, DryRunError> {
-    use scale_value::{Composite, ValueDef};
-
-    // The result from DryRunApi is Result<CallDryRunEffects, XcmDryRunApiError>
-    // Convert scale_value::Value to serde_json::Value for the response
-    fn to_json(v: &scale_value::Value<()>) -> Value {
-        serde_json::to_value(v).unwrap_or(Value::Null)
+    match result {
+        DryRunApiResult::Ok(effects) => match effects.execution_result {
+            DispatchResultWithInfo::Ok(post_info) => Ok(Json(DryRunResponse {
+                result_type: "DispatchOutcome".to_string(),
+                result: serde_json::to_value(&post_info).unwrap_or(Value::Null),
+            })),
+            DispatchResultWithInfo::Err(err_with_info) => Ok(Json(DryRunResponse {
+                result_type: "DispatchError".to_string(),
+                result: serde_json::to_value(&err_with_info).unwrap_or(Value::Null),
+            })),
+        },
+        DryRunApiResult::Err(api_err) => Ok(Json(DryRunResponse {
+            result_type: "TransactionValidityError".to_string(),
+            result: serde_json::to_value(&api_err).unwrap_or(Value::Null),
+        })),
     }
-
-    // Helper to get first value from a Composite
-    fn get_first_value(composite: &Composite<()>) -> Option<&scale_value::Value<()>> {
-        match composite {
-            Composite::Unnamed(vals) => vals.first(),
-            Composite::Named(vals) => vals.first().map(|(_, v)| v),
-        }
-    }
-
-    // Helper to get value by key from a Composite
-    fn get_named_value<'a>(
-        composite: &'a Composite<()>,
-        key: &str,
-    ) -> Option<&'a scale_value::Value<()>> {
-        match composite {
-            Composite::Named(vals) => vals.iter().find(|(k, _)| k == key).map(|(_, v)| v),
-            Composite::Unnamed(_) => None,
-        }
-    }
-
-    // Check if it's an Ok or Err variant
-    if let ValueDef::Variant(variant) = &result.value {
-        match variant.name.as_str() {
-            "Ok" => {
-                // Get the inner value from Ok variant
-                let ok_value = get_first_value(&variant.values).unwrap_or(&result);
-
-                // Check execution_result inside CallDryRunEffects
-                if let ValueDef::Composite(composite) = &ok_value.value
-                    && let Some(exec_result) = get_named_value(composite, "execution_result")
-                    && let ValueDef::Variant(exec_variant) = &exec_result.value
-                {
-                    let inner_value = get_first_value(&exec_variant.values).unwrap_or(exec_result);
-
-                    return match exec_variant.name.as_str() {
-                        "Ok" => Ok(Json(DryRunResponse {
-                            result_type: "DispatchOutcome".to_string(),
-                            result: to_json(inner_value),
-                        })),
-                        "Err" => Ok(Json(DryRunResponse {
-                            result_type: "DispatchError".to_string(),
-                            result: to_json(inner_value),
-                        })),
-                        _ => Ok(Json(DryRunResponse {
-                            result_type: "DispatchOutcome".to_string(),
-                            result: to_json(ok_value),
-                        })),
-                    };
-                };
-            }
-            "Err" => {
-                // TransactionValidityError / XcmDryRunApiError
-                let err_value = get_first_value(&variant.values).unwrap_or(&result);
-                return Ok(Json(DryRunResponse {
-                    result_type: "TransactionValidityError".to_string(),
-                    result: to_json(err_value),
-                }));
-            }
-            _ => {}
-        }
-    }
-
-    // If the structure doesn't match expected format, return as-is
-    Ok(Json(DryRunResponse {
-        result_type: "DispatchOutcome".to_string(),
-        result: to_json(&result),
-    }))
 }
 
 #[cfg(test)]

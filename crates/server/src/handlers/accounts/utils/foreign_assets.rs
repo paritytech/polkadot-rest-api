@@ -30,7 +30,7 @@ pub async fn query_all_foreign_asset_locations(
 /// entry for the (Location, AccountId) double-map key.
 ///
 /// Uses typed DecodeAsType decoding. If typed decode fails (e.g., on older
-/// runtimes with different struct layout), falls back to scale_value decoding.
+/// runtimes with different struct layout), falls back to legacy struct decoding.
 ///
 /// When `show_empty` is false (default), filters out zero-balance entries.
 /// When `show_empty` is true, returns all requested assets including those with zero balance.
@@ -113,75 +113,34 @@ pub async fn query_foreign_assets(
     Ok(balances)
 }
 
-/// Fallback for older runtimes - tries to decode using scale_value
+/// Fallback for older runtimes - tries to decode using legacy struct layout
 async fn try_fallback_foreign_asset_account(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     location: &Location,
     account_bytes: &[u8; 32],
 ) -> Result<Option<ForeignAssetBalance>, AccountsError> {
-    use crate::handlers::accounts::utils::{
-        extract_bool_field, extract_is_sufficient_from_reason, extract_u128_field,
-    };
-    use scale_value::{Composite, Value, ValueDef};
-
-    // Use centralized raw fetch
-    let decoded: Value<()> = foreign_assets_queries::get_foreign_asset_account_raw(
+    // Use centralized raw fetch with legacy struct
+    let decoded = foreign_assets_queries::get_foreign_asset_account_raw(
         client_at_block,
         location,
         account_bytes,
     )
     .await
-    .map_err(|_| AccountsError::PalletNotAvailable("ForeignAssets".to_string()))?
-    .ok_or(AccountsError::PalletNotAvailable(
-        "ForeignAssets".to_string(),
-    ))?;
+    .map_err(|_| AccountsError::PalletNotAvailable("ForeignAssets".to_string()))?;
 
-    // Unwrap Option<AssetAccount> if present
-    let inner = match &decoded.value {
-        ValueDef::Variant(variant) if variant.name == "Some" => match &variant.values {
-            Composite::Unnamed(vals) => match vals.first() {
-                Some(v) => v,
-                None => return Ok(None),
-            },
-            Composite::Named(fields) => match fields.first() {
-                Some((_, v)) => v,
-                None => return Ok(None),
-            },
-        },
-        ValueDef::Variant(_) => return Ok(None), // None variant
-        _ => &decoded,
+    let asset_account = match decoded {
+        Some(a) => a,
+        None => return Ok(None),
     };
 
-    match &inner.value {
-        ValueDef::Composite(Composite::Named(fields)) => {
-            let balance = extract_u128_field(&fields[..], "balance").unwrap_or(0);
-            let is_frozen = extract_bool_field(&fields[..], "isFrozen")
-                .or_else(|| extract_bool_field(&fields[..], "is_frozen"))
-                .unwrap_or(false);
+    let multi_location_json = serde_json::to_value(location).unwrap_or(serde_json::json!({}));
 
-            let is_sufficient =
-                if let Some(reason_value) = fields.iter().find(|(name, _)| name == "reason") {
-                    extract_is_sufficient_from_reason(&reason_value.1)
-                } else if let Some(sufficient) = extract_bool_field(&fields[..], "sufficient") {
-                    sufficient
-                } else {
-                    extract_bool_field(&fields[..], "isSufficient")
-                        .or_else(|| extract_bool_field(&fields[..], "is_sufficient"))
-                        .unwrap_or_default()
-                };
-
-            let multi_location_json =
-                serde_json::to_value(location).unwrap_or(serde_json::json!({}));
-
-            Ok(Some(ForeignAssetBalance {
-                multi_location: multi_location_json,
-                balance: balance.to_string(),
-                is_frozen,
-                is_sufficient,
-            }))
-        }
-        _ => Ok(None),
-    }
+    Ok(Some(ForeignAssetBalance {
+        multi_location: multi_location_json,
+        balance: asset_account.balance.to_string(),
+        is_frozen: asset_account.is_frozen,
+        is_sufficient: asset_account.sufficient,
+    }))
 }
 
 /// Parse foreign asset location JSON strings into Location objects.

@@ -967,10 +967,8 @@ pub async fn get_era_exposures_bulk(
 
     // Try paged staking first (ErasStakersOverview + ErasStakersPaged)
     // Key type: (u32, [u8; 32]) for (era, validator)
-    let overview_addr = subxt::dynamic::storage::<(u32, [u8; 32]), ()>(
-        "Staking",
-        "ErasStakersOverview",
-    );
+    let overview_addr =
+        subxt::dynamic::storage::<(u32, [u8; 32]), ()>("Staking", "ErasStakersOverview");
     let mut found_paged = false;
 
     // Use era as prefix key to iterate only entries for this specific era
@@ -1010,10 +1008,8 @@ pub async fn get_era_exposures_bulk(
     // If we found paged staking data, fetch the paged exposures for this era
     if found_paged && !validator_map.is_empty() {
         // Key type: (u32, [u8; 32], u32) for (era, validator, page)
-        let paged_addr = subxt::dynamic::storage::<(u32, [u8; 32], u32), ()>(
-            "Staking",
-            "ErasStakersPaged",
-        );
+        let paged_addr =
+            subxt::dynamic::storage::<(u32, [u8; 32], u32), ()>("Staking", "ErasStakersPaged");
         // Use era as prefix key to iterate only pages for this specific era
         if let Ok(mut iter) = client_at_block.storage().iter(paged_addr, (era,)).await {
             while let Some(Ok(kv)) = iter.next().await {
@@ -1056,10 +1052,8 @@ pub async fn get_era_exposures_bulk(
 
     // Fall back to legacy ErasStakersClipped
     // Key type: (u32, [u8; 32]) for (era, validator)
-    let clipped_addr = subxt::dynamic::storage::<(u32, [u8; 32]), ()>(
-        "Staking",
-        "ErasStakersClipped",
-    );
+    let clipped_addr =
+        subxt::dynamic::storage::<(u32, [u8; 32]), ()>("Staking", "ErasStakersClipped");
     // Use era as prefix key to iterate only entries for this specific era
     if let Ok(mut iter) = client_at_block.storage().iter(clipped_addr, (era,)).await {
         while let Some(Ok(kv)) = iter.next().await {
