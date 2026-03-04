@@ -276,7 +276,7 @@ impl IntoResponse for PalletError {
 // Response Types
 // ============================================================================
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct AtResponse {
     pub hash: String,
     pub height: String,
