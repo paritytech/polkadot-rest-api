@@ -25,6 +25,7 @@ use parity_scale_codec::Decode;
 use polkadot_rest_api_config::ChainType;
 use serde::Serialize;
 use serde_json::json;
+use subxt::Metadata;
 use subxt_rpcs::{RpcClient, rpc_params};
 use utoipa::ToSchema;
 
@@ -223,19 +224,16 @@ pub async fn get_pallets_storage(
         return handle_use_rc_block(state, pallet_id, params).await;
     }
 
-    // Resolve block using the common helper
+    // Resolve block and use subxt's cached metadata (same as other pallet handlers)
     let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let resolved_block = utils::ResolvedBlock {
         hash: resolved.at.hash.clone(),
         number: resolved.client_at_block.block_number(),
     };
-
-    // Fetch raw metadata via RPC to access all metadata versions (V9-V16)
-    let block_hash = &resolved.at.hash;
-    let metadata = fetch_runtime_metadata(&state.rpc_client, block_hash).await?;
-
-    let response = build_storage_response(&metadata, &pallet_id, &resolved_block, params.only_ids)?;
+    let metadata = resolved.client_at_block.metadata();
+    let response =
+        build_storage_response_subxt(&metadata, &pallet_id, &resolved_block, params.only_ids)?;
     Ok(Json(response).into_response())
 }
 
@@ -371,18 +369,16 @@ pub async fn get_pallets_storage_item(
         return handle_storage_item_use_rc_block(state, pallet_id, storage_item_id, params).await;
     }
 
-    // Resolve block using the common helper
+    // Resolve block and use subxt's cached metadata (same as other pallet handlers)
     let resolved = resolve_block_for_pallet(&state.client, params.at.as_ref()).await?;
 
     let resolved_block = utils::ResolvedBlock {
         hash: resolved.at.hash.clone(),
         number: resolved.client_at_block.block_number(),
     };
-
     let block_hash = &resolved.at.hash;
-    let metadata = fetch_runtime_metadata(&state.rpc_client, block_hash).await?;
-
-    let response = build_storage_item_response(
+    let metadata = resolved.client_at_block.metadata();
+    let response = build_storage_item_response_subxt(
         &state.rpc_client,
         &metadata,
         &pallet_id,
@@ -393,7 +389,6 @@ pub async fn get_pallets_storage_item(
         block_hash,
     )
     .await?;
-
     Ok(Json(response).into_response())
 }
 
@@ -2210,6 +2205,216 @@ pub async fn rc_get_pallets_storage_item(
     .await?;
 
     Ok(Json(response).into_response())
+}
+
+// ============================================================================
+// Subxt-based builders (V14+ fast path using subxt's cached metadata)
+// ============================================================================
+
+/// Build storage response using subxt's Metadata (V14+ only, uses cached metadata).
+fn build_storage_response_subxt(
+    metadata: &Metadata,
+    pallet_id: &str,
+    resolved_block: &utils::ResolvedBlock,
+    only_ids: bool,
+) -> Result<PalletsStorageResponse, PalletError> {
+    let pallet = find_pallet_subxt(metadata, pallet_id)?;
+
+    let items: Vec<StorageItemMetadata> = if let Some(storage) = pallet.storage() {
+        storage
+            .entries()
+            .iter()
+            .map(|entry| {
+                let has_default = entry.default_value().is_some();
+                let modifier = if has_default { "Default" } else { "Optional" };
+
+                let keys: Vec<_> = entry.keys().collect();
+                let ty = if keys.is_empty() {
+                    StorageTypeInfo::Plain {
+                        plain: entry.value_ty().to_string(),
+                    }
+                } else {
+                    StorageTypeInfo::Map {
+                        map: MapTypeInfo {
+                            hashers: keys
+                                .iter()
+                                .map(|k| hasher_to_string_fd(&k.hasher))
+                                .collect(),
+                            key: if keys.len() == 1 {
+                                keys[0].key_id.to_string()
+                            } else {
+                                // Multiple keys: format as comma-separated type IDs
+                                keys.iter()
+                                    .map(|k| k.key_id.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            },
+                            value: entry.value_ty().to_string(),
+                        },
+                    }
+                };
+
+                let fallback = match entry.default_value() {
+                    Some(bytes) => format!("0x{}", hex::encode(bytes)),
+                    None => "0x".to_string(),
+                };
+
+                StorageItemMetadata {
+                    name: entry.name().to_string(),
+                    modifier: modifier.to_string(),
+                    ty,
+                    fallback,
+                    docs: entry.docs().join("\n"),
+                    deprecation_info: DeprecationInfo::NotDeprecated(None),
+                }
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+
+    let full_response = PalletsStorageResponse {
+        at: AtResponse {
+            hash: resolved_block.hash.clone(),
+            height: resolved_block.number.to_string(),
+        },
+        pallet: pallet.name().to_lowercase(),
+        pallet_index: pallet.call_index().to_string(),
+        items: StorageItems::Full(items),
+        rc_block_hash: None,
+        rc_block_number: None,
+        ah_timestamp: None,
+    };
+
+    if only_ids {
+        let names: Vec<String> = match &full_response.items {
+            StorageItems::Full(items) => items.iter().map(|item| item.name.clone()).collect(),
+            StorageItems::OnlyIds(names) => names.clone(),
+        };
+        Ok(PalletsStorageResponse {
+            items: StorageItems::OnlyIds(names),
+            ..full_response
+        })
+    } else {
+        Ok(full_response)
+    }
+}
+
+/// Build storage item response using subxt's Metadata (V14+ only).
+#[allow(clippy::too_many_arguments)]
+async fn build_storage_item_response_subxt(
+    rpc_client: &RpcClient,
+    metadata: &Metadata,
+    pallet_id: &str,
+    storage_item_id: &str,
+    keys: &[String],
+    resolved_block: &utils::ResolvedBlock,
+    include_metadata: bool,
+    block_hash: &str,
+) -> Result<PalletsStorageItemResponse, PalletError> {
+    let storage_response =
+        build_storage_response_subxt(metadata, pallet_id, resolved_block, false)?;
+
+    let storage_items = match &storage_response.items {
+        StorageItems::Full(items) => items,
+        StorageItems::OnlyIds(_) => {
+            return Err(PalletError::StorageItemNotFound {
+                pallet: pallet_id.to_string(),
+                item: storage_item_id.to_string(),
+            });
+        }
+    };
+
+    let storage_item = storage_items
+        .iter()
+        .find(|item| item.name.eq_ignore_ascii_case(storage_item_id))
+        .ok_or_else(|| PalletError::StorageItemNotFound {
+            pallet: pallet_id.to_string(),
+            item: storage_item_id.to_string(),
+        })?;
+
+    let original_pallet_name = get_original_pallet_name_subxt(metadata, pallet_id)?;
+
+    let storage_key = build_storage_key(
+        &original_pallet_name,
+        &storage_item.name,
+        keys,
+        &storage_item.ty,
+    )?;
+
+    let value_hex: Option<String> = rpc_client
+        .request("state_getStorage", rpc_params![&storage_key, block_hash])
+        .await
+        .ok();
+
+    let value = decode_storage_value(value_hex, &storage_item.ty)?;
+
+    let metadata_field = if include_metadata {
+        Some(storage_item.clone())
+    } else {
+        None
+    };
+
+    Ok(PalletsStorageItemResponse {
+        at: AtResponse {
+            hash: resolved_block.hash.clone(),
+            height: resolved_block.number.to_string(),
+        },
+        pallet: storage_response.pallet,
+        pallet_index: storage_response.pallet_index,
+        storage_item: to_camel_case(&storage_item.name),
+        keys: keys.to_vec(),
+        value,
+        metadata: metadata_field,
+        rc_block_hash: None,
+        rc_block_number: None,
+        ah_timestamp: None,
+    })
+}
+
+/// Find a pallet by name or index using subxt's Metadata.
+fn find_pallet_subxt<'a>(
+    metadata: &'a Metadata,
+    pallet_id: &str,
+) -> Result<subxt_metadata::PalletMetadata<'a>, PalletError> {
+    if let Ok(idx) = pallet_id.parse::<u8>() {
+        metadata
+            .pallets()
+            .find(|p| p.call_index() == idx)
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+    } else {
+        metadata
+            .pallet_by_name(pallet_id)
+            .or_else(|| {
+                // Case-insensitive fallback
+                metadata
+                    .pallets()
+                    .find(|p| p.name().eq_ignore_ascii_case(pallet_id))
+            })
+            .ok_or_else(|| PalletError::PalletNotFound(pallet_id.to_string()))
+    }
+}
+
+/// Get the original pallet name (PascalCase) from subxt Metadata.
+fn get_original_pallet_name_subxt(
+    metadata: &Metadata,
+    pallet_id: &str,
+) -> Result<String, PalletError> {
+    find_pallet_subxt(metadata, pallet_id).map(|p| p.name().to_string())
+}
+
+/// Convert a frame_decode StorageHasher to string.
+fn hasher_to_string_fd(hasher: &frame_decode::storage::StorageHasher) -> String {
+    use frame_decode::storage::StorageHasher;
+    match hasher {
+        StorageHasher::Blake2_128 => "Blake2_128".to_string(),
+        StorageHasher::Blake2_256 => "Blake2_256".to_string(),
+        StorageHasher::Blake2_128Concat => "Blake2_128Concat".to_string(),
+        StorageHasher::Twox128 => "Twox128".to_string(),
+        StorageHasher::Twox256 => "Twox256".to_string(),
+        StorageHasher::Twox64Concat => "Twox64Concat".to_string(),
+        StorageHasher::Identity => "Identity".to_string(),
+    }
 }
 
 #[cfg(test)]
