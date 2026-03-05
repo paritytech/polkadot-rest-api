@@ -53,6 +53,7 @@ prometheus = "0.13"
 lazy_static = "1.4"
 regex = "1.10"
 tracing-loki = "0.2"
+nu-ansi-term = "0.50"
 url = "2.5"
 http-body-util = "0.1"
 utoipa = { version = "5", features = ["axum_extras"] }

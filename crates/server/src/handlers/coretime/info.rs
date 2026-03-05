@@ -5,6 +5,7 @@ use crate::extractors::JsonQuery;
 use crate::handlers::coretime::common::{
     AtResponse, CoretimeError, CoretimeQueryParams, has_broker_pallet, has_coretime_pallet,
 };
+use crate::handlers::runtime_queries::{broker, coretime, parachain_system};
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
 use axum::{
@@ -226,18 +227,24 @@ async fn handle_coretime_chain_info(
         return Err(CoretimeError::BrokerPalletNotFound);
     }
 
-    // Fetch all data in parallel using subxt's decode_as for type-safe decoding
+    // Fetch all data in parallel using runtime_queries modules
     let (config_result, sale_result, status_result, timeslice_period_result, relay_block_result) = tokio::join!(
-        fetch_configuration(client_at_block),
-        fetch_sale_info(client_at_block),
-        fetch_status(client_at_block),
-        fetch_timeslice_period(client_at_block),
-        fetch_relay_block_number(client_at_block)
+        broker::get_configuration::<ConfigRecord>(client_at_block),
+        broker::get_sale_info::<SaleInfoRecord>(client_at_block),
+        broker::get_status::<StatusRecord>(client_at_block),
+        broker::get_timeslice_period(client_at_block),
+        parachain_system::get_last_relay_block_number(client_at_block)
     );
 
-    let config = config_result?;
-    let sale_info = sale_result?;
-    let status = status_result?;
+    let config = config_result.map_err(|e| CoretimeError::StorageQueryFailed {
+        details: e.to_string(),
+    })?;
+    let sale_info = sale_result.map_err(|e| CoretimeError::StorageQueryFailed {
+        details: e.to_string(),
+    })?;
+    let status = status_result.map_err(|e| CoretimeError::StorageQueryFailed {
+        details: e.to_string(),
+    })?;
     let timeslice_period = timeslice_period_result.unwrap_or(80); // Default to 80 if not found
     // Use relay chain block number for price calculation since sale_start/leadin_length
     // are stored as relay block numbers. Fall back to parachain block number if unavailable.
@@ -306,11 +313,11 @@ async fn handle_relay_chain_info(
         return Err(CoretimeError::CoretimePalletNotFound);
     }
 
-    // Fetch relay chain coretime info
+    // Fetch relay chain coretime info using runtime_queries modules
     let (broker_id, storage_version, max_historical_revenue) = tokio::join!(
-        fetch_broker_id(client_at_block),
-        fetch_storage_version_decoded(client_at_block),
-        fetch_max_historical_revenue(client_at_block)
+        coretime::get_broker_id(client_at_block),
+        coretime::get_assignment_provider_storage_version(client_at_block),
+        coretime::get_max_historical_revenue(client_at_block)
     );
 
     let response = CoretimeRelayInfoResponse {
@@ -321,194 +328,6 @@ async fn handle_relay_chain_info(
     };
 
     Ok((StatusCode::OK, Json(response)).into_response())
-}
-
-/// Fetches and decodes Configuration from Broker pallet directly into ConfigRecord.
-/// Uses subxt dynamic storage with DecodeAsType for type-safe decoding.
-async fn fetch_configuration(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<Option<ConfigRecord>, CoretimeError> {
-    let config_addr = subxt::dynamic::storage::<(), ConfigRecord>("Broker", "Configuration");
-
-    match client_at_block.storage().fetch(config_addr, ()).await {
-        Ok(storage_value) => {
-            let decoded =
-                storage_value
-                    .decode()
-                    .map_err(|e| CoretimeError::StorageDecodeFailed {
-                        pallet: "Broker",
-                        entry: "Configuration",
-                        details: e.to_string(),
-                    })?;
-            Ok(Some(decoded))
-        }
-        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => {
-            tracing::debug!("Could not find Broker.Configuration storage entry.");
-            Ok(None)
-        }
-        Err(e) => {
-            tracing::debug!(
-                "Failed to retrieve Broker.Configuration: {:?}",
-                format!("{e}")
-            );
-            Ok(None)
-        }
-    }
-}
-
-/// Fetches and decodes SaleInfo from Broker pallet directly into SaleInfoRecord.
-/// Uses subxt dynamic storage with DecodeAsType for type-safe decoding.
-async fn fetch_sale_info(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<Option<SaleInfoRecord>, CoretimeError> {
-    let sale_addr = subxt::dynamic::storage::<(), SaleInfoRecord>("Broker", "SaleInfo");
-
-    match client_at_block.storage().fetch(sale_addr, ()).await {
-        Ok(storage_value) => {
-            let decoded =
-                storage_value
-                    .decode()
-                    .map_err(|e| CoretimeError::StorageDecodeFailed {
-                        pallet: "Broker",
-                        entry: "SaleInfo",
-                        details: e.to_string(),
-                    })?;
-            Ok(Some(decoded))
-        }
-        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => {
-            tracing::debug!("Could not find Broker.SaleInfo storage entry.");
-            Ok(None)
-        }
-        Err(e) => {
-            tracing::debug!("Failed to retrieve Broker.SaleInfo: {:?}", format!("{e}"));
-            Ok(None)
-        }
-    }
-}
-
-/// Fetches and decodes Status from Broker pallet directly into StatusRecord.
-/// Uses subxt dynamic storage with DecodeAsType for type-safe decoding.
-async fn fetch_status(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<Option<StatusRecord>, CoretimeError> {
-    let status_addr = subxt::dynamic::storage::<(), StatusRecord>("Broker", "Status");
-
-    match client_at_block.storage().fetch(status_addr, ()).await {
-        Ok(storage_value) => {
-            let decoded =
-                storage_value
-                    .decode()
-                    .map_err(|e| CoretimeError::StorageDecodeFailed {
-                        pallet: "Broker",
-                        entry: "Status",
-                        details: e.to_string(),
-                    })?;
-            Ok(Some(decoded))
-        }
-        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => {
-            tracing::debug!("Could not find Broker.Status storage entry.");
-            Ok(None)
-        }
-        Err(e) => {
-            tracing::debug!("Failed to retrieve Broker.Status: {:?}", format!("{e}"));
-            Ok(None)
-        }
-    }
-}
-
-/// Fetches the relay chain block number from ParachainSystem pallet.
-/// On coretime parachains, sale_start and leadin_length are stored as relay chain
-/// block numbers, so we need the relay block number for accurate price calculation.
-async fn fetch_relay_block_number(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<Option<u32>, CoretimeError> {
-    let addr = subxt::dynamic::storage::<(), u32>("ParachainSystem", "LastRelayChainBlockNumber");
-
-    match client_at_block.storage().fetch(addr, ()).await {
-        Ok(storage_value) => {
-            let decoded =
-                storage_value
-                    .decode()
-                    .map_err(|e| CoretimeError::StorageDecodeFailed {
-                        pallet: "ParachainSystem",
-                        entry: "LastRelayChainBlockNumber",
-                        details: e.to_string(),
-                    })?;
-            Ok(Some(decoded))
-        }
-        Err(e) => {
-            tracing::debug!(
-                "Failed to retrieve ParachainSystem.LastRelayChainBlockNumber: {:?}",
-                format!("{e}")
-            );
-            Ok(None)
-        }
-    }
-}
-
-/// Fetches TimeslicePeriod constant from Broker pallet.
-async fn fetch_timeslice_period(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<u32, CoretimeError> {
-    let addr = subxt::dynamic::constant::<u32>("Broker", "TimeslicePeriod");
-    let value = client_at_block.constants().entry(addr).map_err(|_| {
-        CoretimeError::ConstantFetchFailed {
-            pallet: "Broker",
-            constant: "TimeslicePeriod",
-        }
-    })?;
-
-    Ok(value)
-}
-
-/// Fetches BrokerId constant from Coretime pallet.
-async fn fetch_broker_id(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<Option<u32>, CoretimeError> {
-    let addr = subxt::dynamic::constant::<u32>("Coretime", "BrokerId");
-    let value = client_at_block.constants().entry(addr).map_err(|_| {
-        CoretimeError::ConstantFetchFailed {
-            pallet: "Coretime",
-            constant: "BrokerId",
-        }
-    })?;
-    Ok(Some(value))
-}
-
-async fn fetch_storage_version_decoded(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<Option<u16>, CoretimeError> {
-    let version = client_at_block
-        .storage()
-        .storage_version("CoretimeAssignmentProvider")
-        .await
-        .map_err(|_| CoretimeError::StorageVersionFetchFailed {
-            pallet: "CoretimeAssignmentProvider",
-        })?;
-
-    Ok(Some(version))
-}
-
-/// Fetches MaxHistoricalRevenue constant from OnDemandAssignmentProvider.
-async fn fetch_max_historical_revenue(
-    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
-) -> Result<Option<u32>, CoretimeError> {
-    let addr = subxt::dynamic::constant::<u32>("OnDemand", "MaxHistoricalRevenue");
-    if let Ok(value) = client_at_block.constants().entry(addr) {
-        Ok(Some(value))
-    } else {
-        let legacy_addr =
-            subxt::dynamic::constant::<u32>("OnDemandAssignmentProvider", "MaxHistoricalRevenue");
-        let value = client_at_block
-            .constants()
-            .entry(legacy_addr)
-            .map_err(|_| CoretimeError::ConstantFetchFailed {
-                pallet: "OnDemandAssignmentProvider",
-                constant: "MaxHistoricalRevenue",
-            })?;
-
-        Ok(Some(value))
-    }
 }
 
 // ============================================================================

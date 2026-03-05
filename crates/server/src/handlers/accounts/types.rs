@@ -64,6 +64,7 @@ pub struct AssetBalancesQueryParams {
     pub use_rc_block: bool,
 
     /// Optional list of asset IDs to query (queries all if omitted)
+    #[serde(default, deserialize_with = "string_or_vec_u32")]
     pub assets: Option<Vec<u32>>,
 }
 
@@ -491,6 +492,7 @@ pub struct PoolAssetBalancesQueryParams {
     pub use_rc_block: bool,
 
     /// Optional list of asset IDs to query (queries all if omitted)
+    #[serde(default, deserialize_with = "string_or_vec_u32")]
     pub assets: Option<Vec<u32>>,
 }
 
@@ -1040,6 +1042,80 @@ pub struct ForeignAssetBalancesQueryParams {
     pub foreign_assets: Vec<String>,
 }
 
+/// Deserializer that accepts either a single string (e.g. `?assets=1984`) or a
+/// sequence of u32 values. When a single string is received it is parsed as a
+/// comma-separated list of u32 IDs. Returns `Some(vec)` when at least one value
+/// is present, or `None` when the field is absent (handled by `#[serde(default)]`).
+fn string_or_vec_u32<'de, D>(deserializer: D) -> Result<Option<Vec<u32>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct StringOrVecU32;
+
+    impl<'de> de::Visitor<'de> for StringOrVecU32 {
+        type Value = Option<Vec<u32>>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a u32, a comma-separated string of u32s, or a sequence of u32s")
+        }
+
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<Option<Vec<u32>>, E> {
+            let mut ids = Vec::new();
+            for part in value.split(',') {
+                let trimmed = part.trim();
+                if !trimmed.is_empty() {
+                    let id = trimmed.parse::<u32>().map_err(|_| {
+                        de::Error::invalid_value(
+                            de::Unexpected::Str(trimmed),
+                            &"a valid u32 integer",
+                        )
+                    })?;
+                    ids.push(id);
+                }
+            }
+            if ids.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(ids))
+            }
+        }
+
+        fn visit_u64<E: de::Error>(self, value: u64) -> Result<Option<Vec<u32>>, E> {
+            let id = u32::try_from(value).map_err(|_| {
+                de::Error::invalid_value(de::Unexpected::Unsigned(value), &"a valid u32 integer")
+            })?;
+            Ok(Some(vec![id]))
+        }
+
+        fn visit_seq<A: de::SeqAccess<'de>>(
+            self,
+            mut seq: A,
+        ) -> Result<Option<Vec<u32>>, A::Error> {
+            let mut vec = Vec::new();
+            while let Some(val) = seq.next_element()? {
+                vec.push(val);
+            }
+            if vec.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(vec))
+            }
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Option<Vec<u32>>, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Option<Vec<u32>>, E> {
+            Ok(None)
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVecU32)
+}
+
 /// Deserializer that accepts either a single string or a sequence of strings.
 /// Needed because `serde_urlencoded` (used by axum's `Query`) deserializes a
 /// single repeated query param as a plain string, not a one-element Vec.
@@ -1181,6 +1257,67 @@ mod tests {
         let result: Result<ForeignAssetBalancesQueryParams, _> = serde_json::from_str(json);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    // --- string_or_vec_u32 deserializer tests ---
+
+    #[test]
+    fn test_asset_balances_single_asset_urlencoded() {
+        // This is the actual format from ?assets=1984 via serde_urlencoded
+        let params: AssetBalancesQueryParams = serde_urlencoded::from_str("assets=1984").unwrap();
+        assert_eq!(params.assets, Some(vec![1984]));
+    }
+
+    #[test]
+    fn test_asset_balances_bracket_notation_via_serde_qs() {
+        // serde_qs supports bracket notation: ?assets[]=1984&assets[]=2000
+        let config = serde_qs::Config::new(5, false);
+        let params: AssetBalancesQueryParams = config
+            .deserialize_str("assets[]=1984&assets[]=2000")
+            .unwrap();
+        assert_eq!(params.assets, Some(vec![1984, 2000]));
+    }
+
+    #[test]
+    fn test_asset_balances_single_asset_string() {
+        let json = r#"{"assets": "1984"}"#;
+        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.assets, Some(vec![1984]));
+    }
+
+    #[test]
+    fn test_asset_balances_comma_separated_string() {
+        let json = r#"{"assets": "1984,2000,3"}"#;
+        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.assets, Some(vec![1984, 2000, 3]));
+    }
+
+    #[test]
+    fn test_asset_balances_array_still_works() {
+        let json = r#"{"assets": [1984, 2000]}"#;
+        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.assets, Some(vec![1984, 2000]));
+    }
+
+    #[test]
+    fn test_asset_balances_absent_is_none() {
+        let json = r#"{}"#;
+        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.assets, None);
+    }
+
+    #[test]
+    fn test_asset_balances_invalid_string_errors() {
+        let json = r#"{"assets": "notanumber"}"#;
+        let result: Result<AssetBalancesQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pool_asset_balances_single_asset_string() {
+        let json = r#"{"assets": "42"}"#;
+        let params: PoolAssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.assets, Some(vec![42]));
     }
 
     #[test]

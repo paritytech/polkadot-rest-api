@@ -3035,6 +3035,7 @@ dependencies = [
  "include_dir",
  "lazy_static",
  "merkleized-metadata",
+ "nu-ansi-term",
  "parity-scale-codec",
  "polkadot-rest-api-config",
  "primitive-types 0.13.1",

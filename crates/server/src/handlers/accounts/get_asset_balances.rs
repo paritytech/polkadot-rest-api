@@ -3,7 +3,7 @@
 
 use super::types::{AccountsError, AssetBalancesQueryParams, AssetBalancesResponse, BlockInfo};
 use super::utils::validate_and_parse_address;
-use crate::extractors::JsonQuery;
+use crate::extractors::QsQuery;
 use crate::handlers::accounts::utils::{query_all_assets_id, query_assets};
 use crate::handlers::runtime_queries::assets as assets_queries;
 use crate::state::AppState;
@@ -52,7 +52,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 pub async fn get_asset_balances(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
-    JsonQuery(params): JsonQuery<AssetBalancesQueryParams>,
+    QsQuery(params): QsQuery<AssetBalancesQueryParams>,
 ) -> Result<Response, AccountsError> {
     let account = validate_and_parse_address(&account_id, state.chain_info.ss58_prefix)?;
 

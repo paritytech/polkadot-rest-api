@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::extractors::JsonQuery;
+use crate::handlers::runtime_queries::parachain_info;
 use crate::state::{AppState, RelayChainError};
 use crate::utils::{extract_block_number_from_header, run_with_concurrency};
 use axum::{
@@ -218,18 +219,9 @@ async fn get_parachain_id(state: &AppState, block_number: u64) -> Result<u32, Pa
         .await
         .map_err(|e| ParasInclusionError::ClientAtBlockFailed(e.to_string()))?;
 
-    let addr = subxt::dynamic::storage::<(), u32>("ParachainInfo", "ParachainId");
-
-    let result = match client_at_block.storage().fetch(addr, ()).await {
-        Ok(v) => v,
-        Err(_) => return Err(ParasInclusionError::NotAParachain),
-    };
-
-    let id = result
-        .decode()
-        .map_err(|e| ParasInclusionError::DecodeFailed(e.to_string()))?;
-
-    Ok(id)
+    parachain_info::get_parachain_id(&client_at_block)
+        .await
+        .map_err(|_| ParasInclusionError::NotAParachain)
 }
 
 async fn extract_relay_parent_number(
