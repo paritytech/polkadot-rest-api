@@ -87,7 +87,8 @@ pub async fn get_rc_block_para_inclusions(
         .parse::<utils::BlockId>()
         .map_err(ParaInclusionsError::from)?;
 
-    let client_at_block = relay_client.at_block(block_id_parsed)
+    let client_at_block = relay_client
+        .at_block(block_id_parsed)
         .await
         .map_err(|e| ParaInclusionsError::Common(CommonBlockError::from(e)))?;
 

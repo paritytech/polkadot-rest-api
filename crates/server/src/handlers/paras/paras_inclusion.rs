@@ -330,9 +330,7 @@ async fn check_block_for_inclusion(
     parachain_block_number: u64,
 ) -> Option<u64> {
     // Get client at this block
-    let client_at_block = relay_client.at_block(block_num)
-        .await
-        .ok()?;
+    let client_at_block = relay_client.at_block(block_num).await.ok()?;
 
     // Fetch events using subxt's proper events API
     let events = client_at_block.events().fetch().await.ok()?;

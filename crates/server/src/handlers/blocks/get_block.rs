@@ -93,8 +93,7 @@ async fn handle_use_rc_block(
         let rc_block_hash = &rc_block_hash;
         let rc_block_number = &rc_block_number;
         async move {
-            let client_at_block =
-                state.client.at_block(ah_block.number).await?;
+            let client_at_block = state.client.at_block(ah_block.number).await?;
 
             let mut response = build_block_response_for_hash(
                 state,
@@ -129,12 +128,8 @@ pub(crate) async fn build_block_response(
     // Create client_at_block directly from parsed input - saves 1 RPC call
     // by letting subxt resolve hash<->number internally
     let client_at_block = match &block_id_parsed {
-        utils::BlockId::Hash(hash) => {
-            state.client.at_block(*hash).await?
-        }
-        utils::BlockId::Number(number) => {
-            state.client.at_block(*number).await?
-        }
+        utils::BlockId::Hash(hash) => state.client.at_block(*hash).await?,
+        utils::BlockId::Number(number) => state.client.at_block(*number).await?,
     };
 
     // Extract hash and number from the resolved client

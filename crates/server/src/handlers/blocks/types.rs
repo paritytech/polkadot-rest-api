@@ -460,7 +460,10 @@ impl IntoResponse for GetBlockHeaderError {
                 }
             }
             GetBlockHeaderError::RcBlockError(inner) => {
-                if matches!(inner, crate::utils::rc_block::RcBlockError::BlockNotFound(_)) {
+                if matches!(
+                    inner,
+                    crate::utils::rc_block::RcBlockError::BlockNotFound(_)
+                ) {
                     (StatusCode::BAD_REQUEST, inner.to_string())
                 } else {
                     (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())

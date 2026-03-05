@@ -117,8 +117,7 @@ pub async fn get_rc_blocks(
             let params = base_params.clone();
             let state = state.clone();
             async move {
-                let client_at_block =
-                    relay_client.at_block(number).await?;
+                let client_at_block = relay_client.at_block(number).await?;
 
                 let block_hash = format!("{:#x}", client_at_block.block_hash());
 
@@ -213,8 +212,7 @@ async fn build_rc_block_response(
 
         if !fee_indices.is_empty() {
             let spec_version = client_at_block.spec_version();
-            let client_at_parent =
-                relay_client.at_block(header.parent_hash).await?;
+            let client_at_parent = relay_client.at_block(header.parent_hash).await?;
 
             let fee_futures: Vec<_> = fee_indices
                 .iter()

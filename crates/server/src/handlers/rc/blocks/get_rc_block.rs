@@ -187,12 +187,8 @@ pub async fn get_rc_block(
     let queried_by_hash = matches!(block_id_parsed, utils::BlockId::Hash(_));
 
     let client_at_block = match &block_id_parsed {
-        utils::BlockId::Hash(hash) => {
-            relay_client.at_block(*hash).await?
-        }
-        utils::BlockId::Number(number) => {
-            relay_client.at_block(*number).await?
-        }
+        utils::BlockId::Hash(hash) => relay_client.at_block(*hash).await?,
+        utils::BlockId::Number(number) => relay_client.at_block(*number).await?,
     };
 
     let block_hash = format!("{:#x}", client_at_block.block_hash());

@@ -179,8 +179,7 @@ async fn handle_use_rc_block(state: AppState, block_id: String) -> Result<Respon
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {
-        let client_at_block =
-            state.client.at_block(ah_block.number).await?;
+        let client_at_block = state.client.at_block(ah_block.number).await?;
 
         let mut response = build_block_raw_response(&state, ah_block.hash.clone()).await?;
 

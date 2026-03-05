@@ -108,9 +108,9 @@ impl From<crate::utils::AtBlockError> for GetRcBlockHeadError {
     fn from(err: crate::utils::AtBlockError) -> Self {
         match err {
             crate::utils::AtBlockError::BlockNotFound(msg) => {
-                GetRcBlockHeadError::BlockResolveFailed(
-                    crate::utils::BlockResolveError::NotFound(msg),
-                )
+                GetRcBlockHeadError::BlockResolveFailed(crate::utils::BlockResolveError::NotFound(
+                    msg,
+                ))
             }
             crate::utils::AtBlockError::Client(e) => {
                 GetRcBlockHeadError::ClientAtBlockFailed(Box::new(e))
@@ -234,7 +234,8 @@ pub async fn get_rc_blocks_head(
 
         let (canonical_client, finalized_client) = tokio::try_join!(
             async {
-                relay_client.at_block(best_hash)
+                relay_client
+                    .at_block(best_hash)
                     .await
                     .map_err(GetRcBlockHeadError::from)
             },
@@ -302,8 +303,7 @@ pub async fn get_rc_blocks_head(
 
         if !fee_indices.is_empty() {
             let spec_version = client_at_block.spec_version();
-            let client_at_parent =
-                relay_client.at_block(header.parent_hash).await?;
+            let client_at_parent = relay_client.at_block(header.parent_hash).await?;
 
             let fee_futures: Vec<_> = fee_indices
                 .iter()

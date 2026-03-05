@@ -592,8 +592,7 @@ pub async fn build_block_response_generic(
 
         if !fee_indices.is_empty() {
             let spec_version = client_at_block.spec_version();
-            let client_at_parent =
-                ctx.client.at_block(header.parent_hash).await?;
+            let client_at_parent = ctx.client.at_block(header.parent_hash).await?;
 
             let fee_futures: Vec<_> = fee_indices
                 .iter()

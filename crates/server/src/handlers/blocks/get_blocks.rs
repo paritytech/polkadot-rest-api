@@ -85,8 +85,7 @@ pub async fn get_blocks(
             let params = base_block_params.clone();
             async move {
                 // Create client_at_block - this also resolves hash internally
-                let client_at_block =
-                    state.client.at_block(number).await?;
+                let client_at_block = state.client.at_block(number).await?;
 
                 let block_hash = format!("{:#x}", client_at_block.block_hash());
 
@@ -150,8 +149,7 @@ async fn handle_use_rc_block_range(
                 let mut responses = Vec::with_capacity(ah_blocks.len());
                 for ah_block in ah_blocks {
                     // Create client_at_block first - needed for build_block_response_for_hash
-                    let client_at_block =
-                        state.client.at_block(ah_block.number).await?;
+                    let client_at_block = state.client.at_block(ah_block.number).await?;
 
                     let mut response = build_block_response_for_hash(
                         &state,

@@ -387,9 +387,7 @@ impl IntoResponse for AccountsError {
             | AccountsError::InvalidScheme
             | AccountsError::TooManyAddresses
             | AccountsError::NoAddresses
-            | AccountsError::InvalidForeignAsset(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
+            | AccountsError::InvalidForeignAsset(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             AccountsError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }

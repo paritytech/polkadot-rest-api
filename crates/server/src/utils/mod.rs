@@ -12,8 +12,8 @@ pub mod rc_block;
 
 pub use block::{
     AtBlockError, BlockId, BlockIdParseError, BlockResolveError, ResolveClientAtBlockError,
-    ResolvedBlock, fetch_block_timestamp, get_block_number_from_hash_with_rpc,
-    resolve_block, resolve_block_with_rpc, resolve_client_at_block,
+    ResolvedBlock, fetch_block_timestamp, get_block_number_from_hash_with_rpc, resolve_block,
+    resolve_block_with_rpc, resolve_client_at_block,
 };
 pub use concurrency::{DEFAULT_CONCURRENCY, run_with_concurrency, run_with_concurrency_collect};
 pub use extrinsic::{

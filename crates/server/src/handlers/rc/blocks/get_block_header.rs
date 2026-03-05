@@ -86,7 +86,8 @@ pub async fn get_rc_block_header(
 
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
 
-    let client_at_block = relay_client.at_block(block_id_parsed)
+    let client_at_block = relay_client
+        .at_block(block_id_parsed)
         .await
         .map_err(|e| GetRcBlockHeaderError::HeaderFetchFailed(e.to_string()))?;
 

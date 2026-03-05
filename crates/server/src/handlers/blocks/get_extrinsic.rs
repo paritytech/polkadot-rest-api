@@ -128,8 +128,7 @@ async fn handle_use_rc_block(
         let rc_block_hash = &rc_block_hash;
         let rc_block_number = &rc_block_number;
         async move {
-            let client_at_block =
-                state.client.at_block(ah_block.number).await?;
+            let client_at_block = state.client.at_block(ah_block.number).await?;
 
             let mut response = build_extrinsic_response(
                 state,
@@ -195,8 +194,7 @@ async fn build_extrinsic_response(
 
     if !params.no_fees && extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
         let spec_version = client_at_block.spec_version();
-        let client_at_parent =
-            state.client.at_block(header.parent_hash).await?;
+        let client_at_parent = state.client.at_block(header.parent_hash).await?;
 
         let fee_info = extract_fee_info_for_extrinsic(
             state,
