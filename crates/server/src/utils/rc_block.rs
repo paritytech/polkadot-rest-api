@@ -19,20 +19,37 @@ pub type RcClientAtBlock = OnlineClientAtBlock<SubstrateConfig>;
 struct CandidateIncludedEvent {
     candidate: CommittedCandidateReceipt,
     head_data: Vec<u8>,
+    #[allow(dead_code)]
+    core_index: u32,
+    #[allow(dead_code)]
+    group_index: u32,
 }
 
-/// CommittedCandidateReceipt — only descriptor is needed
+/// CommittedCandidateReceipt
 #[derive(Debug, DecodeAsType)]
 struct CommittedCandidateReceipt {
     descriptor: CandidateDescriptorDecoded,
+    #[allow(dead_code)]
+    commitments_hash: [u8; 32],
 }
 
-/// CandidateDescriptor — only para_id is needed for filtering.
-/// Fields not listed here (collator, signature, relay_parent, etc.) are
+/// CandidateDescriptor — fields not listed here (collator, signature) are
 /// automatically skipped by DecodeAsType's named-field matching.
 #[derive(Debug, DecodeAsType)]
 struct CandidateDescriptorDecoded {
     para_id: u32,
+    #[allow(dead_code)]
+    relay_parent: [u8; 32],
+    #[allow(dead_code)]
+    persisted_validation_data_hash: [u8; 32],
+    #[allow(dead_code)]
+    pov_hash: [u8; 32],
+    #[allow(dead_code)]
+    erasure_root: [u8; 32],
+    #[allow(dead_code)]
+    para_head: [u8; 32],
+    #[allow(dead_code)]
+    validation_code_hash: [u8; 32],
 }
 
 #[derive(Debug, Clone)]

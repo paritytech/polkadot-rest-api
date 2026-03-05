@@ -22,22 +22,16 @@ use thiserror::Error;
 
 /// RuntimeVersion returned by Core.version()
 #[derive(Debug, DecodeAsType)]
+#[allow(dead_code)]
 struct RuntimeVersion {
     spec_name: String,
-    #[allow(dead_code)]
     impl_name: String,
-    #[allow(dead_code)]
     authoring_version: u32,
-    #[allow(dead_code)]
     spec_version: u32,
-    #[allow(dead_code)]
     impl_version: u32,
-    #[allow(dead_code)]
     apis: Vec<([u8; 8], u32)>,
-    #[allow(dead_code)]
     transaction_version: u32,
-    #[allow(dead_code)]
-    state_version: u8,
+    system_version: u8,
 }
 
 #[derive(Debug, Deserialize)]
