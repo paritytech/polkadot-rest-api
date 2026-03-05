@@ -5,7 +5,7 @@ use super::types::{
     AccountsError, BlockInfo, PoolAssetBalancesQueryParams, PoolAssetBalancesResponse,
 };
 use super::utils::{query_all_pool_assets_id, query_pool_assets, validate_and_parse_address};
-use crate::extractors::JsonQuery;
+use crate::extractors::QsQuery;
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
@@ -52,7 +52,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 pub async fn get_pool_asset_balances(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
-    JsonQuery(params): JsonQuery<PoolAssetBalancesQueryParams>,
+    QsQuery(params): QsQuery<PoolAssetBalancesQueryParams>,
 ) -> Result<Response, AccountsError> {
     let account = validate_and_parse_address(&account_id, state.chain_info.ss58_prefix)?;
 
