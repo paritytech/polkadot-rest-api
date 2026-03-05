@@ -30,6 +30,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 /// - `at` (optional): Block identifier (hash or height) - defaults to latest finalized
 /// - `useRcBlock` (optional): When true, treat 'at' as relay chain block identifier
 /// - `assets` (optional): List of asset IDs to query (queries all if omitted)
+/// - `showEmpty`  (optional): When true, include assets with zero balance (default: false)
 #[utoipa::path(
     get,
     path = "/v1/accounts/{accountId}/asset-balances",
@@ -40,7 +41,8 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
         ("accountId" = String, Path, description = "SS58-encoded account address"),
         ("at" = Option<String>, description = "Block hash or number to query at"),
         ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier"),
-        ("assets" = Option<String>, description = "Comma-separated list of asset IDs to query")
+        ("assets" = Option<String>, description = "Comma-separated list of asset IDs to query"),
+        ("showEmpty" = Option<bool>, description = "When true, include assets with zero balance (default: false)")
     ),
     responses(
         (status = 200, description = "Account asset balances", body = AssetBalancesResponse),
@@ -70,8 +72,15 @@ pub async fn get_asset_balances(
     let client_at_block = utils::resolve_client_at_block(&state.client, params.at.as_ref()).await?;
 
     let assets = params.assets.as_deref().unwrap_or(&[]);
-    let response =
-        query_asset_balances(&client_at_block, &account, &resolved_block, assets).await?;
+    let show_empty = params.show_empty;
+    let response = query_asset_balances(
+        &client_at_block,
+        &account,
+        &resolved_block,
+        assets,
+        show_empty,
+    )
+    .await?;
     Ok(Json(response).into_response())
 }
 
@@ -80,6 +89,7 @@ async fn query_asset_balances(
     account: &AccountId32,
     block: &utils::ResolvedBlock,
     asset_ids: &[u32],
+    show_empty: bool,
 ) -> Result<AssetBalancesResponse, AccountsError> {
     // Check if Assets pallet is available using centralized function
     if !assets_queries::is_assets_pallet_available(client_at_block) {
@@ -98,7 +108,7 @@ async fn query_asset_balances(
     };
 
     // Query each asset balance in parallel
-    let assets = query_assets(client_at_block, account, &assets_to_query).await?;
+    let assets = query_assets(client_at_block, account, &assets_to_query, show_empty).await?;
 
     Ok(AssetBalancesResponse {
         at: BlockInfo {
@@ -149,6 +159,7 @@ async fn handle_use_rc_block(
 
     // Process each AH block
     let assets = params.assets.as_deref().unwrap_or(&[]);
+    let show_empty = params.show_empty;
     let mut results = Vec::new();
     for ah_block in ah_blocks {
         let ah_resolved = utils::ResolvedBlock {
@@ -157,7 +168,8 @@ async fn handle_use_rc_block(
         };
         let client_at_block = state.client.at_block(ah_resolved.number).await?;
         let mut response =
-            query_asset_balances(&client_at_block, &account, &ah_resolved, assets).await?;
+            query_asset_balances(&client_at_block, &account, &ah_resolved, assets, show_empty)
+                .await?;
 
         // Add RC block info
         response.rc_block_hash = Some(rc_block_hash.clone());
