@@ -41,7 +41,7 @@ pub async fn query_pool_assets(
     Ok(balances
         .into_iter()
         .map(|(asset_id, decoded)| PoolAssetBalance {
-            asset_id,
+            asset_id: asset_id.to_string(),
             balance: decoded.balance,
             is_frozen: decoded.is_frozen,
             is_sufficient: decoded.is_sufficient,

@@ -105,7 +105,8 @@ pub struct BlockInfo {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetBalance {
-    pub asset_id: u32,
+    /// Asset ID as string (matches Sidecar format)
+    pub asset_id: String,
     /// Balance as string (u128 serialized as decimal string)
     pub balance: String,
     pub is_frozen: bool,
@@ -522,7 +523,8 @@ pub struct PoolAssetBalancesResponse {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PoolAssetBalance {
-    pub asset_id: u32,
+    /// Asset ID as string (matches Sidecar format)
+    pub asset_id: String,
     /// Balance as string (u128 serialized as decimal string)
     pub balance: String,
     pub is_frozen: bool,
