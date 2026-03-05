@@ -63,8 +63,9 @@ pub struct AssetBalancesQueryParams {
     #[serde(default)]
     pub use_rc_block: bool,
 
-    /// Optional list of asset IDs to query (queries all if omitted)
-    #[serde(default, deserialize_with = "string_or_vec_u32")]
+    /// Optional list of asset IDs to query (queries all if omitted).
+    /// Use PHP-style bracket notation: `?assets[]=1984&assets[]=2000`
+    #[serde(default)]
     pub assets: Option<Vec<u32>>,
 
     /// When true, include assets with zero balance. Defaults to false.
@@ -495,8 +496,9 @@ pub struct PoolAssetBalancesQueryParams {
     #[serde(default)]
     pub use_rc_block: bool,
 
-    /// Optional list of asset IDs to query (queries all if omitted)
-    #[serde(default, deserialize_with = "string_or_vec_u32")]
+    /// Optional list of asset IDs to query (queries all if omitted).
+    /// Use PHP-style bracket notation: `?assets[]=1&assets[]=2`
+    #[serde(default)]
     pub assets: Option<Vec<u32>>,
 }
 
@@ -1037,121 +1039,9 @@ pub struct ForeignAssetBalancesQueryParams {
 
     /// Optional list of foreign asset multilocations as JSON strings to query
     /// (queries all if omitted). Each element is a JSON-encoded XCM Location.
-    /// Format follows Express 4.x array params: ?foreignAssets[]=JSON1&foreignAssets[]=JSON2
-    #[serde(
-        default,
-        rename = "foreignAssets[]",
-        deserialize_with = "string_or_vec"
-    )]
+    /// Use PHP-style bracket notation: `?foreignAssets[]=JSON1&foreignAssets[]=JSON2`
+    #[serde(default)]
     pub foreign_assets: Vec<String>,
-}
-
-/// Deserializer that accepts either a single string (e.g. `?assets=1984`) or a
-/// sequence of u32 values. When a single string is received it is parsed as a
-/// comma-separated list of u32 IDs. Returns `Some(vec)` when at least one value
-/// is present, or `None` when the field is absent (handled by `#[serde(default)]`).
-fn string_or_vec_u32<'de, D>(deserializer: D) -> Result<Option<Vec<u32>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de;
-
-    struct StringOrVecU32;
-
-    impl<'de> de::Visitor<'de> for StringOrVecU32 {
-        type Value = Option<Vec<u32>>;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str("a u32, a comma-separated string of u32s, or a sequence of u32s")
-        }
-
-        fn visit_str<E: de::Error>(self, value: &str) -> Result<Option<Vec<u32>>, E> {
-            let mut ids = Vec::new();
-            for part in value.split(',') {
-                let trimmed = part.trim();
-                if !trimmed.is_empty() {
-                    let id = trimmed.parse::<u32>().map_err(|_| {
-                        de::Error::invalid_value(
-                            de::Unexpected::Str(trimmed),
-                            &"a valid u32 integer",
-                        )
-                    })?;
-                    ids.push(id);
-                }
-            }
-            if ids.is_empty() {
-                Ok(None)
-            } else {
-                Ok(Some(ids))
-            }
-        }
-
-        fn visit_u64<E: de::Error>(self, value: u64) -> Result<Option<Vec<u32>>, E> {
-            let id = u32::try_from(value).map_err(|_| {
-                de::Error::invalid_value(de::Unexpected::Unsigned(value), &"a valid u32 integer")
-            })?;
-            Ok(Some(vec![id]))
-        }
-
-        fn visit_seq<A: de::SeqAccess<'de>>(
-            self,
-            mut seq: A,
-        ) -> Result<Option<Vec<u32>>, A::Error> {
-            let mut vec = Vec::new();
-            while let Some(val) = seq.next_element()? {
-                vec.push(val);
-            }
-            if vec.is_empty() {
-                Ok(None)
-            } else {
-                Ok(Some(vec))
-            }
-        }
-
-        fn visit_none<E: de::Error>(self) -> Result<Option<Vec<u32>>, E> {
-            Ok(None)
-        }
-
-        fn visit_unit<E: de::Error>(self) -> Result<Option<Vec<u32>>, E> {
-            Ok(None)
-        }
-    }
-
-    deserializer.deserialize_any(StringOrVecU32)
-}
-
-/// Deserializer that accepts either a single string or a sequence of strings.
-/// Needed because `serde_urlencoded` (used by axum's `Query`) deserializes a
-/// single repeated query param as a plain string, not a one-element Vec.
-fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de;
-
-    struct StringOrVec;
-
-    impl<'de> de::Visitor<'de> for StringOrVec {
-        type Value = Vec<String>;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str("a string or a sequence of strings")
-        }
-
-        fn visit_str<E: de::Error>(self, value: &str) -> Result<Vec<String>, E> {
-            Ok(vec![value.to_owned()])
-        }
-
-        fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<String>, A::Error> {
-            let mut vec = Vec::new();
-            while let Some(val) = seq.next_element()? {
-                vec.push(val);
-            }
-            Ok(vec)
-        }
-    }
-
-    deserializer.deserialize_any(StringOrVec)
 }
 
 /// Response for GET /accounts/{accountId}/foreign-asset-balances
@@ -1263,18 +1153,11 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 
-    // --- string_or_vec_u32 deserializer tests ---
-
-    #[test]
-    fn test_asset_balances_single_asset_urlencoded() {
-        // This is the actual format from ?assets=1984 via serde_urlencoded
-        let params: AssetBalancesQueryParams = serde_urlencoded::from_str("assets=1984").unwrap();
-        assert_eq!(params.assets, Some(vec![1984]));
-    }
+    // --- PHP-style bracket notation tests (serde_qs) ---
 
     #[test]
     fn test_asset_balances_bracket_notation_via_serde_qs() {
-        // serde_qs supports bracket notation: ?assets[]=1984&assets[]=2000
+        // serde_qs supports PHP-style bracket notation: ?assets[]=1984&assets[]=2000
         let config = serde_qs::Config::new(5, false);
         let params: AssetBalancesQueryParams = config
             .deserialize_str("assets[]=1984&assets[]=2000")
@@ -1283,45 +1166,56 @@ mod tests {
     }
 
     #[test]
-    fn test_asset_balances_single_asset_string() {
-        let json = r#"{"assets": "1984"}"#;
-        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+    fn test_asset_balances_url_encoded_brackets_via_serde_qs() {
+        // Browsers typically URL-encode brackets: assets%5B%5D=1984&assets%5B%5D=2000
+        // serde_qs with strict=false handles this
+        let config = serde_qs::Config::new(5, false);
+        let params: AssetBalancesQueryParams = config
+            .deserialize_str("assets%5B%5D=1984&assets%5B%5D=2000")
+            .unwrap();
+        assert_eq!(params.assets, Some(vec![1984, 2000]));
+    }
+
+    #[test]
+    fn test_asset_balances_single_value_bracket_notation() {
+        // Single value with bracket notation: ?assets[]=1984
+        let config = serde_qs::Config::new(5, false);
+        let params: AssetBalancesQueryParams = config
+            .deserialize_str("assets[]=1984")
+            .unwrap();
         assert_eq!(params.assets, Some(vec![1984]));
     }
 
     #[test]
-    fn test_asset_balances_comma_separated_string() {
-        let json = r#"{"assets": "1984,2000,3"}"#;
-        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
-        assert_eq!(params.assets, Some(vec![1984, 2000, 3]));
+    fn test_asset_balances_absent_is_none() {
+        let config = serde_qs::Config::new(5, false);
+        let params: AssetBalancesQueryParams = config.deserialize_str("").unwrap();
+        assert_eq!(params.assets, None);
     }
 
     #[test]
-    fn test_asset_balances_array_still_works() {
+    fn test_asset_balances_json_array_works() {
         let json = r#"{"assets": [1984, 2000]}"#;
         let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.assets, Some(vec![1984, 2000]));
     }
 
     #[test]
-    fn test_asset_balances_absent_is_none() {
-        let json = r#"{}"#;
-        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
-        assert_eq!(params.assets, None);
+    fn test_pool_asset_balances_bracket_notation() {
+        let config = serde_qs::Config::new(5, false);
+        let params: PoolAssetBalancesQueryParams = config
+            .deserialize_str("assets[]=42&assets[]=100")
+            .unwrap();
+        assert_eq!(params.assets, Some(vec![42, 100]));
     }
 
     #[test]
-    fn test_asset_balances_invalid_string_errors() {
-        let json = r#"{"assets": "notanumber"}"#;
-        let result: Result<AssetBalancesQueryParams, _> = serde_json::from_str(json);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_pool_asset_balances_single_asset_string() {
-        let json = r#"{"assets": "42"}"#;
-        let params: PoolAssetBalancesQueryParams = serde_json::from_str(json).unwrap();
-        assert_eq!(params.assets, Some(vec![42]));
+    fn test_foreign_assets_bracket_notation() {
+        let config = serde_qs::Config::new(5, false);
+        let params: ForeignAssetBalancesQueryParams = config
+            .deserialize_str("foreignAssets[]={\"parents\":1}&foreignAssets[]={\"parents\":2}")
+            .unwrap();
+        assert_eq!(params.foreign_assets, vec!["{\"parents\":1}", "{\"parents\":2}"]);
     }
 
     #[test]

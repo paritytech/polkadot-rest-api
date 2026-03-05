@@ -8,7 +8,7 @@ use super::utils::{
     parse_foreign_asset_locations, query_all_foreign_asset_locations, query_foreign_assets,
     validate_and_parse_address,
 };
-use crate::extractors::JsonQuery;
+use crate::extractors::QsQuery;
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
@@ -56,7 +56,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 pub async fn get_foreign_asset_balances(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
-    JsonQuery(params): JsonQuery<ForeignAssetBalancesQueryParams>,
+    QsQuery(params): QsQuery<ForeignAssetBalancesQueryParams>,
 ) -> Result<Response, AccountsError> {
     let account = validate_and_parse_address(&account_id, state.chain_info.ss58_prefix)?;
 
