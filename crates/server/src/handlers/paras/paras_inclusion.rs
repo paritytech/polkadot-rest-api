@@ -25,6 +25,10 @@ use super::relay_parent_visitor;
 struct CandidateIncludedEvent {
     receipt: CandidateReceiptDecoded,
     head_data: Vec<u8>,
+    #[allow(dead_code)]
+    core_index: u32,
+    #[allow(dead_code)]
+    group_index: u32,
 }
 
 #[derive(DecodeAsType)]
