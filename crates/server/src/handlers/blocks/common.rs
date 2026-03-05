@@ -146,27 +146,19 @@ pub fn convert_digest_items_to_logs(items: &[DigestItem]) -> Vec<DigestLog> {
 pub async fn get_validators_at_block(
     client_at_block: &BlockClient,
 ) -> Result<Vec<AccountId32>, GetBlockError> {
-    // Use typed dynamic storage to decode as raw account bytes, then convert to AccountId32
-    // Note: AccountId32 from sp_runtime doesn't implement IntoVisitor, so we decode as [u8; 32]
-    let addr = subxt::dynamic::storage::<(), Vec<[u8; 32]>>("Session", "Validators");
-    let validators_raw = client_at_block
-        .storage()
-        .fetch(addr, ())
-        .await?
-        .decode()
-        .map_err(|e| {
-            tracing::debug!("Failed to decode validators: {}", e);
-            GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
+    use crate::handlers::runtime_queries::session;
+
+    session::get_validators(client_at_block).await.map_err(|e| {
+        tracing::debug!("Failed to get validators: {}", e);
+        match e {
+            session::SessionStorageError::NoValidatorsFound => GetBlockError::StorageDecodeFailed(
+                parity_scale_codec::Error::from("no validators found in storage"),
+            ),
+            _ => GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
                 "Failed to decode validators",
-            ))
-        })?;
-    let validators: Vec<AccountId32> = validators_raw.into_iter().map(AccountId32::from).collect();
-
-    if validators.is_empty() {
-        return Err(parity_scale_codec::Error::from("no validators found in storage").into());
-    }
-
-    Ok(validators)
+            )),
+        }
+    })
 }
 
 /// Extract author ID from block header digest logs by mapping authority index to validator

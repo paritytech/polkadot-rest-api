@@ -196,6 +196,9 @@ pub enum CoretimeError {
         pallet: &'static str,
         entry: &'static str,
     },
+
+    #[error("Storage query failed: {details}")]
+    StorageQueryFailed { details: String },
 }
 
 impl IntoResponse for CoretimeError {
@@ -252,6 +255,9 @@ impl IntoResponse for CoretimeError {
             }
             CoretimeError::StorageItemNotAvailableAtBlock { .. } => {
                 (StatusCode::NOT_FOUND, self.to_string())
+            }
+            CoretimeError::StorageQueryFailed { .. } => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
 
