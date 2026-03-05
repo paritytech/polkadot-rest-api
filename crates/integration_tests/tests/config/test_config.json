@@ -3,13 +3,13 @@
     {
       "name": "polkadot",
       "api_url": "http://localhost:8080",
-      "test_accounts": [],
+      "test_accounts": ["0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"],
       "extra": {}
     },
     {
       "name": "kusama",
       "api_url": "http://localhost:8080",
-      "test_accounts": [],
+      "test_accounts": ["0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"],
       "extra": {}
     },
     {
@@ -21,13 +21,13 @@
     {
       "name": "asset-hub-polkadot",
       "api_url": "http://localhost:8080",
-      "test_accounts": [],
+      "test_accounts": ["0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"],
       "extra": {}
     },
     {
       "name": "asset-hub-kusama",
       "api_url": "http://localhost:8080",
-      "test_accounts": [],
+      "test_accounts": ["0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"],
       "extra": {}
     },
     {
@@ -169,6 +169,79 @@
       "requires_block_height": false,
       "requires_account": false,
       "relay_chain_only": true
+    },
+    {
+      "path": "/v1/accounts/{accountId}/balance-info",
+      "query_params": [
+        {},
+        { "denominated": "true" }
+      ],
+      "requires_block_height": false,
+      "requires_account": true,
+      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama"]
+    },
+    {
+      "path": "/v1/accounts/{accountId}/asset-balances",
+      "query_params": [
+        {}
+      ],
+      "requires_block_height": false,
+      "requires_account": true,
+      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama"]
+    },
+    {
+      "path": "/v1/accounts/{accountId}/pool-asset-balances",
+      "query_params": [
+        {}
+      ],
+      "requires_block_height": false,
+      "requires_account": true,
+      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama"]
+    },
+    {
+      "path": "/v1/accounts/{accountId}/foreign-asset-balances",
+      "query_params": [
+        {}
+      ],
+      "requires_block_height": false,
+      "requires_account": true,
+      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama"]
+    },
+    {
+      "path": "/v1/accounts/{accountId}/vesting-info",
+      "query_params": [
+        {}
+      ],
+      "requires_block_height": false,
+      "requires_account": true,
+      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama"]
+    },
+    {
+      "path": "/v1/accounts/{accountId}/proxy-info",
+      "query_params": [
+        {}
+      ],
+      "requires_block_height": false,
+      "requires_account": true,
+      "only_chains": ["asset-hub-polkadot", "asset-hub-kusama"]
+    },
+    {
+      "path": "/v1/accounts/{accountId}/validate",
+      "query_params": [
+        {}
+      ],
+      "requires_block_height": false,
+      "requires_account": true
+    },
+    {
+      "path": "/v1/accounts/{accountId}/convert",
+      "query_params": [
+        {},
+        { "scheme": "ed25519" },
+        { "prefix": "0" }
+      ],
+      "requires_block_height": false,
+      "requires_account": true
     }
   ],
   "historical_tests": {
@@ -1380,6 +1453,76 @@
         "query_params": {},
         "fixture_path": "asset-hub-polkadot/blocks_12273189.json",
         "description": "Test block endpoint at Asset Hub Polkadot block 12,273,189 (ChargeAssetTxPayment signed extension)"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/balance-info",
+        "block_height": null,
+        "account_id": "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5",
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_balance_info_alice_10260000.json",
+        "description": "Test accounts balance-info for Alice at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/foreign-asset-balances",
+        "block_height": null,
+        "account_id": "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5",
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_foreign_asset_balances_alice_10260000.json",
+        "description": "Test accounts foreign-asset-balances for Alice at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/vesting-info",
+        "block_height": null,
+        "account_id": "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5",
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_vesting_info_alice_10260000.json",
+        "description": "Test accounts vesting-info for Alice at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/proxy-info",
+        "block_height": null,
+        "account_id": "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5",
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_proxy_info_alice_10260000.json",
+        "description": "Test accounts proxy-info for Alice at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/balance-info",
+        "block_height": null,
+        "account_id": "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5",
+        "query_params": {
+          "at": "10260000",
+          "denominated": "true"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_balance_info_alice_10260000_denominated.json",
+        "description": "Test accounts balance-info with denominated=true for Alice at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/balance-info",
+        "block_height": null,
+        "account_id": "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5",
+        "query_params": {
+          "at": "10260000",
+          "token": "DOT"
+        },
+        "fixture_path": "asset-hub-polkadot/accounts_balance_info_alice_10260000_token_dot.json",
+        "description": "Test accounts balance-info with token=DOT for Alice at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/validate",
+        "block_height": null,
+        "account_id": "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5",
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/accounts_validate_alice.json",
+        "description": "Test accounts validate for Alice"
       }
     ],
     "asset-hub-kusama": [
