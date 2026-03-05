@@ -66,6 +66,10 @@ pub struct AssetBalancesQueryParams {
     /// Optional list of asset IDs to query (queries all if omitted)
     #[serde(default, deserialize_with = "string_or_vec_u32")]
     pub assets: Option<Vec<u32>>,
+
+    /// When true, include assets with zero balance. Defaults to false.
+    #[serde(default)]
+    pub show_empty: bool,
 }
 
 // ================================================================================================
