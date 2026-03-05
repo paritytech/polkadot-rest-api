@@ -35,7 +35,7 @@ pub struct StakingProgressQueryParams {
     pub use_rc_block: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StakingProgressResponse {
     pub at: AtResponse,
@@ -72,7 +72,7 @@ pub enum ElectionStatusResponse {
     },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub struct UnappliedSlash {
     pub era: String,
     pub validator: String,

@@ -240,6 +240,24 @@ impl From<OnlineClientAtBlockError> for GetBlockError {
     }
 }
 
+impl From<crate::handlers::runtime_queries::system::SystemStorageError> for GetBlockError {
+    fn from(err: crate::handlers::runtime_queries::system::SystemStorageError) -> Self {
+        match err {
+            crate::handlers::runtime_queries::system::SystemStorageError::StorageError(e) => {
+                GetBlockError::StorageFetchFailed(e)
+            }
+            crate::handlers::runtime_queries::system::SystemStorageError::StorageFetchFailed {
+                entry,
+            } => GetBlockError::StorageFetchFailed(
+                subxt::error::StorageError::StorageEntryNotFound {
+                    pallet_name: "System".into(),
+                    entry_name: entry.into(),
+                },
+            ),
+        }
+    }
+}
+
 impl From<utils::ResolveClientAtBlockError> for GetBlockError {
     fn from(err: utils::ResolveClientAtBlockError) -> Self {
         match err {

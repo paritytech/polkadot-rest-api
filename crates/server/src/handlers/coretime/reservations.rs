@@ -3,8 +3,9 @@
 
 use crate::extractors::JsonQuery;
 use crate::handlers::coretime::common::{
-    AtResponse, CoretimeError, CoretimeQueryParams, ScheduleItem, has_broker_pallet,
+    AtResponse, CoretimeError, CoretimeQueryParams, has_broker_pallet,
 };
+use crate::handlers::runtime_queries::broker as broker_queries;
 use crate::state::AppState;
 use crate::utils::{BlockId, resolve_block};
 use axum::{
@@ -106,58 +107,68 @@ pub async fn coretime_reservations(
 pub async fn fetch_reservations(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Result<Vec<ReservationInfo>, CoretimeError> {
-    let reservations_addr = subxt::dynamic::storage::<(), ()>("Broker", "Reservations");
-
-    let reservations_value = match client_at_block.storage().fetch(reservations_addr, ()).await {
-        Ok(value) => value,
-        Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => {
-            return Ok(vec![]);
-        }
-        Err(_) => {
-            return Err(CoretimeError::StorageFetchFailed {
-                pallet: "Broker",
-                entry: "Reservations",
-            });
-        }
-    };
-
-    // Decode directly into typed Vec<Vec<ScheduleItem>>
-    let reservations: Vec<Vec<ScheduleItem>> =
-        reservations_value
-            .decode_as()
-            .map_err(|e| CoretimeError::StorageDecodeFailed {
-                pallet: "Broker",
-                entry: "Reservations",
-                details: e.to_string(),
+    // Use the broker_queries module to fetch raw reservations
+    let reservations: Vec<Vec<broker_queries::ScheduleItem>> =
+        broker_queries::get_reservations(client_at_block)
+            .await
+            .map_err(|e| match e {
+                broker_queries::BrokerStorageError::StorageFetchFailed { pallet, entry } => {
+                    CoretimeError::StorageFetchFailed { pallet, entry }
+                }
+                broker_queries::BrokerStorageError::StorageDecodeFailed {
+                    pallet,
+                    entry,
+                    details,
+                } => CoretimeError::StorageDecodeFailed {
+                    pallet,
+                    entry,
+                    details,
+                },
+                _ => CoretimeError::StorageFetchFailed {
+                    pallet: "Broker",
+                    entry: "Reservations",
+                },
             })?;
 
+    // Convert broker_queries types to local types for response formatting
     Ok(reservations
         .iter()
-        .map(|items| extract_reservation_info(items))
+        .map(|items| {
+            if items.is_empty() {
+                return ReservationInfo {
+                    mask: String::new(),
+                    task: String::new(),
+                };
+            }
+            let first = &items[0];
+            let mask = format!("0x{}", hex::encode(first.mask));
+            let task = first.assignment.to_task_string();
+            ReservationInfo { mask, task }
+        })
         .collect())
-}
-
-/// Extracts reservation info from a list of schedule items.
-/// Uses the first schedule item's mask and assignment.
-fn extract_reservation_info(items: &[ScheduleItem]) -> ReservationInfo {
-    if items.is_empty() {
-        return ReservationInfo {
-            mask: String::new(),
-            task: String::new(),
-        };
-    }
-
-    let first = &items[0];
-    let mask = format!("0x{}", hex::encode(first.mask));
-    let task = first.assignment.to_task_string();
-
-    ReservationInfo { mask, task }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::handlers::coretime::common::{CORE_MASK_SIZE, CoreAssignment, ScheduleItem};
+
+    /// Extracts reservation info from a list of schedule items (test helper).
+    /// Uses the first schedule item's mask and assignment.
+    fn extract_reservation_info(items: &[ScheduleItem]) -> ReservationInfo {
+        if items.is_empty() {
+            return ReservationInfo {
+                mask: String::new(),
+                task: String::new(),
+            };
+        }
+
+        let first = &items[0];
+        let mask = format!("0x{}", hex::encode(first.mask));
+        let task = first.assignment.to_task_string();
+
+        ReservationInfo { mask, task }
+    }
 
     // ------------------------------------------------------------------------
     // extract_reservation_info tests

@@ -333,6 +333,50 @@ async fn test_vesting_info_schedule_structure() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_vesting_info_hex_address() -> Result<()> {
+    let local_client = get_client().await?;
+
+    let account_id = test_accounts::ALICE_HEX;
+    let endpoint = format!("/accounts/{}/vesting-info", account_id);
+
+    println!(
+        "\n{} Testing vesting info with hex address",
+        "Testing".cyan().bold()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    if should_skip_vesting_test(local_status.as_u16(), &local_json) {
+        println!("{}", "═".repeat(80).bright_white());
+        return Ok(());
+    }
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    let response_obj = local_json.as_object().unwrap();
+    assert!(
+        response_obj.contains_key("at"),
+        "Response missing 'at' field"
+    );
+    assert!(
+        response_obj.contains_key("vesting"),
+        "Response missing 'vesting' field"
+    );
+
+    println!("{} Hex address validated!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_vesting_info_use_rc_block() -> Result<()> {
     let local_client = get_client().await?;
 
