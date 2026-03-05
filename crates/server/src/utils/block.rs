@@ -5,6 +5,7 @@ use crate::state::{AppState, SubstrateLegacyRpc};
 use primitive_types::H256;
 use std::str::FromStr;
 use subxt::client::BlockNumberOrRef;
+use subxt::error::OnlineClientAtBlockError;
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 use subxt_rpcs::{RpcClient, rpc_params};
 use thiserror::Error;
@@ -25,6 +26,58 @@ impl From<BlockId> for BlockNumberOrRef<SubstrateConfig> {
             BlockId::Hash(hash) => hash.into(),
             BlockId::Number(number) => number.into(),
         }
+    }
+}
+
+/// Error returned by [`at_block_checked`] when the client cannot be pinned to a block.
+///
+/// Unlike the raw `OnlineClientAtBlockError`, this distinguishes block-not-found
+/// (user error → 400) from genuine backend failures (→ 500/503).
+#[derive(Debug, Error)]
+pub enum AtBlockError {
+    #[error("Block not found: {0}")]
+    BlockNotFound(String),
+
+    #[error("Failed to get client at block")]
+    Client(#[source] OnlineClientAtBlockError),
+}
+
+/// Convert an [`OnlineClientAtBlockError`] into an [`AtBlockError`], classifying
+/// block-not-found variants separately from genuine backend failures.
+///
+/// This is also available as `From<OnlineClientAtBlockError> for AtBlockError`.
+impl From<OnlineClientAtBlockError> for AtBlockError {
+    fn from(err: OnlineClientAtBlockError) -> Self {
+        classify_at_block_error(err)
+    }
+}
+
+/// Classify an [`OnlineClientAtBlockError`] into an [`AtBlockError`].
+///
+/// Block-not-found variants (`BlockNotFound`, `BlockHeaderNotFound`,
+/// `CannotGetBlockHash` when the node responded but the block doesn't exist)
+/// are mapped to [`AtBlockError::BlockNotFound`]. Everything else (backend
+/// disconnections, spec-version failures, etc.) becomes [`AtBlockError::Client`].
+fn classify_at_block_error(err: OnlineClientAtBlockError) -> AtBlockError {
+    // Produce messages without a "Block not found:" prefix — that prefix is
+    // added by `BlockResolveError::NotFound`'s Display impl and by
+    // `AtBlockError::BlockNotFound`'s Display impl so the inner text must be
+    // the bare detail.  The wording matches the RPC-path messages produced in
+    // `resolve_block()` / `resolve_block_with_rpc()`.
+    match &err {
+        OnlineClientAtBlockError::BlockNotFound { block_number } => {
+            AtBlockError::BlockNotFound(format!("Block at height {} not found", block_number))
+        }
+        OnlineClientAtBlockError::BlockHeaderNotFound { block_hash } => {
+            AtBlockError::BlockNotFound(format!("Block with hash {} not found", block_hash))
+        }
+        OnlineClientAtBlockError::CannotGetBlockHash {
+            block_number,
+            reason,
+        } if !super::is_backend_disconnected_error(reason) => {
+            AtBlockError::BlockNotFound(format!("Block at height {} not found", block_number))
+        }
+        _ => AtBlockError::Client(err),
     }
 }
 
@@ -126,7 +179,7 @@ pub async fn resolve_client_at_block(
             client
                 .at_block(block_id)
                 .await
-                .map_err(ResolveClientAtBlockError::SubxtError)
+                .map_err(|e| ResolveClientAtBlockError::from(AtBlockError::from(e)))
         }
     }
 }
@@ -137,8 +190,20 @@ pub enum ResolveClientAtBlockError {
     #[error("Failed to parse block identifier: {0}")]
     ParseError(#[from] BlockIdParseError),
 
+    #[error("Block not found: {0}")]
+    BlockNotFound(String),
+
     #[error("Failed to get client at block: {0}")]
-    SubxtError(#[from] subxt::error::OnlineClientAtBlockError),
+    SubxtError(OnlineClientAtBlockError),
+}
+
+impl From<AtBlockError> for ResolveClientAtBlockError {
+    fn from(err: AtBlockError) -> Self {
+        match err {
+            AtBlockError::BlockNotFound(msg) => ResolveClientAtBlockError::BlockNotFound(msg),
+            AtBlockError::Client(e) => ResolveClientAtBlockError::SubxtError(e),
+        }
+    }
 }
 
 /// Fetch the timestamp from the Timestamp.Now storage entry at a given block.

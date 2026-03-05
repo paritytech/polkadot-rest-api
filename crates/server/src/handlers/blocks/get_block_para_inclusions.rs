@@ -143,11 +143,10 @@ pub async fn get_block_para_inclusions(
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
     let resolved_block = utils::resolve_block(&state, Some(block_id_parsed)).await?;
 
-    let client_at_block = state
-        .client
-        .at_block(resolved_block.number)
-        .await
-        .map_err(|e| CommonBlockError::ClientAtBlockFailed(Box::new(e)))?;
+    let client_at_block =
+        state.client.at_block(resolved_block.number)
+            .await
+            .map_err(CommonBlockError::from)?;
 
     fetch_para_inclusions_from_client(&client_at_block, &resolved_block, params.para_id).await
 }

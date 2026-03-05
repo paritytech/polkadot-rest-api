@@ -46,6 +46,9 @@ pub enum GetBlockHeadHeaderError {
     #[error("Header field missing: {0}")]
     HeaderFieldMissing(String),
 
+    #[error("Block resolution failed")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
     #[error("Service temporarily unavailable: {0}")]
     ServiceUnavailable(String),
 
@@ -62,11 +65,33 @@ pub enum GetBlockHeadHeaderError {
     ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 }
 
+impl From<utils::AtBlockError> for GetBlockHeadHeaderError {
+    fn from(err: utils::AtBlockError) -> Self {
+        match err {
+            utils::AtBlockError::BlockNotFound(msg) => {
+                GetBlockHeadHeaderError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::AtBlockError::Client(e) => {
+                GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e))
+            }
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for GetBlockHeadHeaderError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        GetBlockHeadHeaderError::from(utils::AtBlockError::from(err))
+    }
+}
+
 impl IntoResponse for GetBlockHeadHeaderError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
             GetBlockHeadHeaderError::UseRcBlockNotSupported => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockHeadHeaderError::BlockResolveFailed(inner) => {
+                (StatusCode::BAD_REQUEST, inner.to_string())
             }
             GetBlockHeadHeaderError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
@@ -78,9 +103,27 @@ impl IntoResponse for GetBlockHeadHeaderError {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetBlockHeadHeaderError::HeaderFetchFailed(err) => utils::rpc_error_to_status(err),
+            GetBlockHeadHeaderError::ClientAtBlockFailed(err) => {
+                if utils::is_online_client_at_block_disconnected(err) {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Service temporarily unavailable".to_string(),
+                    )
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
+            GetBlockHeadHeaderError::RcBlockError(inner) => {
+                if matches!(
+                    inner.as_ref(),
+                    crate::utils::rc_block::RcBlockError::BlockNotFound(_)
+                ) {
+                    (StatusCode::BAD_REQUEST, inner.to_string())
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
             GetBlockHeadHeaderError::HeaderFieldMissing(_)
-            | GetBlockHeadHeaderError::RcBlockError(_)
-            | GetBlockHeadHeaderError::ClientAtBlockFailed(_)
             | GetBlockHeadHeaderError::BlockHeaderFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
@@ -141,11 +184,7 @@ pub async fn get_blocks_head_header(
                 GetBlockHeadHeaderError::HeaderFieldMissing("best block hash".to_string())
             })?;
 
-        state
-            .client
-            .at_block(best_hash)
-            .await
-            .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?
+        state.client.at_block(best_hash).await?
     };
 
     let block_hash = format!("{:#x}", client_at_block.block_hash());
@@ -206,10 +245,7 @@ async fn handle_use_rc_block(
                 GetBlockHeadHeaderError::HeaderFieldMissing("best block hash".to_string())
             })?;
 
-        relay_client
-            .at_block(best_hash)
-            .await
-            .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?
+        relay_client.at_block(best_hash).await?
     };
 
     let ah_blocks = find_ah_blocks_in_rc_block_at(&rc_client_at_block)
@@ -225,11 +261,8 @@ async fn handle_use_rc_block(
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {
-        let client_at_block = state
-            .client
-            .at_block(ah_block.number)
-            .await
-            .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?;
+        let client_at_block =
+            state.client.at_block(ah_block.number).await?;
 
         let header = client_at_block
             .block_header()

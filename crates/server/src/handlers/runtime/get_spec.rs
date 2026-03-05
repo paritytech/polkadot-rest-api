@@ -16,6 +16,9 @@ pub enum GetSpecError {
     #[error("Invalid block parameter")]
     InvalidBlockParam(#[from] crate::utils::BlockIdParseError),
 
+    #[error("Block resolution failed")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
     #[error("Failed to get client at block")]
     ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 
@@ -36,6 +39,9 @@ impl From<utils::ResolveClientAtBlockError> for GetSpecError {
     fn from(err: utils::ResolveClientAtBlockError) -> Self {
         match err {
             utils::ResolveClientAtBlockError::ParseError(e) => GetSpecError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
+                GetSpecError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
             utils::ResolveClientAtBlockError::SubxtError(e) => {
                 GetSpecError::ClientAtBlockFailed(Box::new(e))
             }
@@ -47,6 +53,9 @@ impl IntoResponse for GetSpecError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
             GetSpecError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            GetSpecError::BlockResolveFailed(inner) => {
+                (StatusCode::BAD_REQUEST, inner.to_string())
+            }
             GetSpecError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }

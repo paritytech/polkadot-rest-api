@@ -142,11 +142,9 @@ pub async fn get_block_head(
 
         let (canonical_client, finalized_client) = tokio::try_join!(
             async {
-                state
-                    .client
-                    .at_block(best_hash)
+                state.client.at_block(best_hash)
                     .await
-                    .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))
+                    .map_err(GetBlockError::from)
             },
             async {
                 state
@@ -214,11 +212,8 @@ async fn handle_use_rc_block(
         let rc_block_hash = &rc_block_hash;
         let rc_block_number = &rc_block_number;
         async move {
-            let client_at_block = state
-                .client
-                .at_block(ah_block.number)
-                .await
-                .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+            let client_at_block =
+                state.client.at_block(ah_block.number).await?;
 
             let mut response = build_head_block_response(
                 state,
@@ -298,7 +293,8 @@ async fn build_head_block_response(
 
         if !fee_indices.is_empty() {
             let spec_version = client_at_block.spec_version();
-            let client_at_parent = state.client.at_block(header.parent_hash).await?;
+            let client_at_parent =
+                state.client.at_block(header.parent_hash).await?;
 
             let fee_futures: Vec<_> = fee_indices
                 .iter()

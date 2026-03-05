@@ -35,6 +35,7 @@ fn error_response(status: StatusCode, message: String) -> axum::response::Respon
 ///     _ => INTERNAL_SERVER_ERROR
 /// );
 /// ```
+#[allow(unused_macros)]
 macro_rules! impl_error_response {
     ($error_type:ty, $($variant:pat => $status:ident),+ $(,)?) => {
         impl IntoResponse for $error_type {
@@ -287,9 +288,20 @@ impl From<StorageError> for AccountsError {
     }
 }
 
+impl From<utils::AtBlockError> for AccountsError {
+    fn from(err: utils::AtBlockError) -> Self {
+        match err {
+            utils::AtBlockError::BlockNotFound(msg) => {
+                AccountsError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::AtBlockError::Client(e) => AccountsError::ClientAtBlockFailed(Box::new(e)),
+        }
+    }
+}
+
 impl From<OnlineClientAtBlockError> for AccountsError {
     fn from(err: OnlineClientAtBlockError) -> Self {
-        AccountsError::ClientAtBlockFailed(Box::new(err))
+        AccountsError::from(utils::AtBlockError::from(err))
     }
 }
 
@@ -297,6 +309,9 @@ impl From<utils::ResolveClientAtBlockError> for AccountsError {
     fn from(err: utils::ResolveClientAtBlockError) -> Self {
         match err {
             utils::ResolveClientAtBlockError::ParseError(e) => AccountsError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
+                AccountsError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
             utils::ResolveClientAtBlockError::SubxtError(e) => {
                 AccountsError::ClientAtBlockFailed(Box::new(e))
             }
@@ -351,31 +366,59 @@ impl From<StakingPayoutsQueryError> for AccountsError {
     }
 }
 
-impl_error_response!(AccountsError,
-    AccountsError::InvalidBlockParam(_) => BAD_REQUEST,
-    AccountsError::InvalidAddress(_) => BAD_REQUEST,
-    AccountsError::InvalidDelegateAddress(_) => BAD_REQUEST,
-    AccountsError::PalletNotAvailable(_) => BAD_REQUEST,
-    AccountsError::UseRcBlockNotSupported => BAD_REQUEST,
-    AccountsError::RelayChain(RelayChainError::NotConfigured) => BAD_REQUEST,
-    AccountsError::RelayChain(RelayChainError::ConnectionFailed(_)) => SERVICE_UNAVAILABLE,
-    AccountsError::BlockResolveFailed(_) => NOT_FOUND,
-    AccountsError::InvalidDenominatedParam => BAD_REQUEST,
-    AccountsError::InvalidToken(_) => BAD_REQUEST,
-    AccountsError::InvalidEra(_) => BAD_REQUEST,
-    AccountsError::InvalidDepth => BAD_REQUEST,
-    AccountsError::NoActiveEra => BAD_REQUEST,
-    AccountsError::BadStakingBlock(_) => BAD_REQUEST,
-    AccountsError::RelayChainConnectionRequired => BAD_REQUEST,
-    AccountsError::NotAStashAccount => BAD_REQUEST,
-    AccountsError::InvalidHexAccountId => BAD_REQUEST,
-    AccountsError::InvalidPrefix => BAD_REQUEST,
-    AccountsError::InvalidScheme => BAD_REQUEST,
-    AccountsError::TooManyAddresses => BAD_REQUEST,
-    AccountsError::NoAddresses => BAD_REQUEST,
-    AccountsError::InvalidForeignAsset(_) => BAD_REQUEST,
-    _ => INTERNAL_SERVER_ERROR
-);
+impl IntoResponse for AccountsError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            AccountsError::InvalidBlockParam(_)
+            | AccountsError::InvalidAddress(_)
+            | AccountsError::InvalidDelegateAddress(_)
+            | AccountsError::PalletNotAvailable(_)
+            | AccountsError::UseRcBlockNotSupported
+            | AccountsError::InvalidDenominatedParam
+            | AccountsError::InvalidToken(_)
+            | AccountsError::InvalidEra(_)
+            | AccountsError::InvalidDepth
+            | AccountsError::NoActiveEra
+            | AccountsError::BadStakingBlock(_)
+            | AccountsError::RelayChainConnectionRequired
+            | AccountsError::NotAStashAccount
+            | AccountsError::InvalidHexAccountId
+            | AccountsError::InvalidPrefix
+            | AccountsError::InvalidScheme
+            | AccountsError::TooManyAddresses
+            | AccountsError::NoAddresses
+            | AccountsError::InvalidForeignAsset(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            AccountsError::RelayChain(RelayChainError::NotConfigured) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            AccountsError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
+            AccountsError::BlockResolveFailed(inner) => {
+                (StatusCode::BAD_REQUEST, inner.to_string())
+            }
+            AccountsError::ClientAtBlockFailed(err) => {
+                if utils::is_online_client_at_block_disconnected(err) {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Service temporarily unavailable".to_string(),
+                    )
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
+            AccountsError::RcBlockMappingFailed(inner)
+                if matches!(inner, RcBlockError::BlockNotFound(_)) =>
+            {
+                (StatusCode::BAD_REQUEST, inner.to_string())
+            }
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+        error_response(status, message)
+    }
+}
 
 // ================================================================================================
 // Balance Info Types

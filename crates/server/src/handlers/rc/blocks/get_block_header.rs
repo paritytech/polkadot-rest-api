@@ -86,15 +86,7 @@ pub async fn get_rc_block_header(
 
     let block_id_parsed = block_id.parse::<utils::BlockId>()?;
 
-    let block_num_or_ref = match block_id_parsed {
-        utils::BlockId::Number(n) => subxt::client::BlockNumberOrRef::Number(n),
-        utils::BlockId::Hash(h) => {
-            subxt::client::BlockNumberOrRef::BlockRef(subxt::backend::BlockRef::from_hash(h))
-        }
-    };
-
-    let client_at_block = relay_client
-        .at_block(block_num_or_ref)
+    let client_at_block = relay_client.at_block(block_id_parsed)
         .await
         .map_err(|e| GetRcBlockHeaderError::HeaderFetchFailed(e.to_string()))?;
 

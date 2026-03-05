@@ -4,7 +4,7 @@
 use crate::extractors::JsonQuery;
 use crate::handlers::runtime_queries::parachain_info;
 use crate::state::{AppState, RelayChainError};
-use crate::utils::{extract_block_number_from_header, run_with_concurrency};
+use crate::utils::{self, extract_block_number_from_header, run_with_concurrency};
 use axum::{
     Json,
     extract::{Path, State},
@@ -99,6 +99,23 @@ pub enum ParasInclusionError {
 
     #[error("Failed to fetch events: {0}")]
     EventsFetchFailed(String),
+}
+
+impl From<utils::AtBlockError> for ParasInclusionError {
+    fn from(err: utils::AtBlockError) -> Self {
+        match err {
+            utils::AtBlockError::BlockNotFound(msg) => ParasInclusionError::InvalidBlockParam(msg),
+            utils::AtBlockError::Client(e) => {
+                ParasInclusionError::ClientAtBlockFailed(e.to_string())
+            }
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for ParasInclusionError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        ParasInclusionError::from(utils::AtBlockError::from(err))
+    }
 }
 
 impl IntoResponse for ParasInclusionError {
@@ -213,11 +230,7 @@ fn validate_depth(depth: String) -> Result<u32, ParasInclusionError> {
 }
 
 async fn get_parachain_id(state: &AppState, block_number: u64) -> Result<u32, ParasInclusionError> {
-    let client_at_block = state
-        .client
-        .at_block(block_number)
-        .await
-        .map_err(|e| ParasInclusionError::ClientAtBlockFailed(e.to_string()))?;
+    let client_at_block = state.client.at_block(block_number).await?;
 
     parachain_info::get_parachain_id(&client_at_block)
         .await
@@ -232,11 +245,7 @@ async fn extract_relay_parent_number(
         .parse::<subxt::utils::H256>()
         .map_err(|e| ParasInclusionError::InvalidBlockParam(e.to_string()))?;
 
-    let client_at_block = state
-        .client
-        .at_block(block_hash_h256)
-        .await
-        .map_err(|e| ParasInclusionError::ClientAtBlockFailed(e.to_string()))?;
+    let client_at_block = state.client.at_block(block_hash_h256).await?;
 
     let extrinsics = client_at_block
         .extrinsics()
@@ -321,7 +330,9 @@ async fn check_block_for_inclusion(
     parachain_block_number: u64,
 ) -> Option<u64> {
     // Get client at this block
-    let client_at_block = relay_client.at_block(block_num).await.ok()?;
+    let client_at_block = relay_client.at_block(block_num)
+        .await
+        .ok()?;
 
     // Fetch events using subxt's proper events API
     let events = client_at_block.events().fetch().await.ok()?;

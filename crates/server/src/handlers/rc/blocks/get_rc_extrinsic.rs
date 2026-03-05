@@ -109,7 +109,8 @@ pub async fn get_rc_extrinsic(
 
     if !params.no_fees && extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
         let spec_version = client_at_block.spec_version();
-        let client_at_parent = relay_client.at_block(header.parent_hash).await?;
+        let client_at_parent =
+            relay_client.at_block(header.parent_hash).await?;
 
         let fee_info = extract_fee_info_for_extrinsic(
             &state,

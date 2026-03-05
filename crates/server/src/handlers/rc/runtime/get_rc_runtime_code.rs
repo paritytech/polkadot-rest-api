@@ -15,6 +15,9 @@ pub enum GetRcCodeError {
     #[error("Invalid block parameter")]
     InvalidBlockParam(#[from] crate::utils::BlockIdParseError),
 
+    #[error("Block resolution failed")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
     #[error(transparent)]
     RelayChain(#[from] RelayChainError),
 
@@ -32,6 +35,9 @@ impl From<utils::ResolveClientAtBlockError> for GetRcCodeError {
     fn from(err: utils::ResolveClientAtBlockError) -> Self {
         match err {
             utils::ResolveClientAtBlockError::ParseError(e) => GetRcCodeError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
+                GetRcCodeError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
             utils::ResolveClientAtBlockError::SubxtError(e) => {
                 GetRcCodeError::ClientAtBlockFailed(Box::new(e))
             }
@@ -45,6 +51,9 @@ impl IntoResponse for GetRcCodeError {
             GetRcCodeError::InvalidBlockParam(_)
             | GetRcCodeError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetRcCodeError::BlockResolveFailed(inner) => {
+                (StatusCode::BAD_REQUEST, inner.to_string())
             }
             GetRcCodeError::RelayChain(RelayChainError::ConnectionFailed(_))
             | GetRcCodeError::ServiceUnavailable(_) => {
