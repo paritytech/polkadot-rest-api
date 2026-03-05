@@ -227,9 +227,9 @@ fn parse_metadata_params(
     summary = "Transaction construction material",
     description = "Returns network information needed for transaction construction including genesis hash, spec version, and optionally metadata.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("noMeta" = Option<bool>, description = "DEPRECATED: If true, metadata is not included"),
-        ("metadata" = Option<String>, description = "Metadata format: 'json' or 'scale'")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("noMeta" = Option<bool>, Query, description = "DEPRECATED: If true, metadata is not included"),
+        ("metadata" = Option<String>, Query, description = "Metadata format: 'json' or 'scale'")
     ),
     responses(
         (status = 200, description = "Transaction material", body = Object),
@@ -252,9 +252,9 @@ pub async fn material(
     summary = "RC transaction material",
     description = "Returns relay chain network information for transaction construction.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("noMeta" = Option<bool>, description = "DEPRECATED: If true, metadata is not included"),
-        ("metadata" = Option<String>, description = "Metadata format: 'json' or 'scale'")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("noMeta" = Option<bool>, Query, description = "DEPRECATED: If true, metadata is not included"),
+        ("metadata" = Option<String>, Query, description = "Metadata format: 'json' or 'scale'")
     ),
     responses(
         (status = 200, description = "Relay chain transaction material", body = Object),
@@ -305,9 +305,9 @@ fn parse_metadata_version(version_str: &str) -> Result<u32, MaterialError> {
     description = "Returns transaction construction material with metadata at a specific version.",
     params(
         ("metadataVersion" = String, Path, description = "Metadata version (e.g., 'v14', 'v15')"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("noMeta" = Option<bool>, description = "DEPRECATED: If true, metadata is not included"),
-        ("metadata" = Option<String>, description = "Metadata format: 'json' or 'scale'")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("noMeta" = Option<bool>, Query, description = "DEPRECATED: If true, metadata is not included"),
+        ("metadata" = Option<String>, Query, description = "Metadata format: 'json' or 'scale'")
     ),
     responses(
         (status = 200, description = "Transaction material with versioned metadata", body = Object),
@@ -332,9 +332,9 @@ pub async fn material_versioned(
     description = "Returns relay chain transaction material with metadata at a specific version.",
     params(
         ("metadataVersion" = String, Path, description = "Metadata version (e.g., 'v14', 'v15')"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("noMeta" = Option<bool>, description = "DEPRECATED: If true, metadata is not included"),
-        ("metadata" = Option<String>, description = "Metadata format: 'json' or 'scale'")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("noMeta" = Option<bool>, Query, description = "DEPRECATED: If true, metadata is not included"),
+        ("metadata" = Option<String>, Query, description = "Metadata format: 'json' or 'scale'")
     ),
     responses(
         (status = 200, description = "Relay chain transaction material with versioned metadata", body = Object),

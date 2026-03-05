@@ -145,9 +145,9 @@ struct PalletConstantsInfo {
     description = "Returns all constants defined in a pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, description = "Only return constant names"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return constant names"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Pallet constants", body = Object),
@@ -219,9 +219,9 @@ pub async fn pallets_constants(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("constantItemId" = String, Path, description = "Name of the constant"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("metadata" = Option<bool>, description = "Include metadata"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Constant value", body = Object),
@@ -504,8 +504,8 @@ fn extract_pallet_constants(
     description = "Returns all constants defined in a relay chain pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, description = "Only return constant names")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return constant names")
     ),
     responses(
         (status = 200, description = "Relay chain pallet constants", body = Object),
@@ -579,8 +579,8 @@ pub async fn rc_pallets_constants(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("constantItemId" = String, Path, description = "Name of the constant"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("metadata" = Option<bool>, description = "Include metadata")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata")
     ),
     responses(
         (status = 200, description = "Relay chain constant value", body = Object),

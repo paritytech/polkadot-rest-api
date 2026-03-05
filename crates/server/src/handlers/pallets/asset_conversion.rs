@@ -89,8 +89,8 @@ pub struct LiquidityPoolsResponse {
     summary = "Next available pool ID",
     description = "Returns the next available pool asset ID from the AssetConversion pallet.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Next available ID", body = Object),
@@ -191,8 +191,8 @@ async fn handle_next_id_with_rc_block(
     summary = "Liquidity pools",
     description = "Returns all liquidity pools from the AssetConversion pallet.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Liquidity pools", body = Object),

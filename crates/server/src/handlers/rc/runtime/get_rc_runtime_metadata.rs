@@ -134,7 +134,7 @@ async fn resolve_relay_block_hash(
     summary = "RC get runtime metadata",
     description = "Returns the decoded runtime metadata of the relay chain in JSON format.",
     params(
-        ("at" = Option<String>, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Relay chain runtime metadata", body = Object),
@@ -196,7 +196,7 @@ pub async fn get_rc_runtime_metadata(
     summary = "RC get metadata versions",
     description = "Returns the available metadata versions on the relay chain at a given block.",
     params(
-        ("at" = Option<String>, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Available metadata versions", body = Object),
@@ -258,7 +258,7 @@ pub async fn get_rc_runtime_metadata_versions(
     description = "Returns the relay chain metadata at a specific version (e.g., v14, v15).",
     params(
         ("version" = String, Path, description = "Metadata version in 'vX' format (e.g., v14, v15)"),
-        ("at" = Option<String>, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Relay chain metadata at specified version", body = Object),

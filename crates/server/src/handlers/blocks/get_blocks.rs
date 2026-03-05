@@ -41,12 +41,12 @@ pub struct BlocksRangeQueryParams {
     summary = "Get blocks by range",
     description = "Returns a collection of blocks given a numeric range. Range is inclusive and limited to 500 blocks.",
     params(
-        ("range" = Option<String>, description = "Block range in format 'start-end' (e.g. '100-200')"),
-        ("eventDocs" = Option<bool>, description = "Include documentation for events"),
-        ("extrinsicDocs" = Option<bool>, description = "Include documentation for extrinsics"),
-        ("noFees" = Option<bool>, description = "Skip fee calculation for extrinsics"),
-        ("useRcBlock" = Option<bool>, description = "Treat range as Relay Chain blocks"),
-        ("useEvmFormat" = Option<bool>, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
+        ("range" = Option<String>, Query, description = "Block range in format 'start-end' (e.g. '100-200')"),
+        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation for extrinsics"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat range as Relay Chain blocks"),
+        ("useEvmFormat" = Option<bool>, Query, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
     ),
     responses(
         (status = 200, description = "Array of block information", body = Vec<Object>),

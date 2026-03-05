@@ -56,7 +56,7 @@ pub struct CoretimeReservationsResponse {
     summary = "Get coretime reservations",
     description = "Returns all reservations on a coretime chain. Reserved cores are permanently allocated and not available for sale.",
     params(
-        ("at" = Option<String>, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Coretime reservations", body = Object),

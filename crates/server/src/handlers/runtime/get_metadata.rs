@@ -149,7 +149,7 @@ pub struct RuntimeMetadataResponse {
     summary = "Runtime metadata",
     description = "Returns the decoded runtime metadata in JSON format.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Runtime metadata", body = Object),
@@ -203,7 +203,7 @@ pub async fn runtime_metadata(
     summary = "Available metadata versions",
     description = "Returns the available metadata versions at a given block.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "List of available metadata versions", body = Vec<String>),
@@ -261,7 +261,7 @@ pub async fn runtime_metadata_versions(
     description = "Returns the metadata at a specific version. The version parameter should be in 'vX' format (e.g., 'v14', 'v15').",
     params(
         ("version" = String, Path, description = "Metadata version (e.g., 'v14', 'v15')"),
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Runtime metadata at specified version", body = Object),
