@@ -144,7 +144,11 @@ pub fn assert_hex_string(value: &str, field_name: &str) -> Result<()> {
 // ============================================================================
 
 /// Assert that an endpoint returns a specific HTTP status code.
-pub async fn assert_status(client: &TestClient, endpoint: &str, expected_status: u16) -> Result<()> {
+pub async fn assert_status(
+    client: &TestClient,
+    endpoint: &str,
+    expected_status: u16,
+) -> Result<()> {
     let response = client.get(endpoint).await?;
     anyhow::ensure!(
         response.status.as_u16() == expected_status,
