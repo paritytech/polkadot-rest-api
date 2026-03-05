@@ -140,7 +140,8 @@ pub struct AssetAccount {
 
 /// Legacy asset account structure (with is_frozen and sufficient fields).
 /// Used as fallback for older runtimes.
-#[derive(Debug, Clone, Decode)]
+#[derive(Debug, Clone, Decode, DecodeAsType)]
+#[decode_as_type(crate_path = "subxt::ext::scale_decode")]
 pub struct AssetAccountLegacy {
     pub balance: u128,
     pub is_frozen: bool,
