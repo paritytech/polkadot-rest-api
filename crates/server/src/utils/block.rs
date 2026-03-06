@@ -133,6 +133,20 @@ pub enum BlockResolveError {
     RpcError(#[source] subxt_rpcs::Error),
 }
 
+impl BlockResolveError {
+    /// Returns the appropriate HTTP status code for this error.
+    ///
+    /// `NotFound` is a client error (400 Bad Request) — the user asked for a
+    /// block that doesn't exist.  All other variants are server-side failures
+    /// (500 Internal Server Error).
+    pub fn status_code(&self) -> axum::http::StatusCode {
+        match self {
+            BlockResolveError::NotFound(_) => axum::http::StatusCode::BAD_REQUEST,
+            _ => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
 /// Represents a resolved block with both hash and number
 #[derive(Debug, Clone)]
 pub struct ResolvedBlock {

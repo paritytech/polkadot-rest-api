@@ -46,7 +46,7 @@ impl IntoResponse for GetCodeError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
             GetCodeError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            GetCodeError::BlockResolveFailed(inner) => (StatusCode::BAD_REQUEST, inner.to_string()),
+            GetCodeError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             GetCodeError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }

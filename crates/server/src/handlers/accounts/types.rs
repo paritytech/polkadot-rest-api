@@ -395,7 +395,7 @@ impl IntoResponse for AccountsError {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             AccountsError::BlockResolveFailed(inner) => {
-                (StatusCode::BAD_REQUEST, inner.to_string())
+                (inner.status_code(), inner.to_string())
             }
             AccountsError::ClientAtBlockFailed(err) => {
                 if utils::is_online_client_at_block_disconnected(err) {

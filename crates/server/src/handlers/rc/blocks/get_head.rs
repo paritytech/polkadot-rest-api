@@ -135,7 +135,7 @@ impl IntoResponse for GetRcBlockHeadError {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetRcBlockHeadError::BlockResolveFailed(inner) => {
-                (StatusCode::BAD_REQUEST, inner.to_string())
+                (inner.status_code(), inner.to_string())
             }
             GetRcBlockHeadError::RpcCallFailed(err) => crate::utils::rpc_error_to_status(err),
             GetRcBlockHeadError::ClientAtBlockFailed(err) => {

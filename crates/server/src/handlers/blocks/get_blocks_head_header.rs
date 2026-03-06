@@ -91,7 +91,7 @@ impl IntoResponse for GetBlockHeadHeaderError {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             GetBlockHeadHeaderError::BlockResolveFailed(inner) => {
-                (StatusCode::BAD_REQUEST, inner.to_string())
+                (inner.status_code(), inner.to_string())
             }
             GetBlockHeadHeaderError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())

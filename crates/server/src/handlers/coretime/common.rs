@@ -228,7 +228,7 @@ impl IntoResponse for CoretimeError {
             // Block/Client errors - these map to Sidecar's BadRequest (400)
             CoretimeError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             CoretimeError::BlockResolveFailed(inner) => {
-                (StatusCode::BAD_REQUEST, inner.to_string())
+                (inner.status_code(), inner.to_string())
             }
             CoretimeError::InvalidBlockHash => (StatusCode::BAD_REQUEST, self.to_string()),
             CoretimeError::ClientAtBlockFailed(err) => {

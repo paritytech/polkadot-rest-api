@@ -45,7 +45,7 @@ impl IntoResponse for GetRcSpecError {
         let (status, message) = match &self {
             GetRcSpecError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             GetRcSpecError::BlockResolveFailed(inner) => {
-                (StatusCode::BAD_REQUEST, inner.to_string())
+                (inner.status_code(), inner.to_string())
             }
             GetRcSpecError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())

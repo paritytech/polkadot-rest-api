@@ -296,7 +296,7 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::InvalidRangeMinMax
             | GetBlockError::RangeTooLarge => (StatusCode::BAD_REQUEST, self.to_string()),
             GetBlockError::BlockResolveFailed(inner) => {
-                (StatusCode::BAD_REQUEST, inner.to_string())
+                (inner.status_code(), inner.to_string())
             }
             GetBlockError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
@@ -437,7 +437,7 @@ impl IntoResponse for GetBlockHeaderError {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             GetBlockHeaderError::BlockResolveFailed(inner) => {
-                (StatusCode::BAD_REQUEST, inner.to_string())
+                (inner.status_code(), inner.to_string())
             }
             GetBlockHeaderError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())

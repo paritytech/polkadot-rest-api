@@ -111,7 +111,7 @@ impl IntoResponse for GetRcBlockError {
             }
             GetRcBlockError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             GetRcBlockError::BlockResolveFailed(inner) => {
-                (StatusCode::BAD_REQUEST, inner.to_string())
+                (inner.status_code(), inner.to_string())
             }
             GetRcBlockError::ClientAtBlockFailed(err) => {
                 if utils::is_online_client_at_block_disconnected(err) {

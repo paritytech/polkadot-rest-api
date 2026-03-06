@@ -94,7 +94,7 @@ impl IntoResponse for CommonBlockError {
         let (status, message) = match &self {
             CommonBlockError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             CommonBlockError::BlockResolveFailed(inner) => {
-                (StatusCode::BAD_REQUEST, inner.to_string())
+                (inner.status_code(), inner.to_string())
             }
             CommonBlockError::ClientAtBlockFailed(err) => {
                 if utils::is_online_client_at_block_disconnected(err.as_ref()) {

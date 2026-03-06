@@ -207,7 +207,7 @@ impl IntoResponse for PalletError {
         let (status, message) = match &self {
             // Block/Client errors
             PalletError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            PalletError::BlockResolveFailed(inner) => (StatusCode::BAD_REQUEST, inner.to_string()),
+            PalletError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             PalletError::BadStakingBlock(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             PalletError::ClientAtBlockFailed(err) => {
                 if crate::utils::is_online_client_at_block_disconnected(err) {

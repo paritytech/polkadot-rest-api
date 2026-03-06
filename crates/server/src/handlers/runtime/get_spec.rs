@@ -53,7 +53,7 @@ impl IntoResponse for GetSpecError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
             GetSpecError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            GetSpecError::BlockResolveFailed(inner) => (StatusCode::BAD_REQUEST, inner.to_string()),
+            GetSpecError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             GetSpecError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
