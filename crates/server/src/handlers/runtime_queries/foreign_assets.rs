@@ -284,30 +284,46 @@ pub async fn get_foreign_asset_balance(
 }
 
 /// Get foreign asset balances for all locations for an account.
+///
+/// Note: Queries are executed in parallel for performance.
 pub async fn get_all_foreign_asset_balances(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
 ) -> Vec<DecodedForeignAssetBalance> {
+    use futures::future::join_all;
+
     // First get all locations
     let locations = match iter_foreign_asset_locations(client_at_block).await {
         Some(l) => l,
         None => return vec![],
     };
 
-    let mut balances = Vec::new();
     let account_bytes: [u8; 32] = *account.as_ref();
 
-    for location in locations {
-        let storage_addr = subxt::dynamic::storage::<(Location, [u8; 32]), AssetAccount>(
-            "ForeignAssets",
-            "Account",
-        );
+    // Create futures for all location queries in parallel
+    let futures: Vec<_> = locations
+        .into_iter()
+        .map(|location| async move {
+            let storage_addr = subxt::dynamic::storage::<(Location, [u8; 32]), AssetAccount>(
+                "ForeignAssets",
+                "Account",
+            );
 
-        let result = client_at_block
-            .storage()
-            .fetch(storage_addr, (location.clone(), account_bytes))
-            .await;
+            let result = client_at_block
+                .storage()
+                .fetch(storage_addr, (location.clone(), account_bytes))
+                .await;
 
+            (location, result)
+        })
+        .collect();
+
+    // Execute all queries in parallel
+    let results = join_all(futures).await;
+
+    // Process results
+    let mut balances = Vec::new();
+    for (location, result) in results {
         if let Ok(value) = result
             && let Ok(asset_account) = value.decode()
         {
