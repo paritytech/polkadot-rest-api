@@ -11,6 +11,7 @@
 #![allow(clippy::result_large_err)]
 
 use crate::extractors::{JsonQuery, QsQuery};
+use crate::handlers::blocks::decode::JsonVisitor;
 use crate::handlers::pallets::common::{
     PalletError, RcPalletQueryParams, resolve_block_for_pallet,
 };
@@ -21,6 +22,7 @@ use crate::utils::rc_block::find_ah_blocks_in_rc_block;
 use axum::{Json, extract::Path, extract::State, response::IntoResponse, response::Response};
 use parity_scale_codec::Decode;
 use polkadot_rest_api_config::ChainType;
+use scale_decode::visitor::decode_with_visitor;
 use serde::Serialize;
 use serde_json::json;
 use subxt::Metadata;
@@ -339,6 +341,7 @@ pub async fn get_pallets_storage_item(
         &resolved_block,
         params.metadata,
         block_hash,
+        state.chain_info.ss58_prefix,
     )
     .await?;
     Ok(Json(response).into_response())
@@ -398,6 +401,7 @@ async fn handle_storage_item_use_rc_block(
             &ah_resolved_block,
             params.metadata,
             &ah_block.hash,
+            state.chain_info.ss58_prefix,
         )
         .await?;
 
@@ -627,9 +631,19 @@ fn build_storage_key(
 }
 
 /// Decode storage value from hex
+/// Decode storage value from hex using the metadata type registry.
+///
+/// Uses the `JsonVisitor` (from blocks/decode/args.rs) to decode SCALE-encoded bytes
+/// against the type registry, producing properly-typed JSON output including:
+/// - AccountId32 → SS58 addresses
+/// - Enums → variant names / objects
+/// - Structs → JSON objects with camelCase keys
+/// - Options → null / value
 fn decode_storage_value(
     value_hex: Option<String>,
     storage_type: &StorageTypeInfo,
+    metadata: &Metadata,
+    ss58_prefix: u16,
 ) -> Result<serde_json::Value, PalletError> {
     let Some(hex_str) = value_hex else {
         return Ok(serde_json::Value::Null);
@@ -640,59 +654,30 @@ fn decode_storage_value(
         PalletError::PalletNotFound(format!("Failed to decode storage value hex: {}", e))
     })?;
 
-    // Try to decode based on storage type
-    match storage_type {
-        StorageTypeInfo::Plain { plain } => {
-            // Common type IDs in Polkadot metadata:
-            // 4 = u32 (block number)
-            // 8 = u64 (timestamp)
-            // For now, try common decodings
-            if let Ok(type_id) = plain.parse::<u32>() {
-                match type_id {
-                    4 if bytes.len() >= 4 => {
-                        // u32
-                        let value = u32::from_le_bytes(bytes[..4].try_into().unwrap_or([0; 4]));
-                        return Ok(serde_json::Value::String(value.to_string()));
-                    }
-                    8 if bytes.len() >= 8 => {
-                        // u64
-                        let value = u64::from_le_bytes(bytes[..8].try_into().unwrap_or([0; 8]));
-                        return Ok(serde_json::Value::String(value.to_string()));
-                    }
-                    _ => {}
-                }
-            }
+    // Get the value type ID from storage type info
+    let type_id_str = match storage_type {
+        StorageTypeInfo::Plain { plain } => plain,
+        StorageTypeInfo::Map { map } => &map.value,
+    };
 
-            // Fallback: try to decode as various types based on byte length
-            match bytes.len() {
-                1 => {
-                    let value = bytes[0];
-                    Ok(serde_json::Value::String(value.to_string()))
-                }
-                2 => {
-                    let value = u16::from_le_bytes(bytes[..2].try_into().unwrap_or([0; 2]));
-                    Ok(serde_json::Value::String(value.to_string()))
-                }
-                4 => {
-                    let value = u32::from_le_bytes(bytes[..4].try_into().unwrap_or([0; 4]));
-                    Ok(serde_json::Value::String(value.to_string()))
-                }
-                8 => {
-                    let value = u64::from_le_bytes(bytes[..8].try_into().unwrap_or([0; 8]));
-                    Ok(serde_json::Value::String(value.to_string()))
-                }
-                16 => {
-                    let value = u128::from_le_bytes(bytes[..16].try_into().unwrap_or([0; 16]));
-                    Ok(serde_json::Value::String(value.to_string()))
-                }
-                _ => {
-                    // Return raw hex for complex types
-                    Ok(serde_json::Value::String(format!("0x{}", hex_clean)))
-                }
-            }
-        }
-        StorageTypeInfo::Map { .. } => {
-            // For maps, return raw hex
+    let type_id: u32 = type_id_str
+        .parse()
+        .map_err(|_| PalletError::PalletNotFound(format!("Invalid type ID: {}", type_id_str)))?;
+
+    // Use the type-aware JsonVisitor to decode the value against the type registry
+    let registry = metadata.types();
+    let mut data = &bytes[..];
+    let visitor = JsonVisitor::new(ss58_prefix, registry);
+
+    match decode_with_visitor(&mut data, type_id, registry, visitor) {
+        Ok(json_value) => Ok(json_value),
+        Err(e) => {
+            tracing::warn!(
+                "Failed to decode storage value with type registry (type_id={}): {}. Falling back to raw hex.",
+                type_id,
+                e
+            );
+            // Fallback to raw hex if visitor-based decoding fails
             Ok(serde_json::Value::String(format!("0x{}", hex_clean)))
         }
     }
@@ -813,6 +798,7 @@ pub async fn rc_get_pallets_storage_item(
         &resolved,
         params.metadata,
         &block_hash,
+        state.chain_info.ss58_prefix,
     )
     .await?;
 
@@ -923,6 +909,7 @@ async fn build_storage_item_response(
     resolved_block: &utils::ResolvedBlock,
     include_metadata: bool,
     block_hash: &str,
+    ss58_prefix: u16,
 ) -> Result<PalletsStorageItemResponse, PalletError> {
     let storage_response = build_storage_response(metadata, pallet_id, resolved_block, false)?;
 
@@ -958,7 +945,7 @@ async fn build_storage_item_response(
         .await
         .ok();
 
-    let value = decode_storage_value(value_hex, &storage_item.ty)?;
+    let value = decode_storage_value(value_hex, &storage_item.ty, metadata, ss58_prefix)?;
 
     let metadata_field = if include_metadata {
         Some(storage_item.clone())
