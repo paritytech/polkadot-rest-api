@@ -39,10 +39,10 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
     description = "Returns pool asset balances for a given account.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier"),
-        ("assets" = Option<String>, description = "Comma-separated list of pool asset IDs to query"),
-        ("showEmpty" = Option<bool>, description = "When true, include assets with zero balance (default: false)")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier"),
+        ("assets" = Option<String>, Query, description = "Comma-separated list of pool asset IDs to query"),
+        ("showEmpty" = Option<bool>, Query, description = "When true, include assets with zero balance (default: false)")
     ),
     responses(
         (status = 200, description = "Pool asset balances", body = PoolAssetBalancesResponse),

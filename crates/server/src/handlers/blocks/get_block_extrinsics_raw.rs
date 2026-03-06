@@ -95,7 +95,7 @@ pub struct BlockRawResponse {
     description = "Returns raw block data with hex-encoded extrinsics for a given block identifier. The extrinsics are returned as raw hex strings without decoding.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
-        ("useRcBlock" = Option<bool>, description = "When true, treat blockId as Relay Chain block and return Asset Hub blocks")
+        ("useRcBlock" = Option<bool>, Query, description = "When true, treat blockId as Relay Chain block and return Asset Hub blocks")
     ),
     responses(
         (status = 200, description = "Raw block data with hex-encoded extrinsics", body = Object),

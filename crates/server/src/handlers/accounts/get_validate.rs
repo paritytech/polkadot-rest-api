@@ -35,7 +35,7 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
     description = "Validates an SS58-encoded account address and returns details about its format.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address to validate"),
-        ("at" = Option<String>, description = "Block hash or number (accepted for API consistency)")
+        ("at" = Option<String>, Query, description = "Block hash or number (accepted for API consistency)")
     ),
     responses(
         (status = 200, description = "Validation result", body = AccountValidateResponse)

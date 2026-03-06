@@ -126,7 +126,7 @@ impl IntoResponse for ParaInclusionsError {
     description = "Returns parachain inclusion information for a given relay chain block. Extracts CandidateIncluded events from the ParaInclusion pallet.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
-        ("paraId" = Option<u32>, description = "Filter results by a specific parachain ID")
+        ("paraId" = Option<u32>, Query, description = "Filter results by a specific parachain ID")
     ),
     responses(
         (status = 200, description = "Parachain inclusion information", body = Object),

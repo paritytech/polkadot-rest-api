@@ -154,12 +154,12 @@ impl IntoResponse for GetRcBlockHeadError {
     summary = "RC get head block",
     description = "Returns the latest block on the relay chain.",
     params(
-        ("finalized" = Option<bool>, description = "When true returns finalized head (default: true)"),
-        ("eventDocs" = Option<bool>, description = "Include event documentation"),
-        ("extrinsicDocs" = Option<bool>, description = "Include extrinsic documentation"),
-        ("noFees" = Option<bool>, description = "Skip fee calculation"),
-        ("decodedXcmMsgs" = Option<bool>, description = "Decode and include XCM messages"),
-        ("paraId" = Option<u32>, description = "Filter XCM messages by parachain ID")
+        ("finalized" = Option<bool>, Query, description = "When true returns finalized head (default: true)"),
+        ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include extrinsic documentation"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation"),
+        ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID")
     ),
     responses(
         (status = 200, description = "Relay chain head block", body = Object),
