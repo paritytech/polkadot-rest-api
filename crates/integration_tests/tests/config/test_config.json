@@ -253,7 +253,7 @@
         "query_params": {
           "at": "28500000"
         },
-        "fixture_path": "polkadot/runtime_spec_28500000.json",
+        "fixture_path": "polkadot/runtime/spec_28500000.json",
         "description": "Test runtime spec at Polkadot block 28,500,000"
       },
       {
@@ -263,7 +263,7 @@
         "query_params": {
           "at": "21000000"
         },
-        "fixture_path": "polkadot/runtime_metadata_21000000.json",
+        "fixture_path": "polkadot/runtime/metadata_21000000.json",
         "description": "Test runtime metadata at Polkadot block 21,000,000"
       },
       {
@@ -273,7 +273,7 @@
         "query_params": {
           "at": "21000000"
         },
-        "fixture_path": "polkadot/runtime_metadata_versions_21000000.json",
+        "fixture_path": "polkadot/runtime/metadata_versions_21000000.json",
         "description": "Test runtime metadata versions at Polkadot block 21,000,000"
       },
       {
@@ -283,7 +283,7 @@
         "query_params": {
           "at": "21000000"
         },
-        "fixture_path": "polkadot/runtime_metadata_v14_21000000.json",
+        "fixture_path": "polkadot/runtime/metadata_v14_21000000.json",
         "description": "Test runtime metadata v14 at Polkadot block 21,000,000"
       },
       {
@@ -293,7 +293,7 @@
         "query_params": {
           "at": "21000000"
         },
-        "fixture_path": "polkadot/runtime_metadata_v15_21000000.json",
+        "fixture_path": "polkadot/runtime/metadata_v15_21000000.json",
         "description": "Test runtime metadata v15 at Polkadot block 21,000,000"
       },
       {
@@ -303,7 +303,7 @@
         "query_params": {
           "at": "21000000"
         },
-        "fixture_path": "polkadot/runtime_code_21000000.json",
+        "fixture_path": "polkadot/runtime/code_21000000.json",
         "description": "Test runtime code at Polkadot block 21,000,000"
       },
       {
@@ -311,7 +311,7 @@
         "block_height": 1000000,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "polkadot/blocks_1000000.json",
+        "fixture_path": "polkadot/blocks/1000000.json",
         "description": "Test block endpoint at Polkadot block 1,000,000"
       },
       {
@@ -319,7 +319,7 @@
         "block_height": 10000000,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "polkadot/blocks_10000000.json",
+        "fixture_path": "polkadot/blocks/10000000.json",
         "description": "Test block endpoint at Polkadot block 10,000,000"
       },
       {
@@ -330,7 +330,7 @@
           "extrinsicDocs": "true",
           "eventDocs": "true"
         },
-        "fixture_path": "polkadot/blocks_10000006.json",
+        "fixture_path": "polkadot/blocks/10000006.json",
         "description": "Test block endpoint at Polkadot block 10,000,006"
       },
       {
@@ -338,7 +338,7 @@
         "block_height": 20000006,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "polkadot/blocks_20000006.json",
+        "fixture_path": "polkadot/blocks/20000006.json",
         "description": "Test block endpoint at Polkadot block 20,000,006"
       },
       {
@@ -348,7 +348,7 @@
         "query_params": {
           "decodedXcmMsgs": "true"
         },
-        "fixture_path": "polkadot/blocks_28490503_decode_xcm.json",
+        "fixture_path": "polkadot/blocks/28490503_decode_xcm.json",
         "description": "Test block endpoint at Polkadot block 28,490,503 with XCM decoding"
       },
       {
@@ -356,7 +356,7 @@
         "block_height": 10293194,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "polkadot/blocks_10293194_para_inclusions.json",
+        "fixture_path": "polkadot/paras/10293194_inclusions.json",
         "description": "Test para-inclusions endpoint at Polkadot block 10,293,194"
       },
       {
@@ -366,7 +366,7 @@
         "query_params": {
           "paraId": "1000"
         },
-        "fixture_path": "polkadot/blocks_10293194_para_inclusions_para_id_1000.json",
+        "fixture_path": "polkadot/paras/10293194_inclusions_para_id_1000.json",
         "description": "Test para-inclusions endpoint with paraId filter at Polkadot block 10,293,194"
       },
       {
@@ -376,7 +376,7 @@
         "query_params": {
           "range": "1000000-1000002"
         },
-        "fixture_path": "polkadot/blocks_range_1000000-1000002.json",
+        "fixture_path": "polkadot/blocks/range_1000000-1000002.json",
         "description": "Test /blocks endpoint with range 1000000-1000002"
       },
       {
@@ -386,7 +386,7 @@
         "query_params": {
           "at": "28500000"
         },
-        "fixture_path": "polkadot/pallets_balances_dispatchables_28500000.json",
+        "fixture_path": "polkadot/pallets/balances/dispatchables_28500000.json",
         "description": "Test pallets balances dispatchables at Polkadot block 28,500,000"
       },
       {
@@ -397,7 +397,7 @@
           "at": "28500000",
           "metadata": "true"
         },
-        "fixture_path": "polkadot/pallets_balances_dispatchables_transfer_allow_death_28500000.json",
+        "fixture_path": "polkadot/pallets/balances/dispatchables_transfer_allow_death_28500000.json",
         "description": "Test pallets balances dispatchables transfer_allow_death at Polkadot block 28,500,000"
       },
       {
@@ -407,7 +407,7 @@
         "query_params": {
           "at": "28500000"
         },
-        "fixture_path": "polkadot/pallets_nomination_pools_info_28500000.json",
+        "fixture_path": "polkadot/pallets/nomination_pools/info_28500000.json",
         "description": "Test nomination pools info at Polkadot block 28,500,000"
       },
       {
@@ -418,7 +418,7 @@
         "query_params": {
           "at": "28500000"
         },
-        "fixture_path": "polkadot/pallets_nomination_pools_1_28500000.json",
+        "fixture_path": "polkadot/pallets/nomination_pools/1_28500000.json",
         "description": "Test nomination pool 1 at Polkadot block 28,500,000"
       },
       {
@@ -428,7 +428,7 @@
         "query_params": {
           "at": "29679173"
         },
-        "fixture_path": "polkadot/pallets_balances_errors.json",
+        "fixture_path": "polkadot/pallets/balances/errors.json",
         "description": "Test pallets balances errors at Polkadot block 29,679,173"
       },
       {
@@ -438,7 +438,7 @@
         "query_params": {
           "at": "21000000"
         },
-        "fixture_path": "polkadot/pallets_balances_errors_21000000.json",
+        "fixture_path": "polkadot/pallets/balances/errors_21000000.json",
         "description": "Test pallets balances errors at Polkadot block 21,000,000"
       },
       {
@@ -449,7 +449,7 @@
           "at": "29679173",
           "onlyIds": "true"
         },
-        "fixture_path": "polkadot/pallets_balances_errors_onlyIds.json",
+        "fixture_path": "polkadot/pallets/balances/errors_onlyIds.json",
         "description": "Test pallets balances errors onlyIds at Polkadot block 29,679,173"
       },
       {
@@ -459,7 +459,7 @@
         "query_params": {
           "at": "29679173"
         },
-        "fixture_path": "polkadot/pallets_balances_errors_InsufficientBalance.json",
+        "fixture_path": "polkadot/pallets/balances/errors_InsufficientBalance.json",
         "description": "Test pallets balances errors InsufficientBalance at Polkadot block 29,679,173"
       },
       {
@@ -470,7 +470,7 @@
           "at": "21000000",
           "metadata": "true"
         },
-        "fixture_path": "polkadot/pallets_balances_errors_InsufficientBalance_21000000.json",
+        "fixture_path": "polkadot/pallets/balances/errors_InsufficientBalance_21000000.json",
         "description": "Test pallets balances errors InsufficientBalance at Polkadot block 21,000,000"
       },
       {
@@ -481,7 +481,7 @@
           "at": "29679173",
           "metadata": "true"
         },
-        "fixture_path": "polkadot/pallets_balances_errors_InsufficientBalance_metadata.json",
+        "fixture_path": "polkadot/pallets/balances/errors_InsufficientBalance_metadata.json",
         "description": "Test pallets balances errors InsufficientBalance with metadata at Polkadot block 29,679,173"
       },
       {
@@ -491,7 +491,7 @@
         "query_params": {
           "at": "29679173"
         },
-        "fixture_path": "polkadot/pallets_system_errors.json",
+        "fixture_path": "polkadot/pallets/system/errors.json",
         "description": "Test pallets system errors at Polkadot block 29,679,173"
       },
       {
@@ -501,7 +501,7 @@
         "query_params": {
           "at": "24000000"
         },
-        "fixture_path": "polkadot/pallets_on_going_referenda_24000000.json",
+        "fixture_path": "polkadot/pallets/referenda/on_going_24000000.json",
         "description": "Test on-going referenda at Polkadot block 24,000,000"
       },
       {
@@ -511,7 +511,7 @@
         "query_params": {
           "at": "24000000"
         },
-        "fixture_path": "polkadot/coretime_overview_24000000.json",
+        "fixture_path": "polkadot/coretime/overview_24000000.json",
         "description": "Test coretime overview endpoint at Polkadot block 24,000,000"
       },
       {
@@ -521,7 +521,7 @@
         "query_params": {
           "at": "24000000"
         },
-        "fixture_path": "polkadot/coretime_info_24000000.json",
+        "fixture_path": "polkadot/coretime/info_24000000.json",
         "description": "Test coretime info endpoint at Polkadot block 24,000,000"
       }
     ],
@@ -533,7 +533,7 @@
         "query_params": {
           "at": "24000000"
         },
-        "fixture_path": "kusama/runtime_metadata_24000000.json",
+        "fixture_path": "kusama/runtime/metadata_24000000.json",
         "description": "Test runtime metadata at Kusama block 24,000,000"
       },
       {
@@ -543,7 +543,7 @@
         "query_params": {
           "at": "24000000"
         },
-        "fixture_path": "kusama/runtime_metadata_versions_24000000.json",
+        "fixture_path": "kusama/runtime/metadata_versions_24000000.json",
         "description": "Test runtime metadata versions at Kusama block 24,000,000"
       },
       {
@@ -553,7 +553,7 @@
         "query_params": {
           "at": "24000000"
         },
-        "fixture_path": "kusama/runtime_metadata_v14_24000000.json",
+        "fixture_path": "kusama/runtime/metadata_v14_24000000.json",
         "description": "Test runtime metadata v14 at Kusama block 24,000,000"
       },
       {
@@ -563,7 +563,7 @@
         "query_params": {
           "at": "24000000"
         },
-        "fixture_path": "kusama/runtime_metadata_v15_24000000.json",
+        "fixture_path": "kusama/runtime/metadata_v15_24000000.json",
         "description": "Test runtime metadata v15 at Kusama block 24,000,000"
       },
       {
@@ -573,7 +573,7 @@
         "query_params": {
           "at": "5000000"
         },
-        "fixture_path": "kusama/runtime_spec_5000000.json",
+        "fixture_path": "kusama/runtime/spec_5000000.json",
         "description": "Test runtime spec at Kusama block 5,000,000"
       },
       {
@@ -583,7 +583,7 @@
         "query_params": {
           "at": "5000000"
         },
-        "fixture_path": "kusama/runtime_code_5000000.json",
+        "fixture_path": "kusama/runtime/code_5000000.json",
         "description": "Test runtime code at Kusama block 5,000,000"
       },
       {
@@ -591,7 +591,7 @@
         "block_height": 5000000,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "kusama/blocks_5000000.json",
+        "fixture_path": "kusama/blocks/5000000.json",
         "description": "Test block endpoint at Kusama block 5,000,000"
       },
       {
@@ -601,7 +601,7 @@
         "query_params": {
           "at": "25000000"
         },
-        "fixture_path": "kusama/pallets_balances_dispatchables_25000000.json",
+        "fixture_path": "kusama/pallets/balances/dispatchables_25000000.json",
         "description": "Test pallets balances dispatchables at Kusama block 25,000,000"
       },
       {
@@ -612,7 +612,7 @@
           "at": "25000000",
           "metadata": "true"
         },
-        "fixture_path": "kusama/pallets_balances_dispatchables_transfer_allow_death_25000000.json",
+        "fixture_path": "kusama/pallets/balances/dispatchables_transfer_allow_death_25000000.json",
         "description": "Test pallets balances dispatchables transfer_allow_death at Kusama block 25,000,000"
       },
       {
@@ -622,7 +622,7 @@
         "query_params": {
           "at": "24000000"
         },
-        "fixture_path": "kusama/pallets_nomination_pools_info_24000000.json",
+        "fixture_path": "kusama/pallets/nomination_pools/info_24000000.json",
         "description": "Test nomination pools info at Kusama block 24,000,000"
       },
       {
@@ -633,7 +633,7 @@
         "query_params": {
           "at": "24000000"
         },
-        "fixture_path": "kusama/pallets_nomination_pools_1_24000000.json",
+        "fixture_path": "kusama/pallets/nomination_pools/1_24000000.json",
         "description": "Test nomination pool 1 at Kusama block 24,000,000"
       },
       {
@@ -643,7 +643,7 @@
         "query_params": {
           "at": "32141942"
         },
-        "fixture_path": "kusama/pallets_balances_errors.json",
+        "fixture_path": "kusama/pallets/balances/errors.json",
         "description": "Test pallets balances errors at Kusama block 32,141,942"
       },
       {
@@ -653,7 +653,7 @@
         "query_params": {
           "at": "24000000"
         },
-        "fixture_path": "kusama/pallets_balances_errors_24000000.json",
+        "fixture_path": "kusama/pallets/balances/errors_24000000.json",
         "description": "Test pallets balances errors at Kusama block 24,000,000"
       },
       {
@@ -664,7 +664,7 @@
           "at": "32141942",
           "onlyIds": "true"
         },
-        "fixture_path": "kusama/pallets_balances_errors_onlyIds.json",
+        "fixture_path": "kusama/pallets/balances/errors_onlyIds.json",
         "description": "Test pallets balances errors onlyIds at Kusama block 32,141,942"
       },
       {
@@ -674,7 +674,7 @@
         "query_params": {
           "at": "32141942"
         },
-        "fixture_path": "kusama/pallets_balances_errors_InsufficientBalance.json",
+        "fixture_path": "kusama/pallets/balances/errors_InsufficientBalance.json",
         "description": "Test pallets balances errors InsufficientBalance at Kusama block 32,141,942"
       },
       {
@@ -685,7 +685,7 @@
           "at": "32141938",
           "metadata": "true"
         },
-        "fixture_path": "kusama/pallets_balances_errors_InsufficientBalance_metadata.json",
+        "fixture_path": "kusama/pallets/balances/errors_InsufficientBalance_metadata.json",
         "description": "Test pallets balances errors InsufficientBalance with metadata at Kusama block 32,141,938"
       },
       {
@@ -695,7 +695,7 @@
         "query_params": {
           "at": "24000000"
         },
-        "fixture_path": "kusama/pallets_balances_errors_InsufficientBalance_24000000.json",
+        "fixture_path": "kusama/pallets/balances/errors_InsufficientBalance_24000000.json",
         "description": "Test pallets balances errors InsufficientBalance at Kusama block 24,000,000"
       },
       {
@@ -705,7 +705,7 @@
         "query_params": {
           "at": "32141940"
         },
-        "fixture_path": "kusama/pallets_system_errors.json",
+        "fixture_path": "kusama/pallets/system/errors.json",
         "description": "Test pallets system errors at Kusama block 32,141,940"
       },
       {
@@ -715,7 +715,7 @@
         "query_params": {
           "at": "25000000"
         },
-        "fixture_path": "kusama/pallets_on_going_referenda_25000000.json",
+        "fixture_path": "kusama/pallets/referenda/on_going_25000000.json",
         "description": "Test on-going referenda at Kusama block 25,000,000"
       },
       {
@@ -725,7 +725,7 @@
         "query_params": {
           "at": "29000000"
         },
-        "fixture_path": "kusama/coretime_overview_29000000.json",
+        "fixture_path": "kusama/coretime/overview_29000000.json",
         "description": "Test coretime overview endpoint at Kusama block 29,000,000"
       },
       {
@@ -735,7 +735,7 @@
         "query_params": {
           "at": "29000000"
         },
-        "fixture_path": "kusama/coretime_info_29000000.json",
+        "fixture_path": "kusama/coretime/info_29000000.json",
         "description": "Test coretime info endpoint at Kusama block 29,000,000"
       }
     ],
@@ -747,7 +747,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/runtime_metadata_10260000.json",
+        "fixture_path": "asset-hub-polkadot/runtime/metadata_10260000.json",
         "description": "Test runtime metadata at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -757,7 +757,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/runtime_metadata_versions_10260000.json",
+        "fixture_path": "asset-hub-polkadot/runtime/metadata_versions_10260000.json",
         "description": "Test runtime metadata versions at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -767,7 +767,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/runtime_metadata_v14_10260000.json",
+        "fixture_path": "asset-hub-polkadot/runtime/metadata_v14_10260000.json",
         "description": "Test runtime metadata v14 at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -777,7 +777,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/runtime_metadata_v15_10260000.json",
+        "fixture_path": "asset-hub-polkadot/runtime/metadata_v15_10260000.json",
         "description": "Test runtime metadata v15 at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -787,7 +787,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/runtime_spec_10260000.json",
+        "fixture_path": "asset-hub-polkadot/runtime/spec_10260000.json",
         "description": "Test runtime spec at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -797,7 +797,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/runtime_code_10260000.json",
+        "fixture_path": "asset-hub-polkadot/runtime/code_10260000.json",
         "description": "Test runtime code at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -805,7 +805,7 @@
         "block_height": 10250000,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "asset-hub-polkadot/blocks_10250000_pre_migration.json",
+        "fixture_path": "asset-hub-polkadot/blocks/10250000_pre_migration.json",
         "description": "Test block endpoint at Asset Hub Polkadot block 10,250,000 (pre-migration, Statemint era, before migration at 10,254,470)"
       },
       {
@@ -813,7 +813,7 @@
         "block_height": 10260000,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "asset-hub-polkadot/blocks_10260000_post_migration.json",
+        "fixture_path": "asset-hub-polkadot/blocks/10260000_post_migration.json",
         "description": "Test block endpoint at Asset Hub Polkadot block 10,260,000 (post-migration, Asset Hub era, after migration ended at 10,259,208)"
       },
       {
@@ -824,7 +824,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_assets_1984_asset_info_10260000.json",
+        "fixture_path": "asset-hub-polkadot/pallets/assets/1984_asset_info_10260000.json",
         "description": "Test pallets assets asset-info for USDT (asset 1984) at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -834,7 +834,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_asset_conversion_next_available_id_10260000.json",
+        "fixture_path": "asset-hub-polkadot/pallets/asset_conversion/next_available_id_10260000.json",
         "description": "Test pallets asset-conversion next-available-id at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -844,15 +844,17 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_asset_conversion_liquidity_pools_10260000.json",
+        "fixture_path": "asset-hub-polkadot/pallets/asset_conversion/liquidity_pools_10260000.json",
         "description": "Test pallets asset-conversion liquidity-pools at Asset Hub Polkadot block 10,260,000"
       },
       {
         "endpoint": "/v1/pallets/foreign-assets",
         "block_height": null,
         "account_id": null,
-        "query_params": { "at": "10260000" },
-        "fixture_path": "asset-hub-polkadot/pallets_foreign_assets_10260000.json",
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets/foreign_assets/10260000.json",
         "description": "Test pallets foreign-assets endpoint at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -860,7 +862,7 @@
         "block_height": 11308795,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "asset-hub-polkadot/blocks_11308795.json",
+        "fixture_path": "asset-hub-polkadot/blocks/11308795.json",
         "description": "Test block endpoint at Asset Hub Polkadot block 11,308,795, for staking event test"
       },
       {
@@ -868,7 +870,7 @@
         "block_height": 1276963,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "asset-hub-polkadot/blocks_1276963_extrinsics_raw.json",
+        "fixture_path": "asset-hub-polkadot/blocks/1276963_extrinsics_raw.json",
         "description": "Test extrinsics-raw endpoint at Asset Hub Polkadot block 1,276,963"
       },
       {
@@ -877,7 +879,7 @@
         "account_id": null,
         "extrinsic_index": 0,
         "query_params": {},
-        "fixture_path": "asset-hub-polkadot/extrinsic_1276963_0.json",
+        "fixture_path": "asset-hub-polkadot/blocks/extrinsic_1276963_0.json",
         "description": "Test extrinsic endpoint at Asset Hub Polkadot block 1,276,963, extrinsic index 0"
       },
       {
@@ -889,7 +891,7 @@
           "eventDocs": "true",
           "extrinsicDocs": "true"
         },
-        "fixture_path": "asset-hub-polkadot/extrinsic_11308795_2_with_docs.json",
+        "fixture_path": "asset-hub-polkadot/blocks/extrinsic_11308795_2_with_docs.json",
         "description": "Test extrinsic endpoint at Asset Hub Polkadot block 11,308,795, extrinsic index 2, with eventDocs and extrinsicDocs enabled"
       },
       {
@@ -897,7 +899,7 @@
         "block_height": 1276963,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "asset-hub-polkadot/blocks_header_1276963.json",
+        "fixture_path": "asset-hub-polkadot/blocks/header_1276963.json",
         "description": "Test block header endpoint at Asset Hub Polkadot block 1,276,963"
       },
       {
@@ -905,7 +907,7 @@
         "block_height": 10293194,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "asset-hub-polkadot/blocks_10293194_rc_extrinsics_raw.json",
+        "fixture_path": "asset-hub-polkadot/blocks/10293194_rc_extrinsics_raw.json",
         "description": "Test RC extrinsics-raw endpoint at Polkadot Relay Chain block 10,293,194"
       },
       {
@@ -918,7 +920,7 @@
           "extrinsicDocs": "false",
           "noFees": "true"
         },
-        "fixture_path": "asset-hub-polkadot/rc_blocks_10293194-10293197_no_fees.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/10293194-10293197_no_fees.json",
         "description": "Test rc/blocks endpoint with noFees=true for Polkadot relay chain blocks 10,293,194-10,293,197"
       },
       {
@@ -931,7 +933,7 @@
           "extrinsicDocs": "true",
           "noFees": "false"
         },
-        "fixture_path": "asset-hub-polkadot/rc_blocks_10293194-10293197_with_docs.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/10293194-10293197_with_docs.json",
         "description": "Test rc/blocks endpoint with eventDocs and extrinsicDocs for Polkadot relay chain blocks 10,293,194-10,293,197"
       },
       {
@@ -944,7 +946,7 @@
           "extrinsicDocs": "false",
           "noFees": "true"
         },
-        "fixture_path": "asset-hub-polkadot/rc_blocks_24500000-24500010_no_fees.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/24500000-24500010_no_fees.json",
         "description": "Test rc/blocks endpoint with noFees=true for recent Polkadot relay chain blocks 24,500,000-24,500,010"
       },
       {
@@ -957,7 +959,7 @@
           "extrinsicDocs": "true",
           "noFees": "false"
         },
-        "fixture_path": "asset-hub-polkadot/rc_blocks_24500000-24500010_with_docs.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/24500000-24500010_with_docs.json",
         "description": "Test rc/blocks endpoint with fees (fromEvent) for recent Polkadot relay chain blocks 24,500,000-24,500,010"
       },
       {
@@ -968,7 +970,7 @@
           "range": "10293194-10293197",
           "useRcBlock": "true"
         },
-        "fixture_path": "asset-hub-polkadot/blocks_range_use_rc_block_10293194-10293197.json",
+        "fixture_path": "asset-hub-polkadot/blocks/range_use_rc_block_10293194-10293197.json",
         "description": "Test /blocks endpoint with range 10293194-10293197 and useRcBlock=true"
       },
       {
@@ -976,7 +978,7 @@
         "block_height": 29698001,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/29698001.json",
         "description": "Test /rc/blocks/{blockId} endpoint at Polkadot Relay Chain block 29,698,001"
       },
       {
@@ -987,7 +989,7 @@
           "eventDocs": "true",
           "extrinsicDocs": "true"
         },
-        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_eventDocs_extrinsicDocs.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/29698001_eventDocs_extrinsicDocs.json",
         "description": "Test /rc/blocks/{blockId} endpoint with eventDocs and extrinsicDocs at Polkadot Relay Chain block 29,698,001"
       },
       {
@@ -997,7 +999,7 @@
         "query_params": {
           "noFees": "true"
         },
-        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_noFees.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/29698001_noFees.json",
         "description": "Test /rc/blocks/{blockId} endpoint with noFees=true at Polkadot Relay Chain block 29,698,001"
       },
       {
@@ -1005,7 +1007,7 @@
         "block_height": 10293194,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "asset-hub-polkadot/rc_blocks_10293194_para_inclusions.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/10293194_para_inclusions.json",
         "description": "Test RC para-inclusions endpoint at Polkadot relay chain block 10,293,194"
       },
       {
@@ -1015,7 +1017,7 @@
         "query_params": {
           "paraId": "1000"
         },
-        "fixture_path": "asset-hub-polkadot/rc_blocks_10293194_para_inclusions_para_id_1000.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/10293194_para_inclusions_para_id_1000.json",
         "description": "Test RC para-inclusions endpoint with paraId filter at Polkadot relay chain block 10,293,194"
       },
       {
@@ -1023,7 +1025,7 @@
         "block_height": 29698001,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_header.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/29698001_header.json",
         "description": "Test RC block header endpoint at Polkadot Relay Chain block 29,698,001"
       },
       {
@@ -1033,7 +1035,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_10260000.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/dispatchables_10260000.json",
         "description": "Test pallets balances dispatchables at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -1044,7 +1046,7 @@
           "at": "10260000",
           "metadata": "true"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_transfer_allow_death_10260000.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/dispatchables_transfer_allow_death_10260000.json",
         "description": "Test pallets balances dispatchables transfer_allow_death at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -1052,8 +1054,10 @@
         "block_height": null,
         "account_id": null,
         "asset_id": "0",
-        "query_params": { "at": "10260000" },
-        "fixture_path": "asset-hub-polkadot/pallets_pool_assets_0_asset_info_10260000.json",
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets/pool_assets/0_asset_info_10260000.json",
         "description": "Test pallets pool-assets asset-info for pool asset 0 (LP token) at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -1062,7 +1066,7 @@
         "account_id": null,
         "extrinsic_index": 1,
         "query_params": {},
-        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_extrinsic_1.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/29698001_extrinsic_1.json",
         "description": "Test RC extrinsic endpoint at Polkadot Relay Chain block 29,698,001, extrinsic index 1"
       },
       {
@@ -1074,7 +1078,7 @@
           "eventDocs": "true",
           "extrinsicDocs": "true"
         },
-        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_extrinsic_1_eventDocs_extrinsicDocs.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/29698001_extrinsic_1_eventDocs_extrinsicDocs.json",
         "description": "Test RC extrinsic endpoint with eventDocs and extrinsicDocs at Polkadot Relay Chain block 29,698,001, extrinsic index 1"
       },
       {
@@ -1085,7 +1089,7 @@
         "query_params": {
           "noFees": "true"
         },
-        "fixture_path": "asset-hub-polkadot/rc_blocks_29698001_extrinsic_1_noFees.json",
+        "fixture_path": "asset-hub-polkadot/rc_blocks/29698001_extrinsic_1_noFees.json",
         "description": "Test RC extrinsic endpoint with noFees=true at Polkadot Relay Chain block 29,698,001, extrinsic index 1"
       },
       {
@@ -1095,7 +1099,7 @@
         "query_params": {
           "at": "11741792"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_errors.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/errors.json",
         "description": "Test pallets balances errors at Asset Hub Polkadot block 11,741,792"
       },
       {
@@ -1105,7 +1109,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_errors_10260000.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/errors_10260000.json",
         "description": "Test pallets balances errors at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -1116,7 +1120,7 @@
           "at": "11741792",
           "onlyIds": "true"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_errors_onlyIds.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/errors_onlyIds.json",
         "description": "Test pallets balances errors onlyIds at Asset Hub Polkadot block 11,741,792"
       },
       {
@@ -1126,7 +1130,7 @@
         "query_params": {
           "at": "11741792"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_errors_InsufficientBalance.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/errors_InsufficientBalance.json",
         "description": "Test pallets balances errors InsufficientBalance at Asset Hub Polkadot block 11,741,792"
       },
       {
@@ -1137,7 +1141,7 @@
           "at": "11741792",
           "metadata": "true"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_errors_InsufficientBalance_metadata.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/errors_InsufficientBalance_metadata.json",
         "description": "Test pallets balances errors InsufficientBalance with metadata at Asset Hub Polkadot block 11,741,792"
       },
       {
@@ -1147,7 +1151,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_errors_InsufficientBalance_10260000.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/errors_InsufficientBalance_10260000.json",
         "description": "Test pallets balances errors InsufficientBalance at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -1157,7 +1161,7 @@
         "query_params": {
           "at": "11741793"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_system_errors.json",
+        "fixture_path": "asset-hub-polkadot/pallets/system/errors.json",
         "description": "Test pallets system errors at Asset Hub Polkadot block 11,741,793"
       },
       {
@@ -1167,7 +1171,7 @@
         "query_params": {
           "useRcBlock": "true"
         },
-        "fixture_path": "asset-hub-polkadot/use_rc_block_10554957.json",
+        "fixture_path": "asset-hub-polkadot/use_rc_block/10554957.json",
         "description": "Test /blocks/{blockId} endpoint with useRcBlock=true at Polkadot Relay Chain block 10,554,957"
       },
       {
@@ -1177,7 +1181,7 @@
         "query_params": {
           "useRcBlock": "true"
         },
-        "fixture_path": "asset-hub-polkadot/use_rc_block_header_10293194.json",
+        "fixture_path": "asset-hub-polkadot/use_rc_block/header_10293194.json",
         "description": "Test /blocks/{blockId}/header endpoint with useRcBlock=true at Polkadot Relay Chain block 10,293,194"
       },
       {
@@ -1187,7 +1191,7 @@
         "query_params": {
           "useRcBlock": "true"
         },
-        "fixture_path": "asset-hub-polkadot/use_rc_block_extrinsics_raw_10554957.json",
+        "fixture_path": "asset-hub-polkadot/use_rc_block/extrinsics_raw_10554957.json",
         "description": "Test /blocks/{blockId}/extrinsics-raw endpoint with useRcBlock=true at Polkadot Relay Chain block 10,554,957"
       },
       {
@@ -1198,7 +1202,7 @@
         "query_params": {
           "useRcBlock": "true"
         },
-        "fixture_path": "asset-hub-polkadot/use_rc_block_extrinsic_10554957_0.json",
+        "fixture_path": "asset-hub-polkadot/use_rc_block/extrinsic_10554957_0.json",
         "description": "Test /blocks/{blockId}/extrinsics/{extrinsicIndex} endpoint with useRcBlock=true at Polkadot Relay Chain block 10,554,957, extrinsic index 0"
       },
       {
@@ -1209,7 +1213,7 @@
           "at": "10293194",
           "useRcBlock": "true"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_events_use_rc_block_10293194.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/events_use_rc_block_10293194.json",
         "description": "Test pallets balances events with useRcBlock=true at RC block 10,293,194"
       },
       {
@@ -1220,7 +1224,7 @@
           "at": "10293194",
           "useRcBlock": "true"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_events_Transfer_use_rc_block_10293194.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/events_Transfer_use_rc_block_10293194.json",
         "description": "Test pallets balances events Transfer with useRcBlock=true at RC block 10,293,194"
       },
       {
@@ -1231,7 +1235,7 @@
           "at": "29698001",
           "useRcBlock": "true"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_on_going_referenda_use_rc_block_29698001.json",
+        "fixture_path": "asset-hub-polkadot/pallets/referenda/on_going_use_rc_block_29698001.json",
         "description": "Test pallets on-going-referenda with useRcBlock=true at RC block 29,698,001"
       },
       {
@@ -1242,7 +1246,7 @@
           "at": "29698001",
           "useRcBlock": "true"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_nomination_pools_info_use_rc_block_29698001.json",
+        "fixture_path": "asset-hub-polkadot/pallets/nomination_pools/info_use_rc_block_29698001.json",
         "description": "Test pallets nomination-pools info with useRcBlock=true at RC block 29,698,001"
       },
       {
@@ -1254,7 +1258,7 @@
           "at": "29698001",
           "useRcBlock": "true"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_nomination_pools_1_use_rc_block_29698001.json",
+        "fixture_path": "asset-hub-polkadot/pallets/nomination_pools/1_use_rc_block_29698001.json",
         "description": "Test pallets nomination-pools pool 1 with useRcBlock=true at RC block 29,698,001"
       },
       {
@@ -1266,7 +1270,7 @@
           "at": "29698001",
           "useRcBlock": "true"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_assets_1984_asset_info_use_rc_block_29698001.json",
+        "fixture_path": "asset-hub-polkadot/pallets/assets/1984_asset_info_use_rc_block_29698001.json",
         "description": "Test pallets assets asset-info for USDT (asset 1984) with useRcBlock=true at RC block 29,698,001"
       },
       {
@@ -1277,7 +1281,7 @@
           "at": "29698001",
           "useRcBlock": "true"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_staking_progress_use_rc_block_29698001.json",
+        "fixture_path": "asset-hub-polkadot/pallets/staking/progress_use_rc_block_29698001.json",
         "description": "Test pallets staking progress with useRcBlock=true at RC block 29,698,001"
       },
       {
@@ -1288,7 +1292,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/use_rc_block_format_rc_10554957.json",
+        "fixture_path": "asset-hub-polkadot/use_rc_block/format_rc_10554957.json",
         "description": "Test /blocks/{blockId} with useRcBlock=true&format=object at RC block 10,554,957"
       },
       {
@@ -1299,7 +1303,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/use_rc_block_header_format_rc_10293194.json",
+        "fixture_path": "asset-hub-polkadot/use_rc_block/header_format_rc_10293194.json",
         "description": "Test /blocks/{blockId}/header with useRcBlock=true&format=object at RC block 10,293,194"
       },
       {
@@ -1310,7 +1314,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/use_rc_block_extrinsics_raw_format_rc_10554957.json",
+        "fixture_path": "asset-hub-polkadot/use_rc_block/extrinsics_raw_format_rc_10554957.json",
         "description": "Test /blocks/{blockId}/extrinsics-raw with useRcBlock=true&format=object at RC block 10,554,957"
       },
       {
@@ -1322,7 +1326,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/use_rc_block_extrinsic_format_rc_10554957_0.json",
+        "fixture_path": "asset-hub-polkadot/use_rc_block/extrinsic_format_rc_10554957_0.json",
         "description": "Test /blocks/{blockId}/extrinsics/{extrinsicIndex} with useRcBlock=true&format=object at RC block 10,554,957, extrinsic 0"
       },
       {
@@ -1334,7 +1338,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_events_use_rc_block_format_rc_10293194.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/events_use_rc_block_format_rc_10293194.json",
         "description": "Test pallets balances events with useRcBlock=true&format=object at RC block 10,293,194"
       },
       {
@@ -1346,7 +1350,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_events_Transfer_use_rc_block_format_rc_10293194.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/events_Transfer_use_rc_block_format_rc_10293194.json",
         "description": "Test pallets balances events Transfer with useRcBlock=true&format=object at RC block 10,293,194"
       },
       {
@@ -1358,7 +1362,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_on_going_referenda_use_rc_block_format_rc_29698001.json",
+        "fixture_path": "asset-hub-polkadot/pallets/referenda/on_going_use_rc_block_format_rc_29698001.json",
         "description": "Test pallets on-going-referenda with useRcBlock=true&format=object at RC block 29,698,001"
       },
       {
@@ -1370,7 +1374,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_nomination_pools_info_use_rc_block_format_rc_29698001.json",
+        "fixture_path": "asset-hub-polkadot/pallets/nomination_pools/info_use_rc_block_format_rc_29698001.json",
         "description": "Test pallets nomination-pools info with useRcBlock=true&format=object at RC block 29,698,001"
       },
       {
@@ -1383,7 +1387,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_nomination_pools_1_use_rc_block_format_rc_29698001.json",
+        "fixture_path": "asset-hub-polkadot/pallets/nomination_pools/1_use_rc_block_format_rc_29698001.json",
         "description": "Test pallets nomination-pools pool 1 with useRcBlock=true&format=object at RC block 29,698,001"
       },
       {
@@ -1395,7 +1399,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_consts_use_rc_block_format_rc_10293194.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/consts_use_rc_block_format_rc_10293194.json",
         "description": "Test pallets balances consts with useRcBlock=true&format=object at RC block 10,293,194"
       },
       {
@@ -1407,7 +1411,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_consts_ExistentialDeposit_use_rc_block_format_rc_10293194.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/consts_ExistentialDeposit_use_rc_block_format_rc_10293194.json",
         "description": "Test pallets balances consts ExistentialDeposit with useRcBlock=true&format=object at RC block 10,293,194"
       },
       {
@@ -1419,7 +1423,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_use_rc_block_format_rc_10293194.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/dispatchables_use_rc_block_format_rc_10293194.json",
         "description": "Test pallets balances dispatchables with useRcBlock=true&format=object at RC block 10,293,194"
       },
       {
@@ -1431,7 +1435,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_transfer_allow_death_use_rc_block_format_rc_10293194.json",
+        "fixture_path": "asset-hub-polkadot/pallets/balances/dispatchables_transfer_allow_death_use_rc_block_format_rc_10293194.json",
         "description": "Test pallets balances dispatchables transfer_allow_death with useRcBlock=true&format=object at RC block 10,293,194"
       },
       {
@@ -1443,7 +1447,7 @@
           "useRcBlock": "true",
           "format": "object"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_staking_validators_use_rc_block_format_rc_29698001.json",
+        "fixture_path": "asset-hub-polkadot/pallets/staking/validators_use_rc_block_format_rc_29698001.json",
         "description": "Test pallets staking/validators with useRcBlock=true&format=object at RC block 29,698,001"
       },
       {
@@ -1451,7 +1455,7 @@
         "block_height": 12273189,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "asset-hub-polkadot/blocks_12273189.json",
+        "fixture_path": "asset-hub-polkadot/blocks/12273189.json",
         "description": "Test block endpoint at Asset Hub Polkadot block 12,273,189 (ChargeAssetTxPayment signed extension)"
       },
       {
@@ -1533,7 +1537,7 @@
         "query_params": {
           "at": "11152000"
         },
-        "fixture_path": "asset-hub-kusama/runtime_metadata_11152000.json",
+        "fixture_path": "asset-hub-kusama/runtime/metadata_11152000.json",
         "description": "Test runtime metadata at Asset Hub Kusama block 11,152,000"
       },
       {
@@ -1543,7 +1547,7 @@
         "query_params": {
           "at": "11152000"
         },
-        "fixture_path": "asset-hub-kusama/runtime_metadata_versions_11152000.json",
+        "fixture_path": "asset-hub-kusama/runtime/metadata_versions_11152000.json",
         "description": "Test runtime metadata versions at Asset Hub Kusama block 11,152,000"
       },
       {
@@ -1553,7 +1557,7 @@
         "query_params": {
           "at": "11152000"
         },
-        "fixture_path": "asset-hub-kusama/runtime_metadata_v14_11152000.json",
+        "fixture_path": "asset-hub-kusama/runtime/metadata_v14_11152000.json",
         "description": "Test runtime metadata v14 at Asset Hub Kusama block 11,152,000"
       },
       {
@@ -1563,7 +1567,7 @@
         "query_params": {
           "at": "11152000"
         },
-        "fixture_path": "asset-hub-kusama/runtime_metadata_v15_11152000.json",
+        "fixture_path": "asset-hub-kusama/runtime/metadata_v15_11152000.json",
         "description": "Test runtime metadata v15 at Asset Hub Kusama block 11,152,000"
       },
       {
@@ -1573,7 +1577,7 @@
         "query_params": {
           "at": "11152000"
         },
-        "fixture_path": "asset-hub-kusama/runtime_spec_11152000.json",
+        "fixture_path": "asset-hub-kusama/runtime/spec_11152000.json",
         "description": "Test runtime spec at Asset Hub Kusama block 11,152,000"
       },
       {
@@ -1583,7 +1587,7 @@
         "query_params": {
           "at": "11152000"
         },
-        "fixture_path": "asset-hub-kusama/runtime_code_11152000.json",
+        "fixture_path": "asset-hub-kusama/runtime/code_11152000.json",
         "description": "Test runtime code at Asset Hub Kusama block 11,152,000"
       },
       {
@@ -1591,7 +1595,7 @@
         "block_height": 11150000,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "asset-hub-kusama/blocks_11150000_pre_migration.json",
+        "fixture_path": "asset-hub-kusama/blocks/11150000_pre_migration.json",
         "description": "Test block endpoint at Asset Hub Kusama block 11,150,000 (pre-migration, Statemine era, before migration at 11,150,168)"
       },
       {
@@ -1599,7 +1603,7 @@
         "block_height": 11152000,
         "account_id": null,
         "query_params": {},
-        "fixture_path": "asset-hub-kusama/blocks_11152000_post_migration.json",
+        "fixture_path": "asset-hub-kusama/blocks/11152000_post_migration.json",
         "description": "Test block endpoint at Asset Hub Kusama block 11,152,000 (post-migration, Asset Hub era, after migration ended at 11,151,931)"
       },
       {
@@ -1608,7 +1612,7 @@
         "account_id": null,
         "extrinsic_index": 2,
         "query_params": {},
-        "fixture_path": "asset-hub-kusama/rc_blocks_28494701_extrinsics_2.json",
+        "fixture_path": "asset-hub-kusama/rc_blocks/28494701_extrinsics_2.json",
         "description": "Test extrinsic endpoint at Asset Hub kusama block 28,494,701, extrinsic index 2"
       },
       {
@@ -1619,7 +1623,7 @@
         "query_params": {
           "at": "11152000"
         },
-        "fixture_path": "asset-hub-kusama/pallets_assets_1984_asset_info_11152000.json",
+        "fixture_path": "asset-hub-kusama/pallets/assets/1984_asset_info_11152000.json",
         "description": "Test pallets assets asset-info for USDT (asset 1984) at Asset Hub Kusama block 11,152,000"
       },
       {
@@ -1629,7 +1633,7 @@
         "query_params": {
           "at": "8000000"
         },
-        "fixture_path": "asset-hub-kusama/pallets_asset_conversion_next_available_id_8000000.json",
+        "fixture_path": "asset-hub-kusama/pallets/asset_conversion/next_available_id_8000000.json",
         "description": "Test pallets asset-conversion next-available-id at Asset Hub Kusama block 8,000,000"
       },
       {
@@ -1639,7 +1643,7 @@
         "query_params": {
           "at": "8000000"
         },
-        "fixture_path": "asset-hub-kusama/pallets_asset_conversion_liquidity_pools_8000000.json",
+        "fixture_path": "asset-hub-kusama/pallets/asset_conversion/liquidity_pools_8000000.json",
         "description": "Test pallets asset-conversion liquidity-pools at Asset Hub Kusama block 8,000,000"
       },
       {
@@ -1649,7 +1653,7 @@
         "query_params": {
           "at": "8000000"
         },
-        "fixture_path": "asset-hub-kusama/pallets_balances_dispatchables_8000000.json",
+        "fixture_path": "asset-hub-kusama/pallets/balances/dispatchables_8000000.json",
         "description": "Test pallets balances dispatchables at Asset Hub Kusama block 8,000,000"
       },
       {
@@ -1660,7 +1664,7 @@
           "at": "8000000",
           "metadata": "true"
         },
-        "fixture_path": "asset-hub-kusama/pallets_balances_dispatchables_transfer_allow_death_8000000.json",
+        "fixture_path": "asset-hub-kusama/pallets/balances/dispatchables_transfer_allow_death_8000000.json",
         "description": "Test pallets balances dispatchables transfer_allow_death at Asset Hub Kusama block 8,000,000"
       },
       {
@@ -1668,16 +1672,20 @@
         "block_height": null,
         "account_id": null,
         "asset_id": "0",
-        "query_params": { "at": "8000000" },
-        "fixture_path": "asset-hub-kusama/pallets_pool_assets_0_asset_info_8000000.json",
+        "query_params": {
+          "at": "8000000"
+        },
+        "fixture_path": "asset-hub-kusama/pallets/pool_assets/0_asset_info_8000000.json",
         "description": "Test pallets pool-assets asset-info for pool asset 0 (LP token) at Asset Hub Kusama block 8,000,000"
       },
       {
         "endpoint": "/v1/pallets/foreign-assets",
         "block_height": null,
         "account_id": null,
-        "query_params": { "at": "11152000" },
-        "fixture_path": "asset-hub-kusama/pallets_foreign_assets_11152000.json",
+        "query_params": {
+          "at": "11152000"
+        },
+        "fixture_path": "asset-hub-kusama/pallets/foreign_assets/11152000.json",
         "description": "Test pallets foreign-assets endpoint at Asset Hub Kusama block 11,152,000"
       },
       {
@@ -1687,7 +1695,7 @@
         "query_params": {
           "at": "12987114"
         },
-        "fixture_path": "asset-hub-kusama/pallets_balances_errors.json",
+        "fixture_path": "asset-hub-kusama/pallets/balances/errors.json",
         "description": "Test pallets balances errors at Asset Hub Kusama block 12,987,114"
       },
       {
@@ -1697,7 +1705,7 @@
         "query_params": {
           "at": "11152000"
         },
-        "fixture_path": "asset-hub-kusama/pallets_balances_errors_11152000.json",
+        "fixture_path": "asset-hub-kusama/pallets/balances/errors_11152000.json",
         "description": "Test pallets balances errors at Asset Hub Kusama block 11,152,000"
       },
       {
@@ -1708,7 +1716,7 @@
           "at": "12987120",
           "onlyIds": "true"
         },
-        "fixture_path": "asset-hub-kusama/pallets_balances_errors_onlyIds.json",
+        "fixture_path": "asset-hub-kusama/pallets/balances/errors_onlyIds.json",
         "description": "Test pallets balances errors onlyIds at Asset Hub Kusama block 12,987,120"
       },
       {
@@ -1718,7 +1726,7 @@
         "query_params": {
           "at": "12987120"
         },
-        "fixture_path": "asset-hub-kusama/pallets_balances_errors_InsufficientBalance.json",
+        "fixture_path": "asset-hub-kusama/pallets/balances/errors_InsufficientBalance.json",
         "description": "Test pallets balances errors InsufficientBalance at Asset Hub Kusama block 12,987,120"
       },
       {
@@ -1729,7 +1737,7 @@
           "at": "12987123",
           "metadata": "true"
         },
-        "fixture_path": "asset-hub-kusama/pallets_balances_errors_InsufficientBalance_metadata.json",
+        "fixture_path": "asset-hub-kusama/pallets/balances/errors_InsufficientBalance_metadata.json",
         "description": "Test pallets balances errors InsufficientBalance with metadata at Asset Hub Kusama block 12,987,123"
       },
       {
@@ -1739,7 +1747,7 @@
         "query_params": {
           "at": "11152000"
         },
-        "fixture_path": "asset-hub-kusama/pallets_balances_errors_InsufficientBalance_11152000.json",
+        "fixture_path": "asset-hub-kusama/pallets/balances/errors_InsufficientBalance_11152000.json",
         "description": "Test pallets balances errors InsufficientBalance at Asset Hub Kusama block 11,152,000"
       },
       {
@@ -1749,7 +1757,7 @@
         "query_params": {
           "at": "12987123"
         },
-        "fixture_path": "asset-hub-kusama/pallets_system_errors.json",
+        "fixture_path": "asset-hub-kusama/pallets/system/errors.json",
         "description": "Test pallets system errors at Asset Hub Kusama block 12,987,123"
       },
       {
@@ -1759,7 +1767,7 @@
         "query_params": {
           "useEvmFormat": "true"
         },
-        "fixture_path": "asset-hub-kusama/blocks_12949861_use_evm_format.json",
+        "fixture_path": "asset-hub-kusama/blocks/12949861_use_evm_format.json",
         "description": "Test block endpoint with useEvmFormat parameter at Asset Hub Kusama block 12,949,861"
       },
       {
@@ -1772,7 +1780,7 @@
           "extrinsicDocs": "true",
           "useEvmFormat": "true"
         },
-        "fixture_path": "asset-hub-kusama/extrinsic_12949861_1_use_evm_format.json",
+        "fixture_path": "asset-hub-kusama/blocks/extrinsic_12949861_1_use_evm_format.json",
         "description": "Test extrinsic endpoint with useEvmFormat parameter at Asset Hub Kusama block 12,949,861, extrinsic index 1"
       },
       {
@@ -1783,7 +1791,7 @@
           "range": "12949861-12949863",
           "useEvmFormat": "true"
         },
-        "fixture_path": "asset-hub-kusama/blocks_range_12949861-12949863_use_evm_format.json",
+        "fixture_path": "asset-hub-kusama/blocks/range_12949861-12949863_use_evm_format.json",
         "description": "Test blocks range endpoint with useEvmFormat parameter at Asset Hub Kusama blocks 12,949,861-12,949,863"
       }
     ],
@@ -1795,7 +1803,7 @@
         "query_params": {
           "at": "1000000"
         },
-        "fixture_path": "coretime-kusama/coretime_leases_1000000.json",
+        "fixture_path": "coretime-kusama/coretime/leases_1000000.json",
         "description": "Test coretime leases endpoint at Coretime Kusama block 1,000,000"
       },
       {
@@ -1805,7 +1813,7 @@
         "query_params": {
           "at": "2789500"
         },
-        "fixture_path": "coretime-kusama/coretime_regions_2789500.json",
+        "fixture_path": "coretime-kusama/coretime/regions_2789500.json",
         "description": "Test coretime regions endpoint at Coretime Kusama block 2,789,500"
       },
       {
@@ -1815,7 +1823,7 @@
         "query_params": {
           "at": "1000000"
         },
-        "fixture_path": "coretime-kusama/coretime_reservations_1000000.json",
+        "fixture_path": "coretime-kusama/coretime/reservations_1000000.json",
         "description": "Test coretime reservations endpoint at Coretime Kusama block 1,000,000"
       },
       {
@@ -1825,7 +1833,7 @@
         "query_params": {
           "at": "2000000"
         },
-        "fixture_path": "coretime-kusama/coretime_renewals_2000000.json",
+        "fixture_path": "coretime-kusama/coretime/renewals_2000000.json",
         "description": "Test coretime renewals endpoint at Coretime Kusama block 2,000,000"
       },
       {
@@ -1835,7 +1843,7 @@
         "query_params": {
           "at": "2000000"
         },
-        "fixture_path": "coretime-kusama/coretime_overview_2000000.json",
+        "fixture_path": "coretime-kusama/coretime/overview_2000000.json",
         "description": "Test coretime overview endpoint at Coretime Kusama block 2,000,000"
       },
       {
@@ -1845,7 +1853,7 @@
         "query_params": {
           "at": "2000000"
         },
-        "fixture_path": "coretime-kusama/coretime_info_2000000.json",
+        "fixture_path": "coretime-kusama/coretime/info_2000000.json",
         "description": "Test coretime info endpoint at Coretime Kusama block 2,000,000"
       }
     ],
@@ -1857,7 +1865,7 @@
         "query_params": {
           "at": "1000000"
         },
-        "fixture_path": "coretime-polkadot/coretime_leases_1000000.json",
+        "fixture_path": "coretime-polkadot/coretime/leases_1000000.json",
         "description": "Test coretime leases endpoint at Coretime Polkadot block 1,000,000"
       },
       {
@@ -1867,7 +1875,7 @@
         "query_params": {
           "at": "2289500"
         },
-        "fixture_path": "coretime-polkadot/coretime_regions_2289500.json",
+        "fixture_path": "coretime-polkadot/coretime/regions_2289500.json",
         "description": "Test coretime regions endpoint at Coretime Polkadot block 2,289,500"
       },
       {
@@ -1877,7 +1885,7 @@
         "query_params": {
           "at": "1000000"
         },
-        "fixture_path": "coretime-polkadot/coretime_reservations_1000000.json",
+        "fixture_path": "coretime-polkadot/coretime/reservations_1000000.json",
         "description": "Test coretime reservations endpoint at Coretime Polkadot block 1,000,000"
       },
       {
@@ -1887,7 +1895,7 @@
         "query_params": {
           "at": "1000000"
         },
-        "fixture_path": "coretime-polkadot/coretime_renewals_1000000.json",
+        "fixture_path": "coretime-polkadot/coretime/renewals_1000000.json",
         "description": "Test coretime renewals endpoint at Coretime Polkadot block 1,000,000"
       },
       {
@@ -1897,7 +1905,7 @@
         "query_params": {
           "at": "1000000"
         },
-        "fixture_path": "coretime-polkadot/coretime_overview_1000000.json",
+        "fixture_path": "coretime-polkadot/coretime/overview_1000000.json",
         "description": "Test coretime overview endpoint at Coretime Polkadot block 1,000,000"
       },
       {
@@ -1907,7 +1915,7 @@
         "query_params": {
           "at": "2000000"
         },
-        "fixture_path": "coretime-polkadot/coretime_info_2000000.json",
+        "fixture_path": "coretime-polkadot/coretime/info_2000000.json",
         "description": "Test coretime info endpoint at Coretime Polkadot block 2,000,000"
       }
     ]
