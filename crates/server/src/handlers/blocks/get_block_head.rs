@@ -102,14 +102,14 @@ impl Default for BlockHeadQueryParams {
     summary = "Get latest block",
     description = "Returns the latest finalized or canonical block with full extrinsic and event details.",
     params(
-        ("finalized" = Option<bool>, description = "When true (default), returns finalized head. When false, returns canonical head."),
-        ("eventDocs" = Option<bool>, description = "Include documentation for events"),
-        ("extrinsicDocs" = Option<bool>, description = "Include documentation for extrinsics"),
-        ("noFees" = Option<bool>, description = "Skip fee calculation for extrinsics"),
-        ("decodedXcmMsgs" = Option<bool>, description = "Decode and include XCM messages"),
-        ("paraId" = Option<u32>, description = "Filter XCM messages by parachain ID"),
-        ("useRcBlock" = Option<bool>, description = "When true, use relay chain head to find corresponding Asset Hub blocks"),
-        ("useEvmFormat" = Option<bool>, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
+        ("finalized" = Option<bool>, Query, description = "When true (default), returns finalized head. When false, returns canonical head."),
+        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation for extrinsics"),
+        ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID"),
+        ("useRcBlock" = Option<bool>, Query, description = "When true, use relay chain head to find corresponding Asset Hub blocks"),
+        ("useEvmFormat" = Option<bool>, Query, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
     ),
     responses(
         (status = 200, description = "Latest block information", body = Object),

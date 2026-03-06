@@ -85,7 +85,7 @@ impl IntoResponse for GetRcBlockHeadHeaderError {
     summary = "RC get head block header",
     description = "Returns the header of the latest relay chain block.",
     params(
-        ("finalized" = Option<bool>, description = "When true returns finalized head (default: true)")
+        ("finalized" = Option<bool>, Query, description = "When true returns finalized head (default: true)")
     ),
     responses(
         (status = 200, description = "Relay chain head block header", body = Object),

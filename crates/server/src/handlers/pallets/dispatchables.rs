@@ -236,9 +236,9 @@ pub struct PalletDispatchableItemResponse {
     description = "Returns the dispatchable calls defined in a pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, description = "Only return dispatchable names"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return dispatchable names"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Pallet dispatchables", body = Object),
@@ -325,9 +325,9 @@ pub async fn get_pallets_dispatchables(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("dispatchableId" = String, Path, description = "Name of the dispatchable"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("metadata" = Option<bool>, description = "Include metadata"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Dispatchable details", body = Object),
@@ -816,8 +816,8 @@ fn simplify_type_name(type_name: &str) -> String {
     description = "Returns the dispatchable calls defined in a relay chain pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, description = "Only return dispatchable names")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return dispatchable names")
     ),
     responses(
         (status = 200, description = "Relay chain pallet dispatchables", body = Object),
@@ -891,8 +891,8 @@ pub async fn rc_pallets_dispatchables(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("dispatchableId" = String, Path, description = "Name of the dispatchable"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("metadata" = Option<bool>, description = "Include metadata")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata")
     ),
     responses(
         (status = 200, description = "Relay chain dispatchable details", body = Object),

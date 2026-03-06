@@ -72,8 +72,8 @@ pub struct ValidatorInfo {
     summary = "Staking validators",
     description = "Returns the list of active validators and their info.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Validator information", body = Object),
@@ -119,7 +119,7 @@ pub async fn pallets_staking_validators(
     summary = "RC staking validators",
     description = "Returns the list of active validators from the relay chain.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Relay chain validator information", body = Object),

@@ -43,9 +43,9 @@ use axum::{
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
         ("extrinsicIndex" = String, Path, description = "Index of the extrinsic in the block"),
-        ("eventDocs" = Option<bool>, description = "Include event documentation"),
-        ("extrinsicDocs" = Option<bool>, description = "Include extrinsic documentation"),
-        ("noFees" = Option<bool>, description = "Skip fee calculation")
+        ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include extrinsic documentation"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation")
     ),
     responses(
         (status = 200, description = "Extrinsic details", body = Object),

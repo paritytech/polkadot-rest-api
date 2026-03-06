@@ -38,9 +38,9 @@ use sp_core::crypto::AccountId32;
     description = "Returns vesting information for a given account including vesting schedules and locked amounts.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier"),
-        ("includeClaimable" = Option<bool>, description = "When true, calculate vested amounts")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier"),
+        ("includeClaimable" = Option<bool>, Query, description = "When true, calculate vested amounts")
     ),
     responses(
         (status = 200, description = "Vesting information", body = VestingInfoResponse),

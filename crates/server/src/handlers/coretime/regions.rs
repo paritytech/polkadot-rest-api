@@ -91,7 +91,7 @@ pub struct CoretimeRegionsResponse {
     summary = "Get coretime regions",
     description = "Returns all regions on a coretime chain including begin/end timeslices, core, owner, and mask.",
     params(
-        ("at" = Option<String>, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Coretime regions", body = Object),

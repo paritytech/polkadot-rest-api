@@ -37,8 +37,8 @@ use sp_core::crypto::AccountId32;
     description = "Returns proxy information for a given account including delegated proxies and their types.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Proxy information", body = ProxyInfoResponse),

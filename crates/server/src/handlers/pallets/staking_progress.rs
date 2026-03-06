@@ -181,8 +181,8 @@ struct SessionEraProgress {
     summary = "Staking progress",
     description = "Returns staking progress including era, session info, and validator counts.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Staking progress information", body = Object),
@@ -354,7 +354,7 @@ pub async fn pallets_staking_progress(
     summary = "RC staking progress",
     description = "Returns staking progress from the relay chain.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Relay chain staking progress", body = Object),
