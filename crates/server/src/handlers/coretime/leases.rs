@@ -74,7 +74,7 @@ pub struct CoretimeLeasesResponse {
     summary = "Get coretime leases",
     description = "Returns all leases registered on a coretime chain with task IDs and validity timeslices.",
     params(
-        ("at" = Option<String>, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Coretime leases", body = Object),

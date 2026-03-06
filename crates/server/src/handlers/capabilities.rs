@@ -64,7 +64,7 @@ impl IntoResponse for CapabilitiesError {
     summary = "API capabilities",
     description = "Returns the chain name and list of available pallets in the runtime metadata.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Chain capabilities", body = CapabilitiesResponse),

@@ -190,7 +190,7 @@ pub fn transform_properties(properties: Value) -> Value {
     summary = "Runtime specification",
     description = "Returns the runtime specification including version, APIs, and chain properties.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Runtime specification", body = Object),

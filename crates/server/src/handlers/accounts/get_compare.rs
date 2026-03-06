@@ -35,7 +35,7 @@ use sp_core::crypto::{AccountId32, Ss58Codec};
     summary = "Compare account addresses",
     description = "Compares multiple SS58 addresses to determine if they have the same underlying public key.",
     params(
-        ("addresses" = String, description = "Comma-separated list of SS58 addresses to compare (max 30)")
+        ("addresses" = String, Query, description = "Comma-separated list of SS58 addresses to compare (max 30)")
     ),
     responses(
         (status = 200, description = "Comparison result", body = AccountCompareResponse),

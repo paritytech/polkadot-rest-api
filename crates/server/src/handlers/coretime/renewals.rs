@@ -90,7 +90,7 @@ pub struct CoretimeRenewalsResponse {
     summary = "Get coretime potential renewals",
     description = "Returns potential renewals on a coretime chain sorted by core index, including price, completion status, and task assignment.",
     params(
-        ("at" = Option<String>, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Coretime renewals", body = Object),
