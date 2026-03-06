@@ -15,6 +15,25 @@ function util.delay()
     end
 end
 
+-- Print the list of endpoints that will be tested (once across all wrk threads)
+-- Uses a fixed temp file as a lock since each wrk thread has its own Lua state
+function util.print_endpoints(endpoints)
+    local lockfile = "/tmp/_wrk_bench_endpoints_printed"
+    local f = io.open(lockfile, "r")
+    if f then
+        f:close()
+        return
+    end
+    f = io.open(lockfile, "w")
+    if f then f:close() end
+    print("")
+    print("Endpoints to benchmark (" .. #endpoints .. "):")
+    for i, ep in ipairs(endpoints) do
+        print("  " .. i .. ". " .. ep)
+    end
+    print("")
+end
+
 -- Signal that setup is complete and print statistics
 function util.done()
     return function(summary, latency, requests)
