@@ -1008,26 +1008,6 @@ pub struct AccountValidateQueryParams {
     pub at: Option<String>,
 }
 
-/// Response for GET /accounts/{accountId}/validate
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct AccountValidateResponse {
-    /// Whether the address is valid
-    pub is_valid: bool,
-
-    /// The SS58 prefix (null if invalid)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ss58_prefix: Option<String>,
-
-    /// The network name for the prefix (null if invalid/unknown)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub network: Option<String>,
-
-    /// The account ID in hex format (null if invalid)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub account_id: Option<String>,
-}
-
 // ================================================================================================
 // Foreign Asset Balances Types
 // ================================================================================================
