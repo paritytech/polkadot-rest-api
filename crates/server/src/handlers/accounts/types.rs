@@ -369,9 +369,7 @@ impl IntoResponse for AccountsError {
             AccountsError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
-            AccountsError::BlockResolveFailed(inner) => {
-                (inner.status_code(), inner.to_string())
-            }
+            AccountsError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             AccountsError::ClientAtBlockFailed(err) => {
                 if utils::is_online_client_at_block_disconnected(err) {
                     (

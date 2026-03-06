@@ -295,9 +295,7 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::InvalidRangeMax
             | GetBlockError::InvalidRangeMinMax
             | GetBlockError::RangeTooLarge => (StatusCode::BAD_REQUEST, self.to_string()),
-            GetBlockError::BlockResolveFailed(inner) => {
-                (inner.status_code(), inner.to_string())
-            }
+            GetBlockError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             GetBlockError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }

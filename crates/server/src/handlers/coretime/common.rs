@@ -227,9 +227,7 @@ impl IntoResponse for CoretimeError {
         let (status, message) = match &self {
             // Block/Client errors - these map to Sidecar's BadRequest (400)
             CoretimeError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            CoretimeError::BlockResolveFailed(inner) => {
-                (inner.status_code(), inner.to_string())
-            }
+            CoretimeError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             CoretimeError::InvalidBlockHash => (StatusCode::BAD_REQUEST, self.to_string()),
             CoretimeError::ClientAtBlockFailed(err) => {
                 if crate::utils::is_online_client_at_block_disconnected(err) {

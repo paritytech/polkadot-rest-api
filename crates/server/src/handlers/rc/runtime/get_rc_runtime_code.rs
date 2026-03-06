@@ -52,9 +52,7 @@ impl IntoResponse for GetRcCodeError {
             | GetRcCodeError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
-            GetRcCodeError::BlockResolveFailed(inner) => {
-                (inner.status_code(), inner.to_string())
-            }
+            GetRcCodeError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             GetRcCodeError::RelayChain(RelayChainError::ConnectionFailed(_))
             | GetRcCodeError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())

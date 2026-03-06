@@ -44,9 +44,7 @@ impl IntoResponse for GetRcSpecError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
             GetRcSpecError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            GetRcSpecError::BlockResolveFailed(inner) => {
-                (inner.status_code(), inner.to_string())
-            }
+            GetRcSpecError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             GetRcSpecError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
