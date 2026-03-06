@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::types::{AccountValidateQueryParams, AccountsError, AddressDetails};
+use super::types::{AccountValidateQueryParams, AccountValidateResponse, AccountsError};
 use super::utils::validate_address;
 use crate::extractors::JsonQuery;
 use axum::{
@@ -37,7 +37,7 @@ use axum::{
         ("at" = Option<String>, Query, description = "Block hash or number (accepted for API consistency)")
     ),
     responses(
-        (status = 200, description = "Validation result", body = AddressDetails)
+        (status = 200, description = "Validation result", body = AccountValidateResponse)
     )
 )]
 pub async fn get_validate(
@@ -45,6 +45,13 @@ pub async fn get_validate(
     JsonQuery(_params): JsonQuery<AccountValidateQueryParams>,
 ) -> Result<Response, AccountsError> {
     // Note: `at` param is accepted for API consistency but not used for validation
-    let result = validate_address(&address);
-    Ok(Json(result).into_response())
+    let details = validate_address(&address);
+    let is_valid = details.ss58_prefix.is_some();
+    let response = AccountValidateResponse {
+        is_valid,
+        ss58_prefix: details.ss58_prefix.map(|p| p.to_string()),
+        network: details.network,
+        account_id: details.public_key,
+    };
+    Ok(Json(response).into_response())
 }
