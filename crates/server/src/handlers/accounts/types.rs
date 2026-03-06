@@ -24,31 +24,6 @@ fn error_response(status: StatusCode, message: String) -> axum::response::Respon
     (status, body).into_response()
 }
 
-/// Macro to implement IntoResponse for error types with status code mapping.
-///
-/// Usage:
-/// ```ignore
-/// impl_error_response!(MyError,
-///     InvalidBlockParam(_) => BAD_REQUEST,
-///     InvalidAddress(_) => BAD_REQUEST,
-///     BlockResolveFailed(_) => NOT_FOUND,
-///     _ => INTERNAL_SERVER_ERROR
-/// );
-/// ```
-#[allow(unused_macros)]
-macro_rules! impl_error_response {
-    ($error_type:ty, $($variant:pat => $status:ident),+ $(,)?) => {
-        impl IntoResponse for $error_type {
-            fn into_response(self) -> axum::response::Response {
-                let status = match &self {
-                    $($variant => StatusCode::$status,)+
-                };
-                error_response(status, self.to_string())
-            }
-        }
-    };
-}
-
 // ================================================================================================
 // Query Parameters
 // ================================================================================================
