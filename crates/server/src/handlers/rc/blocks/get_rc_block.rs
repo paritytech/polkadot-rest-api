@@ -73,11 +73,31 @@ pub enum GetRcBlockError {
     #[error("Invalid block parameter")]
     InvalidBlockParam(#[from] utils::BlockIdParseError),
 
+    #[error("Block resolution failed")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
     #[error("Failed to get client at block")]
-    ClientAtBlockFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
+    ClientAtBlockFailed(#[source] Box<subxt::error::OnlineClientAtBlockError>),
 
     #[error("Block processing error: {0}")]
     BlockProcessingError(#[from] GetBlockError),
+}
+
+impl From<utils::AtBlockError> for GetRcBlockError {
+    fn from(err: utils::AtBlockError) -> Self {
+        match err {
+            utils::AtBlockError::BlockNotFound(msg) => {
+                GetRcBlockError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::AtBlockError::Client(e) => GetRcBlockError::ClientAtBlockFailed(Box::new(e)),
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for GetRcBlockError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        GetRcBlockError::from(utils::AtBlockError::from(err))
+    }
 }
 
 impl IntoResponse for GetRcBlockError {
@@ -90,8 +110,16 @@ impl IntoResponse for GetRcBlockError {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetRcBlockError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            GetRcBlockError::ClientAtBlockFailed(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            GetRcBlockError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
+            GetRcBlockError::ClientAtBlockFailed(err) => {
+                if utils::is_online_client_at_block_disconnected(err) {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Service temporarily unavailable".to_string(),
+                    )
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
             }
             GetRcBlockError::BlockProcessingError(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
@@ -157,14 +185,8 @@ pub async fn get_rc_block(
     let queried_by_hash = matches!(block_id_parsed, utils::BlockId::Hash(_));
 
     let client_at_block = match &block_id_parsed {
-        utils::BlockId::Hash(hash) => relay_client
-            .at_block(*hash)
-            .await
-            .map_err(|e| GetRcBlockError::ClientAtBlockFailed(Box::new(e)))?,
-        utils::BlockId::Number(number) => relay_client
-            .at_block(*number)
-            .await
-            .map_err(|e| GetRcBlockError::ClientAtBlockFailed(Box::new(e)))?,
+        utils::BlockId::Hash(hash) => relay_client.at_block(*hash).await?,
+        utils::BlockId::Number(number) => relay_client.at_block(*number).await?,
     };
 
     let block_hash = format!("{:#x}", client_at_block.block_hash());

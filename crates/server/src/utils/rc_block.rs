@@ -17,6 +17,9 @@ pub struct AhBlockInfo {
 
 #[derive(Debug, Error)]
 pub enum RcBlockError {
+    #[error("Block not found: {0}")]
+    BlockNotFound(String),
+
     #[error("Failed to get client at block")]
     ClientAtBlockFailed(#[source] Box<subxt::error::OnlineClientAtBlockError>),
 
@@ -42,6 +45,21 @@ pub enum RcBlockError {
     RelayChainClientNotAvailable,
 }
 
+impl From<super::AtBlockError> for RcBlockError {
+    fn from(err: super::AtBlockError) -> Self {
+        match err {
+            super::AtBlockError::BlockNotFound(msg) => RcBlockError::BlockNotFound(msg),
+            super::AtBlockError::Client(e) => RcBlockError::ClientAtBlockFailed(Box::new(e)),
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for RcBlockError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        RcBlockError::from(super::AtBlockError::from(err))
+    }
+}
+
 pub async fn find_ah_blocks_in_rc_block(
     state: &AppState,
     rc_block: &ResolvedBlock,
@@ -51,10 +69,7 @@ pub async fn find_ah_blocks_in_rc_block(
         .await
         .map_err(|_| RcBlockError::RelayChainClientNotAvailable)?;
 
-    let rc_client_at_block = rc_client
-        .at_block(rc_block.number)
-        .await
-        .map_err(|e| RcBlockError::ClientAtBlockFailed(Box::new(e)))?;
+    let rc_client_at_block = rc_client.at_block(rc_block.number).await?;
 
     find_ah_blocks_in_rc_block_at(&rc_client_at_block).await
 }

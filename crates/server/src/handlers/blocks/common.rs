@@ -72,17 +72,33 @@ pub enum CommonBlockError {
     EventsDecodeFailed(String),
 }
 
+impl From<utils::AtBlockError> for CommonBlockError {
+    fn from(err: utils::AtBlockError) -> Self {
+        match err {
+            utils::AtBlockError::BlockNotFound(msg) => {
+                CommonBlockError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::AtBlockError::Client(e) => CommonBlockError::ClientAtBlockFailed(Box::new(e)),
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for CommonBlockError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        CommonBlockError::from(utils::AtBlockError::from(err))
+    }
+}
+
 impl IntoResponse for CommonBlockError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
-            CommonBlockError::InvalidBlockParam(_) | CommonBlockError::BlockResolveFailed(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
+            CommonBlockError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            CommonBlockError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             CommonBlockError::ClientAtBlockFailed(err) => {
                 if utils::is_online_client_at_block_disconnected(err.as_ref()) {
                     (
                         StatusCode::SERVICE_UNAVAILABLE,
-                        format!("Service temporarily unavailable: {}", err),
+                        "Service temporarily unavailable".to_string(),
                     )
                 } else {
                     (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
@@ -574,11 +590,7 @@ pub async fn build_block_response_generic(
 
         if !fee_indices.is_empty() {
             let spec_version = client_at_block.spec_version();
-            let client_at_parent = ctx
-                .client
-                .at_block(header.parent_hash)
-                .await
-                .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+            let client_at_parent = ctx.client.at_block(header.parent_hash).await?;
 
             let fee_futures: Vec<_> = fee_indices
                 .iter()

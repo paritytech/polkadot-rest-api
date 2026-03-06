@@ -140,7 +140,7 @@ pub enum CoretimeError {
     InvalidBlockHash,
 
     #[error("Failed to get client at block")]
-    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] subxt::error::OnlineClientAtBlockError),
 
     // ========================================================================
     // Chain Type Errors
@@ -201,6 +201,23 @@ pub enum CoretimeError {
     StorageQueryFailed { details: String },
 }
 
+impl From<crate::utils::AtBlockError> for CoretimeError {
+    fn from(err: crate::utils::AtBlockError) -> Self {
+        match err {
+            crate::utils::AtBlockError::BlockNotFound(msg) => {
+                CoretimeError::BlockResolveFailed(crate::utils::BlockResolveError::NotFound(msg))
+            }
+            crate::utils::AtBlockError::Client(e) => CoretimeError::ClientAtBlockFailed(e),
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for CoretimeError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        CoretimeError::from(crate::utils::AtBlockError::from(err))
+    }
+}
+
 impl IntoResponse for CoretimeError {
     fn into_response(self) -> axum::response::Response {
         // Match Sidecar's error handling behavior:
@@ -210,21 +227,13 @@ impl IntoResponse for CoretimeError {
         let (status, message) = match &self {
             // Block/Client errors - these map to Sidecar's BadRequest (400)
             CoretimeError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            CoretimeError::BlockResolveFailed(inner) => {
-                let status = if matches!(inner, crate::utils::BlockResolveError::NotFound(_)) {
-                    // Block not found - Sidecar returns 400 with "Specified block number is larger..."
-                    StatusCode::BAD_REQUEST
-                } else {
-                    StatusCode::BAD_REQUEST
-                };
-                (status, self.to_string())
-            }
+            CoretimeError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             CoretimeError::InvalidBlockHash => (StatusCode::BAD_REQUEST, self.to_string()),
             CoretimeError::ClientAtBlockFailed(err) => {
                 if crate::utils::is_online_client_at_block_disconnected(err) {
                     (
                         StatusCode::SERVICE_UNAVAILABLE,
-                        format!("Service temporarily unavailable: {}", err),
+                        "Service temporarily unavailable".to_string(),
                     )
                 } else {
                     (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
