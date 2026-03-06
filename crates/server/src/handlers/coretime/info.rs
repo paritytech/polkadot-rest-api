@@ -162,7 +162,7 @@ struct StatusRecord {
     summary = "Get coretime info",
     description = "Returns coretime chain status information including the last committed timeslice.",
     params(
-        ("at" = Option<String>, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Coretime info", body = Object),

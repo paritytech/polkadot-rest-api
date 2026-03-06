@@ -64,7 +64,7 @@ impl IntoResponse for RcParaInclusionsError {
     description = "Returns parachain inclusion information for a given relay chain block.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
-        ("paraId" = Option<u32>, description = "Filter by parachain ID")
+        ("paraId" = Option<u32>, Query, description = "Filter by parachain ID")
     ),
     responses(
         (status = 200, description = "Parachain inclusions", body = Object),

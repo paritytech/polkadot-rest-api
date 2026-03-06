@@ -151,8 +151,8 @@ impl IntoResponse for GetBlockHeadHeaderError {
     summary = "Get head block header",
     description = "Returns the header of the latest finalized or canonical block (lightweight, no extrinsics/events).",
     params(
-        ("finalized" = Option<bool>, description = "When true (default), returns finalized head header. When false, returns canonical head header."),
-        ("useRcBlock" = Option<bool>, description = "Treat as Relay Chain block and return Asset Hub blocks")
+        ("finalized" = Option<bool>, Query, description = "When true (default), returns finalized head header. When false, returns canonical head header."),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat as Relay Chain block and return Asset Hub blocks")
     ),
     responses(
         (status = 200, description = "Block header information", body = Object),

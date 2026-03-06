@@ -107,7 +107,7 @@ pub struct AtBlockParam {
     summary = "Runtime Wasm code",
     description = "Returns the Wasm code blob of the Substrate runtime at a given block.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Runtime code", body = Object),

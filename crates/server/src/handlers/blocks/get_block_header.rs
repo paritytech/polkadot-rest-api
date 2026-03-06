@@ -30,7 +30,7 @@ use serde_json::json;
     description = "Returns the header of the specified block (lightweight, no extrinsics/events).",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
-        ("useRcBlock" = Option<bool>, description = "Treat blockId as Relay Chain block and return Asset Hub blocks")
+        ("useRcBlock" = Option<bool>, Query, description = "Treat blockId as Relay Chain block and return Asset Hub blocks")
     ),
     responses(
         (status = 200, description = "Block header information", body = Object),

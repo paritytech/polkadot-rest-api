@@ -239,27 +239,69 @@ pub async fn get_pool_asset_balance(
 
 /// Fetch pool asset balances for multiple assets for an account.
 ///
-/// Returns balances for all requested assets that have non-zero balances.
+/// When `show_empty` is false (default), only returns assets that have non-zero balances.
+/// When `show_empty` is true, returns all requested assets including those with zero balance.
+///
+/// This function executes all asset queries **in parallel** for optimal performance.
 pub async fn get_pool_asset_balances(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     asset_ids: &[u32],
+    show_empty: bool,
 ) -> Result<Vec<(u32, DecodedPoolAssetBalance)>, PoolAssetsStorageError> {
+    use futures::future::join_all;
+
     let account_bytes: [u8; 32] = *account.as_ref();
-    let mut balances = Vec::new();
 
-    for &asset_id in asset_ids {
-        let storage_addr = subxt::dynamic::storage::<_, ()>("PoolAssets", "Account");
+    // Create futures for all pool asset balance queries
+    let futures: Vec<_> = asset_ids
+        .iter()
+        .map(|&asset_id| {
+            let storage_addr = subxt::dynamic::storage::<_, ()>("PoolAssets", "Account");
+            async move {
+                let result = client_at_block
+                    .storage()
+                    .fetch(storage_addr, (asset_id, account_bytes))
+                    .await;
 
-        if let Ok(value) = client_at_block
-            .storage()
-            .fetch(storage_addr, (asset_id, account_bytes))
-            .await
-        {
-            let raw_bytes = value.into_bytes();
-            if let Ok(Some(decoded)) = decode_pool_asset_balance(&raw_bytes) {
-                balances.push((asset_id, decoded));
+                (asset_id, result)
             }
+        })
+        .collect();
+
+    // Execute all queries in parallel
+    let results = join_all(futures).await;
+
+    // Process results
+    let mut balances = Vec::new();
+    for (asset_id, result) in results {
+        match result {
+            Ok(value) => {
+                let raw_bytes = value.into_bytes();
+                if let Ok(Some(decoded)) = decode_pool_asset_balance(&raw_bytes) {
+                    balances.push((asset_id, decoded));
+                } else if show_empty {
+                    balances.push((
+                        asset_id,
+                        DecodedPoolAssetBalance {
+                            balance: "0".to_string(),
+                            is_frozen: false,
+                            is_sufficient: false,
+                        },
+                    ));
+                }
+            }
+            Err(_) if show_empty => {
+                balances.push((
+                    asset_id,
+                    DecodedPoolAssetBalance {
+                        balance: "0".to_string(),
+                        is_frozen: false,
+                        is_sufficient: false,
+                    },
+                ));
+            }
+            Err(_) => {}
         }
     }
 

@@ -177,9 +177,9 @@ pub struct PalletsStorageItemResponse {
     description = "Returns the list of storage items for a given pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, description = "Only return storage item names"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return storage item names"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Pallet storage items", body = Object),
@@ -299,10 +299,10 @@ async fn handle_use_rc_block(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("storageItemId" = String, Path, description = "Name of the storage item"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("keys[]" = Option<Vec<String>>, description = "Storage key arguments"),
-        ("metadata" = Option<bool>, description = "Include metadata for the storage item"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("keys[]" = Option<Vec<String>>, Query, description = "Storage key arguments"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata for the storage item"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Storage item value", body = Object),
@@ -725,8 +725,8 @@ pub struct RcStorageItemQueryParams {
     description = "Returns the list of storage items for a relay chain pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, description = "Only return storage item names")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return storage item names")
     ),
     responses(
         (status = 200, description = "Relay chain pallet storage items", body = Object),
@@ -771,9 +771,9 @@ pub async fn rc_get_pallets_storage(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("storageItemId" = String, Path, description = "Name of the storage item"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("keys[]" = Option<Vec<String>>, description = "Storage key arguments"),
-        ("metadata" = Option<bool>, description = "Include metadata for the storage item")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("keys[]" = Option<Vec<String>>, Query, description = "Storage key arguments"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata for the storage item")
     ),
     responses(
         (status = 200, description = "Relay chain storage item value", body = Object),

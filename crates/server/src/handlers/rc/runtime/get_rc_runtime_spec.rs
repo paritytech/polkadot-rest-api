@@ -108,7 +108,7 @@ pub struct AtBlockParam {
     summary = "RC get runtime spec",
     description = "Returns the runtime spec of the relay chain at a given block.",
     params(
-        ("at" = Option<String>, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Relay chain runtime spec", body = Object),

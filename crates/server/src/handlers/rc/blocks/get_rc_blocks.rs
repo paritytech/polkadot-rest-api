@@ -66,12 +66,12 @@ pub struct RcBlocksRangeQueryParams {
     summary = "RC get blocks by range",
     description = "Returns relay chain blocks within a specified range (max 500 blocks).",
     params(
-        ("range" = Option<String>, description = "Block range (e.g., '100-200')"),
-        ("eventDocs" = Option<bool>, description = "Include event documentation"),
-        ("extrinsicDocs" = Option<bool>, description = "Include extrinsic documentation"),
-        ("noFees" = Option<bool>, description = "Skip fee calculation"),
-        ("decodedXcmMsgs" = Option<bool>, description = "Decode and include XCM messages"),
-        ("paraId" = Option<u32>, description = "Filter XCM messages by parachain ID")
+        ("range" = Option<String>, Query, description = "Block range (e.g., '100-200')"),
+        ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include extrinsic documentation"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation"),
+        ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID")
     ),
     responses(
         (status = 200, description = "Relay chain blocks", body = Object),

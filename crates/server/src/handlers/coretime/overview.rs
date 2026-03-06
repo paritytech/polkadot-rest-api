@@ -253,7 +253,7 @@ struct WorkplanWithSchedule {
     summary = "Get coretime overview",
     description = "Returns an overview of all cores with assignments, queue state, workload, workplan, and regions.",
     params(
-        ("at" = Option<String>, description = "Block identifier (number or hash)")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)")
     ),
     responses(
         (status = 200, description = "Coretime overview", body = Object),

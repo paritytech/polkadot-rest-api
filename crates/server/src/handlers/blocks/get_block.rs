@@ -31,14 +31,14 @@ use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
     description = "Returns block information for a given block identifier (hash or number), including extrinsics, events, and fees.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
-        ("eventDocs" = Option<bool>, description = "Include documentation for events"),
-        ("extrinsicDocs" = Option<bool>, description = "Include documentation for extrinsics"),
-        ("noFees" = Option<bool>, description = "Skip fee calculation for extrinsics"),
-        ("finalizedKey" = Option<bool>, description = "When true (default), include finalized status in response"),
-        ("decodedXcmMsgs" = Option<bool>, description = "Decode and include XCM messages"),
-        ("paraId" = Option<u32>, description = "Filter XCM messages by parachain ID"),
-        ("useRcBlock" = Option<bool>, description = "Treat blockId as Relay Chain block and return Asset Hub blocks"),
-        ("useEvmFormat" = Option<bool>, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
+        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation for extrinsics"),
+        ("finalizedKey" = Option<bool>, Query, description = "When true (default), include finalized status in response"),
+        ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat blockId as Relay Chain block and return Asset Hub blocks"),
+        ("useEvmFormat" = Option<bool>, Query, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
     ),
     responses(
         (status = 200, description = "Block information", body = Object),
