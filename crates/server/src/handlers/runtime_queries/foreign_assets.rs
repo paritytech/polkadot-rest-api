@@ -303,21 +303,18 @@ pub async fn get_all_foreign_asset_balances(
     // Create futures for all location queries in parallel
     let futures: Vec<_> = locations
         .into_iter()
-        .map(|location| {
-            let account_bytes = account_bytes;
-            async move {
-                let storage_addr = subxt::dynamic::storage::<(Location, [u8; 32]), AssetAccount>(
-                    "ForeignAssets",
-                    "Account",
-                );
+        .map(|location| async move {
+            let storage_addr = subxt::dynamic::storage::<(Location, [u8; 32]), AssetAccount>(
+                "ForeignAssets",
+                "Account",
+            );
 
-                let result = client_at_block
-                    .storage()
-                    .fetch(storage_addr, (location.clone(), account_bytes))
-                    .await;
+            let result = client_at_block
+                .storage()
+                .fetch(storage_addr, (location.clone(), account_bytes))
+                .await;
 
-                (location, result)
-            }
+            (location, result)
         })
         .collect();
 

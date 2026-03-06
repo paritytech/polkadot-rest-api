@@ -51,7 +51,6 @@ pub async fn query_foreign_assets(
         .iter()
         .map(|location| {
             let location = location.clone();
-            let account_bytes = account_bytes;
             async move {
                 let result = foreign_assets_queries::get_foreign_asset_account(
                     client_at_block,

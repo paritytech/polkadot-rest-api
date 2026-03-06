@@ -1190,9 +1190,7 @@ mod tests {
     fn test_asset_balances_single_value_bracket_notation() {
         // Single value with bracket notation: ?assets[]=1984
         let config = serde_qs::Config::new(5, false);
-        let params: AssetBalancesQueryParams = config
-            .deserialize_str("assets[]=1984")
-            .unwrap();
+        let params: AssetBalancesQueryParams = config.deserialize_str("assets[]=1984").unwrap();
         assert_eq!(params.assets, Some(vec![1984]));
     }
 
@@ -1213,9 +1211,8 @@ mod tests {
     #[test]
     fn test_pool_asset_balances_bracket_notation() {
         let config = serde_qs::Config::new(5, false);
-        let params: PoolAssetBalancesQueryParams = config
-            .deserialize_str("assets[]=42&assets[]=100")
-            .unwrap();
+        let params: PoolAssetBalancesQueryParams =
+            config.deserialize_str("assets[]=42&assets[]=100").unwrap();
         assert_eq!(params.assets, Some(vec![42, 100]));
     }
 
@@ -1225,7 +1222,10 @@ mod tests {
         let params: ForeignAssetBalancesQueryParams = config
             .deserialize_str("foreignAssets[]={\"parents\":1}&foreignAssets[]={\"parents\":2}")
             .unwrap();
-        assert_eq!(params.foreign_assets, vec!["{\"parents\":1}", "{\"parents\":2}"]);
+        assert_eq!(
+            params.foreign_assets,
+            vec!["{\"parents\":1}", "{\"parents\":2}"]
+        );
     }
 
     #[test]

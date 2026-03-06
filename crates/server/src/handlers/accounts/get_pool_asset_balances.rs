@@ -73,8 +73,14 @@ pub async fn get_pool_asset_balances(
 
     let assets = params.assets.as_deref().unwrap_or(&[]);
     let show_empty = params.show_empty;
-    let response =
-        query_pool_asset_balances(&client_at_block, &account, &resolved_block, assets, show_empty).await?;
+    let response = query_pool_asset_balances(
+        &client_at_block,
+        &account,
+        &resolved_block,
+        assets,
+        show_empty,
+    )
+    .await?;
 
     Ok(Json(response).into_response())
 }
@@ -110,7 +116,8 @@ async fn query_pool_asset_balances(
     };
 
     // Query each pool asset balance in parallel
-    let pool_assets = query_pool_assets(client_at_block, account, &assets_to_query, show_empty).await?;
+    let pool_assets =
+        query_pool_assets(client_at_block, account, &assets_to_query, show_empty).await?;
 
     Ok(PoolAssetBalancesResponse {
         at: BlockInfo {
@@ -171,7 +178,8 @@ async fn handle_use_rc_block(
 
         let client_at_block = state.client.at_block(ah_resolved.number).await?;
         let mut response =
-            query_pool_asset_balances(&client_at_block, &account, &ah_resolved, assets, show_empty).await?;
+            query_pool_asset_balances(&client_at_block, &account, &ah_resolved, assets, show_empty)
+                .await?;
 
         // Add RC block info
         response.rc_block_hash = Some(rc_block_hash.clone());
