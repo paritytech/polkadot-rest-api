@@ -501,6 +501,10 @@ pub struct PoolAssetBalancesQueryParams {
     /// Use PHP-style bracket notation: `?assets[]=1&assets[]=2`
     #[serde(default)]
     pub assets: Option<Vec<u32>>,
+
+    /// When true, include assets with zero balance. Defaults to false.
+    #[serde(default)]
+    pub show_empty: bool,
 }
 
 /// Response for GET /accounts/{accountId}/pool-asset-balances
@@ -1044,6 +1048,10 @@ pub struct ForeignAssetBalancesQueryParams {
     /// Use PHP-style bracket notation: `?foreignAssets[]=JSON1&foreignAssets[]=JSON2`
     #[serde(default)]
     pub foreign_assets: Vec<String>,
+
+    /// When true, include assets with zero balance. Defaults to false.
+    #[serde(default)]
+    pub show_empty: bool,
 }
 
 /// Response for GET /accounts/{accountId}/foreign-asset-balances

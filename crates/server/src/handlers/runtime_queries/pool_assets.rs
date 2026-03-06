@@ -239,13 +239,15 @@ pub async fn get_pool_asset_balance(
 
 /// Fetch pool asset balances for multiple assets for an account.
 ///
-/// Returns balances for all requested assets that have non-zero balances.
+/// When `show_empty` is false (default), only returns assets that have non-zero balances.
+/// When `show_empty` is true, returns all requested assets including those with zero balance.
 ///
 /// This function executes all asset queries **in parallel** for optimal performance.
 pub async fn get_pool_asset_balances(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     asset_ids: &[u32],
+    show_empty: bool,
 ) -> Result<Vec<(u32, DecodedPoolAssetBalance)>, PoolAssetsStorageError> {
     use futures::future::join_all;
 
@@ -273,11 +275,33 @@ pub async fn get_pool_asset_balances(
     // Process results
     let mut balances = Vec::new();
     for (asset_id, result) in results {
-        if let Ok(value) = result {
-            let raw_bytes = value.into_bytes();
-            if let Ok(Some(decoded)) = decode_pool_asset_balance(&raw_bytes) {
-                balances.push((asset_id, decoded));
+        match result {
+            Ok(value) => {
+                let raw_bytes = value.into_bytes();
+                if let Ok(Some(decoded)) = decode_pool_asset_balance(&raw_bytes) {
+                    balances.push((asset_id, decoded));
+                } else if show_empty {
+                    balances.push((
+                        asset_id,
+                        DecodedPoolAssetBalance {
+                            balance: "0".to_string(),
+                            is_frozen: false,
+                            is_sufficient: false,
+                        },
+                    ));
+                }
             }
+            Err(_) if show_empty => {
+                balances.push((
+                    asset_id,
+                    DecodedPoolAssetBalance {
+                        balance: "0".to_string(),
+                        is_frozen: false,
+                        is_sufficient: false,
+                    },
+                ));
+            }
+            Err(_) => {}
         }
     }
 

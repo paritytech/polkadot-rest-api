@@ -29,14 +29,16 @@ pub async fn query_pool_assets(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     assets: &[u32],
+    show_empty: bool,
 ) -> Result<Vec<PoolAssetBalance>, AccountsError> {
-    let balances = pool_assets_queries::get_pool_asset_balances(client_at_block, account, assets)
-        .await
-        .map_err(|_| {
-            AccountsError::DecodeFailed(parity_scale_codec::Error::from(
-                "Failed to query pool asset balances",
-            ))
-        })?;
+    let balances =
+        pool_assets_queries::get_pool_asset_balances(client_at_block, account, assets, show_empty)
+            .await
+            .map_err(|_| {
+                AccountsError::DecodeFailed(parity_scale_codec::Error::from(
+                    "Failed to query pool asset balances",
+                ))
+            })?;
 
     Ok(balances
         .into_iter()

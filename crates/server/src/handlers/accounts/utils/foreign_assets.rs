@@ -31,31 +31,54 @@ pub async fn query_all_foreign_asset_locations(
 ///
 /// Uses typed DecodeAsType decoding. If typed decode fails (e.g., on older
 /// runtimes with different struct layout), falls back to scale_value decoding.
-/// Filters out zero-balance entries.
+///
+/// When `show_empty` is false (default), filters out zero-balance entries.
+/// When `show_empty` is true, returns all requested assets including those with zero balance.
+///
+/// Note: Queries are executed in parallel for performance.
 pub async fn query_foreign_assets(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     locations: &[Location],
+    show_empty: bool,
 ) -> Result<Vec<ForeignAssetBalance>, AccountsError> {
-    let account_bytes: [u8; 32] = *account.as_ref();
-    let mut balances = Vec::new();
+    use futures::future::join_all;
 
-    for location in locations {
-        match foreign_assets_queries::get_foreign_asset_account(
-            client_at_block,
-            location,
-            &account_bytes,
-        )
-        .await
-        {
+    let account_bytes: [u8; 32] = *account.as_ref();
+
+    // Create futures for all location queries in parallel
+    let futures: Vec<_> = locations
+        .iter()
+        .map(|location| {
+            let location = location.clone();
+            let account_bytes = account_bytes;
+            async move {
+                let result = foreign_assets_queries::get_foreign_asset_account(
+                    client_at_block,
+                    &location,
+                    &account_bytes,
+                )
+                .await;
+                (location, result)
+            }
+        })
+        .collect();
+
+    // Execute all queries in parallel
+    let results = join_all(futures).await;
+
+    // Process results
+    let mut balances = Vec::new();
+    for (location, result) in results {
+        match result {
             Some(decoded) => {
-                // Skip zero-balance entries
-                if decoded.balance == 0 {
+                // Skip zero-balance entries unless show_empty is true
+                if decoded.balance == 0 && !show_empty {
                     continue;
                 }
 
                 let multi_location_json =
-                    serde_json::to_value(location).unwrap_or(serde_json::json!({}));
+                    serde_json::to_value(&location).unwrap_or(serde_json::json!({}));
 
                 balances.push(ForeignAssetBalance {
                     multi_location: multi_location_json,
@@ -67,11 +90,22 @@ pub async fn query_foreign_assets(
             None => {
                 // Try fallback decode using the centralized raw fetch
                 if let Ok(Some(fb)) =
-                    try_fallback_foreign_asset_account(client_at_block, location, &account_bytes)
+                    try_fallback_foreign_asset_account(client_at_block, &location, &account_bytes)
                         .await
-                    && fb.balance != "0"
                 {
-                    balances.push(fb);
+                    if fb.balance != "0" || show_empty {
+                        balances.push(fb);
+                    }
+                } else if show_empty {
+                    // No balance found but show_empty is true - add zero balance entry
+                    let multi_location_json =
+                        serde_json::to_value(&location).unwrap_or(serde_json::json!({}));
+                    balances.push(ForeignAssetBalance {
+                        multi_location: multi_location_json,
+                        balance: "0".to_string(),
+                        is_frozen: false,
+                        is_sufficient: false,
+                    });
                 }
             }
         }

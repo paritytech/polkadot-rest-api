@@ -34,6 +34,7 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 /// - `at` (optional): Block identifier (hash or height) - defaults to latest finalized
 /// - `useRcBlock` (optional): When true, treat 'at' as relay chain block identifier
 /// - `foreignAssets` (optional): List of multilocation JSON strings to filter by
+/// - `showEmpty` (optional): When true, include assets with zero balance (default: false)
 #[utoipa::path(
     get,
     path = "/v1/accounts/{accountId}/foreign-asset-balances",
@@ -44,7 +45,8 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
         ("accountId" = String, Path, description = "SS58-encoded account address"),
         ("at" = Option<String>, description = "Block hash or number to query at"),
         ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier"),
-        ("foreignAssets" = Option<Vec<String>>, description = "List of multilocation JSON strings to filter by")
+        ("foreignAssets" = Option<Vec<String>>, description = "List of multilocation JSON strings to filter by"),
+        ("showEmpty" = Option<bool>, description = "When true, include assets with zero balance (default: false)")
     ),
     responses(
         (status = 200, description = "Foreign asset balances", body = Object),
@@ -78,6 +80,7 @@ pub async fn get_foreign_asset_balances(
         &account,
         &resolved_block,
         &params.foreign_assets,
+        params.show_empty,
     )
     .await?;
     Ok(Json(response).into_response())
@@ -92,6 +95,7 @@ async fn query_foreign_asset_balances(
     account: &AccountId32,
     block: &utils::ResolvedBlock,
     foreign_assets_filter: &[String],
+    show_empty: bool,
 ) -> Result<ForeignAssetBalancesResponse, AccountsError> {
     // Check pallet exists
     let pallet_exists = client_at_block
@@ -114,7 +118,7 @@ async fn query_foreign_asset_balances(
     };
 
     let foreign_assets =
-        query_foreign_assets(client_at_block, account, &locations_to_query).await?;
+        query_foreign_assets(client_at_block, account, &locations_to_query, show_empty).await?;
 
     Ok(ForeignAssetBalancesResponse {
         at: BlockInfo {
@@ -165,6 +169,7 @@ async fn handle_use_rc_block(
 
     // Process each AH block
     let foreign_assets_filter = params.foreign_assets;
+    let show_empty = params.show_empty;
     let mut results = Vec::new();
     for ah_block in ah_blocks {
         let ah_resolved = utils::ResolvedBlock {
@@ -178,6 +183,7 @@ async fn handle_use_rc_block(
             &account,
             &ah_resolved,
             &foreign_assets_filter,
+            show_empty,
         )
         .await?;
 
