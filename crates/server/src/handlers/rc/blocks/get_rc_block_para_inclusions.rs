@@ -13,7 +13,7 @@ use crate::handlers::blocks::{
     fetch_para_inclusions_from_client,
 };
 use crate::state::{AppState, RelayChainError};
-use crate::utils::{self, BlockId, ResolvedBlock};
+use crate::utils::{self, ResolvedBlock};
 use axum::{
     Json,
     extract::{Path, State},
@@ -87,11 +87,10 @@ pub async fn get_rc_block_para_inclusions(
         .parse::<utils::BlockId>()
         .map_err(ParaInclusionsError::from)?;
 
-    let client_at_block = match block_id_parsed {
-        BlockId::Number(number) => relay_client.at_block(number).await,
-        BlockId::Hash(hash) => relay_client.at_block(hash).await,
-    }
-    .map_err(|e| ParaInclusionsError::Common(CommonBlockError::ClientAtBlockFailed(Box::new(e))))?;
+    let client_at_block = relay_client
+        .at_block(block_id_parsed)
+        .await
+        .map_err(|e| ParaInclusionsError::Common(CommonBlockError::from(e)))?;
 
     let resolved_block = ResolvedBlock {
         hash: format!("{:#x}", client_at_block.block_hash()),

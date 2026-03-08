@@ -88,10 +88,9 @@ async fn handle_use_rc_block(
 
     let rc_block_id = block_id.parse::<utils::BlockId>()?;
     let rc_client_at_block = match &rc_block_id {
-        utils::BlockId::Number(n) => relay_client.at_block(*n).await,
-        utils::BlockId::Hash(h) => relay_client.at_block(*h).await,
-    }
-    .map_err(GetBlockHeaderError::ClientAtBlockFailed)?;
+        utils::BlockId::Number(n) => relay_client.at_block(*n).await?,
+        utils::BlockId::Hash(h) => relay_client.at_block(*h).await?,
+    };
 
     let ah_blocks = find_ah_blocks_in_rc_block_at(&rc_client_at_block).await?;
 
@@ -104,11 +103,7 @@ async fn handle_use_rc_block(
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {
-        let client_at_block = state
-            .client
-            .at_block(ah_block.number)
-            .await
-            .map_err(GetBlockHeaderError::ClientAtBlockFailed)?;
+        let client_at_block = state.client.at_block(ah_block.number).await?;
 
         let header = client_at_block
             .block_header()

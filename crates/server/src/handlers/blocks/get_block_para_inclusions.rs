@@ -147,7 +147,7 @@ pub async fn get_block_para_inclusions(
         .client
         .at_block(resolved_block.number)
         .await
-        .map_err(|e| CommonBlockError::ClientAtBlockFailed(Box::new(e)))?;
+        .map_err(CommonBlockError::from)?;
 
     fetch_para_inclusions_from_client(&client_at_block, &resolved_block, params.para_id).await
 }
