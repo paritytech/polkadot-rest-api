@@ -1,56 +1,14 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::handlers::common::candidate_types::CandidateIncludedEvent;
 use crate::state::AppState;
 use crate::utils::ResolvedBlock;
-use scale_decode::DecodeAsType;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
 
 const ASSET_HUB_PARA_ID: u32 = 1000;
 pub type RcClientAtBlock = OnlineClientAtBlock<SubstrateConfig>;
-
-// ============================================================================
-// SCALE Decode Types for CandidateIncluded event
-// ============================================================================
-
-/// CandidateIncluded event fields
-#[derive(Debug, DecodeAsType)]
-struct CandidateIncludedEvent {
-    candidate: CommittedCandidateReceipt,
-    head_data: Vec<u8>,
-    #[allow(dead_code)]
-    core_index: u32,
-    #[allow(dead_code)]
-    group_index: u32,
-}
-
-/// CommittedCandidateReceipt
-#[derive(Debug, DecodeAsType)]
-struct CommittedCandidateReceipt {
-    descriptor: CandidateDescriptorDecoded,
-    #[allow(dead_code)]
-    commitments_hash: [u8; 32],
-}
-
-/// CandidateDescriptor — fields not listed here (collator, signature) are
-/// automatically skipped by DecodeAsType's named-field matching.
-#[derive(Debug, DecodeAsType)]
-struct CandidateDescriptorDecoded {
-    para_id: u32,
-    #[allow(dead_code)]
-    relay_parent: [u8; 32],
-    #[allow(dead_code)]
-    persisted_validation_data_hash: [u8; 32],
-    #[allow(dead_code)]
-    pov_hash: [u8; 32],
-    #[allow(dead_code)]
-    erasure_root: [u8; 32],
-    #[allow(dead_code)]
-    para_head: [u8; 32],
-    #[allow(dead_code)]
-    validation_code_hash: [u8; 32],
-}
 
 #[derive(Debug, Clone)]
 pub struct AhBlockInfo {

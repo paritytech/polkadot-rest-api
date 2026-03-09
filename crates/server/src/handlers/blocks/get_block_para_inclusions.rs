@@ -8,6 +8,7 @@
 //! which parachain blocks were included in the relay chain block.
 
 use crate::extractors::JsonQuery;
+use crate::handlers::common::candidate_types::CandidateIncludedEvent;
 use crate::state::AppState;
 use crate::utils;
 use axum::{
@@ -16,47 +17,12 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use thiserror::Error;
 
 use super::CommonBlockError;
-
-// ============================================================================
-// SCALE Decode Types for CandidateIncluded event
-// ============================================================================
-
-/// CandidateIncluded event fields decoded as a tuple
-#[derive(Debug, DecodeAsType)]
-struct CandidateIncludedEvent {
-    candidate: CommittedCandidateReceipt,
-    head_data: Vec<u8>,
-    core_index: u32,
-    group_index: u32,
-}
-
-/// CommittedCandidateReceipt
-#[derive(Debug, DecodeAsType)]
-struct CommittedCandidateReceipt {
-    descriptor: CandidateDescriptorDecoded,
-    commitments_hash: [u8; 32],
-}
-
-/// CandidateDescriptor with all hash fields.
-/// Fields not listed here (collator, signature) are automatically
-/// skipped by DecodeAsType's named-field matching.
-#[derive(Debug, DecodeAsType)]
-struct CandidateDescriptorDecoded {
-    para_id: u32,
-    relay_parent: [u8; 32],
-    persisted_validation_data_hash: [u8; 32],
-    pov_hash: [u8; 32],
-    erasure_root: [u8; 32],
-    para_head: [u8; 32],
-    validation_code_hash: [u8; 32],
-}
 
 // ============================================================================
 // Types - exported for reuse by /rc/blocks/{blockId}/para-inclusions

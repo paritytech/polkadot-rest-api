@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::extractors::JsonQuery;
+use crate::handlers::common::candidate_types::CandidateIncludedEvent;
 use crate::handlers::runtime_queries::parachain_info;
 use crate::state::{AppState, RelayChainError};
 use crate::utils::{self, extract_block_number_from_header, run_with_concurrency};
@@ -12,7 +13,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use futures::stream::StreamExt;
-use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use subxt::{OnlineClient, SubstrateConfig};
@@ -20,26 +20,6 @@ use thiserror::Error;
 use tracing::warn;
 
 use super::relay_parent_visitor;
-
-#[derive(DecodeAsType)]
-struct CandidateIncludedEvent {
-    receipt: CandidateReceiptDecoded,
-    head_data: Vec<u8>,
-    #[allow(dead_code)]
-    core_index: u32,
-    #[allow(dead_code)]
-    group_index: u32,
-}
-
-#[derive(DecodeAsType)]
-struct CandidateReceiptDecoded {
-    descriptor: CandidateDescriptorDecoded,
-}
-
-#[derive(DecodeAsType)]
-struct CandidateDescriptorDecoded {
-    para_id: u32,
-}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -375,7 +355,7 @@ fn extract_inclusion_info(
     target_para_id: u32,
     expected_block_number: u64,
 ) -> bool {
-    if event.receipt.descriptor.para_id != target_para_id {
+    if event.candidate.descriptor.para_id != target_para_id {
         return false;
     }
 
