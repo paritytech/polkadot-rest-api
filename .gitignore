@@ -8,3 +8,7 @@ CLAUDE.md
 
 # Grafana runtime data
 metrics/grafana/data/
+
+.env
+
+docs/node_modules/

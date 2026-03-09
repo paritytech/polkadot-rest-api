@@ -1,12 +1,16 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use anyhow::{Context, Result};
 use colored::Colorize;
-use futures::stream::{FuturesUnordered, StreamExt};
 use integration_tests::{
     client::TestClient, config::TestConfig, constants::API_READY_TIMEOUT_SECONDS,
     fixtures::FixtureLoader, utils::compare_json,
 };
 use std::collections::HashMap;
 use std::env;
+use std::time::Duration;
+use tokio::time::sleep;
 
 /// Test runner for historical integration tests
 struct HistoricalTestRunner {
@@ -36,6 +40,13 @@ impl HistoricalTestRunner {
         let test_cases = self.config.get_historical_tests(&self.chain_name);
         let total_tests = test_cases.len();
 
+        // Get delay between requests from environment variable (default: 0ms)
+        // Set TEST_DELAY_MS to add delay between requests to avoid rate limiting
+        let delay_ms: u64 = env::var("TEST_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+
         println!(
             "\n{} {} historical test cases for chain: {}\n",
             "Running".cyan().bold(),
@@ -43,18 +54,23 @@ impl HistoricalTestRunner {
             self.chain_name.yellow()
         );
 
-        // Create FuturesUnordered for streaming results as they complete
-        let mut futures: FuturesUnordered<_> = test_cases
-            .iter()
-            .map(|test_case| async move {
-                let result = self.run_test_case(test_case).await;
-                (test_case, result)
-            })
-            .collect();
+        if delay_ms > 0 {
+            println!(
+                "{}: {}ms delay between requests\n",
+                "Rate limit protection".yellow(),
+                delay_ms
+            );
+        }
 
-        // Process results as they complete
+        // Run tests sequentially with optional delay to avoid rate limiting
         let mut results = TestResults::default();
-        while let Some((test_case, result)) = futures.next().await {
+        for test_case in test_cases {
+            // Add delay before each request (except the first one)
+            if delay_ms > 0 && (results.passed + results.failed) > 0 {
+                sleep(Duration::from_millis(delay_ms)).await;
+            }
+
+            let result = self.run_test_case(&test_case).await;
             let test_name = if let Some(block_height) = test_case.block_height {
                 format!("{} (block {})", test_case.endpoint, block_height)
             } else {
@@ -97,6 +113,18 @@ impl HistoricalTestRunner {
             replacements.insert("accountId".to_string(), account_id.clone());
         }
 
+        if let Some(extrinsic_index) = test_case.extrinsic_index {
+            replacements.insert("extrinsicIndex".to_string(), extrinsic_index.to_string());
+        }
+
+        if let Some(ref asset_id) = test_case.asset_id {
+            replacements.insert("assetId".to_string(), asset_id.clone());
+        }
+
+        if let Some(ref pool_id) = test_case.pool_id {
+            replacements.insert("poolId".to_string(), pool_id.clone());
+        }
+
         let endpoint_path =
             integration_tests::utils::replace_placeholders(&test_case.endpoint, &replacements);
         let query_string = integration_tests::utils::build_query_string(&test_case.query_params);
@@ -129,7 +157,7 @@ impl HistoricalTestRunner {
 
         // Compare responses
         // Ignore fields that may vary (timestamps, etc.)
-        let ignore_fields = vec!["timestamp", "at", "blockNumber", "blockHash"];
+        let ignore_fields = vec!["timestamp", "authorId"]; //TODO: authorId should be removed when sidecar returns the correct value
         let comparison = compare_json(&actual_json, &expected_json, &ignore_fields)
             .context("Failed to compare JSON responses")?;
 
@@ -232,6 +260,16 @@ async fn test_historical_asset_hub_polkadot() -> Result<()> {
 #[tokio::test]
 async fn test_historical_asset_hub_kusama() -> Result<()> {
     run_historical_test_for_chain("asset-hub-kusama").await
+}
+
+#[tokio::test]
+async fn test_historical_coretime_kusama() -> Result<()> {
+    run_historical_test_for_chain("coretime-kusama").await
+}
+
+#[tokio::test]
+async fn test_historical_coretime_polkadot() -> Result<()> {
+    run_historical_test_for_chain("coretime-polkadot").await
 }
 
 fn init_tracing() {

@@ -6,14 +6,18 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
 	pkg-config \
 	libssl-dev \
+	make \
+	gcc \
+	libc6-dev \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Copy workspace files
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY docs/dist ./docs/dist
 
 # Build release binary
-RUN cargo build --release --package server
+RUN cargo build --release --package polkadot-rest-api
 
 # ---------------------------------
 

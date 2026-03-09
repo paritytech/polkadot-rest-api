@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -36,6 +39,13 @@ pub struct EndpointConfig {
     /// Whether this endpoint requires an account identifier
     #[serde(default)]
     pub requires_account: bool,
+    /// Optional list of chains to test this endpoint on.
+    /// If None or empty, the endpoint is tested on all chains.
+    #[serde(default)]
+    pub only_chains: Option<Vec<String>>,
+    /// Whether this endpoint is only available on relay chains (not asset hubs)
+    #[serde(default)]
+    pub relay_chain_only: bool,
 }
 
 /// Historical test case configuration
@@ -47,6 +57,12 @@ pub struct HistoricalTestCase {
     pub block_height: Option<u64>,
     /// Account identifier to test
     pub account_id: Option<String>,
+    /// Asset identifier to test
+    pub asset_id: Option<String>,
+    /// Extrinsic index to test
+    pub extrinsic_index: Option<u64>,
+    /// Pool identifier for nomination pools
+    pub pool_id: Option<String>,
     /// Query parameters (if any)
     #[serde(default)]
     pub query_params: HashMap<String, String>,

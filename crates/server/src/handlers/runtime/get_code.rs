@@ -1,14 +1,14 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 use serde_json::json;
-use subxt_rpcs::rpc_params;
+use subxt::error::OnlineClientAtBlockError;
 use thiserror::Error;
-
-/// The storage key for `:code` - this is the well-known key for the runtime WASM blob
-/// https://github.com/shawntabrizi/substrate-graph-benchmarks/blob/ae9b82f/js/extensions/known-keys.js#L21
-const CODE_KEY: &str = "0x3a636f6465";
 
 #[derive(Debug, Error)]
 pub enum GetCodeError {
@@ -16,19 +16,51 @@ pub enum GetCodeError {
     InvalidBlockParam(#[from] crate::utils::BlockIdParseError),
 
     #[error("Block resolution failed")]
-    BlockResolveFailed(#[from] crate::utils::BlockResolveError),
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Failed to get client at block")]
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 
     #[error("Failed to get runtime code")]
-    GetCodeFailed(#[source] subxt_rpcs::Error),
+    GetCodeFailed(#[source] subxt::error::StorageError),
+
+    #[error("Service temporarily unavailable: {0}")]
+    ServiceUnavailable(String),
+}
+
+impl From<utils::ResolveClientAtBlockError> for GetCodeError {
+    fn from(err: utils::ResolveClientAtBlockError) -> Self {
+        match err {
+            utils::ResolveClientAtBlockError::ParseError(e) => GetCodeError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
+                GetCodeError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::ResolveClientAtBlockError::SubxtError(e) => {
+                GetCodeError::ClientAtBlockFailed(Box::new(e))
+            }
+        }
+    }
 }
 
 impl IntoResponse for GetCodeError {
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
-            GetCodeError::InvalidBlockParam(_) | GetCodeError::BlockResolveFailed(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
+        let (status, message) = match &self {
+            GetCodeError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            GetCodeError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
+            GetCodeError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            GetCodeError::ClientAtBlockFailed(err) => {
+                if utils::is_online_client_at_block_disconnected(err) {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Service temporarily unavailable".to_string(),
+                    )
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
+            GetCodeError::GetCodeFailed(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
         let body = Json(json!({
@@ -53,6 +85,7 @@ pub struct RuntimeCodeResponse {
 
 /// Query parameters for the runtime code endpoint
 #[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AtBlockParam {
     pub at: Option<String>,
 }
@@ -67,34 +100,48 @@ pub struct AtBlockParam {
 /// Returns:
 /// - `at`: Block number and hash at which the call was made
 /// - `code`: Runtime code Wasm blob as hex string
+#[utoipa::path(
+    get,
+    path = "/v1/runtime/code",
+    tag = "runtime",
+    summary = "Runtime Wasm code",
+    description = "Returns the Wasm code blob of the Substrate runtime at a given block.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Runtime code", body = Object),
+        (status = 400, description = "Invalid block parameter"),
+        (status = 503, description = "Service unavailable"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn runtime_code(
     State(state): State<AppState>,
-    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+    JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<RuntimeCodeResponse>, GetCodeError> {
-    // Parse and resolve the block identifier
-    let block_id = params
-        .at
-        .map(|s| s.parse::<crate::utils::BlockId>())
-        .transpose()?;
-    let resolved_block = utils::resolve_block(&state, block_id).await?;
+    // Create client at the specified block - saves RPC calls by letting subxt
+    // resolve hash<->number internally
+    let client_at_block = utils::resolve_client_at_block(&state.client, params.at.as_ref()).await?;
 
-    // Get the runtime code from storage using the well-known :code key
-    let code: Option<String> = state
-        .rpc_client
-        .request(
-            "state_getStorage",
-            rpc_params![CODE_KEY, &resolved_block.hash],
-        )
+    // Extract hash and number from the resolved client
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_number = client_at_block.block_number();
+
+    // Get the runtime code using subxt's built-in helper
+    let wasm_blob: Vec<u8> = client_at_block
+        .storage()
+        .runtime_wasm_code()
         .await
         .map_err(GetCodeError::GetCodeFailed)?;
 
-    // The code should always exist for a valid block
-    let code = code.unwrap_or_default();
+    // Convert to hex string with 0x prefix
+    let code = format!("0x{}", hex::encode(&wasm_blob));
 
     Ok(Json(RuntimeCodeResponse {
         at: BlockInfo {
-            hash: resolved_block.hash,
-            height: resolved_block.number.to_string(),
+            hash: block_hash,
+            height: block_number.to_string(),
         },
         code,
     }))
@@ -102,123 +149,119 @@ pub async fn runtime_code(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extractors::JsonQuery;
     use crate::state::AppState;
-    use axum::extract::{Query, State};
-    use config::SidecarConfig;
+    use crate::test_fixtures::{TEST_BLOCK_HASH, TEST_BLOCK_NUMBER, mock_rpc_client_builder};
+    use axum::extract::State;
+    use polkadot_rest_api_config::SidecarConfig;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
-    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+    async fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
         let config = SidecarConfig::default();
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
         let chain_info = crate::state::ChainInfo {
-            chain_type: config::ChainType::Relay,
+            chain_type: polkadot_rest_api_config::ChainType::Relay,
             spec_name: "test".to_string(),
             spec_version: 1,
             ss58_prefix: 42,
         };
 
+        let client = subxt::OnlineClient::from_rpc_client((*rpc_client).clone())
+            .await
+            .expect("Failed to create test OnlineClient");
+
         AppState {
             config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
+            client: Arc::new(client),
             legacy_rpc,
             rpc_client,
             chain_info,
+            relay_client: Arc::new(tokio::sync::OnceCell::new()),
+            relay_rpc_client: Arc::new(tokio::sync::OnceCell::new()),
+            relay_chain_info: Arc::new(tokio::sync::OnceCell::new()),
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
+            chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
+            chain_config: Arc::new(polkadot_rest_api_config::Config::single_chain(
+                polkadot_rest_api_config::ChainConfig::default(),
+            )),
             route_registry: crate::routes::RouteRegistry::new(),
+            relay_chain_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 
+    /// Test WASM code blob (minimal valid WASM module)
+    const TEST_WASM_CODE: &str = "0x0061736d0100000001";
+
     #[tokio::test]
     async fn test_runtime_code_at_block_hash() {
-        let mock_client = MockRpcClient::builder()
-            .method_handler("chain_getHeader", async |_params| {
-                MockJson(serde_json::json!({
-                    "number": "0x100",
-                }))
-            })
-            .method_handler("state_getStorage", async |_params| {
-                MockJson("0x0061736d0100000001")
-            })
+        // Use test fixtures builder and add state_getStorage handler for runtime code
+        let mock_client = mock_rpc_client_builder()
+            .method_handler("state_getStorage", async |_params| MockJson(TEST_WASM_CODE))
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
         let params = AtBlockParam {
-            at: Some(
-                "0x1234567890123456789012345678901234567890123456789012345678901234".to_string(),
-            ),
+            at: Some(TEST_BLOCK_HASH.to_string()),
         };
 
-        let result = runtime_code(State(state), Query(params)).await;
+        let result = runtime_code(State(state), JsonQuery(params)).await;
         assert!(result.is_ok());
 
         let response = result.unwrap().0;
-        assert_eq!(response.at.height, "256");
-        assert_eq!(response.code, "0x0061736d0100000001");
+        assert_eq!(response.at.height, TEST_BLOCK_NUMBER.to_string());
+        assert_eq!(response.code, TEST_WASM_CODE);
     }
 
     #[tokio::test]
     async fn test_runtime_code_at_block_number() {
-        let mock_client = MockRpcClient::builder()
-            .method_handler("chain_getBlockHash", async |_params| {
-                MockJson("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-            })
-            .method_handler("chain_getHeader", async |_params| {
-                MockJson(serde_json::json!({
-                    "number": "0x2710",
-                }))
-            })
-            .method_handler("state_getStorage", async |_params| {
-                MockJson("0x0061736d0100000001")
-            })
+        // Use test fixtures builder and add state_getStorage handler for runtime code
+        let mock_client = mock_rpc_client_builder()
+            .method_handler("state_getStorage", async |_params| MockJson(TEST_WASM_CODE))
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
         let params = AtBlockParam {
-            at: Some("10000".to_string()),
+            at: Some(TEST_BLOCK_NUMBER.to_string()),
         };
 
-        let result = runtime_code(State(state), Query(params)).await;
+        let result = runtime_code(State(state), JsonQuery(params)).await;
         assert!(result.is_ok());
 
         let response = result.unwrap().0;
-        assert_eq!(response.at.height, "10000");
-        assert_eq!(
-            response.at.hash,
-            "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-        );
-        assert_eq!(response.code, "0x0061736d0100000001");
+        // Block number should match the request
+        assert_eq!(response.at.height, TEST_BLOCK_NUMBER.to_string());
+        // Hash should be resolved from the mock
+        assert_eq!(response.at.hash, TEST_BLOCK_HASH);
+        assert_eq!(response.code, TEST_WASM_CODE);
     }
 
     #[tokio::test]
     async fn test_runtime_code_latest_block() {
-        let mock_client = MockRpcClient::builder()
-            .method_handler("chain_getFinalizedHead", async |_params| {
-                MockJson("0xfeedfacedeadbeef1234567890abcdef1234567890abcdef1234567890abcdef")
-            })
-            .method_handler("chain_getHeader", async |_params| {
-                MockJson(serde_json::json!({
-                    "number": "0x1e8480",
-                }))
-            })
-            .method_handler("state_getStorage", async |_params| {
-                MockJson("0x0061736d0100000001deadbeef")
-            })
+        // Use test fixtures builder and add state_getStorage handler for runtime code
+        let mock_client = mock_rpc_client_builder()
+            .method_handler("state_getStorage", async |_params| MockJson(TEST_WASM_CODE))
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
         let params = AtBlockParam { at: None };
 
-        let result = runtime_code(State(state), Query(params)).await;
+        let result = runtime_code(State(state), JsonQuery(params)).await;
         assert!(result.is_ok());
 
         let response = result.unwrap().0;
-        assert_eq!(response.at.height, "2000000");
-        assert_eq!(response.code, "0x0061736d0100000001deadbeef");
+        // Should use finalized head from test fixtures
+        assert_eq!(response.at.height, TEST_BLOCK_NUMBER.to_string());
+        assert_eq!(response.code, TEST_WASM_CODE);
+    }
+
+    #[test]
+    fn test_at_block_param_rejects_unknown_fields() {
+        let json = r#"{"at": "123", "unknownField": true}"#;
+        let result: Result<AtBlockParam, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 }

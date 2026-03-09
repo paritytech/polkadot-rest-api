@@ -1,7 +1,8 @@
-productionHostname: polkadot-rest-api.parity.io
 productionCertIssuerType: "http"
 images:
   polkadot-rest-api:
+    http:
+      host: polkadot-rest-api.parity.io
     env:
       SAS_SUBSTRATE_URL: wss://apps-rpc.polkadot.io
       RUST_LOG: info

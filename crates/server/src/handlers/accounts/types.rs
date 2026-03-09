@@ -1,0 +1,1258 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! Types for account-related handlers.
+
+use super::utils::AddressValidationError;
+use crate::handlers::common::accounts::StakingPayoutsQueryError;
+use crate::state::RelayChainError;
+use crate::utils::{self, RcBlockError};
+use axum::{Json, http::StatusCode, response::IntoResponse};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use subxt::error::{OnlineClientAtBlockError, StorageError};
+use thiserror::Error;
+use utoipa::ToSchema;
+
+// ================================================================================================
+// Error Response Helpers
+// ================================================================================================
+
+/// Creates a JSON error response with the given status code and message.
+fn error_response(status: StatusCode, message: String) -> axum::response::Response {
+    let body = Json(json!({ "error": message }));
+    (status, body).into_response()
+}
+
+// ================================================================================================
+// Query Parameters
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/asset-balances endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssetBalancesQueryParams {
+    /// Optional Block identifier (hash or height) - defaults to latest finalized
+    pub at: Option<String>,
+
+    /// Optional When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+
+    /// Optional list of asset IDs to query (queries all if omitted).
+    /// Use PHP-style bracket notation: `?assets[]=1984&assets[]=2000`
+    #[serde(default)]
+    pub assets: Option<Vec<u32>>,
+
+    /// When true, include assets with zero balance. Defaults to false.
+    #[serde(default)]
+    pub show_empty: bool,
+}
+
+// ================================================================================================
+// Response Types
+// ================================================================================================
+
+/// Response for GET /accounts/{accountId}/asset-balances
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetBalancesResponse {
+    pub at: BlockInfo,
+    pub assets: Vec<AssetBalance>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Block information
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockInfo {
+    pub hash: String,
+    pub height: String,
+}
+
+/// Asset balance information
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetBalance {
+    /// Asset ID as string (matches Sidecar format)
+    pub asset_id: String,
+    /// Balance as string (u128 serialized as decimal string)
+    pub balance: String,
+    pub is_frozen: bool,
+    pub is_sufficient: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecodedAssetBalance {
+    /// Balance as string (u128 serialized as decimal string)
+    pub balance: String,
+    pub is_frozen: bool,
+    pub is_sufficient: bool,
+}
+
+// ================================================================================================
+// Asset Approvals Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/asset-approvals endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssetApprovalQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    pub at: Option<String>,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+
+    /// The asset ID to query approval for (required)
+    pub asset_id: u32,
+
+    /// The delegate address with spending approval (required)
+    pub delegate: String,
+}
+
+/// Response for GET /accounts/{accountId}/asset-approvals
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetApprovalResponse {
+    pub at: BlockInfo,
+
+    /// The approved amount (null if approval doesn't exist)
+    pub amount: Option<String>,
+
+    /// The deposit associated with the approval (null if approval doesn't exist)
+    pub deposit: Option<String>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Decoded asset approval data
+#[derive(Debug, Clone)]
+pub struct DecodedAssetApproval {
+    pub amount: u128,
+    pub deposit: u128,
+}
+
+// ================================================================================================
+// Unified Accounts Error Type
+// ================================================================================================
+
+#[derive(Debug, Error)]
+pub enum AccountsError {
+    // ---- Common errors ----
+    #[error("Invalid block parameter: {0}")]
+    InvalidBlockParam(#[from] utils::BlockIdParseError),
+
+    #[error("Block resolution failed: {0}")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Invalid account address: {0}")]
+    InvalidAddress(#[from] AddressValidationError),
+
+    #[error("Invalid delegate address: {0}")]
+    InvalidDelegateAddress(String),
+
+    #[error("The runtime does not include the {0} pallet at this block")]
+    PalletNotAvailable(String),
+
+    #[error("Failed to query storage: {0}")]
+    StorageQueryFailed(Box<StorageError>),
+
+    #[error("Failed to get client at block: {0}")]
+    ClientAtBlockFailed(Box<OnlineClientAtBlockError>),
+
+    #[error("Failed to decode storage value: {0}")]
+    DecodeFailed(#[from] parity_scale_codec::Error),
+
+    // ---- Relay chain errors ----
+    #[error("useRcBlock is only supported on Asset Hub chains")]
+    UseRcBlockNotSupported,
+
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
+
+    #[error("Relay chain block mapping failed: {0}")]
+    RcBlockMappingFailed(#[from] RcBlockError),
+
+    // ---- Balance-specific errors ----
+    #[error("Invalid use of denominated parameter: this chain doesn't have valid decimals")]
+    InvalidDenominatedParam,
+
+    #[error("Invalid token: {0}")]
+    InvalidToken(String),
+
+    #[error("Balance query failed: {0}")]
+    BalanceQueryFailed(Box<crate::handlers::common::accounts::BalanceQueryError>),
+
+    // ---- Proxy-specific errors ----
+    #[error("Proxy query failed: {0}")]
+    ProxyQueryFailed(Box<crate::handlers::common::accounts::ProxyQueryError>),
+
+    // ---- Staking-specific errors ----
+    #[error("Staking query failed: {0}")]
+    StakingQueryFailed(Box<crate::handlers::common::accounts::StakingQueryError>),
+
+    #[error("Staking payouts query failed: {0}")]
+    StakingPayoutsQueryFailed(Box<StakingPayoutsQueryError>),
+
+    #[error("Invalid era: requested era {0} is beyond history depth")]
+    InvalidEra(u32),
+
+    #[error("Depth must be greater than 0 and less than history depth")]
+    InvalidDepth,
+
+    #[error("No active era found")]
+    NoActiveEra,
+
+    #[error("{0}")]
+    BadStakingBlock(String),
+
+    #[error("Relay chain connection is required to query pre-migration era data")]
+    RelayChainConnectionRequired,
+
+    #[error("The address is not a stash account")]
+    NotAStashAccount,
+
+    // ---- Vesting-specific errors ----
+    #[error("Vesting query failed: {0}")]
+    VestingQueryFailed(Box<crate::handlers::common::accounts::VestingQueryError>),
+
+    // ---- Account convert errors ----
+    #[error("The `accountId` parameter provided is not a valid hex value")]
+    InvalidHexAccountId,
+
+    #[error("The given `prefix` query parameter does not correspond to an existing network")]
+    InvalidPrefix,
+
+    #[error(
+        "The `scheme` query parameter provided can be one of the following three values: [ed25519, sr25519, ecdsa]"
+    )]
+    InvalidScheme,
+
+    #[error("Failed to encode address: {0}")]
+    EncodingFailed(String),
+
+    // ---- Account compare errors ----
+    #[error("Please limit the amount of address parameters to 30")]
+    TooManyAddresses,
+
+    #[error("At least one address is required")]
+    NoAddresses,
+
+    // ---- Foreign asset errors ----
+    #[error("Invalid foreign asset multilocation: {0}")]
+    InvalidForeignAsset(String),
+
+    // ---- Generic internal error ----
+    #[error("Internal error: {0}")]
+    InternalError(String),
+}
+
+impl From<StorageError> for AccountsError {
+    fn from(err: StorageError) -> Self {
+        AccountsError::StorageQueryFailed(Box::new(err))
+    }
+}
+
+impl From<utils::AtBlockError> for AccountsError {
+    fn from(err: utils::AtBlockError) -> Self {
+        match err {
+            utils::AtBlockError::BlockNotFound(msg) => {
+                AccountsError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::AtBlockError::Client(e) => AccountsError::ClientAtBlockFailed(Box::new(e)),
+        }
+    }
+}
+
+impl From<OnlineClientAtBlockError> for AccountsError {
+    fn from(err: OnlineClientAtBlockError) -> Self {
+        AccountsError::from(utils::AtBlockError::from(err))
+    }
+}
+
+impl From<utils::ResolveClientAtBlockError> for AccountsError {
+    fn from(err: utils::ResolveClientAtBlockError) -> Self {
+        match err {
+            utils::ResolveClientAtBlockError::ParseError(e) => AccountsError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
+                AccountsError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::ResolveClientAtBlockError::SubxtError(e) => {
+                AccountsError::ClientAtBlockFailed(Box::new(e))
+            }
+        }
+    }
+}
+
+impl From<crate::handlers::common::accounts::BalanceQueryError> for AccountsError {
+    fn from(err: crate::handlers::common::accounts::BalanceQueryError) -> Self {
+        AccountsError::BalanceQueryFailed(Box::new(err))
+    }
+}
+
+impl From<crate::handlers::common::accounts::ProxyQueryError> for AccountsError {
+    fn from(err: crate::handlers::common::accounts::ProxyQueryError) -> Self {
+        AccountsError::ProxyQueryFailed(Box::new(err))
+    }
+}
+
+impl From<crate::handlers::common::accounts::StakingQueryError> for AccountsError {
+    fn from(err: crate::handlers::common::accounts::StakingQueryError) -> Self {
+        match err {
+            crate::handlers::common::accounts::StakingQueryError::BadStakingBlock(msg) => {
+                AccountsError::BadStakingBlock(msg)
+            }
+            other => AccountsError::StakingQueryFailed(Box::new(other)),
+        }
+    }
+}
+
+impl From<crate::handlers::common::accounts::VestingQueryError> for AccountsError {
+    fn from(err: crate::handlers::common::accounts::VestingQueryError) -> Self {
+        AccountsError::VestingQueryFailed(Box::new(err))
+    }
+}
+
+impl From<StakingPayoutsQueryError> for AccountsError {
+    fn from(err: StakingPayoutsQueryError) -> Self {
+        match err {
+            StakingPayoutsQueryError::StakingPalletNotAvailable => {
+                AccountsError::PalletNotAvailable("Staking".to_string())
+            }
+            StakingPayoutsQueryError::NoActiveEra => AccountsError::NoActiveEra,
+            StakingPayoutsQueryError::InvalidEra(era) => AccountsError::InvalidEra(era),
+            StakingPayoutsQueryError::InvalidDepth => AccountsError::InvalidDepth,
+            StakingPayoutsQueryError::BadStakingBlock(msg) => AccountsError::BadStakingBlock(msg),
+            StakingPayoutsQueryError::RelayChainConnectionRequired => {
+                AccountsError::RelayChainConnectionRequired
+            }
+            other => AccountsError::StakingPayoutsQueryFailed(Box::new(other)),
+        }
+    }
+}
+
+impl IntoResponse for AccountsError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            AccountsError::InvalidBlockParam(_)
+            | AccountsError::InvalidAddress(_)
+            | AccountsError::InvalidDelegateAddress(_)
+            | AccountsError::PalletNotAvailable(_)
+            | AccountsError::UseRcBlockNotSupported
+            | AccountsError::InvalidDenominatedParam
+            | AccountsError::InvalidToken(_)
+            | AccountsError::InvalidEra(_)
+            | AccountsError::InvalidDepth
+            | AccountsError::NoActiveEra
+            | AccountsError::BadStakingBlock(_)
+            | AccountsError::RelayChainConnectionRequired
+            | AccountsError::NotAStashAccount
+            | AccountsError::InvalidHexAccountId
+            | AccountsError::InvalidPrefix
+            | AccountsError::InvalidScheme
+            | AccountsError::TooManyAddresses
+            | AccountsError::NoAddresses
+            | AccountsError::InvalidForeignAsset(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            AccountsError::RelayChain(RelayChainError::NotConfigured) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            AccountsError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
+            AccountsError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
+            AccountsError::ClientAtBlockFailed(err) => {
+                if utils::is_online_client_at_block_disconnected(err) {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Service temporarily unavailable".to_string(),
+                    )
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
+            AccountsError::RcBlockMappingFailed(inner)
+                if matches!(inner, RcBlockError::BlockNotFound(_)) =>
+            {
+                (StatusCode::BAD_REQUEST, inner.to_string())
+            }
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+        error_response(status, message)
+    }
+}
+
+// ================================================================================================
+// Balance Info Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/balance-info endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BalanceInfoQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    pub at: Option<String>,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+
+    /// Token symbol for chains with multiple tokens (ORML). Defaults to native token.
+    pub token: Option<String>,
+
+    /// When true, denominate balances using chain decimals
+    pub denominated: Option<bool>,
+}
+
+/// Response for GET /accounts/{accountId}/balance-info
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceInfoResponse {
+    pub at: BlockInfo,
+
+    /// Account nonce
+    pub nonce: String,
+
+    /// Token symbol
+    pub token_symbol: String,
+
+    /// Free balance (not equivalent to spendable balance)
+    pub free: String,
+
+    /// Reserved balance
+    pub reserved: String,
+
+    /// The amount that free may not drop below when withdrawing for anything except
+    /// transaction fee payment (legacy field, may be string message for newer runtimes)
+    pub misc_frozen: String,
+
+    /// The amount that free may not drop below when withdrawing specifically for
+    /// transaction fee payment (legacy field, may be string message for newer runtimes)
+    pub fee_frozen: String,
+
+    /// Frozen balance (newer runtimes, may be string message for older runtimes)
+    pub frozen: String,
+
+    /// Calculated transferable balance using: free - max(maybeED, frozen - reserved)
+    pub transferable: String,
+
+    /// Array of balance locks
+    pub locks: Vec<BalanceLock>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Balance lock information
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceLock {
+    /// Lock identifier
+    pub id: String,
+
+    /// Amount locked
+    pub amount: String,
+
+    /// Lock reasons (Fee = 0, Misc = 1, All = 2)
+    pub reasons: String,
+}
+
+/// Decoded account data from storage
+#[derive(Debug, Clone)]
+pub struct DecodedAccountData {
+    pub nonce: u32,
+    pub free: u128,
+    pub reserved: u128,
+    pub misc_frozen: Option<u128>,
+    pub fee_frozen: Option<u128>,
+    pub frozen: Option<u128>,
+}
+
+/// Decoded balance lock from storage
+#[derive(Debug, Clone)]
+pub struct DecodedBalanceLock {
+    pub id: String,
+    pub amount: u128,
+    pub reasons: String,
+}
+
+// ================================================================================================
+// Pool Asset Balances Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/pool-asset-balances endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PoolAssetBalancesQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    pub at: Option<String>,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+
+    /// Optional list of asset IDs to query (queries all if omitted).
+    /// Use PHP-style bracket notation: `?assets[]=1&assets[]=2`
+    #[serde(default)]
+    pub assets: Option<Vec<u32>>,
+
+    /// When true, include assets with zero balance. Defaults to false.
+    #[serde(default)]
+    pub show_empty: bool,
+}
+
+/// Response for GET /accounts/{accountId}/pool-asset-balances
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolAssetBalancesResponse {
+    pub at: BlockInfo,
+    pub pool_assets: Vec<PoolAssetBalance>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Pool asset balance information
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolAssetBalance {
+    /// Asset ID as string (matches Sidecar format)
+    pub asset_id: String,
+    /// Balance as string (u128 serialized as decimal string)
+    pub balance: String,
+    pub is_frozen: bool,
+    pub is_sufficient: bool,
+}
+
+// ================================================================================================
+// Pool Asset Approvals Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/pool-asset-approvals endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PoolAssetApprovalQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    pub at: Option<String>,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: Option<bool>,
+
+    /// The pool asset ID to query approval for (required)
+    pub asset_id: u32,
+
+    /// The delegate address with spending approval (required)
+    pub delegate: String,
+}
+
+/// Response for GET /accounts/{accountId}/pool-asset-approvals
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolAssetApprovalResponse {
+    pub at: BlockInfo,
+
+    /// The approved amount (null if approval doesn't exist)
+    pub amount: Option<String>,
+
+    /// The deposit associated with the approval (null if approval doesn't exist)
+    pub deposit: Option<String>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Decoded pool asset approval data
+#[derive(Debug, Clone)]
+pub struct DecodedPoolAssetApproval {
+    pub amount: u128,
+    pub deposit: u128,
+}
+
+// ================================================================================================
+// Account Convert Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/convert endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AccountConvertQueryParams {
+    pub scheme: Option<String>,
+
+    pub prefix: Option<u16>,
+
+    /// If true, treat the input as a public key (default: false)
+    #[serde(default)]
+    pub public_key: bool,
+}
+
+/// Response for GET /accounts/{accountId}/convert
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountConvertResponse {
+    /// SS58 prefix used for encoding
+    pub ss58_prefix: u16,
+
+    /// Network name corresponding to the SS58 prefix
+    pub network: String,
+
+    /// The SS58-encoded address
+    pub address: String,
+
+    /// The original AccountId (hex)
+    pub account_id: String,
+
+    /// The cryptographic scheme used
+    pub scheme: String,
+
+    /// Whether the input was treated as a public key
+    pub public_key: bool,
+}
+
+// ================================================================================================
+// Proxy Info Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/proxy-info endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProxyInfoQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    pub at: Option<String>,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+}
+
+/// Response for GET /accounts/{accountId}/proxy-info
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyInfoResponse {
+    pub at: BlockInfo,
+
+    /// Array of delegated accounts with their proxy definitions
+    pub delegated_accounts: Vec<ProxyDefinition>,
+
+    /// The deposit held for the proxies
+    pub deposit_held: String,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// A proxy definition containing the delegate, proxy type, and delay
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyDefinition {
+    /// The delegate address that can act on behalf of the account
+    pub delegate: String,
+
+    /// The type of proxy (e.g., "Any", "Staking", "Governance", etc.)
+    pub proxy_type: String,
+
+    /// The announcement delay in blocks
+    pub delay: String,
+}
+
+// ================================================================================================
+// Staking Info Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/staking-info endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StakingInfoQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    pub at: Option<String>,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+
+    /// When true, include claimed rewards in the response
+    #[serde(default)]
+    pub include_claimed_rewards: bool,
+}
+
+/// Response for GET /accounts/{accountId}/staking-info
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StakingInfoResponse {
+    pub at: BlockInfo,
+
+    /// Controller address
+    pub controller: String,
+
+    /// Reward destination configuration
+    pub reward_destination: RewardDestination,
+
+    /// Number of slashing spans
+    pub num_slashing_spans: String,
+
+    /// Nomination info (null if not a nominator)
+    pub nominations: Option<NominationsInfo>,
+
+    /// Staking ledger information
+    pub staking: StakingLedger,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Reward destination - e.g. { "staked": null }, { "stash": null }, { "account": "..." }
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum RewardDestination {
+    /// Rewards are automatically re-staked
+    Staked(()),
+    /// Rewards are sent to the stash account
+    Stash(()),
+    /// Rewards are sent to the controller account
+    Controller(()),
+    /// No reward destination
+    None(()),
+    /// Rewards are sent to a specific account
+    Account(String),
+}
+
+/// Nominations information for a nominator
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NominationsInfo {
+    /// List of validator addresses being nominated
+    pub targets: Vec<String>,
+
+    /// Era in which nomination was submitted
+    pub submitted_in: String,
+
+    /// Whether nominations are suppressed
+    pub suppressed: bool,
+}
+
+/// Staking ledger information
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StakingLedger {
+    /// Stash account address
+    pub stash: String,
+
+    /// Total locked balance (active + unlocking)
+    pub total: String,
+
+    /// Active staked balance
+    pub active: String,
+
+    /// Unlocking chunks with value and era
+    pub unlocking: Vec<UnlockingChunk>,
+
+    /// Claimed rewards per era (only when includeClaimedRewards=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claimed_rewards: Option<Vec<ClaimedReward>>,
+}
+
+/// Unlocking chunk with value and era when funds become available
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlockingChunk {
+    /// Amount being unlocked
+    pub value: String,
+
+    /// Era when funds become available
+    pub era: String,
+}
+
+/// Claimed reward status for a specific era
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaimedReward {
+    /// Era index
+    pub era: String,
+
+    /// Claim status ("claimed" or "unclaimed")
+    pub status: String,
+}
+
+// ================================================================================================
+// Staking Payouts Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/staking-payouts endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StakingPayoutsQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    pub at: Option<String>,
+
+    /// Number of eras to query. Must be less than HISTORY_DEPTH. Defaults to 1.
+    #[serde(default = "default_depth")]
+    pub depth: u32,
+
+    /// The era to query at. Defaults to active_era - 1.
+    pub era: Option<u32>,
+
+    /// Only show unclaimed rewards. Defaults to true.
+    #[serde(default = "default_unclaimed_only")]
+    pub unclaimed_only: bool,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+}
+
+fn default_depth() -> u32 {
+    1
+}
+
+fn default_unclaimed_only() -> bool {
+    true
+}
+
+/// Response for GET /accounts/{accountId}/staking-payouts
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StakingPayoutsResponse {
+    pub at: BlockInfo,
+
+    /// Array of era payouts
+    pub eras_payouts: Vec<EraPayouts>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Payouts for a single era - can be either actual payouts or an error message
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(untagged)]
+pub enum EraPayouts {
+    /// Successful payout data for an era
+    Payouts(EraPayoutsData),
+    /// Error message when payouts cannot be calculated
+    Message { message: String },
+}
+
+/// Actual payout data for an era
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EraPayoutsData {
+    /// Era index
+    pub era: String,
+
+    /// Total reward points for the era
+    pub total_era_reward_points: String,
+
+    /// Total payout for the era
+    pub total_era_payout: String,
+
+    /// Individual payouts for validators nominated
+    pub payouts: Vec<ValidatorPayout>,
+}
+
+/// Payout information for a single validator
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidatorPayout {
+    /// Validator stash account ID
+    pub validator_id: String,
+
+    /// Calculated payout amount for the nominator
+    pub nominator_staking_payout: String,
+
+    /// Whether the reward has been claimed
+    pub claimed: bool,
+
+    /// Validator's reward points for this era
+    pub total_validator_reward_points: String,
+
+    /// Validator's commission (as parts per billion, 0-1000000000)
+    pub validator_commission: String,
+
+    /// Total stake behind this validator
+    pub total_validator_exposure: String,
+
+    /// Nominator's stake behind this validator
+    pub nominator_exposure: String,
+}
+
+// ================================================================================================
+// Vesting Info Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/vesting-info endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VestingInfoQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    pub at: Option<String>,
+
+    /// When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+}
+
+/// Response for GET /accounts/{accountId}/vesting-info
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct VestingInfoResponse {
+    pub at: BlockInfo,
+
+    /// Array of vesting schedules (empty array if no vesting)
+    pub vesting: Vec<VestingSchedule>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// A vesting schedule
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct VestingSchedule {
+    /// Total tokens locked at start of vesting
+    pub locked: String,
+
+    /// Tokens unlocked per block
+    pub per_block: String,
+
+    /// Block when vesting begins
+    pub starting_block: String,
+}
+
+// ================================================================================================
+// Account Compare Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/compare endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AccountCompareQueryParams {
+    /// Comma-separated list of SS58 addresses to compare (max 30)
+    pub addresses: String,
+}
+
+/// Response for GET /accounts/compare
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountCompareResponse {
+    /// Whether all addresses have the same underlying public key
+    pub are_equal: bool,
+
+    /// Details for each address
+    pub addresses: Vec<AddressDetails>,
+}
+
+/// Details about a single address
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AddressDetails {
+    /// The original SS58 format address
+    pub ss58_format: String,
+
+    /// The SS58 prefix (null if invalid)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ss58_prefix: Option<u16>,
+
+    /// The network name for the prefix (null if invalid/unknown)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+
+    /// The public key in hex format (null if invalid)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_key: Option<String>,
+}
+
+// ================================================================================================
+// Account Validate Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/validate endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AccountValidateQueryParams {
+    /// Block identifier (hash or height) - defaults to latest finalized
+    pub at: Option<String>,
+}
+
+/// Response for GET /accounts/{accountId}/validate
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountValidateResponse {
+    /// Whether the address is valid
+    pub is_valid: bool,
+
+    /// The SS58 prefix (null if invalid)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ss58_prefix: Option<String>,
+
+    /// The network name for the prefix (null if invalid/unknown)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+
+    /// The account ID in hex format (null if invalid)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
+}
+
+// ================================================================================================
+// Foreign Asset Balances Types
+// ================================================================================================
+
+/// Query parameters for GET /accounts/{accountId}/foreign-asset-balances endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ForeignAssetBalancesQueryParams {
+    /// Optional Block identifier (hash or height) - defaults to latest finalized
+    pub at: Option<String>,
+
+    /// Optional When true, treat 'at' as relay chain block identifier
+    #[serde(default)]
+    pub use_rc_block: bool,
+
+    /// Optional list of foreign asset multilocations as JSON strings to query
+    /// (queries all if omitted). Each element is a JSON-encoded XCM Location.
+    /// Use PHP-style bracket notation: `?foreignAssets[]=JSON1&foreignAssets[]=JSON2`
+    #[serde(default)]
+    pub foreign_assets: Vec<String>,
+
+    /// When true, include assets with zero balance. Defaults to false.
+    #[serde(default)]
+    pub show_empty: bool,
+}
+
+/// Response for GET /accounts/{accountId}/foreign-asset-balances
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignAssetBalancesResponse {
+    pub at: BlockInfo,
+    pub foreign_assets: Vec<ForeignAssetBalance>,
+
+    // Only present when useRcBlock=true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rc_block_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ah_timestamp: Option<String>,
+}
+
+/// Foreign asset balance information
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignAssetBalance {
+    /// The XCM multilocation identifier for this foreign asset (serialized as JSON object)
+    pub multi_location: serde_json::Value,
+    /// Balance as string (u128 serialized as decimal string)
+    pub balance: String,
+    pub is_frozen: bool,
+    pub is_sufficient: bool,
+}
+
+// ================================================================================================
+// Tests
+// ================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- deny_unknown_fields tests ---
+
+    #[test]
+    fn test_asset_balances_query_rejects_unknown_fields() {
+        let json = r#"{"at": "100", "foo": "bar"}"#;
+        let result: Result<AssetBalancesQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("unknown field"),
+            "Expected 'unknown field' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_asset_balances_query_accepts_known_fields() {
+        let json = r#"{"at": "100", "useRcBlock": true, "assets": [1, 2, 3]}"#;
+        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.at, Some("100".to_string()));
+        assert!(params.use_rc_block);
+        assert_eq!(params.assets, Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn test_balance_info_query_rejects_unknown_fields() {
+        let json = r#"{"at": "200", "unknown": 42}"#;
+        let result: Result<BalanceInfoQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_balance_info_query_accepts_known_fields() {
+        let json = r#"{"at": "200", "useRcBlock": false, "token": "DOT", "denominated": true}"#;
+        let params: BalanceInfoQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.at, Some("200".to_string()));
+        assert!(!params.use_rc_block);
+        assert_eq!(params.token, Some("DOT".to_string()));
+        assert_eq!(params.denominated, Some(true));
+    }
+
+    #[test]
+    fn test_staking_info_query_rejects_unknown_fields() {
+        let json = r#"{"at": "300", "badParam": true}"#;
+        let result: Result<StakingInfoQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_account_validate_query_rejects_unknown_fields() {
+        let json = r#"{"scheme": "sr25519", "extra": "nope"}"#;
+        let result: Result<AccountValidateQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_staking_payouts_query_rejects_misspelled_camel_case() {
+        // "useRcblock" instead of "useRcBlock"
+        let json = r#"{"at": "400", "useRcblock": true}"#;
+        let result: Result<StakingPayoutsQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_foreign_asset_balances_query_rejects_unknown_fields() {
+        let json = r#"{"at": "500", "surprise": "field"}"#;
+        let result: Result<ForeignAssetBalancesQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    // --- PHP-style bracket notation tests (serde_qs) ---
+
+    #[test]
+    fn test_asset_balances_bracket_notation_via_serde_qs() {
+        // serde_qs supports PHP-style bracket notation: ?assets[]=1984&assets[]=2000
+        let config = serde_qs::Config::new(5, false);
+        let params: AssetBalancesQueryParams = config
+            .deserialize_str("assets[]=1984&assets[]=2000")
+            .unwrap();
+        assert_eq!(params.assets, Some(vec![1984, 2000]));
+    }
+
+    #[test]
+    fn test_asset_balances_url_encoded_brackets_via_serde_qs() {
+        // Browsers typically URL-encode brackets: assets%5B%5D=1984&assets%5B%5D=2000
+        // serde_qs with strict=false handles this
+        let config = serde_qs::Config::new(5, false);
+        let params: AssetBalancesQueryParams = config
+            .deserialize_str("assets%5B%5D=1984&assets%5B%5D=2000")
+            .unwrap();
+        assert_eq!(params.assets, Some(vec![1984, 2000]));
+    }
+
+    #[test]
+    fn test_asset_balances_single_value_bracket_notation() {
+        // Single value with bracket notation: ?assets[]=1984
+        let config = serde_qs::Config::new(5, false);
+        let params: AssetBalancesQueryParams = config.deserialize_str("assets[]=1984").unwrap();
+        assert_eq!(params.assets, Some(vec![1984]));
+    }
+
+    #[test]
+    fn test_asset_balances_absent_is_none() {
+        let config = serde_qs::Config::new(5, false);
+        let params: AssetBalancesQueryParams = config.deserialize_str("").unwrap();
+        assert_eq!(params.assets, None);
+    }
+
+    #[test]
+    fn test_asset_balances_json_array_works() {
+        let json = r#"{"assets": [1984, 2000]}"#;
+        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.assets, Some(vec![1984, 2000]));
+    }
+
+    #[test]
+    fn test_pool_asset_balances_bracket_notation() {
+        let config = serde_qs::Config::new(5, false);
+        let params: PoolAssetBalancesQueryParams =
+            config.deserialize_str("assets[]=42&assets[]=100").unwrap();
+        assert_eq!(params.assets, Some(vec![42, 100]));
+    }
+
+    #[test]
+    fn test_foreign_assets_bracket_notation() {
+        let config = serde_qs::Config::new(5, false);
+        let params: ForeignAssetBalancesQueryParams = config
+            .deserialize_str("foreignAssets[]={\"parents\":1}&foreignAssets[]={\"parents\":2}")
+            .unwrap();
+        assert_eq!(
+            params.foreign_assets,
+            vec!["{\"parents\":1}", "{\"parents\":2}"]
+        );
+    }
+
+    #[test]
+    fn test_empty_object_accepted_for_all_optional_params() {
+        // All query params should accept empty JSON (all fields are optional or have defaults)
+        let json = r#"{}"#;
+        let _: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        let _: BalanceInfoQueryParams = serde_json::from_str(json).unwrap();
+        let _: StakingInfoQueryParams = serde_json::from_str(json).unwrap();
+        let _: ProxyInfoQueryParams = serde_json::from_str(json).unwrap();
+        let _: VestingInfoQueryParams = serde_json::from_str(json).unwrap();
+        let _: AccountConvertQueryParams = serde_json::from_str(json).unwrap();
+        let _: AccountValidateQueryParams = serde_json::from_str(json).unwrap();
+        let _: ForeignAssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+    }
+}

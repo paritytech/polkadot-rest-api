@@ -1,38 +1,37 @@
-use crate::state::AppState;
-use crate::types::BlockHash;
-use crate::utils::compute_block_hash_from_header_json;
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use crate::extractors::JsonQuery;
+use crate::handlers::blocks::common::convert_digest_items_to_logs;
+use crate::handlers::blocks::types::{BlockHeaderResponse, convert_digest_logs_to_sidecar_format};
+use crate::state::{AppState, RelayChainError};
+use crate::utils::{self, RcBlockError, fetch_block_timestamp, find_ah_blocks_in_rc_block_at};
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
 };
-use serde::{Deserialize, Serialize};
+use polkadot_rest_api_config::ChainType;
+use serde::Deserialize;
 use serde_json::json;
-use subxt_rpcs::rpc_params;
+use subxt::error::OnlineClientAtBlockError;
 use thiserror::Error;
 
 /// Query parameters for /blocks/head/header endpoint
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockQueryParams {
     /// When true (default), query finalized head. When false, query canonical head.
     #[serde(default = "default_finalized")]
     pub finalized: bool,
+    /// When true, treat block identifier as Relay Chain block and return Asset Hub blocks included in it
+    #[serde(default, rename = "useRcBlock")]
+    pub use_rc_block: bool,
 }
 
 fn default_finalized() -> bool {
     true
-}
-
-/// Lightweight block header information (no author/logs decoding)
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BlockHeaderResponse {
-    pub number: String,
-    pub hash: String,
-    pub parent_hash: String,
-    pub state_root: String,
-    pub extrinsics_root: String,
 }
 
 /// Error types for /blocks/head/header endpoint
@@ -41,19 +40,91 @@ pub enum GetBlockHeadHeaderError {
     #[error("Failed to get block header")]
     HeaderFetchFailed(#[source] subxt_rpcs::Error),
 
+    #[error("Failed to get block header")]
+    BlockHeaderFailed(#[source] subxt::error::BlockError),
+
     #[error("Header field missing: {0}")]
     HeaderFieldMissing(String),
 
-    #[error("Failed to compute block hash: {0}")]
-    HashComputationFailed(#[from] crate::utils::HashError),
+    #[error("Block resolution failed")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Service temporarily unavailable: {0}")]
+    ServiceUnavailable(String),
+
+    #[error("Failed to find Asset Hub blocks in Relay Chain block")]
+    RcBlockError(#[source] Box<RcBlockError>),
+
+    #[error("useRcBlock parameter is only supported for Asset Hub endpoints")]
+    UseRcBlockNotSupported,
+
+    #[error(transparent)]
+    RelayChain(#[from] RelayChainError),
+
+    #[error("Failed to get client at block: {0}")]
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
+}
+
+impl From<utils::AtBlockError> for GetBlockHeadHeaderError {
+    fn from(err: utils::AtBlockError) -> Self {
+        match err {
+            utils::AtBlockError::BlockNotFound(msg) => {
+                GetBlockHeadHeaderError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::AtBlockError::Client(e) => {
+                GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e))
+            }
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for GetBlockHeadHeaderError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        GetBlockHeadHeaderError::from(utils::AtBlockError::from(err))
+    }
 }
 
 impl IntoResponse for GetBlockHeadHeaderError {
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
-            GetBlockHeadHeaderError::HeaderFetchFailed(_)
-            | GetBlockHeadHeaderError::HeaderFieldMissing(_)
-            | GetBlockHeadHeaderError::HashComputationFailed(_) => {
+        let (status, message) = match &self {
+            GetBlockHeadHeaderError::UseRcBlockNotSupported => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockHeadHeaderError::BlockResolveFailed(inner) => {
+                (inner.status_code(), inner.to_string())
+            }
+            GetBlockHeadHeaderError::RelayChain(RelayChainError::NotConfigured) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockHeadHeaderError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
+            GetBlockHeadHeaderError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
+            GetBlockHeadHeaderError::HeaderFetchFailed(err) => utils::rpc_error_to_status(err),
+            GetBlockHeadHeaderError::ClientAtBlockFailed(err) => {
+                if utils::is_online_client_at_block_disconnected(err) {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Service temporarily unavailable".to_string(),
+                    )
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
+            GetBlockHeadHeaderError::RcBlockError(inner) => {
+                if matches!(
+                    inner.as_ref(),
+                    crate::utils::rc_block::RcBlockError::BlockNotFound(_)
+                ) {
+                    (StatusCode::BAD_REQUEST, inner.to_string())
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
+            GetBlockHeadHeaderError::HeaderFieldMissing(_)
+            | GetBlockHeadHeaderError::BlockHeaderFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -72,83 +143,187 @@ impl IntoResponse for GetBlockHeadHeaderError {
 ///
 /// Query Parameters:
 /// - `finalized` (boolean, default: true): When true, returns finalized head. When false, returns canonical head.
-///
-/// Optimizations:
-/// - Computes block hash locally from header data (saves 1 RPC call)
-/// - Reuses header data instead of fetching twice (saves 1 RPC call)
+/// - `useRcBlock` (boolean, default: false): When true, treat as Relay Chain block and return Asset Hub blocks
+#[utoipa::path(
+    get,
+    path = "/v1/blocks/head/header",
+    tag = "blocks",
+    summary = "Get head block header",
+    description = "Returns the header of the latest finalized or canonical block (lightweight, no extrinsics/events).",
+    params(
+        ("finalized" = Option<bool>, Query, description = "When true (default), returns finalized head header. When false, returns canonical head header."),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat as Relay Chain block and return Asset Hub blocks")
+    ),
+    responses(
+        (status = 200, description = "Block header information", body = Object),
+        (status = 503, description = "Service unavailable"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_blocks_head_header(
     State(state): State<AppState>,
-    Query(params): Query<BlockQueryParams>,
-) -> Result<Json<BlockHeaderResponse>, GetBlockHeadHeaderError> {
-    let (block_hash, header_json) = if params.finalized {
-        let finalized_hash = state
-            .legacy_rpc
-            .chain_get_finalized_head()
-            .await
-            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
-        let block_hash_typed = BlockHash::from(finalized_hash);
-        let hash_str = block_hash_typed.to_string();
-        let header_json = state
-            .get_header_json(&hash_str)
-            .await
-            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
+    JsonQuery(params): JsonQuery<BlockQueryParams>,
+) -> Result<Response, GetBlockHeadHeaderError> {
+    if params.use_rc_block {
+        return handle_use_rc_block(state, params).await;
+    }
 
-        (hash_str, header_json)
+    let client_at_block = if params.finalized {
+        state
+            .client
+            .at_current_block()
+            .await
+            .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?
     } else {
-        // Canonical head (may not be finalized): get latest header
-        // OPTIMIZATION: This returns the header without hash, so we compute it locally
-        let header_json = state
-            .rpc_client
-            .request::<serde_json::Value>("chain_getHeader", rpc_params![])
+        let best_hash = state
+            .legacy_rpc
+            .chain_get_block_hash(None)
             .await
-            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?;
+            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?
+            .ok_or_else(|| {
+                GetBlockHeadHeaderError::HeaderFieldMissing("best block hash".to_string())
+            })?;
 
-        // OPTIMIZATION: Compute hash locally from header data
-        // This saves 1 RPC call (chain_getBlockHash)
-        let block_hash_typed = compute_block_hash_from_header_json(&header_json)?;
-        let block_hash = block_hash_typed.to_string();
-
-        (block_hash, header_json)
+        state.client.at_block(best_hash).await?
     };
 
-    // Extract header fields from the JSON we already have
-    // OPTIMIZATION: We don't fetch the header again - we already have it!
-    let number_hex = header_json
-        .get("number")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("number".to_string()))?;
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_number = client_at_block.block_number();
 
-    let block_number = u64::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16)
-        .map_err(|_| {
-            GetBlockHeadHeaderError::HeaderFieldMissing("number (invalid format)".to_string())
-        })?;
+    let header = client_at_block
+        .block_header()
+        .await
+        .map_err(GetBlockHeadHeaderError::BlockHeaderFailed)?;
 
-    let parent_hash = header_json
-        .get("parentHash")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("parentHash".to_string()))?
-        .to_string();
+    let parent_hash = format!("{:#x}", header.parent_hash);
+    let state_root = format!("{:#x}", header.state_root);
+    let extrinsics_root = format!("{:#x}", header.extrinsics_root);
 
-    let state_root = header_json
-        .get("stateRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("stateRoot".to_string()))?
-        .to_string();
+    let digest_logs = convert_digest_items_to_logs(&header.digest.logs);
+    let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
 
-    let extrinsics_root = header_json
-        .get("extrinsicsRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockHeadHeaderError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
-        .to_string();
-
-    // Build lightweight header response
     let response = BlockHeaderResponse {
-        number: block_number.to_string(),
-        hash: block_hash,
         parent_hash,
+        number: block_number.to_string(),
         state_root,
         extrinsics_root,
+        digest: json!({
+            "logs": digest_logs_formatted
+        }),
+        hash: Some(block_hash),
+        rc_block_hash: None,
+        rc_block_number: None,
+        ah_timestamp: None,
     };
 
-    Ok(Json(response))
+    Ok(Json(response).into_response())
+}
+
+async fn handle_use_rc_block(
+    state: AppState,
+    params: BlockQueryParams,
+) -> Result<Response, GetBlockHeadHeaderError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(GetBlockHeadHeaderError::UseRcBlockNotSupported);
+    }
+
+    let relay_client = state.get_relay_chain_client().await?;
+
+    let relay_rpc = state.get_relay_chain_rpc().await?;
+
+    let rc_client_at_block = if params.finalized {
+        relay_client
+            .at_current_block()
+            .await
+            .map_err(|e| GetBlockHeadHeaderError::ClientAtBlockFailed(Box::new(e)))?
+    } else {
+        let best_hash = relay_rpc
+            .chain_get_block_hash(None)
+            .await
+            .map_err(GetBlockHeadHeaderError::HeaderFetchFailed)?
+            .ok_or_else(|| {
+                GetBlockHeadHeaderError::HeaderFieldMissing("best block hash".to_string())
+            })?;
+
+        relay_client.at_block(best_hash).await?
+    };
+
+    let ah_blocks = find_ah_blocks_in_rc_block_at(&rc_client_at_block)
+        .await
+        .map_err(|e| GetBlockHeadHeaderError::RcBlockError(Box::new(e)))?;
+
+    if ah_blocks.is_empty() {
+        return Ok(Json(json!([])).into_response());
+    }
+
+    let rc_block_number = rc_client_at_block.block_number().to_string();
+    let rc_block_hash = format!("{:#x}", rc_client_at_block.block_hash());
+
+    let mut results = Vec::new();
+    for ah_block in ah_blocks {
+        let client_at_block = state.client.at_block(ah_block.number).await?;
+
+        let header = client_at_block
+            .block_header()
+            .await
+            .map_err(GetBlockHeadHeaderError::BlockHeaderFailed)?;
+
+        let parent_hash = format!("{:#x}", header.parent_hash);
+        let state_root = format!("{:#x}", header.state_root);
+        let extrinsics_root = format!("{:#x}", header.extrinsics_root);
+
+        let digest_logs = convert_digest_items_to_logs(&header.digest.logs);
+        let digest_logs_formatted = convert_digest_logs_to_sidecar_format(digest_logs);
+
+        let ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+
+        results.push(BlockHeaderResponse {
+            parent_hash,
+            number: ah_block.number.to_string(),
+            state_root,
+            extrinsics_root,
+            digest: json!({
+                "logs": digest_logs_formatted
+            }),
+            hash: Some(ah_block.hash),
+            rc_block_hash: Some(rc_block_hash.clone()),
+            rc_block_number: Some(rc_block_number.clone()),
+            ah_timestamp,
+        });
+    }
+
+    Ok(Json(json!(results)).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_block_query_params_rejects_unknown_fields() {
+        let json = r#"{"finalized": true, "unknownField": true}"#;
+        let result: Result<BlockQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_block_query_params_accepts_known_fields() {
+        let json = r#"{"finalized": false, "useRcBlock": true}"#;
+        let result: Result<BlockQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_ok());
+        let params = result.unwrap();
+        assert!(!params.finalized);
+        assert!(params.use_rc_block);
+    }
+
+    #[test]
+    fn test_block_query_params_accepts_empty_object() {
+        let json = r#"{}"#;
+        let result: Result<BlockQueryParams, _> = serde_json::from_str(json);
+        assert!(result.is_ok());
+        let params = result.unwrap();
+        assert!(params.finalized); // default is true
+        assert!(!params.use_rc_block); // default is false
+    }
 }

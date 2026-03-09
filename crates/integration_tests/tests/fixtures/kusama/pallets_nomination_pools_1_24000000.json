@@ -1,0 +1,31 @@
+{
+  "at": {
+    "hash": "0x7f494fe774c3b7791f2c71ce9f3d05ac581376fef0cb382f6bacd6708eff5612",
+    "height": "24000000"
+  },
+  "bondedPool": {
+    "commission": {
+      "current": null,
+      "max": null,
+      "changeRate": null,
+      "throttleFrom": null,
+      "claimPermission": null
+    },
+    "memberCounter": "110",
+    "points": "39557681473881295",
+    "roles": {
+      "depositor": "E8a4iJyDLd2ZysHt4bWfg5VG3RwNfHqSZtkyt5SPNJpmYoq",
+      "root": "E8a4iJyDLd2ZysHt4bWfg5VG3RwNfHqSZtkyt5SPNJpmYoq",
+      "nominator": "Fc51t7QUm5sPhx6gJdxzVBjznqqoRyp2gHTJSnbRBcLExAo",
+      "bouncer": "GF5PrXFcW7YDKKKfgJsMJE9xKF1UgE64kVSWYxNNo7waZYe"
+    },
+    "state": "Open"
+  },
+  "rewardPool": {
+    "lastRecordedRewardCounter": "299872697704736816",
+    "lastRecordedTotalPayouts": "2452387542773081",
+    "totalRewardsClaimed": "1952029272818213",
+    "totalCommissionPending": "0",
+    "totalCommissionClaimed": "0"
+  }
+}

@@ -1,20 +1,65 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+mod args;
+mod chain;
 mod error;
 mod express;
-mod fee;
 mod log;
 mod metrics;
+mod spec_versions;
 mod substrate;
 
+pub use chain::{
+    ChainConfig, ChainConfigError, ChainConfigs, Hasher,
+    QueryFeeDetailsStatus as ChainQueryFeeDetailsStatus,
+};
 pub use error::ConfigError;
 pub use express::{ExpressConfig, ExpressError};
-pub use fee::{ChainFeeConfig, ChainFeeConfigs, FeeConfigError, QueryFeeDetailsStatus};
 pub use log::{LogConfig, LogError};
 pub use metrics::{MetricsConfig, MetricsError};
+pub use spec_versions::SpecVersionChanges;
 pub use substrate::{
     ChainType, ChainUrl, KnownAssetHub, KnownRelayChain, SubstrateConfig, SubstrateError,
 };
 
 use serde::Deserialize;
+
+/// Complete configuration structure for chain + optional relay chain
+///
+/// This struct supports dual-connection mode where a parachain can be connected
+/// alongside its relay chain for operations like:
+/// - Parachain inclusion tracking
+/// - Historic staking queries  
+/// - useRcBlock functionality
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// Primary chain configuration
+    pub chain: ChainConfig,
+
+    /// Optional relay chain configuration (for parachains)
+    pub rc: Option<ChainConfig>,
+}
+
+impl Config {
+    /// Create a single-chain config (no relay chain)
+    pub fn single_chain(chain: ChainConfig) -> Self {
+        Self { chain, rc: None }
+    }
+
+    /// Create a dual-chain config (parachain + relay chain)
+    pub fn with_relay_chain(chain: ChainConfig, relay_chain: ChainConfig) -> Self {
+        Self {
+            chain,
+            rc: Some(relay_chain),
+        }
+    }
+
+    /// Check if relay chain is configured
+    pub fn has_relay_chain(&self) -> bool {
+        self.rc.is_some()
+    }
+}
 
 /// Flat structure for loading from environment variables
 /// This works better with envy than nested structs
@@ -31,6 +76,9 @@ struct EnvConfig {
 
     #[serde(default = "default_express_keep_alive_timeout")]
     express_keep_alive_timeout: u64,
+
+    #[serde(default = "default_express_block_fetch_concurrency")]
+    express_block_fetch_concurrency: usize,
 
     #[serde(default = "default_log_level")]
     log_level: String,
@@ -58,6 +106,15 @@ struct EnvConfig {
 
     #[serde(default = "default_substrate_multi_chain_url")]
     substrate_multi_chain_url: String,
+
+    #[serde(default = "default_substrate_reconnect_initial_delay_ms")]
+    substrate_reconnect_initial_delay_ms: u64,
+
+    #[serde(default = "default_substrate_reconnect_max_delay_ms")]
+    substrate_reconnect_max_delay_ms: u64,
+
+    #[serde(default = "default_substrate_reconnect_request_timeout_ms")]
+    substrate_reconnect_request_timeout_ms: u64,
 
     #[serde(default = "default_metrics_enabled")]
     metrics_enabled: bool,
@@ -97,6 +154,10 @@ fn default_express_keep_alive_timeout() -> u64 {
     5000 // 5 seconds in milliseconds
 }
 
+fn default_express_block_fetch_concurrency() -> usize {
+    10
+}
+
 fn default_log_level() -> String {
     "info".to_string()
 }
@@ -131,6 +192,18 @@ fn default_substrate_url() -> String {
 
 fn default_substrate_multi_chain_url() -> String {
     String::new()
+}
+
+fn default_substrate_reconnect_initial_delay_ms() -> u64 {
+    100
+}
+
+fn default_substrate_reconnect_max_delay_ms() -> u64 {
+    10000
+}
+
+fn default_substrate_reconnect_request_timeout_ms() -> u64 {
+    30000
 }
 
 fn default_metrics_enabled() -> bool {
@@ -187,6 +260,9 @@ impl SidecarConfig {
     /// - SAS_LOG_WRITE_MAX_FILES
     /// - SAS_SUBSTRATE_URL
     /// - SAS_SUBSTRATE_MULTI_CHAIN_URL
+    /// - SAS_SUBSTRATE_RECONNECT_INITIAL_DELAY_MS
+    /// - SAS_SUBSTRATE_RECONNECT_MAX_DELAY_MS
+    /// - SAS_SUBSTRATE_RECONNECT_REQUEST_TIMEOUT_MS
     /// - SAS_METRICS_ENABLED
     /// - SAS_METRICS_PROM_HOST
     /// - SAS_METRICS_PROM_PORT
@@ -195,6 +271,15 @@ impl SidecarConfig {
     /// - SAS_METRICS_LOKI_PORT
     /// - SAS_METRICS_INCLUDE_QUERYPARAMS
     pub fn from_env() -> Result<Self, ConfigError> {
+        // Get the path to the env file from the command line argument
+        let env_file = args::Args::parse_args().env_file;
+        Self::from_env_with_file(&env_file)
+    }
+
+    pub fn from_env_with_file(env_file: &str) -> Result<Self, ConfigError> {
+        // Load the environment variables from the specified file
+        dotenv::from_filename(env_file).ok();
+
         // Load flat env config
         let env_config = envy::prefixed("SAS_").from_env::<EnvConfig>()?;
 
@@ -212,6 +297,7 @@ impl SidecarConfig {
                 port: env_config.express_port,
                 request_limit: env_config.express_request_limit,
                 keep_alive_timeout: env_config.express_keep_alive_timeout,
+                block_fetch_concurrency: env_config.express_block_fetch_concurrency,
             },
             log: LogConfig {
                 level: env_config.log_level,
@@ -225,6 +311,9 @@ impl SidecarConfig {
             substrate: SubstrateConfig {
                 url: env_config.substrate_url,
                 multi_chain_urls,
+                reconnect_initial_delay_ms: env_config.substrate_reconnect_initial_delay_ms,
+                reconnect_max_delay_ms: env_config.substrate_reconnect_max_delay_ms,
+                reconnect_request_timeout_ms: env_config.substrate_reconnect_request_timeout_ms,
             },
             metrics: MetricsConfig {
                 enabled: env_config.metrics_enabled,
@@ -254,6 +343,18 @@ impl SidecarConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+
+    /// Helper to clean up all SAS_ environment variables
+    fn cleanup_sas_env_vars() {
+        let vars_to_remove: Vec<String> = std::env::vars()
+            .filter(|(k, _)| k.starts_with("SAS_"))
+            .map(|(k, _)| k)
+            .collect();
+        for var in vars_to_remove {
+            unsafe { std::env::remove_var(&var) };
+        }
+    }
 
     #[test]
     fn test_default_config() {
@@ -267,7 +368,10 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_from_env_with_multi_chain() {
+        cleanup_sas_env_vars();
+
         unsafe {
             std::env::set_var("SAS_EXPRESS_PORT", "8080");
             std::env::set_var("SAS_LOG_LEVEL", "info");
@@ -278,7 +382,7 @@ mod tests {
             );
         }
 
-        let config = SidecarConfig::from_env().unwrap();
+        let config = SidecarConfig::from_env_with_file(".env.nonexistent").unwrap();
         assert_eq!(config.substrate.multi_chain_urls.len(), 2);
         assert_eq!(
             config.substrate.multi_chain_urls[0].url,
@@ -297,29 +401,119 @@ mod tests {
             ChainType::AssetHub
         );
 
-        // Clean up
-        unsafe {
-            std::env::remove_var("SAS_EXPRESS_PORT");
-            std::env::remove_var("SAS_LOG_LEVEL");
-            std::env::remove_var("SAS_SUBSTRATE_URL");
-            std::env::remove_var("SAS_SUBSTRATE_MULTI_CHAIN_URL");
-        }
+        cleanup_sas_env_vars();
     }
 
     #[test]
+    #[serial]
     fn test_from_env_invalid_multi_chain_json() {
+        cleanup_sas_env_vars();
+
         unsafe {
             std::env::set_var("SAS_SUBSTRATE_URL", "ws://localhost:9944");
             std::env::set_var("SAS_SUBSTRATE_MULTI_CHAIN_URL", "not-valid-json");
         }
 
-        let result = SidecarConfig::from_env();
+        let result = SidecarConfig::from_env_with_file(".env.nonexistent");
+
         assert!(result.is_err());
 
-        // Clean up
+        cleanup_sas_env_vars();
+    }
+
+    #[test]
+    fn test_config_single_chain() {
+        let chain_config = ChainConfig::default();
+        let config = Config::single_chain(chain_config);
+        assert!(!config.has_relay_chain());
+        assert!(config.rc.is_none());
+    }
+
+    #[test]
+    fn test_config_with_relay_chain() {
+        let chain_config = ChainConfig::default();
+        let relay_config = ChainConfig::default();
+        let config = Config::with_relay_chain(chain_config, relay_config);
+        assert!(config.has_relay_chain());
+        assert!(config.rc.is_some());
+    }
+
+    #[test]
+    fn test_config_relay_chain_is_optional() {
+        let chain_config = ChainConfig::default();
+        let config = Config {
+            chain: chain_config,
+            rc: None,
+        };
+        assert!(!config.has_relay_chain());
+    }
+
+    #[test]
+    #[serial]
+    fn test_env_file_non_existent() {
+        cleanup_sas_env_vars();
+
+        // Create a temp directory with no .env files
+        let temp_dir = tempfile::tempdir().unwrap();
+        let non_existent_file = temp_dir.path().join(".env.non_existent");
+
         unsafe {
-            std::env::remove_var("SAS_SUBSTRATE_URL");
-            std::env::remove_var("SAS_SUBSTRATE_MULTI_CHAIN_URL");
+            std::env::set_var("SAS_SUBSTRATE_URL", "ws://localhost:9944");
+            std::env::set_var("SAS_EXPRESS_PORT", "8011");
+            std::env::set_var("SAS_LOG_LEVEL", "debug");
         }
+
+        let config =
+            SidecarConfig::from_env_with_file(non_existent_file.to_str().unwrap()).unwrap();
+
+        assert_eq!(config.substrate.url, "ws://localhost:9944");
+        assert_eq!(config.express.port, 8011);
+        assert_eq!(config.log.level, "debug");
+
+        cleanup_sas_env_vars();
+    }
+
+    #[test]
+    #[serial]
+    fn test_env_file_unknown_var() {
+        cleanup_sas_env_vars();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let env_path = temp_dir.path().join(".env");
+
+        // Instead of SAS_EXPRESS_PORT setting SAS_EXPSS_PRT (typo) as environment variable
+        std::fs::write(
+            &env_path,
+            "SAS_SUBSTRATE_URL=ws://localhost:9944\nSAS_EXPSS_PRT=8011",
+        )
+        .unwrap();
+
+        let result = SidecarConfig::from_env_with_file(env_path.to_str().unwrap());
+
+        // Unknown var `SAS_EXPSS_PRT` is ignored, default port 8080 is used
+        assert_eq!(result.unwrap().express.port, 8080);
+
+        cleanup_sas_env_vars();
+    }
+
+    #[test]
+    #[serial]
+    fn test_env_file_working() {
+        cleanup_sas_env_vars();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let env_path = temp_dir.path().join(".env");
+
+        std::fs::write(
+            &env_path,
+            "SAS_SUBSTRATE_URL=ws://localhost:9944\nSAS_EXPRESS_PORT=8023\n",
+        )
+        .unwrap();
+
+        let result = SidecarConfig::from_env_with_file(env_path.to_str().unwrap());
+
+        assert_eq!(result.unwrap().express.port, 8023);
+
+        cleanup_sas_env_vars();
     }
 }

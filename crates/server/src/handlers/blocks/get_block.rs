@@ -1,230 +1,178 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Handler for GET /blocks/{blockId} endpoint.
 //!
 //! This module provides the main handler for fetching block information.
 
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
-use crate::utils;
+use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
+    response::{IntoResponse, Response},
 };
-use heck::{ToSnakeCase, ToUpperCamelCase};
+use polkadot_rest_api_config::ChainType;
+use serde_json::json;
 
-use super::common::{
-    add_docs_to_events, categorize_events, decode_digest_logs, extract_author, extract_extrinsics,
-    extract_fee_info_for_extrinsic, fetch_block_events, get_canonical_hash_at_number,
-    get_finalized_block_number,
-};
-use super::docs::Docs;
+use super::common::{BlockBuildContext, build_block_response_generic};
 use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
-use super::xcm::XcmDecoder;
 
 // ================================================================================================
 // Main Handler
 // ================================================================================================
 
-/// Handler for GET /blocks/{blockId}
-///
-/// Returns block information for a given block identifier (hash or number)
-///
-/// Query Parameters:
-/// - `eventDocs` (boolean, default: false): Include documentation for events
-/// - `extrinsicDocs` (boolean, default: false): Include documentation for extrinsics
+#[utoipa::path(
+    get,
+    path = "/v1/blocks/{blockId}",
+    tag = "blocks",
+    summary = "Get block by ID",
+    description = "Returns block information for a given block identifier (hash or number), including extrinsics, events, and fees.",
+    params(
+        ("blockId" = String, Path, description = "Block height number or block hash"),
+        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation for extrinsics"),
+        ("finalizedKey" = Option<bool>, Query, description = "When true (default), include finalized status in response"),
+        ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat blockId as Relay Chain block and return Asset Hub blocks"),
+        ("useEvmFormat" = Option<bool>, Query, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
+    ),
+    responses(
+        (status = 200, description = "Block information", body = Object),
+        (status = 400, description = "Invalid block identifier"),
+        (status = 503, description = "Service unavailable"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn get_block(
     State(state): State<AppState>,
     Path(block_id): Path<String>,
-    Query(params): Query<BlockQueryParams>,
-) -> Result<Json<BlockResponse>, GetBlockError> {
-    let block_id = block_id.parse::<utils::BlockId>()?;
-    // Track if the block was queried by hash (needed for canonical chain check)
-    let queried_by_hash = matches!(block_id, utils::BlockId::Hash(_));
-    let resolved_block = utils::resolve_block(&state, Some(block_id)).await?;
-    let header_json = state
-        .get_header_json(&resolved_block.hash)
+    JsonQuery(params): JsonQuery<BlockQueryParams>,
+) -> Result<Response, GetBlockError> {
+    if params.use_rc_block {
+        return handle_use_rc_block(state, block_id, params).await;
+    }
+
+    let response = build_block_response(&state, block_id, &params).await?;
+    Ok(Json(response).into_response())
+}
+
+async fn handle_use_rc_block(
+    state: AppState,
+    block_id: String,
+    params: BlockQueryParams,
+) -> Result<Response, GetBlockError> {
+    if state.chain_info.chain_type != ChainType::AssetHub {
+        return Err(GetBlockError::UseRcBlockNotSupported);
+    }
+
+    let rc_rpc_client = state.get_relay_chain_rpc_client().await?;
+    let rc_rpc = state.get_relay_chain_rpc().await?;
+
+    let rc_block_id = block_id.parse::<utils::BlockId>()?;
+    let rc_resolved_block =
+        utils::resolve_block_with_rpc(&rc_rpc_client, &rc_rpc, Some(rc_block_id)).await?;
+
+    let ah_blocks = find_ah_blocks_in_rc_block(&state, &rc_resolved_block)
         .await
-        .map_err(GetBlockError::HeaderFetchFailed)?;
+        .map_err(|e| GetBlockError::RcBlockError(Box::new(e)))?;
 
-    let parent_hash = header_json
-        .get("parentHash")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("parentHash".to_string()))?
-        .to_string();
-
-    let state_root = header_json
-        .get("stateRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("stateRoot".to_string()))?
-        .to_string();
-
-    let extrinsics_root = header_json
-        .get("extrinsicsRoot")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("extrinsicsRoot".to_string()))?
-        .to_string();
-
-    let logs = decode_digest_logs(&header_json);
-
-    // Create client_at_block once and reuse for all operations
-    let client_at_block = state.client.at(resolved_block.number).await?;
-
-    let (author_id, extrinsics_result, events_result, finalized_head_result, canonical_hash_result) = tokio::join!(
-        extract_author(&state, &client_at_block, &logs, resolved_block.number),
-        extract_extrinsics(&state, &client_at_block, resolved_block.number),
-        fetch_block_events(&state, &client_at_block, resolved_block.number),
-        // Only fetch canonical hash if queried by hash (needed for fork detection)
-        async {
-            if params.finalized_key {
-                Some(get_finalized_block_number(&state).await)
-            } else {
-                None
-            }
-        },
-        // Only fetch canonical hash if queried by hash AND finalizedKey=true
-        async {
-            if queried_by_hash && params.finalized_key {
-                Some(get_canonical_hash_at_number(&state, resolved_block.number).await)
-            } else {
-                None
-            }
-        }
-    );
-
-    let extrinsics = extrinsics_result?;
-    let block_events = events_result?;
-
-    // Determine if the block is finalized (only when finalizedKey=true)
-    let finalized = if let Some(finalized_head_result) = finalized_head_result {
-        let finalized_head_number = finalized_head_result?;
-        // 1. Block number must be <= finalized head number
-        // 2. If queried by hash, the hash must match the canonical chain hash
-        //    (to detect blocks on forked/orphaned chains)
-        let is_finalized = if resolved_block.number <= finalized_head_number {
-            if let Some(canonical_result) = canonical_hash_result {
-                // Queried by hash - verify it's on the canonical chain
-                match canonical_result? {
-                    Some(canonical_hash) => canonical_hash == resolved_block.hash,
-                    // If canonical hash not found, block is not finalized
-                    None => false,
-                }
-            } else {
-                // Queried by number - assumed to be canonical
-                true
-            }
-        } else {
-            false
-        };
-        Some(is_finalized)
-    } else {
-        // finalizedKey=false, omit finalized field
-        None
-    };
-
-    // Categorize events by phase and extract extrinsic outcomes (success, paysFee)
-    let (on_initialize, per_extrinsic_events, on_finalize, extrinsic_outcomes) =
-        categorize_events(block_events, extrinsics.len());
-
-    let mut extrinsics_with_events = extrinsics;
-    for (i, (extrinsic_events, outcome)) in per_extrinsic_events
-        .iter()
-        .zip(extrinsic_outcomes.iter())
-        .enumerate()
-    {
-        if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            extrinsic.events = extrinsic_events.clone();
-            extrinsic.success = outcome.success;
-            // Only update pays_fee from events if the extrinsic is SIGNED.
-            // Unsigned extrinsics (inherents) never pay fees, regardless of what
-            // DispatchInfo.paysFee says in the event. The event's paysFee indicates
-            // whether the call *would* pay a fee if called as a transaction, but
-            // inherents are inserted by block authors and don't actually pay fees.
-            if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
-                extrinsic.pays_fee = outcome.pays_fee;
-            }
-        }
+    if ah_blocks.is_empty() {
+        return Ok(Json(json!([])).into_response());
     }
 
-    // Populate fee info for signed extrinsics that pay fees (unless noFees=true)
-    if !params.no_fees {
-        let spec_version = state
-            .get_runtime_version_at_hash(&resolved_block.hash)
-            .await
-            .ok()
-            .and_then(|v| v.get("specVersion").and_then(|sv| sv.as_u64()))
-            .map(|v| v as u32)
-            .unwrap_or(state.chain_info.spec_version);
+    let rc_block_number = rc_resolved_block.number.to_string();
+    let rc_block_hash = rc_resolved_block.hash.clone();
 
-        for (i, extrinsic) in extrinsics_with_events.iter_mut().enumerate() {
-            if extrinsic.signature.is_some() && extrinsic.pays_fee == Some(true) {
-                extrinsic.info = extract_fee_info_for_extrinsic(
-                    &state,
-                    &extrinsic.raw_hex,
-                    &extrinsic.events,
-                    extrinsic_outcomes.get(i),
-                    &parent_hash,
-                    spec_version,
-                )
-                .await;
-            }
+    let results = futures::future::try_join_all(ah_blocks.into_iter().map(|ah_block| {
+        let state = &state;
+        let params = &params;
+        let rc_block_hash = &rc_block_hash;
+        let rc_block_number = &rc_block_number;
+        async move {
+            let client_at_block = state.client.at_block(ah_block.number).await?;
+
+            let mut response = build_block_response_for_hash(
+                state,
+                &ah_block.hash,
+                ah_block.number,
+                true,
+                &client_at_block,
+                params,
+            )
+            .await?;
+
+            response.rc_block_hash = Some(rc_block_hash.clone());
+            response.rc_block_number = Some(rc_block_number.clone());
+            response.ah_timestamp = fetch_block_timestamp(&client_at_block).await;
+
+            Ok::<_, GetBlockError>(response)
         }
-    }
+    }))
+    .await?;
 
-    // Optionally populate documentation for events and extrinsics
-    let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
+    Ok(Json(json!(results)).into_response())
+}
 
-    if params.event_docs || params.extrinsic_docs {
-        // Reuse the client_at_block we created earlier
-        let metadata = client_at_block.metadata();
+pub(crate) async fn build_block_response(
+    state: &AppState,
+    block_id: String,
+    params: &BlockQueryParams,
+) -> Result<BlockResponse, GetBlockError> {
+    let block_id_parsed = block_id.parse::<utils::BlockId>()?;
+    let queried_by_hash = matches!(block_id_parsed, utils::BlockId::Hash(_));
 
-        if params.event_docs {
-            add_docs_to_events(&mut on_initialize.events, metadata);
-            add_docs_to_events(&mut on_finalize.events, metadata);
-
-            for extrinsic in extrinsics_with_events.iter_mut() {
-                add_docs_to_events(&mut extrinsic.events, metadata);
-            }
-        }
-
-        if params.extrinsic_docs {
-            for extrinsic in extrinsics_with_events.iter_mut() {
-                // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
-                // We need to convert back: "system" -> "System", "balances" -> "Balances"
-                // Method names in metadata are snake_case, but our method names are lowerCamelCase
-                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
-                let method_name = extrinsic.method.method.to_snake_case();
-                extrinsic.docs =
-                    Docs::for_call(metadata, &pallet_name, &method_name).map(|d| d.to_string());
-            }
-        }
-    }
-
-    // Decode XCM messages if requested
-    let decoded_xcm_msgs = if params.decoded_xcm_msgs {
-        let decoder = XcmDecoder::new(
-            state.chain_info.chain_type.clone(),
-            &extrinsics_with_events,
-            params.para_id,
-        );
-        Some(decoder.decode())
-    } else {
-        None
+    // Create client_at_block directly from parsed input - saves 1 RPC call
+    // by letting subxt resolve hash<->number internally
+    let client_at_block = match &block_id_parsed {
+        utils::BlockId::Hash(hash) => state.client.at_block(*hash).await?,
+        utils::BlockId::Number(number) => state.client.at_block(*number).await?,
     };
 
-    let response = BlockResponse {
-        number: resolved_block.number.to_string(),
-        hash: resolved_block.hash,
-        parent_hash,
-        state_root,
-        extrinsics_root,
-        author_id,
-        logs,
-        on_initialize,
-        extrinsics: extrinsics_with_events,
-        on_finalize,
-        finalized,
-        decoded_xcm_msgs,
+    // Extract hash and number from the resolved client
+    let block_hash = format!("{:#x}", client_at_block.block_hash());
+    let block_number = client_at_block.block_number();
+
+    build_block_response_for_hash(
+        state,
+        &block_hash,
+        block_number,
+        queried_by_hash,
+        &client_at_block,
+        params,
+    )
+    .await
+}
+
+pub(crate) async fn build_block_response_for_hash(
+    state: &AppState,
+    block_hash: &str,
+    block_number: u64,
+    queried_by_hash: bool,
+    client_at_block: &super::common::BlockClient,
+    params: &BlockQueryParams,
+) -> Result<BlockResponse, GetBlockError> {
+    let ctx = BlockBuildContext {
+        state,
+        client: &state.client,
+        ss58_prefix: state.chain_info.ss58_prefix,
+        chain_type: state.chain_info.chain_type.clone(),
+        spec_name: state.chain_info.spec_name.clone(),
     };
 
-    Ok(Json(response))
+    build_block_response_generic(
+        &ctx,
+        client_at_block,
+        block_hash,
+        block_number,
+        queried_by_hash,
+        &params.to_build_params(),
+        params.finalized_key,
+    )
+    .await
 }
 
 // ================================================================================================
@@ -234,36 +182,46 @@ pub async fn get_block(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extractors::JsonQuery;
     use crate::state::AppState;
-    use config::SidecarConfig;
+    use polkadot_rest_api_config::SidecarConfig;
     use serde_json::json;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
     /// Helper to create a test AppState with mocked RPC responses
-    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+    async fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
         let config = SidecarConfig::default();
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
         let chain_info = crate::state::ChainInfo {
-            chain_type: config::ChainType::Relay,
+            chain_type: polkadot_rest_api_config::ChainType::Relay,
             spec_name: "test".to_string(),
             spec_version: 1,
             ss58_prefix: 42,
         };
 
+        let client = subxt::OnlineClient::from_rpc_client((*rpc_client).clone())
+            .await
+            .expect("Failed to create test OnlineClient");
+
         AppState {
             config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
+            client: Arc::new(client),
             legacy_rpc,
             rpc_client,
             chain_info,
+            relay_client: Arc::new(tokio::sync::OnceCell::new()),
+            relay_rpc_client: Arc::new(tokio::sync::OnceCell::new()),
+            relay_chain_info: Arc::new(tokio::sync::OnceCell::new()),
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
+            chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
+            chain_config: Arc::new(polkadot_rest_api_config::Config::single_chain(
+                polkadot_rest_api_config::ChainConfig::default(),
+            )),
             route_registry: crate::routes::RouteRegistry::new(),
+            relay_chain_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 
@@ -314,81 +272,15 @@ mod tests {
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
         let block_id = "100".to_string();
         let params = BlockQueryParams::default();
 
         // Attempt to get the block - this will fail at metadata fetch in current setup
         // but validates the handler flow up to that point
-        let result = get_block(State(state), Path(block_id), Query(params)).await;
+        let result = get_block(State(state), Path(block_id), JsonQuery(params)).await;
 
         // We expect an error due to metadata fetching limitations in mock environment
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_decode_digest_logs() {
-        use serde_json::json;
-
-        // Test decoding PreRuntime BABE log
-        let header_json = json!({
-            "digest": {
-                "logs": [
-                    // PreRuntime (6) + BABE engine (42414245) + payload
-                    "0x0642414245340201000000ef55a50f00000000"
-                ]
-            }
-        });
-
-        let logs = decode_digest_logs(&header_json);
-        assert_eq!(logs.len(), 1);
-        assert_eq!(logs[0].log_type, "PreRuntime");
-        assert_eq!(logs[0].index, "6");
-
-        // The value should be [engine_id, payload]
-        let arr = logs[0].value.as_array().unwrap();
-        assert_eq!(arr.len(), 2);
-        assert_eq!(arr[0].as_str().unwrap(), "0x42414245"); // "BABE" in hex
-    }
-
-    #[test]
-    fn test_decode_seal_log() {
-        use serde_json::json;
-
-        // Test decoding Seal log
-        // Format: discriminant (05) + engine_id (42414245 = "BABE") + SCALE compact length (0101 = 64) + 64 bytes of signature data
-        let header_json = json!({
-            "digest": {
-                "logs": [
-                    // Seal (5) + BABE engine (42414245) + compact length (0101 = 64 bytes) + 64 bytes of signature
-                    "0x05424142450101aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-                ]
-            }
-        });
-
-        let logs = decode_digest_logs(&header_json);
-        assert_eq!(logs.len(), 1);
-        assert_eq!(logs[0].log_type, "Seal");
-        assert_eq!(logs[0].index, "5");
-    }
-
-    #[test]
-    fn test_decode_runtime_environment_updated() {
-        use serde_json::json;
-
-        // Test decoding RuntimeEnvironmentUpdated log (discriminant 8, no data)
-        let header_json = json!({
-            "digest": {
-                "logs": [
-                    "0x08"
-                ]
-            }
-        });
-
-        let logs = decode_digest_logs(&header_json);
-        assert_eq!(logs.len(), 1);
-        assert_eq!(logs[0].log_type, "RuntimeEnvironmentUpdated");
-        assert_eq!(logs[0].index, "8");
-        assert!(logs[0].value.is_null());
     }
 }

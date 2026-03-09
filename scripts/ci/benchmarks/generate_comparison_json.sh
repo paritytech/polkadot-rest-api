@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright (C) 2026 Parity Technologies (UK) Ltd.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 
 set -e
 
@@ -46,7 +49,8 @@ FIRST=true
 # Get list of endpoints from local results
 for local_result in "$LOCAL_DIR"/benchmark_*.txt; do
     if [ -f "$local_result" ]; then
-        ENDPOINT=$(basename "$local_result" | cut -d_ -f2 | cut -d. -f1)
+        ENDPOINT=$(basename "$local_result" .txt)
+        ENDPOINT=${ENDPOINT#benchmark_}
         SIDECAR_RESULT="$SIDECAR_DIR/benchmark_sidecar_${ENDPOINT}.txt"
         
         if [ ! -f "$SIDECAR_RESULT" ]; then

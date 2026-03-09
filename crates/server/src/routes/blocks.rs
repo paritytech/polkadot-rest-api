@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::handlers::blocks;
 use crate::routes::{API_VERSION, RegisterRoute, RouteRegistry};
 use crate::state::AppState;
@@ -12,6 +15,48 @@ pub fn blocks_routes(registry: &RouteRegistry) -> Router<AppState> {
             "/blocks/head/header",
             "get",
             get(blocks::get_blocks_head_header),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/blocks/head",
+            "get",
+            get(blocks::get_block_head),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/blocks",
+            "get",
+            get(blocks::get_blocks),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/blocks/:blockId/extrinsics-raw",
+            "get",
+            get(blocks::get_block_extrinsics_raw),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/blocks/:blockId/extrinsics/:extrinsicIndex",
+            "get",
+            get(blocks::get_extrinsic),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/blocks/:blockId/header",
+            "get",
+            get(blocks::get_block_header),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/blocks/:blockId/para-inclusions",
+            "get",
+            get(blocks::get_block_para_inclusions),
         )
         .route_registered(
             registry,

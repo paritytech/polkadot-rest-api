@@ -1,0 +1,34 @@
+{
+    "rcBlock": {
+        "hash": "0xb3776c31cdcec764c7b9d508b14c813c512226abeef4f55ca4e743426bd40c94",
+        "parentHash": "0xaa5bfcd80e559881ae90b35941761283ee20bdfdb17cd92e8c4d504b77e3d511",
+        "number": "10293194"
+    },
+    "parachainDataPerBlock": [
+        {
+            "parentHash": "0x91bc62a9eb4b192ae46239884b9d67b42f2e0efd0058166723640c42fb79937b",
+            "number": "1276963",
+            "stateRoot": "0xf7a11fabc74cf181a8a0ef678dcb47cbb430528dc0efba799054cd577a7c2266",
+            "extrinsicsRoot": "0xfab3f88a496a194265c9799ce1ec3fecd6c39e12c61bb2721bfdb6547dfdc446",
+            "digest": {
+                "logs": [
+                    {
+                        "preRuntime": [
+                            "0x61757261",
+                            "0xb23d350800000000"
+                        ]
+                    },
+                    {
+                        "seal": [
+                            "0x61757261",
+                            "0x44495ccd7b56f92819147a275f2e6f32c6520ed2c4867a1c60bc10ffa80081fb4b2ca6ef625584b37238093de765743759aa0b2c9551c4793980bba064c15a08"
+                        ]
+                    }
+                ]
+            },
+            "rcBlockHash": "0xb3776c31cdcec764c7b9d508b14c813c512226abeef4f55ca4e743426bd40c94",
+            "rcBlockNumber": "10293194",
+            "ahTimestamp": "1652483166456"
+        }
+    ]
+}

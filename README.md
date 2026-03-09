@@ -1,10 +1,12 @@
 # Polkadot REST API
 
+> **Note:** This project is in a beta release. Changes are to be expected until it's stable. 
+
 ## Implementation Details
 
 ### Logging
 
-Logging levels supported are ```race, debug, info, http, warn, error```. **http** level allows for the emission of http information logging (method, route, elapsed time, success code). However currently tracing does not support *http*.  To mitigate this, **http** level falls back to *debug* for successful logs, *warn* for 4** request logs, and *error* for 5**
+Logging levels supported are ```trace, debug, info, http, warn, error```. **http** level allows for the emission of http information logging (method, route, elapsed time, success code). However currently tracing does not support *http*.  To mitigate this, **http** level falls back to *debug* for successful logs, *warn* for 4** request logs, and *error* for 5**
 
 ## Metrics and Monitoring
 
@@ -167,3 +169,29 @@ To update test fixtures with current blockchain data:
 ```bash
 ./scripts/update_fixtures.sh
 ```
+
+### Using `.env` files
+
+The application supports configuration via `.env` files (for example, `.env` or `.env.polkadot`), allowing you to define all environment variables in one place. A sample configuration is available in [.env.sample](./.env.sample).
+To start `polkadot-rest-api` with a specific `.env` file, pass the file path as a command-line argument:
+```bash
+cargo run --release --bin polkadot-rest-api -- --env-file .env.polkadot
+```
+This command loads the environment variables specified in `.env.polkadot` file, which should be located in the project's root directory.
+
+### Multi-Chain Configuration
+
+For Asset Hub deployments that need relay chain access (e.g., for `useRcBlock` parameter support or `/rc/` related endpoints), configure `SAS_SUBSTRATE_MULTI_CHAIN_URL`:
+
+```bash
+# Primary connection: Asset Hub
+export SAS_SUBSTRATE_URL=wss://polkadot-asset-hub-rpc.polkadot.io
+
+# Additional chain: Relay chain (enables useRcBlock)
+export SAS_SUBSTRATE_MULTI_CHAIN_URL='[{"url":"wss://rpc.polkadot.io","type":"relay"}]'
+```
+
+**Supported chain types:**
+- `relay` - Relay chain (Polkadot, Kusama, Westend, etc.)
+- `assethub` - Asset Hub parachain
+- `parachain` - Generic parachain

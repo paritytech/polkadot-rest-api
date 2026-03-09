@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use anyhow::{Context, Result};
 use colored::Colorize;
 use reqwest::Client;
@@ -27,10 +30,12 @@ impl TestClient {
             base_url: base_url.trim_end_matches('/').to_string(),
             client: Client::builder()
                 .timeout(DEFAULT_REQUEST_TIMEOUT)
+                .pool_max_idle_per_host(0) // Disable connection pooling to avoid "dispatch task is gone" errors
                 .build()
                 .expect("Failed to create HTTP client"),
             health_check_client: Client::builder()
                 .timeout(HEALTH_CHECK_TIMEOUT)
+                .pool_max_idle_per_host(0)
                 .build()
                 .expect("Failed to create health check client"),
             timeout: DEFAULT_REQUEST_TIMEOUT,
@@ -43,10 +48,12 @@ impl TestClient {
             base_url: base_url.trim_end_matches('/').to_string(),
             client: Client::builder()
                 .timeout(timeout)
+                .pool_max_idle_per_host(0) // Disable connection pooling to avoid "dispatch task is gone" errors
                 .build()
                 .expect("Failed to create HTTP client"),
             health_check_client: Client::builder()
                 .timeout(HEALTH_CHECK_TIMEOUT)
+                .pool_max_idle_per_host(0)
                 .build()
                 .expect("Failed to create health check client"),
             timeout,

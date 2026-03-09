@@ -1,0 +1,11 @@
+{
+  "at": {
+    "hash": "0x5202861cdcb8902759853d172c058b88c5adbafbbb652bfa5e3da29e8b4d42ce",
+    "height": "25000000"
+  },
+  "pallet": "timestamp",
+  "palletIndex": "2",
+  "storageItem": "now",
+  "keys": [],
+  "value": "1726829106000"
+}

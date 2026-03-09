@@ -1,5 +1,9 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::types::BlockHash;
 use parity_scale_codec::{Decode, Encode};
+use polkadot_rest_api_config::Hasher;
 use sp_core::H256;
 use sp_runtime::generic::{Digest, DigestItem};
 use thiserror::Error;
@@ -19,6 +23,21 @@ pub enum HashError {
     ScaleDecodeError(String),
 }
 
+/// Extension trait for Hasher to provide hashing functionality
+pub trait HasherExt {
+    /// Hash the given data and return a 32-byte hash
+    fn hash(&self, data: &[u8]) -> [u8; 32];
+}
+
+impl HasherExt for Hasher {
+    fn hash(&self, data: &[u8]) -> [u8; 32] {
+        match self {
+            Hasher::Blake2_256 => sp_core::blake2_256(data),
+            Hasher::Keccak256 => sp_core::keccak_256(data),
+        }
+    }
+}
+
 /// Compute the block hash from header JSON fields
 ///
 /// This reconstructs the SCALE-encoded header and hashes it with Blake2b-256,
@@ -28,6 +47,19 @@ pub enum HashError {
 /// Convert to string with `hash.to_string()` or use directly in JSON responses.
 pub fn compute_block_hash_from_header_json(
     header_json: &serde_json::Value,
+) -> Result<BlockHash, HashError> {
+    compute_block_hash_from_header_json_with_hasher(header_json, &Hasher::Blake2_256)
+}
+
+/// Compute the block hash from header JSON fields with configurable hasher
+///
+/// This reconstructs the SCALE-encoded header and hashes it with the specified hasher,
+/// matching the chain's block hash calculation.
+///
+/// Returns `BlockHash` wrapper type with controlled string formatting.
+pub fn compute_block_hash_from_header_json_with_hasher(
+    header_json: &serde_json::Value,
+    hasher: &Hasher,
 ) -> Result<BlockHash, HashError> {
     let parent_hash = extract_hash(header_json, "parentHash")?;
     let number = extract_block_number(header_json, "number")?;
@@ -44,9 +76,9 @@ pub fn compute_block_hash_from_header_json(
         digest,
     };
 
-    // Compute hash using Blake2b-256 of SCALE-encoded header
+    // Compute hash using the configured hasher on SCALE-encoded header
     let encoded = header.encode();
-    let hash = sp_core::blake2_256(&encoded);
+    let hash = hasher.hash(&encoded);
 
     Ok(BlockHash::from(H256::from(hash)))
 }
@@ -78,22 +110,42 @@ fn parse_hash(hex_str: &str) -> Result<H256, HashError> {
     Ok(H256::from_slice(&bytes))
 }
 
-/// Extract block number from JSON
+/// Extract block number from JSON header field.
+///
+/// Handles both formats returned by different RPC implementations:
+/// - Hex string: `"number": "0x1a2b3c"` (standard Substrate nodes)
+/// - Numeric: `"number": 12345` (Smoldot light client)
 fn extract_block_number(json: &serde_json::Value, field: &str) -> Result<u32, HashError> {
-    let number_hex = json
+    let value = json
         .get(field)
-        .and_then(|v| v.as_str())
         .ok_or_else(|| HashError::MissingField(field.to_string()))?;
 
-    parse_block_number(number_hex)
+    parse_block_number_from_json(value)
+        .map(|n| n as u32)
+        .map_err(HashError::InvalidNumber)
 }
 
-/// Parse a hex string into u32 block number
-fn parse_block_number(hex_str: &str) -> Result<u32, HashError> {
-    let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+/// Parse a block number from a JSON value.
+///
+/// Handles both formats returned by different RPC implementations:
+/// - Hex string: `"0x1a2b3c"` (standard Substrate nodes)
+/// - Numeric: `12345` (Smoldot light client)
+///
+/// This mirrors subxt's `NumberOrHex` deserialization approach.
+pub fn parse_block_number_from_json(value: &serde_json::Value) -> Result<u64, String> {
+    // Try as string first (hex format from standard Substrate nodes)
+    if let Some(hex_str) = value.as_str() {
+        let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+        return u64::from_str_radix(hex_str, 16)
+            .map_err(|e| format!("invalid hex '{}': {}", hex_str, e));
+    }
 
-    u32::from_str_radix(hex_str, 16)
-        .map_err(|e| HashError::InvalidNumber(format!("{}: {}", hex_str, e)))
+    // Try as number (numeric format from Smoldot)
+    if let Some(num) = value.as_u64() {
+        return Ok(num);
+    }
+
+    Err(format!("expected hex string or number, got: {}", value))
 }
 
 /// Extract and decode digest from JSON
@@ -137,10 +189,35 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_block_number() {
-        assert_eq!(parse_block_number("0x64").unwrap(), 100);
-        assert_eq!(parse_block_number("64").unwrap(), 100);
-        assert_eq!(parse_block_number("0x0").unwrap(), 0);
+    fn test_parse_block_number_from_json_hex_string() {
+        // Hex string format (standard Substrate nodes)
+        assert_eq!(parse_block_number_from_json(&json!("0x64")).unwrap(), 100);
+        assert_eq!(parse_block_number_from_json(&json!("64")).unwrap(), 100);
+        assert_eq!(parse_block_number_from_json(&json!("0x0")).unwrap(), 0);
+        assert_eq!(
+            parse_block_number_from_json(&json!("0xf4240")).unwrap(),
+            1_000_000
+        );
+    }
+
+    #[test]
+    fn test_parse_block_number_from_json_numeric() {
+        // Numeric format (Smoldot light client)
+        assert_eq!(parse_block_number_from_json(&json!(100)).unwrap(), 100);
+        assert_eq!(parse_block_number_from_json(&json!(0)).unwrap(), 0);
+        assert_eq!(
+            parse_block_number_from_json(&json!(1_000_000)).unwrap(),
+            1_000_000
+        );
+    }
+
+    #[test]
+    fn test_parse_block_number_from_json_invalid() {
+        // Invalid formats
+        assert!(parse_block_number_from_json(&json!(null)).is_err());
+        assert!(parse_block_number_from_json(&json!([])).is_err());
+        assert!(parse_block_number_from_json(&json!({})).is_err());
+        assert!(parse_block_number_from_json(&json!("not_hex")).is_err());
     }
 
     #[test]
@@ -219,5 +296,70 @@ mod tests {
         let hash_str = hash.to_string();
         assert!(hash_str.starts_with("0x"));
         assert_eq!(hash_str.len(), 66); // "0x" + 64 hex chars
+    }
+
+    #[test]
+    fn test_hasher_blake2_256() {
+        use polkadot_rest_api_config::Hasher;
+
+        let data = b"test data for hashing";
+        let hash = Hasher::Blake2_256.hash(data);
+        assert_eq!(hash.len(), 32);
+
+        // Hash should be deterministic
+        let hash2 = Hasher::Blake2_256.hash(data);
+        assert_eq!(hash, hash2);
+    }
+
+    #[test]
+    fn test_hasher_keccak256() {
+        use polkadot_rest_api_config::Hasher;
+
+        let data = b"test data for hashing";
+        let hash = Hasher::Keccak256.hash(data);
+        assert_eq!(hash.len(), 32);
+
+        // Different hasher should produce different hash
+        let blake_hash = Hasher::Blake2_256.hash(data);
+        assert_ne!(hash, blake_hash);
+    }
+
+    #[test]
+    fn test_hasher_produces_consistent_results() {
+        use polkadot_rest_api_config::Hasher;
+
+        let data = b"consistent data";
+        let hash1 = Hasher::Blake2_256.hash(data);
+        let hash2 = Hasher::Blake2_256.hash(data);
+        let hash3 = Hasher::Blake2_256.hash(data);
+
+        assert_eq!(hash1, hash2);
+        assert_eq!(hash2, hash3);
+    }
+
+    #[test]
+    fn test_compute_hash_with_different_hashers() {
+        let header_json = json!({
+            "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "number": "0x1",
+            "stateRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "extrinsicsRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "digest": {"logs": []}
+        });
+
+        let hash_blake2 = compute_block_hash_from_header_json_with_hasher(
+            &header_json,
+            &polkadot_rest_api_config::Hasher::Blake2_256,
+        )
+        .unwrap();
+
+        let hash_keccak = compute_block_hash_from_header_json_with_hasher(
+            &header_json,
+            &polkadot_rest_api_config::Hasher::Keccak256,
+        )
+        .unwrap();
+
+        // Different hashers should produce different hashes
+        assert_ne!(hash_blake2.as_bytes(), hash_keccak.as_bytes());
     }
 }

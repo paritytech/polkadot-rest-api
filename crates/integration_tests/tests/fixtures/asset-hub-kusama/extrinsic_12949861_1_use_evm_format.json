@@ -1,0 +1,45 @@
+{
+  "at": {
+    "height": "12949861",
+    "hash": "0x48dba5d48b3ad04c0a57b22f04092ed4e1686b18b8d79159fab602f8fc707a43"
+  },
+  "extrinsics": {
+    "method": {
+      "pallet": "timestamp",
+      "method": "set"
+    },
+    "signature": null,
+    "nonce": null,
+    "args": {
+      "now": "1770130932000"
+    },
+    "tip": null,
+    "hash": "0x4dfc09571984f977d679069ecf8c9182a995bc733780d954a0a4502e2c152723",
+    "info": {},
+    "era": {
+      "immortalEra": "0x00"
+    },
+    "events": [
+      {
+        "method": {
+          "pallet": "system",
+          "method": "ExtrinsicSuccess"
+        },
+        "data": [
+          {
+            "weight": {
+              "refTime": "205692000",
+              "proofSize": "1493"
+            },
+            "class": "Mandatory",
+            "paysFee": "Yes"
+          }
+        ],
+        "docs": "An extrinsic completed successfully."
+      }
+    ],
+    "success": true,
+    "paysFee": false,
+    "docs": "Set the current time.\n\nThis call should be invoked exactly once per block. It will panic at the finalization\nphase, if this call hasn't been invoked by that time.\n\nThe timestamp should be greater than the previous one by the amount specified by\n[`Config::MinimumPeriod`].\n\nThe dispatch origin for this call must be _None_.\n\nThis dispatch class is _Mandatory_ to ensure it gets executed in the block. Be aware\nthat changing the complexity of this call could result exhausting the resources in a\nblock to execute any other calls.\n\n## Complexity\n- `O(1)` (Note that implementations of `OnTimestampSet` must also be `O(1)`)\n- 1 storage read and 1 storage mutation (codec `O(1)` because of `DidUpdate::take` in\n  `on_finalize`)\n- 1 event handler `on_timestamp_set`. Must be `O(1)`."
+  }
+}

@@ -1,8 +1,13 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use crate::extractors::JsonQuery;
 use crate::state::AppState;
 use crate::utils;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use subxt::error::OnlineClientAtBlockError;
 use subxt_rpcs::client::rpc_params;
 use thiserror::Error;
 
@@ -12,7 +17,10 @@ pub enum GetSpecError {
     InvalidBlockParam(#[from] crate::utils::BlockIdParseError),
 
     #[error("Block resolution failed")]
-    BlockResolveFailed(#[from] crate::utils::BlockResolveError),
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Failed to get client at block")]
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 
     #[error("Failed to get runtime version")]
     RuntimeVersionFailed(#[source] subxt_rpcs::Error),
@@ -22,15 +30,47 @@ pub enum GetSpecError {
 
     #[error("Failed to get system chain type")]
     SystemChainTypeFailed(#[source] subxt_rpcs::Error),
+
+    #[error("Service temporarily unavailable: {0}")]
+    ServiceUnavailable(String),
+}
+
+impl From<utils::ResolveClientAtBlockError> for GetSpecError {
+    fn from(err: utils::ResolveClientAtBlockError) -> Self {
+        match err {
+            utils::ResolveClientAtBlockError::ParseError(e) => GetSpecError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
+                GetSpecError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::ResolveClientAtBlockError::SubxtError(e) => {
+                GetSpecError::ClientAtBlockFailed(Box::new(e))
+            }
+        }
+    }
 }
 
 impl IntoResponse for GetSpecError {
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
-            GetSpecError::InvalidBlockParam(_) | GetSpecError::BlockResolveFailed(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
+        let (status, message) = match &self {
+            GetSpecError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            GetSpecError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
+            GetSpecError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            GetSpecError::ClientAtBlockFailed(err) => {
+                if utils::is_online_client_at_block_disconnected(err) {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Service temporarily unavailable".to_string(),
+                    )
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
+            // Handle RPC errors with appropriate status codes
+            GetSpecError::RuntimeVersionFailed(err)
+            | GetSpecError::SystemPropertiesFailed(err)
+            | GetSpecError::SystemChainTypeFailed(err) => utils::rpc_error_to_status(err),
         };
 
         let body = Json(json!({
@@ -42,6 +82,7 @@ impl IntoResponse for GetSpecError {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AtBlockParam {
     pub at: Option<String>,
 }
@@ -68,7 +109,7 @@ pub struct RuntimeSpecResponse {
 /// Transform chain type to lowercase object format
 /// - String "Live" -> {"live": null}
 /// - Object {"Live": null} -> {"live": null}
-fn transform_chain_type(chain_type: Value) -> Value {
+pub fn transform_chain_type(chain_type: Value) -> Value {
     match chain_type {
         Value::String(s) => {
             let mut map = serde_json::Map::new();
@@ -91,7 +132,7 @@ fn transform_chain_type(chain_type: Value) -> Value {
 /// - tokenDecimals: number or array -> array of strings
 /// - tokenSymbol: string or array -> array of strings
 /// - isEthereum: add if missing (default false)
-fn transform_properties(properties: Value) -> Value {
+pub fn transform_properties(properties: Value) -> Value {
     let mut result = serde_json::Map::new();
 
     if let Value::Object(props) = properties {
@@ -149,21 +190,33 @@ fn transform_properties(properties: Value) -> Value {
     Value::Object(result)
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/runtime/spec",
+    tag = "runtime",
+    summary = "Runtime specification",
+    description = "Returns the runtime specification including version, APIs, and chain properties.",
+    params(
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
+    ),
+    responses(
+        (status = 200, description = "Runtime specification", body = Object),
+        (status = 400, description = "Invalid block parameter"),
+        (status = 503, description = "Service unavailable"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn runtime_spec(
     State(state): State<AppState>,
-    axum::extract::Query(params): axum::extract::Query<AtBlockParam>,
+    JsonQuery(params): JsonQuery<AtBlockParam>,
 ) -> Result<Json<RuntimeSpecResponse>, GetSpecError> {
-    // Parse the block identifier in the handler (sync)
-    let block_id = params
-        .at
-        .map(|s| s.parse::<crate::utils::BlockId>())
-        .transpose()?;
+    // Create client at the specified block - saves RPC calls by letting subxt
+    // resolve hash<->number internally
+    let client_at_block = utils::resolve_client_at_block(&state.client, params.at.as_ref()).await?;
 
-    // Resolve the block (async)
-    let resolved_block = utils::resolve_block(&state, block_id).await?;
-
-    let block_hash_str = resolved_block.hash;
-    let block_height = resolved_block.number.to_string();
+    // Extract hash and number from the resolved client
+    let block_hash_str = format!("{:#x}", client_at_block.block_hash());
+    let block_height = client_at_block.block_number().to_string();
 
     // Execute RPC calls in parallel
     // TODO: Once subxt-rpcs v0.50.0 is released, replace the direct RPC request
@@ -232,50 +285,54 @@ pub async fn runtime_spec(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extractors::JsonQuery;
     use crate::state::AppState;
-    use config::SidecarConfig;
+    use crate::test_fixtures::{TEST_BLOCK_HASH, TEST_BLOCK_NUMBER, mock_rpc_client_builder};
+    use polkadot_rest_api_config::SidecarConfig;
     use serde_json::json;
     use std::sync::Arc;
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
     use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
     /// Helper to create a test AppState with mocked RPC responses
-    fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
+    async fn create_test_state_with_mock(mock_client: MockRpcClient) -> AppState {
         let config = SidecarConfig::default();
         let rpc_client = Arc::new(RpcClient::new(mock_client));
         let legacy_rpc = Arc::new(subxt_rpcs::LegacyRpcMethods::new((*rpc_client).clone()));
         let chain_info = crate::state::ChainInfo {
-            chain_type: config::ChainType::Relay,
+            chain_type: polkadot_rest_api_config::ChainType::Relay,
             spec_name: "test".to_string(),
             spec_version: 1,
             ss58_prefix: 42,
         };
 
+        let client = subxt::OnlineClient::from_rpc_client((*rpc_client).clone())
+            .await
+            .expect("Failed to create test OnlineClient");
+
         AppState {
             config,
-            client: Arc::new(subxt_historic::OnlineClient::from_rpc_client(
-                subxt_historic::SubstrateConfig::new(),
-                (*rpc_client).clone(),
-            )),
+            client: Arc::new(client),
             legacy_rpc,
             rpc_client,
             chain_info,
+            relay_client: Arc::new(tokio::sync::OnceCell::new()),
+            relay_rpc_client: Arc::new(tokio::sync::OnceCell::new()),
+            relay_chain_info: Arc::new(tokio::sync::OnceCell::new()),
             fee_details_cache: Arc::new(crate::utils::QueryFeeDetailsCache::new()),
+            chain_configs: Arc::new(polkadot_rest_api_config::ChainConfigs::default()),
+            chain_config: Arc::new(polkadot_rest_api_config::Config::single_chain(
+                polkadot_rest_api_config::ChainConfig::default(),
+            )),
             route_registry: crate::routes::RouteRegistry::new(),
+            relay_chain_rpc: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 
     #[tokio::test]
     async fn test_runtime_spec_at_finalized() {
-        let mock_client = MockRpcClient::builder()
-            .method_handler("chain_getFinalizedHead", async |_params| {
-                MockJson("0x1234567890123456789012345678901234567890123456789012345678901234")
-            })
-            .method_handler("chain_getHeader", async |_params| {
-                MockJson(json!({
-                    "number": "0x2a", // Block 42
-                }))
-            })
+        // Use test fixtures builder and add runtime spec handlers
+        let mock_client = mock_rpc_client_builder()
             .method_handler("state_getRuntimeVersion", async |_params| {
                 MockJson(json!({
                     "specName": "polkadot",
@@ -295,15 +352,15 @@ mod tests {
             .method_handler("system_chainType", async |_params| MockJson("Live"))
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let params = AtBlockParam { at: None };
-        let result = runtime_spec(State(state), axum::extract::Query(params)).await;
+        let result = runtime_spec(State(state), JsonQuery(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
 
-        assert_eq!(response.at.height, "42");
+        assert_eq!(response.at.height, TEST_BLOCK_NUMBER.to_string());
         assert_eq!(response.spec_name, "polkadot");
         assert_eq!(response.spec_version, "9430");
         assert_eq!(response.transaction_version, "24");
@@ -321,14 +378,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_spec_at_specific_hash() {
-        let test_hash = "0xabcdef1234567890123456789012345678901234567890123456789012345678";
-
-        let mock_client = MockRpcClient::builder()
-            .method_handler("chain_getHeader", async |_params| {
-                MockJson(json!({
-                    "number": "0x64", // Block 100
-                }))
-            })
+        // Use test fixtures builder and add runtime spec handlers
+        let mock_client = mock_rpc_client_builder()
             .method_handler("state_getRuntimeVersion", async |_params| {
                 MockJson(json!({
                     "specName": "kusama",
@@ -348,18 +399,18 @@ mod tests {
             .method_handler("system_chainType", async |_params| MockJson("Live"))
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let params = AtBlockParam {
-            at: Some(test_hash.to_string()),
+            at: Some(TEST_BLOCK_HASH.to_string()),
         };
-        let result = runtime_spec(State(state), axum::extract::Query(params)).await;
+        let result = runtime_spec(State(state), JsonQuery(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
 
-        assert_eq!(response.at.hash, test_hash);
-        assert_eq!(response.at.height, "100");
+        assert_eq!(response.at.hash, TEST_BLOCK_HASH);
+        assert_eq!(response.at.height, TEST_BLOCK_NUMBER.to_string());
         assert_eq!(response.spec_name, "kusama");
         assert_eq!(response.authoring_version, "2");
         assert_eq!(response.chain_type, json!({ "live": null }));
@@ -367,13 +418,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_spec_at_specific_number() {
-        let test_number = "200";
-        let expected_hash = "0x9876543210987654321098765432109876543210987654321098765432109876";
-
-        let mock_client = MockRpcClient::builder()
-            .method_handler("chain_getBlockHash", async |_params| {
-                MockJson("0x9876543210987654321098765432109876543210987654321098765432109876")
-            })
+        // Use test fixtures builder and add runtime spec handlers
+        let mock_client = mock_rpc_client_builder()
             .method_handler("state_getRuntimeVersion", async |_params| {
                 MockJson(json!({
                     "specName": "westend",
@@ -393,31 +439,32 @@ mod tests {
             .method_handler("system_chainType", async |_params| MockJson("Development"))
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let params = AtBlockParam {
-            at: Some(test_number.to_string()),
+            at: Some(TEST_BLOCK_NUMBER.to_string()),
         };
-        let result = runtime_spec(State(state), axum::extract::Query(params)).await;
+        let result = runtime_spec(State(state), JsonQuery(params)).await;
 
         assert!(result.is_ok());
         let response = result.unwrap().0;
 
-        assert_eq!(response.at.hash, expected_hash);
-        assert_eq!(response.at.height, test_number);
+        assert_eq!(response.at.hash, TEST_BLOCK_HASH);
+        assert_eq!(response.at.height, TEST_BLOCK_NUMBER.to_string());
         assert_eq!(response.spec_name, "westend");
         assert_eq!(response.chain_type, json!({ "development": null }));
     }
 
     #[tokio::test]
     async fn test_runtime_spec_invalid_block_param() {
-        let mock_client = MockRpcClient::builder().build();
-        let state = create_test_state_with_mock(mock_client);
+        // Use test fixtures for proper OnlineClient initialization
+        let mock_client = mock_rpc_client_builder().build();
+        let state = create_test_state_with_mock(mock_client).await;
 
         let params = AtBlockParam {
             at: Some("invalid_block".to_string()),
         };
-        let result = runtime_spec(State(state), axum::extract::Query(params)).await;
+        let result = runtime_spec(State(state), JsonQuery(params)).await;
 
         assert!(result.is_err());
         assert!(matches!(
@@ -427,24 +474,37 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore] // Cannot test block-not-found with mock because OnlineClient init also calls chain_getBlockHash
     async fn test_runtime_spec_block_not_found() {
         let mock_client = MockRpcClient::builder()
+            .method_handler("rpc_methods", async |_params| {
+                MockJson(json!({ "methods": [] }))
+            })
             .method_handler("chain_getBlockHash", async |_params| {
-                MockJson(serde_json::Value::Null) // Block doesn't exist
+                // Return null for block not found
+                MockJson(json!(null))
             })
             .build();
 
-        let state = create_test_state_with_mock(mock_client);
+        let state = create_test_state_with_mock(mock_client).await;
 
         let params = AtBlockParam {
             at: Some("999999".to_string()),
         };
-        let result = runtime_spec(State(state), axum::extract::Query(params)).await;
+        let result = runtime_spec(State(state), JsonQuery(params)).await;
 
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            GetSpecError::BlockResolveFailed(_)
+            GetSpecError::ClientAtBlockFailed(_)
         ));
+    }
+
+    #[test]
+    fn test_at_block_param_rejects_unknown_fields() {
+        let json = r#"{"at": "123", "unknownField": true}"#;
+        let result: Result<AtBlockParam, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown field"));
     }
 }

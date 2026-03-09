@@ -1,0 +1,44 @@
+{
+  "at": {
+    "hash": "0x3f2f6ebf0dcc3f9587e6bf169f3c80bc6ff46fdbc909352f4b02b61d3fc781b3",
+    "height": "2000000"
+  },
+  "configuration": {
+    "regionLength": 5040,
+    "interludeLength": 50400,
+    "leadinLength": 100800,
+    "relayBlocksPerTimeslice": 80
+  },
+  "currentRegion": {
+    "start": 332925,
+    "end": 337965
+  },
+  "cores": {
+    "available": 0,
+    "sold": 22,
+    "total": 22,
+    "currentCorePrice": "92271064282",
+    "selloutPrice": "9225788271456",
+    "firstCore": 44
+  },
+  "phase": {
+    "currentPhase": "renewals",
+    "config": [
+      {
+        "phaseName": "renewals",
+        "lastRelayBlock": 26634000,
+        "lastTimeslice": 332925
+      },
+      {
+        "phaseName": "priceDiscovery",
+        "lastRelayBlock": 26734800,
+        "lastTimeslice": 334185
+      },
+      {
+        "phaseName": "fixedPrice",
+        "lastRelayBlock": 27037200,
+        "lastTimeslice": 337965
+      }
+    ]
+  }
+}

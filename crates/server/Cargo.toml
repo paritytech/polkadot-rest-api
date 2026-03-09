@@ -1,7 +1,11 @@
 [package]
-name = "server"
-version = "0.1.0"
-edition = "2024"
+name = "polkadot-rest-api"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+version.workspace = true
+repository.workspace = true
+description = "REST service that makes it easy to interact with blockchain nodes built using Substrate's FRAME framework."
 
 [[bin]]
 name = "polkadot-rest-api"
@@ -10,42 +14,56 @@ path = "src/main.rs"
 [dependencies]
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
+futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["preserve_order"] }
 tracing = "0.1"
 tracing-subscriber = {version = "0.3", features = ["env-filter", "fmt", "json"]}
 tracing-appender = "0.2"
 rolling-file = "0.2"
 thiserror = "2.0"
 tower = "0.5"
-tower-http = { version = "0.6.6", features = ["trace", "cors", "limit"] }
+tower-http = { version = "0.6.6", features = ["trace", "cors", "limit", "normalize-path"] }
+include_dir = "0.7"
 socket2 = "0.6"
-config = { path = "../config" }
-subxt-historic = { version = "0.0.7" }
-subxt-rpcs = { version = "0.44.0" }
+polkadot-rest-api-config = { path = "../config", version = "0.1.0-beta.3" }
+subxt = { version = "0.50.0-beta.4", features = ["reconnecting-rpc-client"] }
+subxt-rpcs = { version = "0.50.0-beta.4", features = ["reconnecting-rpc-client"] }
+subxt-metadata = "=0.50.0-beta.4"
+frame-decode = { version = "0.17.1", default-features = false, features = ["legacy-types"] }
 frame-metadata = { version = "23", default-features = false, features = ["current", "decode", "legacy", "std"] }
 scale-info = "2.11"
 heck = "0.5"
 primitive-types = "0.13"
 rustc-hex = "2.1"
 hex = "0.4"
+ss58-registry = "1.51"
 parity-scale-codec = { version = "3.0", features = ["derive"] }
 sp-core = "34"
 sp-runtime = "39"
 sp-consensus-babe = "0.40"
+sp-crypto-hashing = "0.1"
 staging-xcm = { version = "14", default-features = false, features = ["std"] }
 scale-value = "0.18"
 scale-decode = { version = "0.16", features = ["derive"] }
 scale-type-resolver = { version = "0.2.0", features = ["visitor"] }
 scale-info-legacy = "0.4.0"
+merkleized-metadata = "0.5"
 prometheus = "0.13"
 lazy_static = "1.4"
 regex = "1.10"
 tracing-loki = "0.2"
+nu-ansi-term = "0.50"
 url = "2.5"
 http-body-util = "0.1"
+utoipa = { version = "5", features = ["axum_extras"] }
+serde_urlencoded = "0.7.1"
+serde_qs = "0.13"
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+tikv-jemallocator = "0.6"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
-subxt-rpcs = { version = "0.44.0", features = ["mock-rpc-client"] }
+subxt-rpcs = { version = "0.50.0-beta.4", features = ["mock-rpc-client"] }

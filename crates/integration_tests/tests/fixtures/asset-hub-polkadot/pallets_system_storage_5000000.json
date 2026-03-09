@@ -1,0 +1,226 @@
+{
+  "at": {
+    "hash": "0x63cf90d74a0067a48b4bd0cc4bfd8de06a1bb352e631671294c5e486124ef508",
+    "height": "5000000"
+  },
+  "pallet": "system",
+  "palletIndex": "0",
+  "items": [
+    {
+      "name": "Account",
+      "modifier": "Default",
+      "type": {
+        "map": {
+          "hashers": [
+            "Blake2_128Concat"
+          ],
+          "key": "0",
+          "value": "3"
+        }
+      },
+      "fallback": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080",
+      "docs": " The full account information for a particular account ID.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "ExtrinsicCount",
+      "modifier": "Optional",
+      "type": {
+        "plain": "4"
+      },
+      "fallback": "0x00",
+      "docs": " Total extrinsics count for the current block.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "BlockWeight",
+      "modifier": "Default",
+      "type": {
+        "plain": "8"
+      },
+      "fallback": "0x000000000000",
+      "docs": " The current weight for the block.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "AllExtrinsicsLen",
+      "modifier": "Optional",
+      "type": {
+        "plain": "4"
+      },
+      "fallback": "0x00",
+      "docs": " Total length (in bytes) for all extrinsics put together, for the current block.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "BlockHash",
+      "modifier": "Default",
+      "type": {
+        "map": {
+          "hashers": [
+            "Twox64Concat"
+          ],
+          "key": "4",
+          "value": "12"
+        }
+      },
+      "fallback": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "docs": " Map of block numbers to block hashes.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "ExtrinsicData",
+      "modifier": "Default",
+      "type": {
+        "map": {
+          "hashers": [
+            "Twox64Concat"
+          ],
+          "key": "4",
+          "value": "13"
+        }
+      },
+      "fallback": "0x00",
+      "docs": " Extrinsics data for the current block (maps an extrinsic's index to its data).",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "Number",
+      "modifier": "Default",
+      "type": {
+        "plain": "4"
+      },
+      "fallback": "0x00000000",
+      "docs": " The current block number being processed. Set by `execute_block`.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "ParentHash",
+      "modifier": "Default",
+      "type": {
+        "plain": "12"
+      },
+      "fallback": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "docs": " Hash of the previous block.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "Digest",
+      "modifier": "Default",
+      "type": {
+        "plain": "14"
+      },
+      "fallback": "0x00",
+      "docs": " Digest of the current block, also part of the block header.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "Events",
+      "modifier": "Default",
+      "type": {
+        "plain": "18"
+      },
+      "fallback": "0x00",
+      "docs": " Events deposited for the current block.\n\n NOTE: The item is unbound and should therefore never be read on chain.\n It could otherwise inflate the PoV size of a block.\n\n Events have a large in-memory size. Box the events to not go out-of-memory\n just in case someone still reads them from within the runtime.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "EventCount",
+      "modifier": "Default",
+      "type": {
+        "plain": "4"
+      },
+      "fallback": "0x00000000",
+      "docs": " The number of events in the `Events<T>` list.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "EventTopics",
+      "modifier": "Default",
+      "type": {
+        "map": {
+          "hashers": [
+            "Blake2_128Concat"
+          ],
+          "key": "12",
+          "value": "126"
+        }
+      },
+      "fallback": "0x00",
+      "docs": " Mapping between a topic (represented by T::Hash) and a vector of indexes\n of events in the `<Events<T>>` list.\n\n All topic vectors have deterministic storage locations depending on the topic. This\n allows light-clients to leverage the changes trie storage tracking mechanism and\n in case of changes fetch the list of events of interest.\n\n The value has the type `(T::BlockNumber, EventIndex)` because if we used only just\n the `EventIndex` then in case if the topic has the same contents on the next block\n no notification will be triggered thus the event might be lost.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "LastRuntimeUpgrade",
+      "modifier": "Optional",
+      "type": {
+        "plain": "128"
+      },
+      "fallback": "0x00",
+      "docs": " Stores the `spec_version` and `spec_name` of when the last runtime upgrade happened.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "UpgradedToU32RefCount",
+      "modifier": "Default",
+      "type": {
+        "plain": "82"
+      },
+      "fallback": "0x00",
+      "docs": " True if we have upgraded so that `type RefCount` is `u32`. False (default) if not.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "UpgradedToTripleRefCount",
+      "modifier": "Default",
+      "type": {
+        "plain": "82"
+      },
+      "fallback": "0x00",
+      "docs": " True if we have upgraded so that AccountInfo contains three types of `RefCount`. False\n (default) if not.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    },
+    {
+      "name": "ExecutionPhase",
+      "modifier": "Optional",
+      "type": {
+        "plain": "124"
+      },
+      "fallback": "0x00",
+      "docs": " The execution phase of the block.",
+      "deprecationInfo": {
+        "notDeprecated": null
+      }
+    }
+  ]
+}

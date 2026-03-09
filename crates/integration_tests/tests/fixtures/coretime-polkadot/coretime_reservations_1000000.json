@@ -1,0 +1,32 @@
+{
+  "at": {
+    "hash": "0x95d94a0573df805d36591254bddf1ab51262d0eeb2092fe512e0c9095769e6df",
+    "height": "1000000"
+  },
+  "reservations": [
+    {
+      "mask": "0xffffffffffffffffffff",
+      "task": "1001"
+    },
+    {
+      "mask": "0xffffffffffffffffffff",
+      "task": "1002"
+    },
+    {
+      "mask": "0xffffffffffffffffffff",
+      "task": "1000"
+    },
+    {
+      "mask": "0xffffffffffffffffffff",
+      "task": "1004"
+    },
+    {
+      "mask": "0xffffffffffffffffffff",
+      "task": "1005"
+    },
+    {
+      "mask": "0xffffffffffffffffffff",
+      "task": "Pool"
+    }
+  ]
+}

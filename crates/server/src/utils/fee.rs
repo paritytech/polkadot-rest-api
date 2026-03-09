@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Fee calculation utilities for extrinsics.
 //!
 //! This module provides:
@@ -5,7 +8,7 @@
 //! - `QueryFeeDetailsCache`: Tracks whether `payment_queryFeeDetails` is available per spec_version
 //! - `parse_fee_details` / `extract_estimated_weight`: RPC response parsing utilities
 
-use config::ChainFeeConfigs;
+use polkadot_rest_api_config::ChainConfigs;
 use serde_json::Value;
 use sp_runtime::Perbill;
 use std::collections::HashMap;
@@ -33,6 +36,12 @@ pub enum FeeServiceError {
 
     #[error("Missing required fee data: {0}")]
     MissingData(String),
+
+    #[error("Failed to decode hex: {0}")]
+    HexDecodeError(#[from] hex::FromHexError),
+
+    #[error("Failed to decode RuntimeDispatchInfo from state_call response")]
+    RuntimeDispatchInfoDecodeError,
 }
 
 // ================================================================================================
@@ -111,6 +120,65 @@ pub fn dispatch_class_from_u8(class: u8) -> String {
         2 => "Mandatory".to_string(),
         _ => "Unknown".to_string(),
     }
+}
+
+/// Decode RuntimeDispatchInfo from SCALE-encoded bytes.
+///
+/// This handles both legacy (V1 weight - single u64) and modern (V2 weight - ref_time + proof_size)
+/// formats automatically based on the byte length and content.
+///
+/// # Arguments
+/// * `result_bytes` - The SCALE-encoded RuntimeDispatchInfo bytes from the runtime API response
+///
+/// # Returns
+/// * `Some(RuntimeDispatchInfoRaw)` if decoding succeeds
+/// * `None` if the bytes cannot be decoded as a valid RuntimeDispatchInfo
+pub fn decode_runtime_dispatch_info(result_bytes: &[u8]) -> Option<RuntimeDispatchInfoRaw> {
+    use parity_scale_codec::{Compact, Decode};
+
+    // Try to decode as legacy RuntimeDispatchInfo (with V1 weight) FIRST
+    // Format: { weight: u64, class: u8, partial_fee: u128 } = exactly 25 bytes
+    // V1 is tried first because it has a fixed size and validates cleanly.
+    // The V2 Compact decoder is too permissive and will "succeed" with garbage on V1 data.
+    if result_bytes.len() == 25
+        && let Ok((weight, class, partial_fee)) = <(u64, u8, u128)>::decode(&mut &result_bytes[..])
+        && class <= 2
+    {
+        return Some(RuntimeDispatchInfoRaw {
+            weight: WeightRaw::V1(weight),
+            class: dispatch_class_from_u8(class),
+            partial_fee,
+        });
+    }
+
+    // Try to decode as modern RuntimeDispatchInfo (with V2 weight)
+    // Format: { weight: { ref_time: Compact<u64>, proof_size: Compact<u64> }, class: u8, partial_fee: u128 }
+    if let Ok((ref_time, proof_size, class, partial_fee)) =
+        <(Compact<u64>, Compact<u64>, u8, u128)>::decode(&mut &result_bytes[..])
+        && class <= 2
+    {
+        return Some(RuntimeDispatchInfoRaw {
+            weight: WeightRaw::V2 {
+                ref_time: ref_time.0,
+                proof_size: proof_size.0,
+            },
+            class: dispatch_class_from_u8(class),
+            partial_fee,
+        });
+    }
+
+    // If V2 failed validation, try V1 without length check as fallback
+    if let Ok((weight, class, partial_fee)) = <(u64, u8, u128)>::decode(&mut &result_bytes[..])
+        && class <= 2
+    {
+        return Some(RuntimeDispatchInfoRaw {
+            weight: WeightRaw::V1(weight),
+            class: dispatch_class_from_u8(class),
+            partial_fee,
+        });
+    }
+
+    None
 }
 
 // ================================================================================================
@@ -227,15 +295,15 @@ pub fn calc_partial_fee_raw(
 pub struct QueryFeeDetailsCache {
     /// Cached results: spec_version -> is_available
     cache: RwLock<HashMap<u32, bool>>,
-    /// Chain fee configurations for static lookup
-    fee_configs: ChainFeeConfigs,
+    /// Chain configurations for static lookup
+    chain_configs: ChainConfigs,
 }
 
 impl QueryFeeDetailsCache {
     pub fn new() -> Self {
         Self {
             cache: RwLock::new(HashMap::new()),
-            fee_configs: ChainFeeConfigs::default(),
+            chain_configs: ChainConfigs::default(),
         }
     }
 
@@ -246,11 +314,11 @@ impl QueryFeeDetailsCache {
     /// - `Some(false)` if known to be unavailable
     /// - `None` if unknown and needs to be discovered via RPC
     pub fn is_available(&self, spec_name: &str, spec_version: u32) -> Option<bool> {
-        use config::QueryFeeDetailsStatus;
+        use polkadot_rest_api_config::ChainQueryFeeDetailsStatus as QueryFeeDetailsStatus;
 
-        // First, check the static config
-        if let Some(config) = self.fee_configs.get(spec_name) {
-            match config.query_fee_details_status(spec_version) {
+        // First, check the static chain config
+        if let Some(chain_cfg) = self.chain_configs.get(spec_name) {
+            match chain_cfg.query_fee_details_status(spec_version) {
                 QueryFeeDetailsStatus::Available => return Some(true),
                 QueryFeeDetailsStatus::Unavailable => return Some(false),
                 QueryFeeDetailsStatus::Unknown => {}
@@ -271,8 +339,8 @@ impl QueryFeeDetailsCache {
 
     /// Check if fee calculation is supported for a given chain and spec version
     pub fn supports_fee_calculation(&self, spec_name: &str, spec_version: u32) -> bool {
-        if let Some(config) = self.fee_configs.get(spec_name) {
-            config.supports_fee_calculation(spec_version)
+        if let Some(chain_cfg) = self.chain_configs.get(spec_name) {
+            chain_cfg.supports_fee_calculation(spec_version)
         } else {
             // For unknown chains, assume fee calculation is supported
             true
@@ -562,8 +630,13 @@ mod tests {
         // Set availability in cache
         cache.set_available(100, true);
 
+        // After setting the runtime cache, is_available should return the cached value
+        assert_eq!(cache.is_available("unknown-chain", 100), Some(true));
+
         // For asset-hub (which has null in config), the runtime cache should work
         cache.set_available(1000, false);
+        assert_eq!(cache.is_available("statemint", 1000), Some(false));
+        assert_eq!(cache.is_available("statemine", 1000), Some(false));
     }
 
     #[test]

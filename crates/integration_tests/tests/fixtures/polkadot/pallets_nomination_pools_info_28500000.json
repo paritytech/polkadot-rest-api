@@ -1,0 +1,18 @@
+{
+  "at": {
+    "hash": "0xc81393d2525d811740f3dbea75461babdf60a5c3cf266200eaaa6e3ff3eafe0e",
+    "height": "28500000"
+  },
+  "counterForBondedPools": "0",
+  "counterForMetadata": "0",
+  "counterForPoolMembers": "0",
+  "counterForReversePoolIdLookup": "0",
+  "counterForRewardPools": "0",
+  "counterForSubPoolsStorage": "0",
+  "lastPoolId": "0",
+  "maxPoolMembers": null,
+  "maxPoolMembersPerPool": null,
+  "maxPools": null,
+  "minCreateBond": "0",
+  "minJoinBond": "0"
+}

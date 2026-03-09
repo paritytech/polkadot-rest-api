@@ -1,114 +1,155 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Common block processing logic shared by block-related handlers.
 //!
-//! This module contains functions for fetching and processing block data that are
-//! shared between endpoints like `/blocks/{blockId}` and `/blocks/head`.
+//! This module contains foundational utilities for block data:
+//! - `BlockClient` type alias for working with blocks at specific heights
+//! - Common error types used across multiple block endpoints
+//! - Digest log decoding (PreRuntime, Consensus, Seal)
+//! - Chain state queries (canonical hash, finalized head, validators)
+//! - Block author extraction from consensus digests
+//! - Documentation helpers for events
 
 use crate::state::AppState;
-use crate::utils::{self, EraInfo, hex_with_prefix};
-use heck::{ToLowerCamelCase, ToUpperCamelCase};
+use crate::utils::{self, hex_with_prefix};
+use axum::{Json, http::StatusCode, response::IntoResponse};
+use heck::ToUpperCamelCase;
 use parity_scale_codec::Decode;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
-use sp_runtime::traits::BlakeTwo256;
-use sp_runtime::traits::Hash as HashT;
-use subxt_historic::SubstrateConfig;
-use subxt_historic::client::{ClientAtBlock, OnlineClientAtBlock};
+use std::sync::Arc;
+use subxt::config::substrate::DigestItem;
+use subxt::{OnlineClient, OnlineClientAtBlock, SubstrateConfig, error::OnlineClientAtBlockError};
+use subxt_rpcs::{RpcClient, rpc_params};
+use thiserror::Error;
+
+use serde::Serialize;
+
+use super::docs::Docs;
+use super::types::{DigestLog, Event, ExtrinsicInfo, ExtrinsicOutcome, GetBlockError};
+use heck::ToSnakeCase;
+
+/// Relay chain block header response
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcBlockHeaderResponse {
+    pub parent_hash: String,
+    pub number: String,
+    pub state_root: String,
+    pub extrinsics_root: String,
+    pub digest: serde_json::Value,
+}
 
 /// Type alias for the ClientAtBlock type used throughout the codebase.
 /// This represents a client pinned to a specific block height with access to
 /// storage, extrinsics, and metadata for that block.
-pub type BlockClient<'a> = ClientAtBlock<OnlineClientAtBlock<'a, SubstrateConfig>, SubstrateConfig>;
+pub type BlockClient = OnlineClientAtBlock<SubstrateConfig>;
 
-use super::docs::Docs;
-use super::transform::{
-    actual_weight_to_json, convert_bytes_to_hex, extract_number_as_string, extract_numeric_string,
-    transform_fee_info, transform_json_unified, try_convert_accountid_to_ss58,
-};
-use super::type_name_visitor::GetTypeName;
-use super::types::{
-    ActualWeight, CONSENSUS_ENGINE_ID_LEN, DigestItemDiscriminant, DigestLog, Event, EventPhase,
-    ExtrinsicInfo, ExtrinsicOutcome, GetBlockError, MethodInfo, MultiAddress, OnFinalize,
-    OnInitialize, ParsedEvent, SignatureInfo, SignerId,
-};
+// ================================================================================================
+// Common Error Types
+// ================================================================================================
+
+/// Common errors that appear across multiple block-related endpoints.
+///
+/// This enum consolidates frequently repeated error variants to reduce code duplication.
+/// Endpoint-specific error types can include these variants via composition or wrapping.
+#[derive(Debug, Error)]
+pub enum CommonBlockError {
+    #[error("Invalid block parameter")]
+    InvalidBlockParam(#[from] utils::BlockIdParseError),
+
+    #[error("Block resolution failed")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
+    #[error("Failed to get client at block: {0}")]
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
+
+    #[error("Failed to fetch storage: {0}")]
+    StorageFetchFailed(String),
+
+    #[error("Failed to decode events: {0}")]
+    EventsDecodeFailed(String),
+}
+
+impl From<utils::AtBlockError> for CommonBlockError {
+    fn from(err: utils::AtBlockError) -> Self {
+        match err {
+            utils::AtBlockError::BlockNotFound(msg) => {
+                CommonBlockError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::AtBlockError::Client(e) => CommonBlockError::ClientAtBlockFailed(Box::new(e)),
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for CommonBlockError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        CommonBlockError::from(utils::AtBlockError::from(err))
+    }
+}
+
+impl IntoResponse for CommonBlockError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            CommonBlockError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            CommonBlockError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
+            CommonBlockError::ClientAtBlockFailed(err) => {
+                if utils::is_online_client_at_block_disconnected(err.as_ref()) {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Service temporarily unavailable".to_string(),
+                    )
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
+            CommonBlockError::StorageFetchFailed(_) | CommonBlockError::EventsDecodeFailed(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+        };
+
+        let body = Json(json!({
+            "error": message,
+        }));
+
+        (status, body).into_response()
+    }
+}
 
 // ================================================================================================
 // Digest Processing
 // ================================================================================================
 
-/// Decode a consensus digest item (PreRuntime, Consensus, or Seal)
-/// The data here is SCALE-encoded as: (ConsensusEngineId, Vec<u8>)
-/// where ConsensusEngineId is 4 raw bytes, and Vec<u8> is compact_length + bytes
-pub fn decode_consensus_digest(data: &[u8]) -> Option<Value> {
-    // First 4 bytes are the consensus engine ID (not length-prefixed)
-    if data.len() < CONSENSUS_ENGINE_ID_LEN {
-        return None;
-    }
-
-    let engine_id = hex_with_prefix(&data[0..CONSENSUS_ENGINE_ID_LEN]);
-
-    // The rest is a SCALE-encoded Vec<u8> (compact length + payload bytes)
-    let mut remaining = &data[CONSENSUS_ENGINE_ID_LEN..];
-    let payload_bytes = Vec::<u8>::decode(&mut remaining).ok()?;
-    let payload = hex_with_prefix(&payload_bytes);
-
-    Some(json!([engine_id, payload]))
-}
-
-/// Decode digest logs from hex-encoded strings in the JSON response
-/// Each hex string is a SCALE-encoded DigestItem
-pub fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
-    let logs = match header_json
-        .get("digest")
-        .and_then(|d| d.get("logs"))
-        .and_then(|l| l.as_array())
-    {
-        Some(logs) => logs,
-        None => return Vec::new(),
-    };
-
-    logs.iter()
-        .filter_map(|log_hex| {
-            let hex_str = log_hex.as_str()?;
-            let hex_data = hex_str.strip_prefix("0x")?;
-            let bytes = hex::decode(hex_data).ok()?;
-
-            if bytes.is_empty() {
-                return None;
-            }
-
-            // The first byte is the digest item type discriminant
-            let discriminant_byte = bytes[0];
-            let data = &bytes[1..];
-
-            // Try to parse the discriminant into a known type
-            let discriminant = DigestItemDiscriminant::try_from(discriminant_byte)
-                .unwrap_or(DigestItemDiscriminant::Other);
-
-            let (log_type, value) = match discriminant {
-                // Consensus-related digests: PreRuntime, Consensus, Seal
-                // All have format: [consensus_engine_id (4 bytes), payload_data]
-                DigestItemDiscriminant::PreRuntime
-                | DigestItemDiscriminant::Consensus
-                | DigestItemDiscriminant::Seal => match decode_consensus_digest(data) {
-                    Some(val) => (discriminant.as_str().to_string(), val),
-                    None => ("Other".to_string(), json!(hex_with_prefix(&bytes))),
-                },
-                // RuntimeEnvironmentUpdated has no associated data
-                DigestItemDiscriminant::RuntimeEnvironmentUpdated => {
-                    (discriminant.as_str().to_string(), Value::Null)
-                }
-                // Other (includes unknown discriminants that were converted to Other)
-                DigestItemDiscriminant::Other => (
-                    discriminant.as_str().to_string(),
-                    json!(hex_with_prefix(data)),
-                ),
-            };
-
-            Some(DigestLog {
-                log_type,
-                index: discriminant_byte.to_string(),
-                value,
-            })
+pub fn convert_digest_items_to_logs(items: &[DigestItem]) -> Vec<DigestLog> {
+    items
+        .iter()
+        .map(|item| match item {
+            DigestItem::PreRuntime(engine_id, data) => DigestLog {
+                log_type: "PreRuntime".to_string(),
+                index: "6".to_string(),
+                value: json!([hex_with_prefix(engine_id), hex_with_prefix(data)]),
+            },
+            DigestItem::Consensus(engine_id, data) => DigestLog {
+                log_type: "Consensus".to_string(),
+                index: "4".to_string(),
+                value: json!([hex_with_prefix(engine_id), hex_with_prefix(data)]),
+            },
+            DigestItem::Seal(engine_id, data) => DigestLog {
+                log_type: "Seal".to_string(),
+                index: "5".to_string(),
+                value: json!([hex_with_prefix(engine_id), hex_with_prefix(data)]),
+            },
+            DigestItem::RuntimeEnvironmentUpdated => DigestLog {
+                log_type: "RuntimeEnvironmentUpdated".to_string(),
+                index: "8".to_string(),
+                value: Value::Null,
+            },
+            DigestItem::Other(data) => DigestLog {
+                log_type: "Other".to_string(),
+                index: "0".to_string(),
+                value: json!(hex_with_prefix(data)),
+            },
         })
         .collect()
 }
@@ -117,68 +158,47 @@ pub fn decode_digest_logs(header_json: &Value) -> Vec<DigestLog> {
 // Block Header & Chain State
 // ================================================================================================
 
-/// Fetch the canonical block hash at a given block number
-/// This is used to verify that a queried block hash is on the canonical chain
-pub async fn get_canonical_hash_at_number(
-    state: &AppState,
-    block_number: u64,
-) -> Result<Option<String>, GetBlockError> {
-    let hash = state
-        .legacy_rpc
-        .chain_get_block_hash(Some(block_number.into()))
-        .await
-        .map_err(GetBlockError::CanonicalHashFailed)?;
-
-    Ok(hash.map(|h| format!("0x{}", hex::encode(h.0))))
-}
-
-/// Fetch the finalized block number from the chain
-pub async fn get_finalized_block_number(state: &AppState) -> Result<u64, GetBlockError> {
-    let finalized_hash = state
-        .legacy_rpc
-        .chain_get_finalized_head()
-        .await
-        .map_err(GetBlockError::FinalizedHeadFailed)?;
-    let finalized_hash_str = format!("0x{}", hex::encode(finalized_hash.0));
-    let header_json = state
-        .get_header_json(&finalized_hash_str)
-        .await
-        .map_err(GetBlockError::HeaderFetchFailed)?;
-    let number_hex = header_json
-        .get("number")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))?;
-    let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
-        .map_err(|_| GetBlockError::HeaderFieldMissing("number (invalid format)".to_string()))?;
-
-    Ok(number)
-}
-
 /// Fetch validator set from chain state at a specific block
 pub async fn get_validators_at_block(
-    client_at_block: &BlockClient<'_>,
+    client_at_block: &BlockClient,
 ) -> Result<Vec<AccountId32>, GetBlockError> {
-    let storage_entry = client_at_block.storage().entry("Session", "Validators")?;
-    let validators_value = storage_entry.fetch(()).await?.ok_or_else(|| {
-        // Use the parity_scale_codec::Error for missing validators which will be converted to StorageDecodeFailed
-        parity_scale_codec::Error::from("validators storage not found")
-    })?;
-    let raw_bytes = validators_value.into_bytes();
-    let validators_raw: Vec<[u8; 32]> = Vec::<[u8; 32]>::decode(&mut &raw_bytes[..])?;
-    let validators: Vec<AccountId32> = validators_raw.into_iter().map(AccountId32::from).collect();
+    use crate::handlers::runtime_queries::session;
 
-    if validators.is_empty() {
-        return Err(parity_scale_codec::Error::from("no validators found in storage").into());
-    }
-
-    Ok(validators)
+    session::get_validators(client_at_block).await.map_err(|e| {
+        tracing::debug!("Failed to get validators: {}", e);
+        match e {
+            session::SessionStorageError::NoValidatorsFound => GetBlockError::StorageDecodeFailed(
+                parity_scale_codec::Error::from("no validators found in storage"),
+            ),
+            _ => GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
+                "Failed to decode validators",
+            )),
+        }
+    })
 }
 
 /// Extract author ID from block header digest logs by mapping authority index to validator
 pub async fn extract_author(
     state: &AppState,
-    client_at_block: &BlockClient<'_>,
+    client_at_block: &BlockClient,
     logs: &[DigestLog],
+    block_number: u64,
+) -> Option<String> {
+    extract_author_with_prefix(
+        client_at_block,
+        logs,
+        state.chain_info.ss58_prefix,
+        block_number,
+    )
+    .await
+}
+
+/// Extract author ID from block header digest logs by mapping authority index to validator.
+/// This is the core implementation that accepts ss58_prefix directly.
+pub async fn extract_author_with_prefix(
+    client_at_block: &BlockClient,
+    logs: &[DigestLog],
+    ss58_prefix: u16,
     block_number: u64,
 ) -> Option<String> {
     use sp_consensus_babe::digests::PreDigest;
@@ -223,11 +243,7 @@ pub async fn extract_author(
                     let author = validators.get(authority_index)?;
 
                     // Convert to SS58 format
-                    return Some(
-                        author
-                            .clone()
-                            .to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
-                    );
+                    return Some(author.clone().to_ss58check_with_version(ss58_prefix.into()));
                 }
                 AURA_ENGINE => {
                     // Aura: slot_number (u64 LE), calculate index = slot % validator_count
@@ -241,11 +257,7 @@ pub async fn extract_author(
                         let author = validators.get(index)?;
 
                         // Convert to SS58 format
-                        return Some(
-                            author
-                                .clone()
-                                .to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
-                        );
+                        return Some(author.clone().to_ss58check_with_version(ss58_prefix.into()));
                     }
                 }
                 _ => continue,
@@ -273,9 +285,7 @@ pub async fn extract_author(
                     let mut arr = [0u8; 32];
                     arr.copy_from_slice(&payload);
                     let account_id = AccountId32::from(arr);
-                    return Some(
-                        account_id.to_ss58check_with_version(state.chain_info.ss58_prefix.into()),
-                    );
+                    return Some(account_id.to_ss58check_with_version(ss58_prefix.into()));
                 } else {
                     tracing::debug!(
                         "PoW payload has unexpected length: {} bytes (expected 32)",
@@ -290,827 +300,376 @@ pub async fn extract_author(
 }
 
 // ================================================================================================
-// Event Processing
-// ================================================================================================
-
-/// Extract `paysFee` value from DispatchInfo in event data
-///
-/// DispatchInfo contains: { weight, class, paysFee }
-/// paysFee can be:
-/// - A boolean (true/false)
-/// - A string ("Yes"/"No")
-/// - An object with a "name" field containing "Yes"/"No"
-///
-/// For ExtrinsicSuccess: event_data = [DispatchInfo]
-/// For ExtrinsicFailed: event_data = [DispatchError, DispatchInfo]
-pub fn extract_pays_fee_from_event_data(event_data: &[Value], is_success: bool) -> Option<bool> {
-    // For ExtrinsicSuccess, DispatchInfo is the first element
-    // For ExtrinsicFailed, DispatchInfo is the second element (after DispatchError)
-    let dispatch_info_index = if is_success { 0 } else { 1 };
-
-    let dispatch_info = event_data.get(dispatch_info_index)?;
-
-    // DispatchInfo should be an object with paysFee field
-    let pays_fee_value = dispatch_info.get("paysFee")?;
-
-    match pays_fee_value {
-        // Direct boolean
-        Value::Bool(b) => Some(*b),
-        // String "Yes" or "No"
-        Value::String(s) => match s.as_str() {
-            "Yes" => Some(true),
-            "No" => Some(false),
-            _ => {
-                tracing::debug!("Unknown paysFee string value: {}", s);
-                None
-            }
-        },
-        // Object with "name" field (e.g., { "name": "Yes", "values": ... })
-        Value::Object(obj) => {
-            if let Some(Value::String(name)) = obj.get("name") {
-                match name.as_str() {
-                    "Yes" => Some(true),
-                    "No" => Some(false),
-                    _ => {
-                        tracing::debug!("Unknown paysFee name value: {}", name);
-                        None
-                    }
-                }
-            } else {
-                None
-            }
-        }
-        _ => {
-            tracing::debug!("Unexpected paysFee value type: {:?}", pays_fee_value);
-            None
-        }
-    }
-}
-
-/// Extract fee from TransactionFeePaid event if present
-///
-/// TransactionFeePaid event data: [who, actualFee, tip]
-/// The actualFee is the exact fee paid for the transaction
-pub fn extract_fee_from_transaction_paid_event(events: &[Event]) -> Option<String> {
-    for event in events {
-        // Check for System.TransactionFeePaid or TransactionPayment.TransactionFeePaid
-        // Use case-insensitive comparison since pallet names may vary in casing
-        let pallet_lower = event.method.pallet.to_lowercase();
-        let is_fee_paid = (pallet_lower == "system" || pallet_lower == "transactionpayment")
-            && event.method.method == "TransactionFeePaid";
-
-        if is_fee_paid && event.data.len() >= 2 {
-            // event.data[1] is the actualFee
-            if let Some(fee_value) = event.data.get(1) {
-                return Some(extract_number_as_string(fee_value));
-            }
-        }
-    }
-    None
-}
-
-/// Extract actual weight from DispatchInfo in event data
-///
-/// DispatchInfo contains: { weight, class, paysFee }
-/// Weight can be:
-/// - Modern format: { refTime/ref_time: "...", proofSize/proof_size: "..." }
-/// - Legacy format: a single number (just refTime)
-///
-/// For ExtrinsicSuccess: event_data = [DispatchInfo]
-/// For ExtrinsicFailed: event_data = [DispatchError, DispatchInfo]
-pub fn extract_weight_from_event_data(
-    event_data: &[Value],
-    is_success: bool,
-) -> Option<ActualWeight> {
-    let dispatch_info_index = if is_success { 0 } else { 1 };
-    let dispatch_info = event_data.get(dispatch_info_index)?;
-    let weight_value = dispatch_info.get("weight")?;
-
-    match weight_value {
-        Value::Object(obj) => {
-            // Handle both camelCase and snake_case key variants
-            let ref_time = obj
-                .get("refTime")
-                .or_else(|| obj.get("ref_time"))
-                .map(extract_number_as_string);
-            let proof_size = obj
-                .get("proofSize")
-                .or_else(|| obj.get("proof_size"))
-                .map(extract_number_as_string);
-
-            Some(ActualWeight {
-                ref_time,
-                proof_size,
-            })
-        }
-        // Legacy weight format: single number
-        Value::Number(n) => Some(ActualWeight {
-            ref_time: Some(n.to_string()),
-            proof_size: None,
-        }),
-        Value::String(s) => {
-            // Could be a hex string or decimal string
-            let value = if s.starts_with("0x") {
-                u128::from_str_radix(s.trim_start_matches("0x"), 16)
-                    .map(|n| n.to_string())
-                    .unwrap_or_else(|_| s.clone())
-            } else {
-                s.clone()
-            };
-            Some(ActualWeight {
-                ref_time: Some(value),
-                proof_size: None,
-            })
-        }
-        _ => {
-            tracing::debug!("Unexpected weight value type: {:?}", weight_value);
-            None
-        }
-    }
-}
-
-/// Extract class from DispatchInfo in event data
-///
-/// For ExtrinsicSuccess: event_data = [DispatchInfo]
-/// For ExtrinsicFailed: event_data = [DispatchError, DispatchInfo]
-pub fn extract_class_from_event_data(event_data: &[Value], is_success: bool) -> Option<String> {
-    let dispatch_info_index = if is_success { 0 } else { 1 };
-    let dispatch_info = event_data.get(dispatch_info_index)?;
-    let class_value = dispatch_info.get("class")?;
-
-    match class_value {
-        Value::String(s) => Some(s.clone()),
-        Value::Object(obj) => {
-            // Might be { "name": "Normal", "values": ... } format
-            obj.get("name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        }
-        _ => None,
-    }
-}
-
-/// Fetch and parse all events for a block
-pub async fn fetch_block_events(
-    state: &AppState,
-    client_at_block: &BlockClient<'_>,
-    block_number: u64,
-) -> Result<Vec<ParsedEvent>, GetBlockError> {
-    use crate::handlers::blocks::events_visitor::{EventPhase as VisitorEventPhase, EventsVisitor};
-
-    let storage_entry = client_at_block.storage().entry("System", "Events")?;
-    let events_value = storage_entry.fetch(()).await?.ok_or_else(|| {
-        tracing::warn!("No events storage found for block {}", block_number);
-        parity_scale_codec::Error::from("Events storage not found")
-    })?;
-
-    // Use the visitor pattern to get type information for each field
-    let events_with_types = events_value.visit(EventsVisitor::new()).map_err(|e| {
-        tracing::warn!(
-            "Failed to decode events for block {}: {:?}",
-            block_number,
-            e
-        );
-        GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
-            "Failed to decode events",
-        ))
-    })?;
-
-    // Also decode with scale_value to preserve structure
-    let events_vec = events_value
-        .decode_as::<Vec<scale_value::Value<()>>>()
-        .map_err(|e| {
-            tracing::warn!(
-                "Failed to decode events for block {}: {:?}",
-                block_number,
-                e
-            );
-            GetBlockError::StorageDecodeFailed(parity_scale_codec::Error::from(
-                "Failed to decode events",
-            ))
-        })?;
-
-    let mut parsed_events = Vec::new();
-
-    // Process each event, combining type info from visitor with structure from scale_value
-    for (event_info, event_record) in events_with_types.iter().zip(events_vec.iter()) {
-        let phase = match event_info.phase {
-            VisitorEventPhase::Initialization => EventPhase::Initialization,
-            VisitorEventPhase::ApplyExtrinsic(idx) => EventPhase::ApplyExtrinsic(idx),
-            VisitorEventPhase::Finalization => EventPhase::Finalization,
-        };
-
-        // Get the event variant from scale_value (to preserve structure)
-        let event_composite = match &event_record.value {
-            scale_value::ValueDef::Composite(comp) => comp,
-            _ => continue,
-        };
-
-        let fields: Vec<&scale_value::Value<()>> = event_composite.values().collect();
-        if fields.len() < 2 {
-            continue;
-        }
-
-        if let scale_value::ValueDef::Variant(pallet_variant) = &fields[1].value {
-            let inner_values: Vec<&scale_value::Value<()>> =
-                pallet_variant.values.values().collect();
-
-            if let Some(inner_value) = inner_values.first()
-                && let scale_value::ValueDef::Variant(event_variant) = &inner_value.value
-            {
-                let field_values: Vec<&scale_value::Value<()>> =
-                    event_variant.values.values().collect();
-
-                let event_data: Vec<Value> = field_values
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(idx, field)| {
-                        let json_value = serde_json::to_value(&field.value).ok()?;
-
-                        // Type-based AccountId32 detection using type info from visitor
-                        if let Some(type_name) = event_info
-                            .fields
-                            .get(idx)
-                            .and_then(|f| f.type_name.as_ref())
-                            && (type_name == "AccountId32"
-                                || type_name == "MultiAddress"
-                                || type_name == "AccountId")
-                        {
-                            // For AccountId fields, we need hex conversion first, then SS58 conversion
-                            let with_hex = convert_bytes_to_hex(json_value.clone());
-                            if let Some(ss58_value) = try_convert_accountid_to_ss58(
-                                &with_hex,
-                                state.chain_info.ss58_prefix,
-                            ) {
-                                return Some(ss58_value);
-                            }
-                            // If SS58 conversion failed, fall through to unified transformation
-                        }
-
-                        // Single-pass transformation for non-AccountId fields (or AccountId fields where conversion failed)
-                        Some(transform_json_unified(json_value, None))
-                    })
-                    .collect();
-
-                parsed_events.push(ParsedEvent {
-                    phase,
-                    pallet_name: event_info.pallet_name.clone(),
-                    event_name: event_info.event_name.clone(),
-                    event_data,
-                });
-            }
-        }
-    }
-
-    Ok(parsed_events)
-}
-
-/// Categorize parsed events into onInitialize, per-extrinsic, and onFinalize arrays
-/// Also extracts extrinsic outcomes (success, paysFee) from System.ExtrinsicSuccess/ExtrinsicFailed events
-pub fn categorize_events(
-    parsed_events: Vec<ParsedEvent>,
-    num_extrinsics: usize,
-) -> (
-    OnInitialize,
-    Vec<Vec<Event>>,
-    OnFinalize,
-    Vec<ExtrinsicOutcome>,
-) {
-    let mut on_initialize_events = Vec::new();
-    let mut on_finalize_events = Vec::new();
-    // Create empty event vectors for each extrinsic
-    let mut per_extrinsic_events: Vec<Vec<Event>> = vec![Vec::new(); num_extrinsics];
-    // Create default outcomes for each extrinsic (success=false, pays_fee=None)
-    let mut extrinsic_outcomes: Vec<ExtrinsicOutcome> =
-        vec![ExtrinsicOutcome::default(); num_extrinsics];
-
-    for parsed_event in parsed_events {
-        // Check for System.ExtrinsicSuccess or System.ExtrinsicFailed events
-        // to determine extrinsic outcomes before consuming the event data
-        // Note: pallet_name is lowercase (from events_visitor.rs which uses to_lowercase())
-        let is_system_event = parsed_event.pallet_name == "system";
-        let is_success_event = is_system_event && parsed_event.event_name == "ExtrinsicSuccess";
-        let is_failed_event = is_system_event && parsed_event.event_name == "ExtrinsicFailed";
-
-        // Extract outcome info if this is a success/failed event for an extrinsic
-        if let EventPhase::ApplyExtrinsic(index) = &parsed_event.phase {
-            let idx = *index as usize;
-            if idx < num_extrinsics {
-                if is_success_event {
-                    extrinsic_outcomes[idx].success = true;
-                    // Extract paysFee from DispatchInfo (first element in event data)
-                    if let Some(pays_fee) =
-                        extract_pays_fee_from_event_data(&parsed_event.event_data, true)
-                    {
-                        extrinsic_outcomes[idx].pays_fee = Some(pays_fee);
-                    }
-                    // Extract actual weight from DispatchInfo for fee calculation
-                    if let Some(weight) =
-                        extract_weight_from_event_data(&parsed_event.event_data, true)
-                    {
-                        extrinsic_outcomes[idx].actual_weight = Some(weight);
-                    }
-                    // Extract class from DispatchInfo
-                    if let Some(class) =
-                        extract_class_from_event_data(&parsed_event.event_data, true)
-                    {
-                        extrinsic_outcomes[idx].class = Some(class);
-                    }
-                } else if is_failed_event {
-                    // success stays false
-                    // Extract paysFee from DispatchInfo (second element in event data, after DispatchError)
-                    if let Some(pays_fee) =
-                        extract_pays_fee_from_event_data(&parsed_event.event_data, false)
-                    {
-                        extrinsic_outcomes[idx].pays_fee = Some(pays_fee);
-                    }
-                    // Extract actual weight from DispatchInfo for fee calculation
-                    if let Some(weight) =
-                        extract_weight_from_event_data(&parsed_event.event_data, false)
-                    {
-                        extrinsic_outcomes[idx].actual_weight = Some(weight);
-                    }
-                    // Extract class from DispatchInfo
-                    if let Some(class) =
-                        extract_class_from_event_data(&parsed_event.event_data, false)
-                    {
-                        extrinsic_outcomes[idx].class = Some(class);
-                    }
-                }
-            }
-        }
-
-        let event = Event {
-            method: MethodInfo {
-                pallet: parsed_event.pallet_name,
-                method: parsed_event.event_name,
-            },
-            data: parsed_event.event_data,
-            docs: None, // Will be populated if eventDocs=true
-        };
-
-        match parsed_event.phase {
-            EventPhase::Initialization => {
-                on_initialize_events.push(event);
-            }
-            EventPhase::ApplyExtrinsic(index) => {
-                if let Some(extrinsic_events) = per_extrinsic_events.get_mut(index as usize) {
-                    extrinsic_events.push(event);
-                } else {
-                    tracing::warn!(
-                        "Event has ApplyExtrinsic phase with index {} but only {} extrinsics exist",
-                        index,
-                        num_extrinsics
-                    );
-                }
-            }
-            EventPhase::Finalization => {
-                on_finalize_events.push(event);
-            }
-        }
-    }
-
-    (
-        OnInitialize {
-            events: on_initialize_events,
-        },
-        per_extrinsic_events,
-        OnFinalize {
-            events: on_finalize_events,
-        },
-        extrinsic_outcomes,
-    )
-}
-
-// ================================================================================================
-// Fee Extraction
-// ================================================================================================
-
-/// Get query info from RPC or runtime API fallback
-pub async fn get_query_info(
-    state: &AppState,
-    extrinsic_hex: &str,
-    parent_hash: &str,
-) -> Option<(Value, String)> {
-    // Try RPC first
-    if let Ok(query_info) = state.query_fee_info(extrinsic_hex, parent_hash).await
-        && let Some(weight) = utils::extract_estimated_weight(&query_info)
-    {
-        return Some((query_info, weight));
-    }
-
-    // Fall back to runtime API for historic blocks
-    let extrinsic_bytes = hex::decode(extrinsic_hex.trim_start_matches("0x")).ok()?;
-    let dispatch_info = state
-        .query_fee_info_via_runtime_api(&extrinsic_bytes, parent_hash)
-        .await
-        .ok()?;
-
-    let query_info = dispatch_info.to_json();
-    let weight = dispatch_info.weight.ref_time().to_string();
-    Some((query_info, weight))
-}
-
-/// Extract fee info for a signed extrinsic using the three-priority system:
-/// 1. TransactionFeePaid event (exact fee from runtime)
-/// 2. queryFeeDetails + calc_partial_fee (post-dispatch calculation)
-/// 3. queryInfo (pre-dispatch estimation)
-pub async fn extract_fee_info_for_extrinsic(
-    state: &AppState,
-    extrinsic_hex: &str,
-    events: &[Event],
-    outcome: Option<&ExtrinsicOutcome>,
-    parent_hash: &str,
-    spec_version: u32,
-) -> serde_json::Map<String, Value> {
-    // Priority 1: TransactionFeePaid event (exact fee from runtime)
-    if let Some(fee_from_event) = extract_fee_from_transaction_paid_event(events) {
-        let mut info = serde_json::Map::new();
-
-        if let Some(outcome) = outcome {
-            if let Some(ref actual_weight) = outcome.actual_weight
-                && let Some(weight_value) = actual_weight_to_json(actual_weight)
-            {
-                info.insert("weight".to_string(), weight_value);
-            }
-            if let Some(ref class) = outcome.class {
-                info.insert("class".to_string(), Value::String(class.clone()));
-            }
-        }
-
-        info.insert("partialFee".to_string(), Value::String(fee_from_event));
-        info.insert("kind".to_string(), Value::String("fromEvent".to_string()));
-        return info;
-    }
-
-    // Priority 2: queryFeeDetails + calc_partial_fee (post-dispatch calculation)
-    let actual_weight_str = outcome
-        .and_then(|o| o.actual_weight.as_ref())
-        .and_then(|w| w.ref_time.clone());
-
-    if let Some(ref actual_weight_str) = actual_weight_str {
-        let use_fee_details = state
-            .fee_details_cache
-            .is_available(&state.chain_info.spec_name, spec_version)
-            .unwrap_or(true);
-
-        if use_fee_details {
-            if let Ok(fee_details_response) =
-                state.query_fee_details(extrinsic_hex, parent_hash).await
-            {
-                state.fee_details_cache.set_available(spec_version, true);
-
-                if let Some(fee_details) = utils::parse_fee_details(&fee_details_response) {
-                    // Get estimated weight from queryInfo (try RPC first, then runtime API)
-                    let query_info_result = get_query_info(state, extrinsic_hex, parent_hash).await;
-
-                    if let Some((query_info, estimated_weight)) = query_info_result
-                        && let Ok(partial_fee) = utils::calculate_accurate_fee(
-                            &fee_details,
-                            &estimated_weight,
-                            actual_weight_str,
-                        )
-                    {
-                        let mut info = transform_fee_info(query_info);
-                        info.insert("partialFee".to_string(), Value::String(partial_fee));
-                        info.insert(
-                            "kind".to_string(),
-                            Value::String("postDispatch".to_string()),
-                        );
-                        return info;
-                    }
-                }
-            } else {
-                state.fee_details_cache.set_available(spec_version, false);
-            }
-        }
-    }
-
-    // Priority 3: queryInfo (pre-dispatch estimation)
-    if let Some((query_info, _)) = get_query_info(state, extrinsic_hex, parent_hash).await {
-        let mut info = transform_fee_info(query_info);
-        info.insert("kind".to_string(), Value::String("preDispatch".to_string()));
-        return info;
-    }
-
-    serde_json::Map::new()
-}
-
-// ================================================================================================
-// Extrinsic Processing
-// ================================================================================================
-
-/// Extract extrinsics from a block using subxt-historic
-pub async fn extract_extrinsics(
-    state: &AppState,
-    client_at_block: &BlockClient<'_>,
-    block_number: u64,
-) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
-    let extrinsics = match client_at_block.extrinsics().fetch().await {
-        Ok(exts) => exts,
-        Err(e) => {
-            // This could indicate RPC issues or network problems
-            tracing::warn!(
-                "Failed to fetch extrinsics for block {}: {:?}. Returning empty extrinsics.",
-                block_number,
-                e
-            );
-            return Ok(Vec::new());
-        }
-    };
-
-    let mut result = Vec::new();
-
-    for extrinsic in extrinsics.iter() {
-        // Extract pallet and method name from the call, converting to lowerCamelCase
-        let pallet_name = extrinsic.call().pallet_name().to_lower_camel_case();
-        let method_name = extrinsic.call().name().to_lower_camel_case();
-
-        // Extract call arguments with field-name-based AccountId32 detection
-        let fields = extrinsic.call().fields();
-        let mut args_map = serde_json::Map::new();
-
-        for field in fields.iter() {
-            let field_name = field.name();
-            // Keep field names as-is (snake_case from SCALE metadata)
-            // Only nested object keys are transformed to camelCase via transform_json_unified
-            let field_key = field_name.to_string();
-
-            // Use the visitor pattern to get type information
-            // This definitively detects AccountId32 fields by their actual type!
-            let type_name = field.visit(GetTypeName::new()).ok().flatten();
-
-            // Log the type name for demonstration
-            if let Some(tn) = type_name {
-                tracing::debug!(
-                    "Field '{}' in {}.{} has type: {}",
-                    field_name,
-                    pallet_name,
-                    method_name,
-                    tn
-                );
-            }
-
-            // Try to decode as AccountId32-related types based on the detected type name
-            let is_account_type = type_name == Some("AccountId32")
-                || type_name == Some("MultiAddress")
-                || type_name == Some("AccountId");
-
-            if is_account_type {
-                let mut decoded_account = false;
-                let ss58_prefix = state.chain_info.ss58_prefix;
-                let bytes_to_ss58 = |bytes: &[u8; 32]| {
-                    let account_id = AccountId32::from(*bytes);
-                    account_id.to_ss58check_with_version(ss58_prefix.into())
-                };
-
-                if let Ok(account_bytes) = field.decode_as::<[u8; 32]>() {
-                    let ss58 = bytes_to_ss58(&account_bytes);
-                    args_map.insert(field_key.clone(), json!(ss58));
-                    decoded_account = true;
-                } else if let Ok(accounts) = field.decode_as::<Vec<[u8; 32]>>() {
-                    let ss58_addresses: Vec<String> = accounts.iter().map(&bytes_to_ss58).collect();
-                    args_map.insert(field_key.clone(), json!(ss58_addresses));
-                    decoded_account = true;
-                } else if let Ok(multi_addr) = field.decode_as::<MultiAddress>() {
-                    let value = match multi_addr {
-                        MultiAddress::Id(bytes) => {
-                            json!({ "id": bytes_to_ss58(&bytes) })
-                        }
-                        MultiAddress::Address32(bytes) => {
-                            json!({ "address32": bytes_to_ss58(&bytes) })
-                        }
-                        MultiAddress::Index(index) => json!({ "index": index }),
-                        MultiAddress::Raw(bytes) => {
-                            json!({ "raw": format!("0x{}", hex::encode(bytes)) })
-                        }
-                        MultiAddress::Address20(bytes) => {
-                            json!({ "address20": format!("0x{}", hex::encode(bytes)) })
-                        }
-                    };
-                    args_map.insert(field_key.clone(), value);
-                    decoded_account = true;
-                }
-
-                if decoded_account {
-                    continue;
-                }
-                // If we failed to decode as account types, fall through to Value<()> decoding
-            }
-
-            // For non-account fields (or account fields that failed to decode), use Value<()>
-            match field.decode_as::<scale_value::Value<()>>() {
-                Ok(value) => {
-                    let json_value = serde_json::to_value(&value).unwrap_or(Value::Null);
-                    // Single-pass transformation: combines byte-to-hex, snake_case, enum simplification, and SS58 decoding
-                    let transformed =
-                        transform_json_unified(json_value, Some(state.chain_info.ss58_prefix));
-                    args_map.insert(field_key, transformed);
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to decode field '{}' in {}.{}: {}",
-                        field_name,
-                        pallet_name,
-                        method_name,
-                        e
-                    );
-                }
-            }
-        }
-
-        // Extract signature and signer (if signed)
-        let (signature_info, era_from_bytes) = if extrinsic.is_signed() {
-            let sig_bytes = extrinsic
-                .signature_bytes()
-                .ok_or(GetBlockError::MissingSignatureBytes)?;
-            let addr_bytes = extrinsic
-                .address_bytes()
-                .ok_or(GetBlockError::MissingAddressBytes)?;
-
-            // Try to extract era from raw extrinsic bytes
-            // Era comes right after address and signature in the SignedExtra/TransactionExtension
-            let era_info = utils::extract_era_from_extrinsic_bytes(extrinsic.bytes());
-
-            let signer_hex = format!("0x{}", hex::encode(addr_bytes));
-            let signer_ss58 =
-                utils::decode_address_to_ss58(&signer_hex, state.chain_info.ss58_prefix)
-                    .unwrap_or_else(|| signer_hex.clone());
-
-            // Strip the signature type prefix byte (0x00=Ed25519, 0x01=Sr25519, 0x02=Ecdsa)
-            let signature_without_type_prefix = if sig_bytes.len() > 1 {
-                &sig_bytes[1..]
-            } else {
-                sig_bytes
-            };
-
-            (
-                Some(SignatureInfo {
-                    signature: format!("0x{}", hex::encode(signature_without_type_prefix)),
-                    signer: SignerId { id: signer_ss58 },
-                }),
-                era_info,
-            )
-        } else {
-            (None, None)
-        };
-
-        // Extract nonce, tip, and era from transaction extensions (if present)
-        let (nonce, tip, era_info) = if let Some(extensions) = extrinsic.transaction_extensions() {
-            let mut nonce_value = None;
-            let mut tip_value = None;
-            let mut era_value = None;
-
-            tracing::trace!(
-                "Extrinsic {} has {} extensions",
-                extrinsic.index(),
-                extensions.iter().count()
-            );
-
-            for ext in extensions.iter() {
-                let ext_name = ext.name();
-                tracing::trace!("Extension name: {}", ext_name);
-
-                match ext_name {
-                    "CheckNonce" => {
-                        // Decode as a u64/u32 compact value, then serialize to JSON
-                        if let Ok(n) = ext.decode_as::<scale_value::Value>()
-                            && let Ok(json_val) = serde_json::to_value(&n)
-                        {
-                            // The value might be nested in an object, so we need to extract it
-                            // If extraction fails, nonce_value remains None (serialized as null)
-                            nonce_value = extract_numeric_string(&json_val);
-                        }
-                    }
-                    "ChargeTransactionPayment" | "ChargeAssetTxPayment" => {
-                        // The tip is typically a Compact<u128>
-                        if let Ok(t) = ext.decode_as::<scale_value::Value>()
-                            && let Ok(json_val) = serde_json::to_value(&t)
-                        {
-                            // If extraction fails, tip_value remains None (serialized as null)
-                            tip_value = extract_numeric_string(&json_val);
-                        }
-                    }
-                    "CheckMortality" | "CheckEra" => {
-                        // Era information - decode directly from raw bytes
-                        // The JSON representation is complex (e.g., "Mortal230") and harder to parse
-                        let era_bytes = ext.bytes();
-                        tracing::debug!(
-                            "Found CheckMortality extension, raw bytes: {}",
-                            hex::encode(era_bytes)
-                        );
-
-                        let mut offset = 0;
-                        if let Some(decoded_era) =
-                            utils::decode_era_from_bytes(era_bytes, &mut offset)
-                        {
-                            tracing::debug!("Decoded era: {:?}", decoded_era);
-
-                            // Create a JSON representation that parse_era_info can understand
-                            if let Some(ref mortal) = decoded_era.mortal_era {
-                                // Format: {"name": "Mortal", "values": [[period], [phase]]}
-                                let mut map = serde_json::Map::new();
-                                map.insert("name".to_string(), Value::String("Mortal".to_string()));
-
-                                let values = vec![
-                                    Value::Array(vec![Value::Number(
-                                        mortal[0].parse::<u64>().unwrap().into(),
-                                    )]),
-                                    Value::Array(vec![Value::Number(
-                                        mortal[1].parse::<u64>().unwrap().into(),
-                                    )]),
-                                ];
-                                map.insert("values".to_string(), Value::Array(values));
-
-                                era_value = Some(Value::Object(map));
-                            } else if decoded_era.immortal_era.is_some() {
-                                let mut map = serde_json::Map::new();
-                                map.insert(
-                                    "name".to_string(),
-                                    Value::String("Immortal".to_string()),
-                                );
-                                era_value = Some(Value::Object(map));
-                            }
-                        }
-                    }
-                    _ => {
-                        // Silently skip other extensions
-                    }
-                }
-            }
-
-            let era = if let Some(era_json) = era_value {
-                // Try to parse era information from extension
-                utils::parse_era_info(&era_json)
-            } else if let Some(era_parsed) = era_from_bytes {
-                // Use era extracted from raw bytes
-                era_parsed
-            } else {
-                // Default to immortal era for signed transactions without explicit era
-                EraInfo {
-                    immortal_era: Some("0x00".to_string()),
-                    mortal_era: None,
-                }
-            };
-
-            (nonce_value, tip_value, era)
-        } else {
-            // Unsigned extrinsics are immortal
-            (
-                None,
-                None,
-                EraInfo {
-                    immortal_era: Some("0x00".to_string()),
-                    mortal_era: None,
-                },
-            )
-        };
-
-        let extrinsic_bytes = extrinsic.bytes();
-        let hash_bytes = BlakeTwo256::hash(extrinsic_bytes);
-        let hash = format!("0x{}", hex::encode(hash_bytes.as_ref()));
-        let raw_hex = format!("0x{}", hex::encode(extrinsic_bytes));
-
-        // Initialize pays_fee based on whether the extrinsic is signed:
-        // - Unsigned extrinsics (inherents) never pay fees → Some(false)
-        // - Signed extrinsics: determined from DispatchInfo in events → None (will be updated later)
-        let is_signed = signature_info.is_some();
-        let pays_fee = if is_signed { None } else { Some(false) };
-
-        result.push(ExtrinsicInfo {
-            method: MethodInfo {
-                pallet: pallet_name,
-                method: method_name,
-            },
-            signature: signature_info,
-            nonce,
-            args: args_map,
-            tip,
-            hash,
-            info: serde_json::Map::new(),
-            era: era_info,
-            events: Vec::new(),
-            success: false,
-            pays_fee,
-            docs: None, // Will be populated if extrinsicDocs=true
-            raw_hex,
-        });
-    }
-
-    Ok(result)
-}
-
-// ================================================================================================
 // Documentation Helpers
 // ================================================================================================
 
 /// Add documentation to events if eventDocs is enabled
-pub fn add_docs_to_events(events: &mut [Event], metadata: &frame_metadata::RuntimeMetadata) {
+pub fn add_docs_to_events(events: &mut [Event], metadata: &subxt::Metadata) {
     for event in events.iter_mut() {
         // Pallet names in metadata are PascalCase, but our pallet names are lowerCamelCase
         // We need to convert back: "system" -> "System", "balances" -> "Balances"
         let pallet_name = event.method.pallet.to_upper_camel_case();
-        event.docs =
-            Docs::for_event(metadata, &pallet_name, &event.method.method).map(|d| d.to_string());
+        event.docs = Docs::for_event_subxt(metadata, &pallet_name, &event.method.method)
+            .map(|d| d.to_string());
     }
+}
+
+/// Add documentation to a single extrinsic if extrinsicDocs is enabled
+pub fn add_docs_to_extrinsic(extrinsic: &mut ExtrinsicInfo, metadata: &subxt::Metadata) {
+    let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
+    let method_name = extrinsic.method.method.to_snake_case();
+    extrinsic.docs =
+        Docs::for_call_subxt(metadata, &pallet_name, &method_name).map(|d| d.to_string());
+}
+
+/// Associate events and outcomes with extrinsics.
+///
+/// This function takes the categorized events and outcomes and attaches them
+/// to the corresponding extrinsics in-place. Events are moved, not cloned.
+pub fn associate_events_with_extrinsics(
+    extrinsics: &mut [ExtrinsicInfo],
+    per_extrinsic_events: &mut [Vec<Event>],
+    extrinsic_outcomes: &[ExtrinsicOutcome],
+) {
+    for (i, outcome) in extrinsic_outcomes.iter().enumerate() {
+        if let Some(extrinsic) = extrinsics.get_mut(i) {
+            if let Some(events) = per_extrinsic_events.get_mut(i) {
+                extrinsic.events = std::mem::take(events);
+            }
+            extrinsic.success = outcome.success;
+            if extrinsic.signature.is_some() {
+                if outcome.pays_fee.is_some() {
+                    extrinsic.pays_fee = outcome.pays_fee;
+                }
+            } else {
+                extrinsic.pays_fee = Some(false);
+            }
+        }
+    }
+}
+
+// ================================================================================================
+// Range Parsing
+// ================================================================================================
+
+/// Error type for range parsing
+#[derive(Debug, Clone, Copy)]
+pub enum RangeParseError {
+    InvalidFormat,
+    InvalidMin,
+    InvalidMax,
+    MinGreaterThanOrEqualToMax,
+    RangeTooLarge,
+}
+
+impl From<RangeParseError> for GetBlockError {
+    fn from(err: RangeParseError) -> Self {
+        match err {
+            RangeParseError::InvalidFormat => GetBlockError::InvalidRangeFormat,
+            RangeParseError::InvalidMin => GetBlockError::InvalidRangeMin,
+            RangeParseError::InvalidMax => GetBlockError::InvalidRangeMax,
+            RangeParseError::MinGreaterThanOrEqualToMax => GetBlockError::InvalidRangeMinMax,
+            RangeParseError::RangeTooLarge => GetBlockError::RangeTooLarge,
+        }
+    }
+}
+
+pub fn parse_range(range: &str) -> Result<(u64, u64), RangeParseError> {
+    let parts: Vec<_> = range.split('-').collect();
+    if parts.len() != 2 {
+        return Err(RangeParseError::InvalidFormat);
+    }
+
+    let start_str = parts[0].trim();
+    let end_str = parts[1].trim();
+
+    if start_str.is_empty() || end_str.is_empty() {
+        return Err(RangeParseError::InvalidFormat);
+    }
+
+    let start: u64 = start_str.parse().map_err(|_| RangeParseError::InvalidMin)?;
+    let end: u64 = end_str.parse().map_err(|_| RangeParseError::InvalidMax)?;
+
+    if start >= end {
+        return Err(RangeParseError::MinGreaterThanOrEqualToMax);
+    }
+
+    let count = end
+        .checked_sub(start)
+        .and_then(|d| d.checked_add(1))
+        .ok_or(RangeParseError::RangeTooLarge)?;
+
+    if count > 500 {
+        return Err(RangeParseError::RangeTooLarge);
+    }
+
+    Ok((start, end))
+}
+
+// ================================================================================================
+// Relay Chain State Queries
+// ================================================================================================
+
+pub async fn get_finalized_block_number_with_rpc(
+    legacy_rpc: &Arc<crate::state::SubstrateLegacyRpc>,
+    rpc_client: &Arc<RpcClient>,
+) -> Result<u64, GetBlockError> {
+    let finalized_hash = legacy_rpc
+        .chain_get_finalized_head()
+        .await
+        .map_err(GetBlockError::FinalizedHeadFailed)?;
+
+    let finalized_hash_str = format!("0x{}", hex::encode(finalized_hash.0));
+
+    let header_json: serde_json::Value = rpc_client
+        .request("chain_getHeader", rpc_params![finalized_hash_str])
+        .await
+        .map_err(GetBlockError::HeaderFetchFailed)?;
+
+    let number_hex = header_json
+        .get("number")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| GetBlockError::HeaderFieldMissing("number".to_string()))?;
+
+    let number = u64::from_str_radix(number_hex.trim_start_matches("0x"), 16)
+        .map_err(|_| GetBlockError::HeaderFieldMissing("number (invalid format)".to_string()))?;
+
+    Ok(number)
+}
+
+pub async fn get_canonical_hash_at_number_with_rpc(
+    legacy_rpc: &Arc<crate::state::SubstrateLegacyRpc>,
+    block_number: u64,
+) -> Result<Option<String>, GetBlockError> {
+    let hash = legacy_rpc
+        .chain_get_block_hash(Some(block_number.into()))
+        .await
+        .map_err(GetBlockError::CanonicalHashFailed)?;
+
+    Ok(hash.map(|h| format!("0x{}", hex::encode(h.0))))
+}
+
+// ================================================================================================
+// Generic Block Response Builder
+// ================================================================================================
+
+use super::decode::XcmDecoder;
+use super::processing::{
+    categorize_events, extract_extrinsics_with_prefix, extract_fee_info_for_extrinsic,
+    fetch_block_events_with_prefix,
+};
+use super::types::{BlockBuildParams, BlockResponse};
+use polkadot_rest_api_config::ChainType;
+
+/// Context for building a block response.
+pub struct BlockBuildContext<'a> {
+    /// Application state (needed for fee extraction)
+    pub state: &'a AppState,
+    /// OnlineClient for Subxt 0.50 APIs (finalized head, canonical hash, fee queries)
+    pub client: &'a Arc<OnlineClient<SubstrateConfig>>,
+    /// SS58 prefix for address encoding
+    pub ss58_prefix: u16,
+    /// Chain type for XCM decoding
+    pub chain_type: ChainType,
+    /// Runtime spec name for fee cache lookup
+    pub spec_name: String,
+}
+
+/// Build a block response using the generic context.
+pub async fn build_block_response_generic(
+    ctx: &BlockBuildContext<'_>,
+    client_at_block: &BlockClient,
+    block_hash: &str,
+    block_number: u64,
+    queried_by_hash: bool,
+    params: &BlockBuildParams,
+    include_finalized: bool,
+) -> Result<BlockResponse, GetBlockError> {
+    let header = client_at_block
+        .block_header()
+        .await
+        .map_err(GetBlockError::BlockHeaderFailed)?;
+
+    let parent_hash = format!("{:#x}", header.parent_hash);
+    let state_root = format!("{:#x}", header.state_root);
+    let extrinsics_root = format!("{:#x}", header.extrinsics_root);
+
+    let logs = convert_digest_items_to_logs(&header.digest.logs);
+
+    let (author_id, extrinsics_result, events_result, finalized_result, canonical_hash_result) = tokio::join!(
+        extract_author_with_prefix(client_at_block, &logs, ctx.ss58_prefix, block_number),
+        extract_extrinsics_with_prefix(ctx.ss58_prefix, client_at_block, block_number),
+        fetch_block_events_with_prefix(ctx.ss58_prefix, client_at_block, block_number),
+        async {
+            if include_finalized {
+                Some(
+                    ctx.client
+                        .at_current_block()
+                        .await
+                        .map(|b| b.block_number())
+                        .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e))),
+                )
+            } else {
+                None
+            }
+        },
+        async {
+            if queried_by_hash && include_finalized {
+                let hash = ctx
+                    .client
+                    .at_block(block_number)
+                    .await
+                    .ok()
+                    .map(|b| format!("{:#x}", b.block_hash()));
+                Some(Ok::<_, GetBlockError>(hash))
+            } else {
+                None
+            }
+        },
+    );
+
+    let extrinsics = extrinsics_result?;
+    let block_events = events_result?;
+
+    let finalized = if let Some(finalized_result) = finalized_result {
+        match finalized_result {
+            Ok(finalized_number) => {
+                if block_number <= finalized_number {
+                    if queried_by_hash {
+                        if let Some(canonical_result) = canonical_hash_result {
+                            match canonical_result {
+                                Ok(Some(canonical_hash)) => Some(canonical_hash == block_hash),
+                                Ok(None) => Some(false),
+                                Err(_) => Some(false),
+                            }
+                        } else {
+                            Some(true)
+                        }
+                    } else {
+                        Some(true)
+                    }
+                } else {
+                    Some(false)
+                }
+            }
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    let (on_initialize, mut per_extrinsic_events, on_finalize, extrinsic_outcomes) =
+        categorize_events(block_events, extrinsics.len());
+
+    let mut extrinsics_with_events = extrinsics;
+    for (i, outcome) in extrinsic_outcomes.iter().enumerate() {
+        if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
+            if let Some(events) = per_extrinsic_events.get_mut(i) {
+                extrinsic.events = std::mem::take(events);
+            }
+            extrinsic.success = outcome.success;
+            if extrinsic.signature.is_some() {
+                // For signed extrinsics, use the value from the event's DispatchInfo
+                if outcome.pays_fee.is_some() {
+                    extrinsic.pays_fee = outcome.pays_fee;
+                }
+            } else {
+                // Unsigned extrinsics never pay fees
+                extrinsic.pays_fee = Some(false);
+            }
+        }
+    }
+
+    if !params.no_fees {
+        let fee_indices: Vec<usize> = extrinsics_with_events
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.signature.is_some() && e.pays_fee == Some(true))
+            .map(|(i, _)| i)
+            .collect();
+
+        if !fee_indices.is_empty() {
+            let spec_version = client_at_block.spec_version();
+            let client_at_parent = ctx.client.at_block(header.parent_hash).await?;
+
+            let fee_futures: Vec<_> = fee_indices
+                .iter()
+                .map(|&i| {
+                    let extrinsic = &extrinsics_with_events[i];
+                    extract_fee_info_for_extrinsic(
+                        ctx.state,
+                        &client_at_parent,
+                        &extrinsic.raw_hex,
+                        &extrinsic.events,
+                        extrinsic_outcomes.get(i),
+                        spec_version,
+                        &ctx.spec_name,
+                    )
+                })
+                .collect();
+
+            let fee_results = futures::future::join_all(fee_futures).await;
+
+            for (idx, fee_info) in fee_indices.into_iter().zip(fee_results) {
+                extrinsics_with_events[idx].info = fee_info;
+            }
+        }
+    }
+
+    let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
+
+    if params.event_docs || params.extrinsic_docs || params.use_evm_format {
+        let metadata = client_at_block.metadata();
+
+        if params.event_docs {
+            add_docs_to_events(&mut on_initialize.events, &metadata);
+            add_docs_to_events(&mut on_finalize.events, &metadata);
+
+            for extrinsic in extrinsics_with_events.iter_mut() {
+                add_docs_to_events(&mut extrinsic.events, &metadata);
+            }
+        }
+
+        if params.extrinsic_docs {
+            for extrinsic in extrinsics_with_events.iter_mut() {
+                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
+                let method_name = extrinsic.method.method.to_snake_case();
+                extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
+                    .map(|d| d.to_string());
+            }
+        }
+
+        if params.use_evm_format {
+            super::evm_format::apply_evm_format(&mut extrinsics_with_events, &metadata);
+        }
+    }
+
+    let decoded_xcm_msgs = if params.decoded_xcm_msgs {
+        let decoder = XcmDecoder::new(
+            ctx.chain_type.clone(),
+            &extrinsics_with_events,
+            params.para_id,
+        );
+        Some(decoder.decode())
+    } else {
+        None
+    };
+
+    Ok(BlockResponse {
+        number: block_number.to_string(),
+        hash: block_hash.to_string(),
+        parent_hash,
+        state_root,
+        extrinsics_root,
+        author_id,
+        logs,
+        on_initialize,
+        extrinsics: extrinsics_with_events,
+        on_finalize,
+        finalized,
+        decoded_xcm_msgs,
+        rc_block_hash: None,
+        rc_block_number: None,
+        ah_timestamp: None,
+    })
 }

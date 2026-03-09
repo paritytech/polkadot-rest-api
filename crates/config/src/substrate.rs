@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -104,12 +107,14 @@ impl KnownAssetHub {
 }
 
 /// Chain type identifier
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ChainType {
     Relay,
     #[serde(rename = "assethub")]
     AssetHub,
+    Coretime,
+    #[default]
     Parachain,
 }
 
@@ -125,6 +130,8 @@ impl ChainType {
             name if KnownRelayChain::from_spec_name(name).is_some() => Self::Relay,
             // Check for asset-hub prefix patterns (future-proofing for unknown Asset Hubs)
             name if name.starts_with("asset-hub-") || name.contains("assethub") => Self::AssetHub,
+            // Check for coretime chains (e.g., coretime-kusama, coretime-polkadot)
+            name if name.starts_with("coretime-") || name.contains("coretime") => Self::Coretime,
             // Default to Parachain for everything else
             _ => Self::Parachain,
         }
@@ -171,6 +178,24 @@ pub struct SubstrateConfig {
     /// Example: '[{"url":"ws://polkadot:9944","type":"relay"}]'
     /// Default: []
     pub multi_chain_urls: Vec<ChainUrl>,
+
+    /// Initial delay in milliseconds for reconnection backoff
+    ///
+    /// Env: SAS_SUBSTRATE_RECONNECT_INITIAL_DELAY_MS
+    /// Default: 100
+    pub reconnect_initial_delay_ms: u64,
+
+    /// Maximum delay in milliseconds for reconnection backoff
+    ///
+    /// Env: SAS_SUBSTRATE_RECONNECT_MAX_DELAY_MS
+    /// Default: 10000 (10 seconds)
+    pub reconnect_max_delay_ms: u64,
+
+    /// Request timeout in milliseconds for RPC calls
+    ///
+    /// Env: SAS_SUBSTRATE_RECONNECT_REQUEST_TIMEOUT_MS
+    /// Default: 30000 (30 seconds)
+    pub reconnect_request_timeout_ms: u64,
 }
 
 impl SubstrateConfig {
@@ -201,6 +226,17 @@ impl SubstrateConfig {
         Ok(())
     }
 
+    /// Get the relay chain URL from multi_chain_urls (if configured)
+    ///
+    /// Finds the first entry with `type: "relay"` in the multi_chain_urls array.
+    /// This is used for parachain deployments that need access to the relay chain.
+    pub fn get_relay_chain_url(&self) -> Option<&str> {
+        self.multi_chain_urls
+            .iter()
+            .find(|u| u.chain_type == ChainType::Relay)
+            .map(|u| u.url.as_str())
+    }
+
     /// Validate a single URL
     fn validate_url(url_str: &str) -> Result<(), SubstrateError> {
         if url_str.is_empty() {
@@ -228,6 +264,9 @@ impl Default for SubstrateConfig {
         Self {
             url: "ws://127.0.0.1:9944".to_string(),
             multi_chain_urls: vec![],
+            reconnect_initial_delay_ms: 100,
+            reconnect_max_delay_ms: 10000,
+            reconnect_request_timeout_ms: 30000,
         }
     }
 }
@@ -247,6 +286,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_err());
     }
@@ -256,6 +296,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "not-a-valid-url".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_err());
     }
@@ -265,6 +306,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "ftp://localhost:9944".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_err());
     }
@@ -274,6 +316,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "ws://localhost:9944".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_ok());
     }
@@ -283,6 +326,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "wss://polkadot.api.io".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_ok());
     }
@@ -292,6 +336,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "http://localhost:9933".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_ok());
     }
@@ -301,6 +346,7 @@ mod tests {
         let config = SubstrateConfig {
             url: "https://rpc.polkadot.io".to_string(),
             multi_chain_urls: vec![],
+            ..Default::default()
         };
         assert!(config.validate().is_ok());
     }
@@ -319,6 +365,7 @@ mod tests {
                     chain_type: ChainType::AssetHub,
                 },
             ],
+            ..Default::default()
         };
         assert!(config.validate().is_ok());
     }
@@ -331,6 +378,7 @@ mod tests {
                 url: "ws://localhost:9944".to_string(),
                 chain_type: ChainType::Relay,
             }],
+            ..Default::default()
         };
         assert!(config.validate().is_err());
     }
@@ -343,6 +391,7 @@ mod tests {
                 url: "invalid-url".to_string(),
                 chain_type: ChainType::Relay,
             }],
+            ..Default::default()
         };
         assert!(config.validate().is_err());
     }
@@ -360,6 +409,41 @@ mod tests {
         let json = r#"{"url":"ws://test:9944","type":"parachain"}"#;
         let chain_url: ChainUrl = serde_json::from_str(json).unwrap();
         assert_eq!(chain_url.chain_type, ChainType::Parachain);
+    }
+
+    #[test]
+    fn test_get_relay_chain_url() {
+        // With relay chain configured
+        let config = SubstrateConfig {
+            url: "ws://localhost:9944".to_string(),
+            multi_chain_urls: vec![
+                ChainUrl {
+                    url: "ws://polkadot:9944".to_string(),
+                    chain_type: ChainType::Relay,
+                },
+                ChainUrl {
+                    url: "ws://asset-hub:9944".to_string(),
+                    chain_type: ChainType::AssetHub,
+                },
+            ],
+            ..Default::default()
+        };
+        assert_eq!(config.get_relay_chain_url(), Some("ws://polkadot:9944"));
+
+        // Without relay chain
+        let config_no_relay = SubstrateConfig {
+            url: "ws://localhost:9944".to_string(),
+            multi_chain_urls: vec![ChainUrl {
+                url: "ws://asset-hub:9944".to_string(),
+                chain_type: ChainType::AssetHub,
+            }],
+            ..Default::default()
+        };
+        assert_eq!(config_no_relay.get_relay_chain_url(), None);
+
+        // Empty multi_chain_urls
+        let config_empty = SubstrateConfig::default();
+        assert_eq!(config_empty.get_relay_chain_url(), None);
     }
 
     #[test]

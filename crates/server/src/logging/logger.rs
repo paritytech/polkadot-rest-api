@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use super::format::{HttpAwareFormat, HttpAwareJsonFormat};
 use rolling_file::*;
 use std::path::PathBuf;
 use thiserror::Error;
@@ -45,7 +49,7 @@ pub struct LoggingConfig<'a> {
 ///
 /// # Examples
 /// ```no_run
-/// use server::logging::{self, LoggingConfig, init_with_config, LoggingError};
+/// use polkadot_rest_api::logging::{self, LoggingConfig, init_with_config, LoggingError};
 ///
 /// // Console only
 /// logging::init_with_config(LoggingConfig {
@@ -70,7 +74,7 @@ pub struct LoggingConfig<'a> {
 ///     write_max_files: 5,
 ///     loki_url: Some("http://localhost:3100"),
 /// })?;
-/// # Ok::<(), server::logging::LoggingError>(())
+/// # Ok::<(), polkadot_rest_api::logging::LoggingError>(())
 /// ```
 ///
 /// # Loki Integration
@@ -93,13 +97,21 @@ pub fn init_with_config(config: LoggingConfig) -> Result<(), LoggingError> {
     let write_max_file_size = config.write_max_file_size;
     let write_max_files = config.write_max_files;
     let loki_url = config.loki_url;
-    // Create filter from level
-    // Resolve "http" log level to "debug" for the filter
+    // Create filter from level.
+    //
+    // The "http" level mirrors substrate-api-sidecar's hierarchy where
+    // "http" sits between "info" and "debug":
+    //   error > warn > info > http > debug > trace
+    //
+    // "info,http=debug" means: show info/warn/error from all targets,
+    // PLUS debug-level events from the "http" target (which the
+    // HttpAwareFormat/HttpAwareJsonFormat formatters display as "HTTP").
+    // Non-HTTP debug events are filtered out — matching sidecar's
+    // behavior where SAS_LOG_LEVEL=http shows request logs alongside
+    // info-level application logs, but not verbose debug output.
     let filter_level = if level == "http" {
-        // Translate to target filter
         "info,http=debug"
     } else {
-        // Standard level
         level
     };
 
@@ -156,8 +168,10 @@ pub fn init_with_config(config: LoggingConfig) -> Result<(), LoggingError> {
 
         if json_format {
             // JSON format for both console and file
-            let console_layer = fmt::layer().json();
-            let file_layer = fmt::layer().json().with_writer(non_blocking);
+            let console_layer = fmt::layer().event_format(HttpAwareJsonFormat::new());
+            let file_layer = fmt::layer()
+                .event_format(HttpAwareJsonFormat::new())
+                .with_writer(non_blocking);
 
             if let Some(loki) = loki_layer {
                 registry
@@ -176,18 +190,12 @@ pub fn init_with_config(config: LoggingConfig) -> Result<(), LoggingError> {
         } else {
             // Human-readable format for both console and file
             let console_layer = fmt::layer()
-                .with_target(true)
-                .with_thread_ids(false)
-                .with_file(true)
-                .with_line_number(true)
+                .event_format(HttpAwareFormat::new(strip_ansi))
                 .with_ansi(!strip_ansi);
 
             let file_layer = fmt::layer()
-                .with_target(true)
-                .with_thread_ids(false)
-                .with_file(true)
-                .with_line_number(true)
-                .with_ansi(false) // Never use ANSI in files
+                .event_format(HttpAwareFormat::new(true))
+                .with_ansi(false)
                 .with_writer(non_blocking);
 
             if let Some(loki) = loki_layer {
@@ -208,7 +216,7 @@ pub fn init_with_config(config: LoggingConfig) -> Result<(), LoggingError> {
     } else {
         // Console output only
         if json_format {
-            let fmt_layer = fmt::layer().json();
+            let fmt_layer = fmt::layer().event_format(HttpAwareJsonFormat::new());
             if let Some(loki) = loki_layer {
                 registry.with(filter).with(fmt_layer).with(loki).init();
             } else {
@@ -216,10 +224,7 @@ pub fn init_with_config(config: LoggingConfig) -> Result<(), LoggingError> {
             }
         } else {
             let fmt_layer = fmt::layer()
-                .with_target(true)
-                .with_thread_ids(false)
-                .with_file(true)
-                .with_line_number(true)
+                .event_format(HttpAwareFormat::new(strip_ansi))
                 .with_ansi(!strip_ansi);
 
             if let Some(loki) = loki_layer {

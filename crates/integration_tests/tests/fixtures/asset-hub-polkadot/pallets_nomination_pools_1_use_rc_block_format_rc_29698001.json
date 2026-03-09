@@ -1,0 +1,120 @@
+{
+    "rcBlock": {
+        "hash": "0x67ce95c6e0923e3d5638fd89940853b48f03f952bf79706f00f65a24e609a074",
+        "parentHash": "0x6a5dc0f99ebd62e6b8c949d11ccda2df18f8f1258891263eff83bffdc9253db2",
+        "number": "29698001"
+    },
+    "parachainDataPerBlock": [
+        {
+            "at": {
+                "hash": "0x0baa53b9f46c19fc5f79f5c19875c36f4a4de3ba68f007799dfd69cdb5733cb8",
+                "height": "11414663"
+            },
+            "bondedPool": {
+                "commission": {
+                    "current": null,
+                    "max": null,
+                    "changeRate": {
+                        "maxIncrease": "10000000",
+                        "minDelay": "43200"
+                    },
+                    "throttleFrom": "21527990",
+                    "claimPermission": null
+                },
+                "memberCounter": "881",
+                "points": "8006486239002122",
+                "roles": {
+                    "depositor": "12NRTphLWqYK5Tri7V2aVGcXWuJ78NFPPjwSN9ZkUxLhCa78",
+                    "root": "12NRTphLWqYK5Tri7V2aVGcXWuJ78NFPPjwSN9ZkUxLhCa78",
+                    "nominator": "15vthWssisuTdYrYzvhvaCp7t27PLQJ8fVAZ8XfJH3atK2oh",
+                    "bouncer": "12NRTphLWqYK5Tri7V2aVGcXWuJ78NFPPjwSN9ZkUxLhCa78"
+                },
+                "state": "Open"
+            },
+            "rewardPool": {
+                "lastRecordedRewardCounter": "479185044339568765",
+                "lastRecordedTotalPayouts": "1498901083900536",
+                "totalRewardsClaimed": "1348613748874454",
+                "totalCommissionPending": "0",
+                "totalCommissionClaimed": "0"
+            },
+            "rcBlockHash": "0x67ce95c6e0923e3d5638fd89940853b48f03f952bf79706f00f65a24e609a074",
+            "rcBlockNumber": "29698001",
+            "ahTimestamp": "1769534688000"
+        },
+        {
+            "at": {
+                "hash": "0x8898e30d7b343a727f621f75ebf5629f6adfa40509bc78a9601277eb7204b019",
+                "height": "11414664"
+            },
+            "bondedPool": {
+                "commission": {
+                    "current": null,
+                    "max": null,
+                    "changeRate": {
+                        "maxIncrease": "10000000",
+                        "minDelay": "43200"
+                    },
+                    "throttleFrom": "21527990",
+                    "claimPermission": null
+                },
+                "memberCounter": "881",
+                "points": "8006486239002122",
+                "roles": {
+                    "depositor": "12NRTphLWqYK5Tri7V2aVGcXWuJ78NFPPjwSN9ZkUxLhCa78",
+                    "root": "12NRTphLWqYK5Tri7V2aVGcXWuJ78NFPPjwSN9ZkUxLhCa78",
+                    "nominator": "15vthWssisuTdYrYzvhvaCp7t27PLQJ8fVAZ8XfJH3atK2oh",
+                    "bouncer": "12NRTphLWqYK5Tri7V2aVGcXWuJ78NFPPjwSN9ZkUxLhCa78"
+                },
+                "state": "Open"
+            },
+            "rewardPool": {
+                "lastRecordedRewardCounter": "479185044339568765",
+                "lastRecordedTotalPayouts": "1498901083900536",
+                "totalRewardsClaimed": "1348613748874454",
+                "totalCommissionPending": "0",
+                "totalCommissionClaimed": "0"
+            },
+            "rcBlockHash": "0x67ce95c6e0923e3d5638fd89940853b48f03f952bf79706f00f65a24e609a074",
+            "rcBlockNumber": "29698001",
+            "ahTimestamp": "1769534688000"
+        },
+        {
+            "at": {
+                "hash": "0x3c9d4a5914e113788492da2da82fa5f40a462845b76ed69506a3b3d34030ee48",
+                "height": "11414665"
+            },
+            "bondedPool": {
+                "commission": {
+                    "current": null,
+                    "max": null,
+                    "changeRate": {
+                        "maxIncrease": "10000000",
+                        "minDelay": "43200"
+                    },
+                    "throttleFrom": "21527990",
+                    "claimPermission": null
+                },
+                "memberCounter": "881",
+                "points": "8006486239002122",
+                "roles": {
+                    "depositor": "12NRTphLWqYK5Tri7V2aVGcXWuJ78NFPPjwSN9ZkUxLhCa78",
+                    "root": "12NRTphLWqYK5Tri7V2aVGcXWuJ78NFPPjwSN9ZkUxLhCa78",
+                    "nominator": "15vthWssisuTdYrYzvhvaCp7t27PLQJ8fVAZ8XfJH3atK2oh",
+                    "bouncer": "12NRTphLWqYK5Tri7V2aVGcXWuJ78NFPPjwSN9ZkUxLhCa78"
+                },
+                "state": "Open"
+            },
+            "rewardPool": {
+                "lastRecordedRewardCounter": "479185044339568765",
+                "lastRecordedTotalPayouts": "1498901083900536",
+                "totalRewardsClaimed": "1348613748874454",
+                "totalCommissionPending": "0",
+                "totalCommissionClaimed": "0"
+            },
+            "rcBlockHash": "0x67ce95c6e0923e3d5638fd89940853b48f03f952bf79706f00f65a24e609a074",
+            "rcBlockNumber": "29698001",
+            "ahTimestamp": "1769534688000"
+        }
+    ]
+}

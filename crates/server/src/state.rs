@@ -1,19 +1,28 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::routes::RouteRegistry;
-use crate::utils::{
-    QueryFeeDetailsCache, RuntimeDispatchInfoRaw, WeightRaw, dispatch_class_from_u8,
-};
-use config::{ChainType, KnownRelayChain, SidecarConfig};
-use parity_scale_codec::{Compact, Decode, Encode};
+use crate::utils::QueryFeeDetailsCache;
+use polkadot_rest_api_config::{ChainType, SidecarConfig};
 use serde_json::Value;
 use std::sync::Arc;
-use subxt_historic::{OnlineClient, SubstrateConfig};
+use std::time::Duration;
+use subxt::config::RpcConfigFor;
+use subxt::{OnlineClient, SubstrateConfig};
+use subxt_rpcs::client::reconnecting_rpc_client::{
+    ExponentialBackoff, RpcClient as ReconnectingRpcClient,
+};
 use subxt_rpcs::{LegacyRpcMethods, RpcClient, rpc_params};
+use tokio::sync::OnceCell;
+
+/// Type alias for LegacyRpcMethods with correct RpcConfig wrapper
+pub type SubstrateLegacyRpc = LegacyRpcMethods<RpcConfigFor<SubstrateConfig>>;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum StateError {
     #[error("Failed to load configuration")]
-    ConfigLoadFailed(#[from] config::ConfigError),
+    ConfigLoadFailed(#[from] polkadot_rest_api_config::ConfigError),
 
     #[error("Failed to connect to substrate node at {url}")]
     ConnectionFailed {
@@ -22,11 +31,26 @@ pub enum StateError {
         source: subxt_rpcs::Error,
     },
 
+    #[error("Connection to substrate node at {url} timed out after {timeout_secs} seconds")]
+    ConnectionTimeout { url: String, timeout_secs: u64 },
+
     #[error("Failed to get runtime version")]
     RuntimeVersionFailed(#[source] subxt_rpcs::Error),
 
     #[error("spec_name not found in runtime version")]
     SpecNameNotFound,
+}
+
+/// Error type for relay chain connection operations
+#[derive(Debug, Clone, Error)]
+pub enum RelayChainError {
+    #[error(
+        "Relay chain URL not configured. Add a relay chain URL to SAS_SUBSTRATE_MULTI_CHAIN_URL"
+    )]
+    NotConfigured,
+
+    #[error("Failed to connect to relay chain: {0}")]
+    ConnectionFailed(String),
 }
 
 /// Information about the connected chain
@@ -48,13 +72,27 @@ pub struct AppState {
     #[allow(dead_code)] // Will be used when implementing endpoints
     pub client: Arc<OnlineClient<SubstrateConfig>>,
     #[allow(dead_code)] // Will be used when implementing endpoints
-    pub legacy_rpc: Arc<LegacyRpcMethods<SubstrateConfig>>,
+    pub legacy_rpc: Arc<SubstrateLegacyRpc>,
     pub rpc_client: Arc<RpcClient>,
     pub chain_info: ChainInfo,
+
+    /// Relay chain OnlineClient — pre-populated at startup if connection succeeds, lazy-init otherwise
+    pub relay_client: Arc<OnceCell<Arc<OnlineClient<SubstrateConfig>>>>,
+    /// Relay chain info — pre-populated at startup if connection succeeds, lazy-init otherwise
+    pub relay_chain_info: Arc<OnceCell<ChainInfo>>,
+
     /// Cache for tracking queryFeeDetails availability per spec version
     pub fee_details_cache: Arc<QueryFeeDetailsCache>,
+    /// All chain configurations loaded from chain_config.json
+    pub chain_configs: Arc<polkadot_rest_api_config::ChainConfigs>,
+    /// Complete configuration with optional relay chain
+    pub chain_config: Arc<polkadot_rest_api_config::Config>,
     /// Registry of all available routes for introspection
     pub route_registry: RouteRegistry,
+    /// Relay chain RPC client — pre-populated at startup if connection succeeds, lazy-init otherwise
+    pub relay_rpc_client: Arc<OnceCell<Arc<RpcClient>>>,
+    /// Relay chain legacy RPC methods — lazy-init from relay_rpc_client
+    pub relay_chain_rpc: Arc<OnceCell<Arc<SubstrateLegacyRpc>>>,
 }
 
 impl AppState {
@@ -64,42 +102,93 @@ impl AppState {
     }
 
     pub async fn new_with_config(config: SidecarConfig) -> Result<Self, StateError> {
-        // Create RPC client first - we'll use it for both historic client and legacy RPC
-        let rpc_client = RpcClient::from_insecure_url(&config.substrate.url)
-            .await
-            .map_err(|source| StateError::ConnectionFailed {
-                url: config.substrate.url.clone(),
-                source,
-            })?;
+        let reconnecting_client =
+            connect_with_progress_logging(&config.substrate.url, &config).await?;
 
-        let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
+        // Wrap in RpcClient for compatibility with existing code
+        let rpc_client = RpcClient::new(reconnecting_client);
 
-        // Get chain info first to determine which legacy types to load
+        let legacy_rpc: SubstrateLegacyRpc = LegacyRpcMethods::new(rpc_client.clone());
+
+        // Get chain info first to determine which configuration to load
         let chain_info = get_chain_info(&legacy_rpc).await?;
 
-        // Configure SubstrateConfig with appropriate legacy types based on chain
-        let subxt_config = match chain_info.chain_type.as_relay_chain(&chain_info.spec_name) {
-            Some(KnownRelayChain::Polkadot) => {
-                // Load Polkadot-specific legacy types for historic block support
-                SubstrateConfig::new()
-                    .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
+        // Load all chain configurations
+        let chain_configs = Arc::new(polkadot_rest_api_config::ChainConfigs::default());
+
+        // Get configuration for the connected chain (or use defaults)
+        let chain_chain_config = chain_configs
+            .get(&chain_info.spec_name)
+            .cloned()
+            .unwrap_or_default();
+
+        // Configure SubstrateConfig with appropriate legacy types based on chain config
+        let subxt_config = build_subxt_config(&chain_chain_config.legacy_types);
+
+        // Note: from_rpc_client_with_config is now async in the new subxt
+        let client = OnlineClient::from_rpc_client_with_config(subxt_config, rpc_client.clone())
+            .await
+            .map_err(|e| StateError::ConnectionFailed {
+                url: config.substrate.url.clone(),
+                source: subxt_rpcs::Error::Client(Box::new(std::io::Error::other(e.to_string()))),
+            })?;
+
+        // Check if this chain requires a relay chain connection
+        let (relay_client, relay_rpc_client, relay_chain_info, relay_chain_config) = if let Some(
+            relay_chain_name,
+        ) =
+            &chain_chain_config.relay_chain
+        {
+            // If relay chain URL is provided in multi_chain_urls, connect to it
+            if let Some(relay_url) = config.substrate.get_relay_chain_url() {
+                // Relay chain connection now blocks and fails startup if it cannot connect
+                let (client, rpc, info, rc_config) =
+                    Self::connect_relay_chain(relay_url, relay_chain_name, &chain_configs, &config)
+                        .await?;
+                (Some(client), Some(rpc), Some(info), Some(rc_config))
+            } else {
+                tracing::info!(
+                    "Chain '{}' is a parachain with relay chain '{}', but no relay chain URL found in SAS_SUBSTRATE_MULTI_CHAIN_URL. \
+                        Relay chain features will be unavailable. Add: '[{{\"url\":\"wss://...\",\"type\":\"relay\"}}]'",
+                    chain_info.spec_name,
+                    relay_chain_name
+                );
+                (None, None, None, None)
             }
-            Some(KnownRelayChain::Kusama)
-            | Some(KnownRelayChain::Westend)
-            | Some(KnownRelayChain::Rococo)
-            | Some(KnownRelayChain::Paseo) => {
-                // For other known relay chains, use Polkadot types as fallback
-                // TODO: Add chain-specific legacy types when available
-                SubstrateConfig::new()
-                    .set_legacy_types(subxt_historic::config::polkadot::legacy_types())
-            }
-            None => {
-                // For parachains and unknown chains, use empty legacy types
-                SubstrateConfig::new()
-            }
+        } else {
+            // Not a parachain or relay chain connection not needed
+            (None, None, None, None)
         };
 
-        let client = OnlineClient::from_rpc_client(subxt_config, rpc_client.clone());
+        // Create Config struct with chain and optional relay chain
+        let full_config = if let Some(rc_config) = relay_chain_config {
+            Arc::new(polkadot_rest_api_config::Config::with_relay_chain(
+                chain_chain_config,
+                rc_config,
+            ))
+        } else {
+            Arc::new(polkadot_rest_api_config::Config::single_chain(
+                chain_chain_config,
+            ))
+        };
+
+        let relay_rpc_client_cell = Arc::new(OnceCell::new());
+        let relay_chain_rpc_cell = Arc::new(OnceCell::new());
+        let relay_client_cell = Arc::new(OnceCell::new());
+        let relay_chain_info_cell = Arc::new(OnceCell::new());
+
+        if let Some(rpc) = relay_rpc_client {
+            relay_rpc_client_cell.set(rpc.clone()).ok();
+            relay_chain_rpc_cell
+                .set(Arc::new(LegacyRpcMethods::new((*rpc).clone())))
+                .ok();
+        }
+        if let Some(client) = relay_client {
+            relay_client_cell.set(client).ok();
+        }
+        if let Some(info) = relay_chain_info {
+            relay_chain_info_cell.set(info).ok();
+        }
 
         Ok(Self {
             config,
@@ -107,9 +196,165 @@ impl AppState {
             legacy_rpc: Arc::new(legacy_rpc),
             rpc_client: Arc::new(rpc_client),
             chain_info,
+            relay_client: relay_client_cell,
+            relay_chain_info: relay_chain_info_cell,
             fee_details_cache: Arc::new(QueryFeeDetailsCache::new()),
+            chain_configs,
+            chain_config: full_config,
             route_registry: RouteRegistry::new(),
+            relay_rpc_client: relay_rpc_client_cell,
+            relay_chain_rpc: relay_chain_rpc_cell,
         })
+    }
+
+    /// Get or lazily initialize the relay chain OnlineClient.
+    ///
+    /// If the connection was established at startup, returns the pre-populated client.
+    /// Otherwise, attempts lazy initialization using the relay chain RPC client.
+    pub async fn get_relay_chain_client(
+        &self,
+    ) -> Result<Arc<OnlineClient<SubstrateConfig>>, RelayChainError> {
+        self.relay_client
+            .get_or_try_init(|| async {
+                let rpc_client = self.get_relay_chain_rpc_client().await?;
+
+                // Get relay chain legacy types from config
+                let rc_config = self
+                    .chain_config
+                    .rc
+                    .as_ref()
+                    .ok_or(RelayChainError::NotConfigured)?;
+                let subxt_config = build_subxt_config(&rc_config.legacy_types);
+
+                let client =
+                    OnlineClient::from_rpc_client_with_config(subxt_config, (*rpc_client).clone())
+                        .await
+                        .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
+
+                Ok(Arc::new(client))
+            })
+            .await
+            .cloned()
+    }
+
+    /// Get or lazily initialize the relay chain info.
+    ///
+    /// If the info was obtained at startup, returns the pre-populated value.
+    /// Otherwise, queries the relay chain via RPC to obtain it.
+    pub async fn get_relay_chain_info(&self) -> Result<ChainInfo, RelayChainError> {
+        self.relay_chain_info
+            .get_or_try_init(|| async {
+                let legacy_rpc = self.get_relay_chain_rpc().await?;
+                get_chain_info(&legacy_rpc)
+                    .await
+                    .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))
+            })
+            .await
+            .cloned()
+    }
+
+    /// Get or lazily initialize the relay chain legacy RPC methods.
+    ///
+    /// Returns a cached `SubstrateLegacyRpc` instance, creating one from the
+    /// relay chain RPC client if not yet initialized.
+    pub async fn get_relay_chain_rpc(&self) -> Result<Arc<SubstrateLegacyRpc>, RelayChainError> {
+        self.relay_chain_rpc
+            .get_or_try_init(|| async {
+                let rpc_client = self.get_relay_chain_rpc_client().await?;
+                Ok(Arc::new(LegacyRpcMethods::new((*rpc_client).clone())))
+            })
+            .await
+            .cloned()
+    }
+
+    /// Get or lazily initialize the relay chain RPC client.
+    ///
+    /// If the connection was established at startup, returns the pre-populated client.
+    /// Otherwise, attempts lazy initialization using the configured relay chain URL.
+    /// The connection is cached after the first successful initialization.
+    pub async fn get_relay_chain_rpc_client(&self) -> Result<Arc<RpcClient>, RelayChainError> {
+        self.relay_rpc_client
+            .get_or_try_init(|| async {
+                let relay_url = self
+                    .config
+                    .substrate
+                    .get_relay_chain_url()
+                    .ok_or(RelayChainError::NotConfigured)?;
+
+                // Use reconnecting client for consistency with startup behavior
+                let reconnecting_client =
+                    connect_relay_chain_with_progress_logging(relay_url, &self.config)
+                        .await
+                        .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
+
+                Ok(Arc::new(RpcClient::new(reconnecting_client)))
+            })
+            .await
+            .cloned()
+    }
+
+    /// Connect to a relay chain with reconnection support and progress logging
+    async fn connect_relay_chain(
+        relay_url: &str,
+        _relay_chain_name: &str,
+        chain_configs: &polkadot_rest_api_config::ChainConfigs,
+        config: &SidecarConfig,
+    ) -> Result<
+        (
+            Arc<OnlineClient<SubstrateConfig>>,
+            Arc<RpcClient>,
+            ChainInfo,
+            polkadot_rest_api_config::ChainConfig,
+        ),
+        StateError,
+    > {
+        // Create relay chain RPC client with reconnection support
+        let reconnecting_client =
+            connect_relay_chain_with_progress_logging(relay_url, config).await?;
+
+        let relay_rpc_client = RpcClient::new(reconnecting_client);
+        let relay_legacy_rpc: SubstrateLegacyRpc = LegacyRpcMethods::new(relay_rpc_client.clone());
+
+        // Get relay chain info
+        let relay_chain_info = get_chain_info(&relay_legacy_rpc).await?;
+
+        // Load relay chain configuration
+        let relay_chain_config = chain_configs
+            .get(&relay_chain_info.spec_name)
+            .cloned()
+            .unwrap_or_else(|| {
+                tracing::warn!(
+                    "No configuration found for relay chain '{}', using defaults",
+                    relay_chain_info.spec_name
+                );
+                polkadot_rest_api_config::ChainConfig::default()
+            });
+
+        // Configure SubstrateConfig with appropriate legacy types
+        let relay_subxt_config = build_subxt_config(&relay_chain_config.legacy_types);
+
+        let relay_client =
+            OnlineClient::from_rpc_client_with_config(relay_subxt_config, relay_rpc_client.clone())
+                .await
+                .map_err(|e| StateError::ConnectionFailed {
+                    url: relay_url.to_string(),
+                    source: subxt_rpcs::Error::Client(Box::new(std::io::Error::other(
+                        e.to_string(),
+                    ))),
+                })?;
+
+        tracing::info!(
+            "Connected to relay chain '{}' at {}",
+            relay_chain_info.spec_name,
+            relay_url
+        );
+
+        Ok((
+            Arc::new(relay_client),
+            Arc::new(relay_rpc_client),
+            relay_chain_info,
+            relay_chain_config,
+        ))
     }
 
     /// Make a raw JSON-RPC call to get a header and return the result as a Value
@@ -117,6 +362,14 @@ impl AppState {
     pub async fn get_header_json(&self, hash: &str) -> Result<Value, subxt_rpcs::Error> {
         self.rpc_client
             .request("chain_getHeader", rpc_params![hash])
+            .await
+    }
+
+    /// Make a raw JSON-RPC call to get a full block (header + extrinsics) and return the result as a Value
+    /// This is used by the /blocks/{blockId}/extrinsics-raw endpoint to get raw extrinsic data
+    pub async fn get_block_json(&self, hash: &str) -> Result<Value, subxt_rpcs::Error> {
+        self.rpc_client
+            .request("chain_getBlock", rpc_params![hash])
             .await
     }
 
@@ -210,93 +463,27 @@ impl AppState {
             )
             .await
     }
+}
 
-    /// Query fee information for an extrinsic using the TransactionPaymentApi runtime API.
-    ///
-    /// This is an alternative to `query_fee_info` that uses `state_call` to call the
-    /// runtime API directly. This method works for historic blocks where the
-    /// `payment_queryInfo` RPC method might not be available.
-    ///
-    /// # Arguments
-    /// * `extrinsic_bytes` - The raw extrinsic bytes (not hex encoded)
-    /// * `block_hash` - The block hash to execute against (parent block for pre-dispatch state)
-    ///
-    /// Returns RuntimeDispatchInfo containing weight, class, and partialFee.
-    pub async fn query_fee_info_via_runtime_api(
-        &self,
-        extrinsic_bytes: &[u8],
-        block_hash: &str,
-    ) -> Result<RuntimeDispatchInfoRaw, subxt_rpcs::Error> {
-        let mut params = extrinsic_bytes.to_vec();
-        let len = extrinsic_bytes.len() as u32;
-        len.encode_to(&mut params);
-
-        let params_hex = format!("0x{}", hex::encode(&params));
-
-        let result_hex: String = self
-            .state_call("TransactionPaymentApi_query_info", &params_hex, block_hash)
-            .await?;
-
-        let result_bytes = hex::decode(result_hex.trim_start_matches("0x")).map_err(|e| {
-            subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Failed to decode hex: {}", e),
-            )))
-        })?;
-
-        // Try to decode as legacy RuntimeDispatchInfo (with V1 weight) FIRST
-        // Format: { weight: u64, class: u8, partial_fee: u128 } = exactly 25 bytes
-        // V1 is tried first because it has a fixed size and validates cleanly.
-        // The V2 Compact decoder is too permissive and will "succeed" with garbage on V1 data.
-        if result_bytes.len() == 25
-            && let Ok((weight, class, partial_fee)) =
-                <(u64, u8, u128)>::decode(&mut &result_bytes[..])
-            && class <= 2
-        {
-            return Ok(RuntimeDispatchInfoRaw {
-                weight: WeightRaw::V1(weight),
-                class: dispatch_class_from_u8(class),
-                partial_fee,
-            });
-        }
-
-        // Try to decode as modern RuntimeDispatchInfo (with V2 weight)
-        // Format: { weight: { ref_time: Compact<u64>, proof_size: Compact<u64> }, class: u8, partial_fee: u128 }
-        if let Ok((ref_time, proof_size, class, partial_fee)) =
-            <(Compact<u64>, Compact<u64>, u8, u128)>::decode(&mut &result_bytes[..])
-            && class <= 2
-        {
-            return Ok(RuntimeDispatchInfoRaw {
-                weight: WeightRaw::V2 {
-                    ref_time: ref_time.0,
-                    proof_size: proof_size.0,
-                },
-                class: dispatch_class_from_u8(class),
-                partial_fee,
-            });
-        }
-
-        // If V2 failed validation, try V1 without length check as fallback
-        if let Ok((weight, class, partial_fee)) = <(u64, u8, u128)>::decode(&mut &result_bytes[..])
-            && class <= 2
-        {
-            return Ok(RuntimeDispatchInfoRaw {
-                weight: WeightRaw::V1(weight),
-                class: dispatch_class_from_u8(class),
-                partial_fee,
-            });
-        }
-
-        Err(subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "Failed to decode RuntimeDispatchInfo from state_call response",
-        ))))
+/// Build a SubstrateConfig with appropriate legacy types based on the chain config string.
+fn build_subxt_config(legacy_types: &str) -> SubstrateConfig {
+    match legacy_types {
+        "polkadot" => SubstrateConfig::builder()
+            .set_legacy_types(frame_decode::legacy_types::polkadot::relay_chain())
+            .build(),
+        "kusama-relay" => SubstrateConfig::builder()
+            .set_legacy_types(frame_decode::legacy_types::kusama::relay_chain())
+            .build(),
+        "kusama-asset-hub" => SubstrateConfig::builder()
+            .set_legacy_types(frame_decode::legacy_types::kusama::asset_hub())
+            .build(),
+        _ => SubstrateConfig::new(),
     }
 }
 
 /// Determine SS58 address format prefix based on chain type and spec name
 fn get_ss58_prefix(chain_type: &ChainType, spec_name: &str) -> u16 {
-    use config::{KnownAssetHub, KnownRelayChain};
+    use polkadot_rest_api_config::{KnownAssetHub, KnownRelayChain};
 
     match chain_type {
         ChainType::Relay => {
@@ -318,14 +505,23 @@ fn get_ss58_prefix(chain_type: &ChainType, spec_name: &str) -> u16 {
                 None => 42,
             }
         }
+        ChainType::Coretime => {
+            // Coretime chains inherit SS58 prefix from their parent relay chain
+            let name_lower = spec_name.to_lowercase();
+            if name_lower.contains("polkadot") {
+                0 // Polkadot prefix
+            } else if name_lower.contains("kusama") {
+                2 // Kusama prefix
+            } else {
+                42 // Default to generic substrate
+            }
+        }
         ChainType::Parachain => 42, // Generic substrate for unknown parachains
     }
 }
 
 /// Query the chain to get runtime information via RPC
-async fn get_chain_info(
-    legacy_rpc: &LegacyRpcMethods<SubstrateConfig>,
-) -> Result<ChainInfo, StateError> {
+async fn get_chain_info(legacy_rpc: &SubstrateLegacyRpc) -> Result<ChainInfo, StateError> {
     let runtime_version = legacy_rpc
         .state_get_runtime_version(None)
         .await
@@ -361,4 +557,103 @@ async fn get_chain_info(
         spec_version: runtime_version.spec_version,
         ss58_prefix,
     })
+}
+
+/// Connect to the substrate node with CLI progress indicator.
+/// Shows a live progress line that updates every second, independent of log levels.
+/// Terminates after 60 seconds with a clear error message.
+async fn connect_with_progress_logging(
+    url: &str,
+    config: &SidecarConfig,
+) -> Result<ReconnectingRpcClient, StateError> {
+    connect_with_progress_logging_impl(url, config, "Connecting to").await
+}
+
+/// Connect to a relay chain with CLI progress indicator.
+/// Shows a live progress line that updates every second, independent of log levels.
+/// Terminates after 60 seconds with a clear error message.
+async fn connect_relay_chain_with_progress_logging(
+    url: &str,
+    config: &SidecarConfig,
+) -> Result<ReconnectingRpcClient, StateError> {
+    connect_with_progress_logging_impl(url, config, "Connecting to relay chain at").await
+}
+
+/// Internal implementation for connection with progress logging.
+/// The `prefix` parameter customizes the progress message (e.g., "Connecting to" vs "Connecting to relay chain at").
+async fn connect_with_progress_logging_impl(
+    url: &str,
+    config: &SidecarConfig,
+    prefix: &str,
+) -> Result<ReconnectingRpcClient, StateError> {
+    use std::io::Write;
+    use subxt_rpcs::client::reconnecting_rpc_client::RpcClient as ReconnectingClient;
+
+    let connect_future = ReconnectingClient::builder()
+        .retry_policy(
+            ExponentialBackoff::from_millis(config.substrate.reconnect_initial_delay_ms).max_delay(
+                Duration::from_millis(config.substrate.reconnect_max_delay_ms),
+            ),
+        )
+        .request_timeout(Duration::from_millis(
+            config.substrate.reconnect_request_timeout_ms,
+        ))
+        .build(url);
+
+    tokio::pin!(connect_future);
+
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    interval.tick().await; // First tick is immediate, skip it
+
+    let mut elapsed_secs = 0u64;
+    const TIMEOUT_SECS: u64 = 60;
+
+    // Show initial connection message
+    eprint!("\r{} {}...", prefix, url);
+    let _ = std::io::stderr().flush();
+
+    loop {
+        tokio::select! {
+            result = &mut connect_future => {
+                // Clear the progress line and show success
+                eprint!("\r\x1b[K"); // Clear line
+                let _ = std::io::stderr().flush();
+
+                return result.map_err(|source| StateError::ConnectionFailed {
+                    url: url.to_string(),
+                    source: subxt_rpcs::Error::Client(Box::new(source)),
+                });
+            }
+            _ = interval.tick() => {
+                elapsed_secs += 1;
+
+                if elapsed_secs >= TIMEOUT_SECS {
+                    // Clear line and print final error
+                    eprintln!("\r\x1b[K");
+                    eprintln!("Failed to connect to {} after {} seconds.", url, TIMEOUT_SECS);
+                    eprintln!("Terminating: no active connection with the RPC node.");
+
+                    return Err(StateError::ConnectionTimeout {
+                        url: url.to_string(),
+                        timeout_secs: TIMEOUT_SECS,
+                    });
+                }
+
+                // Update progress line with elapsed time and status message
+                let status = match elapsed_secs {
+                    0..=9 => "",
+                    10..=19 => " (taking longer than usual)",
+                    20..=29 => " (taking significantly longer than expected)",
+                    30..=39 => " (check if RPC node is running)",
+                    _ => " (timing out soon)",
+                };
+
+                eprint!(
+                    "\r{} {}... {}s{}",
+                    prefix, url, elapsed_secs, status
+                );
+                let _ = std::io::stderr().flush();
+            }
+        }
+    }
 }

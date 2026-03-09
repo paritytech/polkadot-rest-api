@@ -1,0 +1,1 @@
+{"at":{"hash":"0x856bb240b6bb8dd3fe17f848724e82ac0cf39812525df0e873d3b064028e5800","height":"32141942"},"pallet":"balances","palletIndex":"4","items":["VestingBalance","LiquidityRestrictions","InsufficientBalance","ExistentialDeposit","Expendability","ExistingVestingSchedule","DeadAccount","TooManyReserves","TooManyHolds","TooManyFreezes","IssuanceDeactivated","DeltaZero"]}

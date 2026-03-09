@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use anyhow::{Context, Result};
 use colored::Colorize;
 use integration_tests::{
@@ -75,8 +78,27 @@ impl LatestTestRunner {
 
         let mut results = TestResults::default();
 
-        // Test each configured endpoint
-        let endpoint_configs = self.config.latest_endpoints.clone();
+        // Determine if this is a relay chain or asset hub
+        let is_relay_chain = !self.chain_name.contains("asset-hub");
+
+        // Test each configured endpoint, filtering by chain if only_chains is specified
+        // and by relay_chain_only flag
+        let endpoint_configs: Vec<_> = self
+            .config
+            .latest_endpoints
+            .iter()
+            .filter(|e| {
+                // Filter by only_chains if specified
+                let chain_match = match &e.only_chains {
+                    Some(chains) if !chains.is_empty() => chains.contains(&self.chain_name),
+                    _ => true,
+                };
+                // Filter by relay_chain_only
+                let relay_match = !e.relay_chain_only || is_relay_chain;
+                chain_match && relay_match
+            })
+            .cloned()
+            .collect();
         let total_endpoints = endpoint_configs.len();
 
         println!(

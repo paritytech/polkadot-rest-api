@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright (C) 2026 Parity Technologies (UK) Ltd.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 
 # Generate benchmark results in benchmark-action format from wrk output
 # Usage: ./generate_benchmark_result.sh <benchmark_results_directory>
@@ -15,7 +18,8 @@ FIRST=true
 # Process all benchmark result files
 for result in "$RESULTS_DIR"/benchmark_*.txt; do
     if [ -f "$result" ]; then
-        ENDPOINT=$(basename "$result" | cut -d_ -f2 | cut -d. -f1)
+        ENDPOINT=$(basename "$result" .txt)
+        ENDPOINT=${ENDPOINT#benchmark_}
         
         # Extract metrics from wrk output
         RPS=$(grep "Requests/sec:" "$result" | awk '{print $2}' || echo "0")

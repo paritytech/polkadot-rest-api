@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 /// Test that query parameters are properly included in route labels
 /// when SAS_METRICS_INCLUDE_QUERYPARAMS is enabled
 #[cfg(test)]

@@ -1,0 +1,1594 @@
+{
+  "at": {
+    "hash": "0xec77b29816dec211e0565fdbdee1e29a7fc482f6f19e6e44ecdebc37545a155e",
+    "height": "10260000"
+  },
+  "pools": [
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "22222052"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "30"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "6543"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "26"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "23"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "5"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "1994"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "17"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "50000058"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "34"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "22222030"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "31"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "42069"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "20"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "parachain": "2043"
+              },
+              {
+                "palletInstance": "10"
+              }
+            ]
+          },
+          "parents": "1"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "45"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "parachain": "2004"
+              },
+              {
+                "palletInstance": "10"
+              }
+            ]
+          },
+          "parents": "1"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "8"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "30"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "4"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "6594"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "28"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "50000326"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "48"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "1337"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "1"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "globalConsensus": {
+                  "ethereum": {
+                    "chainId": "1"
+                  }
+                }
+              },
+              {
+                "accountKey20": {
+                  "key": [
+                    "192",
+                    "42",
+                    "170",
+                    "57",
+                    "178",
+                    "35",
+                    "254",
+                    "141",
+                    "10",
+                    "14",
+                    "92",
+                    "79",
+                    "39",
+                    "234",
+                    "217",
+                    "8",
+                    "60",
+                    "117",
+                    "108",
+                    "194"
+                  ],
+                  "network": {
+                    "none": null
+                  }
+                }
+              }
+            ]
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "9"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "1313"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "3"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "globalConsensus": {
+                  "ethereum": {
+                    "chainId": "1"
+                  }
+                }
+              },
+              {
+                "accountKey20": {
+                  "key": [
+                    "105",
+                    "130",
+                    "80",
+                    "129",
+                    "69",
+                    "69",
+                    "76",
+                    "227",
+                    "37",
+                    "221",
+                    "190",
+                    "71",
+                    "162",
+                    "93",
+                    "78",
+                    "195",
+                    "210",
+                    "49",
+                    "25",
+                    "51"
+                  ],
+                  "network": {
+                    "none": null
+                  }
+                }
+              }
+            ]
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "12"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x1": {
+              "parachain": "3369"
+            }
+          },
+          "parents": "1"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "18"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "18"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "6"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x1": {
+              "globalConsensus": {
+                "kusama": null
+              }
+            }
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "7"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "112233"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "25"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "globalConsensus": {
+                  "ethereum": {
+                    "chainId": "1"
+                  }
+                }
+              },
+              {
+                "accountKey20": {
+                  "key": [
+                    "26",
+                    "186",
+                    "234",
+                    "31",
+                    "124",
+                    "131",
+                    "11",
+                    "216",
+                    "154",
+                    "204",
+                    "103",
+                    "236",
+                    "74",
+                    "245",
+                    "22",
+                    "40",
+                    "75",
+                    "27",
+                    "195",
+                    "60"
+                  ],
+                  "network": {
+                    "none": null
+                  }
+                }
+              }
+            ]
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "43"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "12746"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "23"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "2567"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "19"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "1984"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "0"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "1148"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "22"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "globalConsensus": {
+                  "ethereum": {
+                    "chainId": "1"
+                  }
+                }
+              },
+              {
+                "accountKey20": {
+                  "key": [
+                    "127",
+                    "57",
+                    "197",
+                    "129",
+                    "245",
+                    "149",
+                    "181",
+                    "60",
+                    "92",
+                    "177",
+                    "155",
+                    "208",
+                    "179",
+                    "248",
+                    "218",
+                    "108",
+                    "147",
+                    "94",
+                    "44",
+                    "160"
+                  ],
+                  "network": {
+                    "none": null
+                  }
+                }
+              }
+            ]
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "15"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "5361"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "21"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "111"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "2"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x1": {
+              "parachain": "2039"
+            }
+          },
+          "parents": "1"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "42"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "50000075"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "37"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "22222060"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "33"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x1": {
+              "parachain": "2051"
+            }
+          },
+          "parents": "1"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "16"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "22222051"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "32"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "50000324"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "46"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "2361"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "27"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "globalConsensus": {
+                  "ethereum": {
+                    "chainId": "1"
+                  }
+                }
+              },
+              {
+                "accountKey20": {
+                  "key": [
+                    "160",
+                    "184",
+                    "105",
+                    "145",
+                    "198",
+                    "33",
+                    "139",
+                    "54",
+                    "193",
+                    "209",
+                    "157",
+                    "74",
+                    "46",
+                    "158",
+                    "176",
+                    "206",
+                    "54",
+                    "6",
+                    "235",
+                    "72"
+                  ],
+                  "network": {
+                    "none": null
+                  }
+                }
+              }
+            ]
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "40"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "888"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "36"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "globalConsensus": {
+                  "ethereum": {
+                    "chainId": "1"
+                  }
+                }
+              },
+              {
+                "accountKey20": {
+                  "key": [
+                    "34",
+                    "96",
+                    "250",
+                    "197",
+                    "229",
+                    "84",
+                    "42",
+                    "119",
+                    "58",
+                    "164",
+                    "79",
+                    "188",
+                    "254",
+                    "223",
+                    "124",
+                    "25",
+                    "59",
+                    "194",
+                    "197",
+                    "153"
+                  ],
+                  "network": {
+                    "none": null
+                  }
+                }
+              }
+            ]
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "10"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "parachain": "2030"
+              },
+              {
+                "generalKey": {
+                  "data": [
+                    "9",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                    "0"
+                  ],
+                  "length": "2"
+                }
+              }
+            ]
+          },
+          "parents": "1"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "44"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x1": {
+              "parachain": "3370"
+            }
+          },
+          "parents": "1"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "35"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "globalConsensus": {
+                  "ethereum": {
+                    "chainId": "1"
+                  }
+                }
+              },
+              {
+                "accountKey20": {
+                  "key": [
+                    "149",
+                    "173",
+                    "97",
+                    "176",
+                    "161",
+                    "80",
+                    "215",
+                    "146",
+                    "25",
+                    "220",
+                    "246",
+                    "78",
+                    "30",
+                    "108",
+                    "192",
+                    "31",
+                    "11",
+                    "100",
+                    "196",
+                    "206"
+                  ],
+                  "network": {
+                    "none": null
+                  }
+                }
+              }
+            ]
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "11"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "globalConsensus": {
+                  "ethereum": {
+                    "chainId": "1"
+                  }
+                }
+              },
+              {
+                "accountKey20": {
+                  "key": [
+                    "88",
+                    "45",
+                    "135",
+                    "42",
+                    "27",
+                    "9",
+                    "79",
+                    "196",
+                    "143",
+                    "93",
+                    "227",
+                    "29",
+                    "59",
+                    "115",
+                    "242",
+                    "217",
+                    "190",
+                    "71",
+                    "222",
+                    "241"
+                  ],
+                  "network": {
+                    "none": null
+                  }
+                }
+              }
+            ]
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "13"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "1107"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "38"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "3164"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "29"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x1": {
+              "globalConsensus": {
+                "ethereum": {
+                  "chainId": "1"
+                }
+              }
+            }
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "39"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "globalConsensus": {
+                  "ethereum": {
+                    "chainId": "1"
+                  }
+                }
+              },
+              {
+                "accountKey20": {
+                  "key": [
+                    "218",
+                    "193",
+                    "127",
+                    "149",
+                    "141",
+                    "46",
+                    "229",
+                    "35",
+                    "162",
+                    "32",
+                    "98",
+                    "6",
+                    "153",
+                    "69",
+                    "151",
+                    "193",
+                    "61",
+                    "131",
+                    "30",
+                    "199"
+                  ],
+                  "network": {
+                    "none": null
+                  }
+                }
+              }
+            ]
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "41"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "323"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "24"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "palletInstance": "50"
+              },
+              {
+                "generalIndex": "50000325"
+              }
+            ]
+          },
+          "parents": "0"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "47"
+      }
+    },
+    {
+      "reserves": [
+        {
+          "interior": {
+            "here": null
+          },
+          "parents": "1"
+        },
+        {
+          "interior": {
+            "x2": [
+              {
+                "globalConsensus": {
+                  "ethereum": {
+                    "chainId": "1"
+                  }
+                }
+              },
+              {
+                "accountKey20": {
+                  "key": [
+                    "24",
+                    "8",
+                    "79",
+                    "186",
+                    "102",
+                    "106",
+                    "51",
+                    "211",
+                    "117",
+                    "146",
+                    "250",
+                    "38",
+                    "51",
+                    "253",
+                    "73",
+                    "167",
+                    "77",
+                    "217",
+                    "58",
+                    "136"
+                  ],
+                  "network": {
+                    "none": null
+                  }
+                }
+              }
+            ]
+          },
+          "parents": "2"
+        }
+      ],
+      "lpToken": {
+        "lpToken": "14"
+      }
+    }
+  ]
+}

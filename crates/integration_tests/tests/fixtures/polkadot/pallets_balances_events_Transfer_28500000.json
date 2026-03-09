@@ -1,0 +1,41 @@
+{
+  "at": {
+    "hash": "0xc81393d2525d811740f3dbea75461babdf60a5c3cf266200eaaa6e3ff3eafe0e",
+    "height": "28500000"
+  },
+  "pallet": "balances",
+  "palletIndex": "5",
+  "eventItem": "transfer",
+  "metadata": {
+    "name": "Transfer",
+    "fields": [
+      {
+        "name": "from",
+        "type": "0",
+        "typeName": "T::AccountId",
+        "docs": []
+      },
+      {
+        "name": "to",
+        "type": "0",
+        "typeName": "T::AccountId",
+        "docs": []
+      },
+      {
+        "name": "amount",
+        "type": "6",
+        "typeName": "T::Balance",
+        "docs": []
+      }
+    ],
+    "index": "2",
+    "docs": [
+      "Transfer succeeded."
+    ],
+    "args": [
+      "AccountId32",
+      "AccountId32",
+      "u128"
+    ]
+  }
+}

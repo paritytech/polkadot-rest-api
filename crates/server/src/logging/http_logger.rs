@@ -1,9 +1,12 @@
+// Copyright (C) 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use axum::{extract::Request, middleware::Next, response::Response};
 use std::time::Instant;
 
 /// HTTP logger middleware that logs request method, path, status code, and duration.
 ///
-/// - Logs with INFO level (target: http) for 2xx/3xx responses
+/// - Logs with DEBUG level (target: http, displayed as "HTTP") for 1xx/2xx/3xx responses
 /// - Logs with WARN level for 4xx responses
 /// - Logs with ERROR level for 5xx responses
 ///
@@ -35,7 +38,7 @@ pub async fn http_logger_middleware(req: Request, next: Next) -> Response {
 
     // Emit tracing event based on status code
     match status_code {
-        200..=399 => {
+        ..=399 => {
             tracing::debug!(
                 target: "http",
                 method = %method,

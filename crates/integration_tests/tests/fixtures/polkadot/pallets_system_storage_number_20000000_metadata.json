@@ -1,0 +1,23 @@
+{
+  "at": {
+    "hash": "0xde2f6847c0cfed45b7a088fe0a726941a848a1337f185978483ef32a4efddfb4",
+    "height": "20000000"
+  },
+  "pallet": "system",
+  "palletIndex": "0",
+  "storageItem": "number",
+  "keys": [],
+  "value": "20000000",
+  "metadata": {
+    "name": "Number",
+    "modifier": "Default",
+    "type": {
+      "plain": "4"
+    },
+    "fallback": "0x00000000",
+    "docs": " The current block number being processed. Set by `execute_block`.",
+    "deprecationInfo": {
+      "notDeprecated": null
+    }
+  }
+}
