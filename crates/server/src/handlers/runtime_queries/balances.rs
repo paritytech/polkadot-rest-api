@@ -189,7 +189,10 @@ pub async fn get_balance_locks(
         .await
     {
         Ok(v) => v,
-        Err(_) => return Vec::new(),
+        Err(e) => {
+            tracing::debug!("Failed to fetch balance locks: {e:?}");
+            return Vec::new();
+        }
     };
 
     let raw_bytes = value.into_bytes();
@@ -229,7 +232,10 @@ pub async fn get_vesting_schedules(
         .await
     {
         Ok(v) => v,
-        Err(_) => return Vec::new(),
+        Err(e) => {
+            tracing::debug!("Failed to fetch vesting schedules: {e:?}");
+            return Vec::new();
+        }
     };
 
     let raw_bytes = value.into_bytes();

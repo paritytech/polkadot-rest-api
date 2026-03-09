@@ -87,7 +87,12 @@ pub async fn get_staking_payouts(
     // For RC endpoints, use relay chain spec_name if available
     let rc_spec_name = match state.get_relay_chain_info().await {
         Ok(info) => info.spec_name.clone(),
-        Err(_) => state.chain_info.spec_name.clone(),
+        Err(e) => {
+            tracing::debug!(
+                "Failed to get relay chain info, falling back to local spec name: {e:?}"
+            );
+            state.chain_info.spec_name.clone()
+        }
     };
 
     // RC endpoints query the relay chain directly, no migration splitting needed

@@ -124,7 +124,10 @@ pub async fn get_referendum_info(
 
     match result {
         Ok(val) => val.decode().ok(),
-        Err(_) => None,
+        Err(e) => {
+            tracing::debug!("Failed to fetch referendum info: {e:?}");
+            None
+        }
     }
 }
 
@@ -144,7 +147,10 @@ pub async fn iter_referenda_batch(
                 let result = client.storage().fetch(storage_addr, (ref_id,)).await;
                 let decoded: Option<ReferendumStatus> = match result {
                     Ok(val) => val.decode().ok(),
-                    Err(_) => None,
+                    Err(e) => {
+                        tracing::debug!("Failed to fetch referendum {ref_id} in batch: {e:?}");
+                        None
+                    }
                 };
                 (ref_id, decoded)
             }

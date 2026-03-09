@@ -256,7 +256,10 @@ async fn extract_relay_parent_number(
     for ext_result in extrinsics.iter() {
         let ext = match ext_result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to decode extrinsic: {e:?}");
+                continue;
+            }
         };
 
         if ext.pallet_name() == "ParachainSystem" && ext.call_name() == "set_validation_data" {
@@ -339,7 +342,10 @@ async fn check_block_for_inclusion(
     for event_result in events.iter() {
         let event = match event_result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to decode event: {e:?}");
+                continue;
+            }
         };
 
         // Use the clean pallet_name() and event_name() API
@@ -349,7 +355,10 @@ async fn check_block_for_inclusion(
 
         let event_data: CandidateIncludedEvent = match event.decode_fields_unchecked_as() {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to decode CandidateIncluded event fields: {e:?}");
+                continue;
+            }
         };
 
         if let Some(inclusion_block_num) =

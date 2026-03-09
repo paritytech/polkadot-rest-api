@@ -19,7 +19,8 @@ pub fn get_network_name(prefix: u16) -> Option<String> {
     let format = Ss58AddressFormat::custom(prefix);
     match Ss58AddressFormatRegistry::try_from(format) {
         Ok(registry) => Some(registry.to_string()),
-        Err(_) => {
+        Err(e) => {
+            tracing::debug!("Unknown SS58 prefix {prefix}: {e:?}");
             // For unknown prefixes, return a generic name
             // This is more flexible for custom networks
             Some(format!("unknown-{}", prefix))

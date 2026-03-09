@@ -104,7 +104,10 @@ pub async fn iter_foreign_asset_locations(
     while let Some(result) = stream.next().await {
         let entry = match result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to iterate foreign asset location entry: {e:?}");
+                continue;
+            }
         };
 
         // Extract Location from storage key
@@ -142,7 +145,10 @@ pub async fn iter_foreign_assets(
     while let Some(result) = stream.next().await {
         let entry = match result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to iterate foreign asset entry: {e:?}");
+                continue;
+            }
         };
 
         // Extract Location from storage key
@@ -206,7 +212,10 @@ pub async fn iter_foreign_asset_metadata(
     while let Some(result) = stream.next().await {
         let entry = match result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to iterate foreign asset metadata entry: {e:?}");
+                continue;
+            }
         };
 
         // Extract Location from storage key
@@ -388,7 +397,10 @@ pub async fn get_foreign_asset_account(
                         is_sufficient,
                     })
                 }
-                Err(_) => None,
+                Err(e) => {
+                    tracing::debug!("Failed to decode foreign asset account: {e:?}");
+                    None
+                }
             }
         }
         Err(_) => None, // No entry for this (location, account) pair
@@ -413,7 +425,10 @@ pub async fn get_foreign_asset_account_raw(
     match result {
         Ok(value) => match value.decode_as::<scale_value::Value<()>>() {
             Ok(decoded) => Ok(Some(decoded)),
-            Err(_) => Err("Failed to decode ForeignAssets::Account as scale_value"),
+            Err(e) => {
+                tracing::debug!("Failed to decode ForeignAssets::Account as scale_value: {e:?}");
+                Err("Failed to decode ForeignAssets::Account as scale_value")
+            }
         },
         Err(_) => Ok(None), // No entry for this (location, account) pair
     }
