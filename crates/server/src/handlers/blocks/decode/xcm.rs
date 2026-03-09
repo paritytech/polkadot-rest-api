@@ -211,7 +211,10 @@ fn decode_xcm_message(hex_str: &str) -> Value {
             // Wrap in array to match sidecar format: "data": [{ "v4": [...] }]
             Value::Array(vec![scale_value_to_json(value, &registry)])
         }
-        Err(_) => Value::String(hex_str.to_string()),
+        Err(e) => {
+            tracing::debug!("Failed to decode XCM message: {e:?}");
+            Value::String(hex_str.to_string())
+        }
     }
 }
 

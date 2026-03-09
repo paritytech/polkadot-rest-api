@@ -155,7 +155,10 @@ pub async fn get_asset_info(
         .await
     {
         Ok(v) => v,
-        Err(_) => return Ok(None),
+        Err(e) => {
+            tracing::debug!("Failed to fetch asset info for asset {asset_id}: {e:?}");
+            return Ok(None);
+        }
     };
 
     let details: AssetDetails = value
@@ -193,7 +196,10 @@ pub async fn get_asset_metadata(
         .await
     {
         Ok(v) => v,
-        Err(_) => return Ok(None),
+        Err(e) => {
+            tracing::debug!("Failed to fetch asset metadata for asset {asset_id}: {e:?}");
+            return Ok(None);
+        }
     };
 
     let metadata: AssetMetadata = value
@@ -226,7 +232,10 @@ pub async fn get_asset_balance(
         .await
     {
         Ok(v) => v,
-        Err(_) => return Ok(None),
+        Err(e) => {
+            tracing::debug!("Failed to fetch asset balance for asset {asset_id}: {e:?}");
+            return Ok(None);
+        }
     };
 
     let raw_bytes = value.into_bytes();
@@ -288,7 +297,10 @@ pub async fn get_asset_balances(
                     ));
                 }
             }
-            Err(_) if show_empty => {
+            Err(e) if show_empty => {
+                tracing::debug!(
+                    "Failed to fetch asset balance for asset (show_empty) {asset_id}: {e:?}"
+                );
                 balances.push((
                     asset_id,
                     DecodedAssetBalance {
@@ -298,7 +310,9 @@ pub async fn get_asset_balances(
                     },
                 ));
             }
-            Err(_) => {}
+            Err(e) => {
+                tracing::debug!("Failed to fetch asset balance for asset {asset_id}: {e:?}");
+            }
         }
     }
 
@@ -324,7 +338,10 @@ pub async fn get_asset_approval(
         .await
     {
         Ok(v) => v,
-        Err(_) => return Ok(None),
+        Err(e) => {
+            tracing::debug!("Failed to fetch asset approval for asset {asset_id}: {e:?}");
+            return Ok(None);
+        }
     };
 
     let raw_bytes = value.into_bytes();

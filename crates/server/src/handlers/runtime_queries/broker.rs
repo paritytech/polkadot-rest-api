@@ -132,7 +132,8 @@ pub async fn get_leases(
         Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => {
             return Ok(vec![]);
         }
-        Err(_) => {
+        Err(e) => {
+            tracing::debug!("Failed to fetch Broker::Leases: {e:?}");
             return Err(BrokerStorageError::StorageFetchFailed {
                 pallet: "Broker",
                 entry: "Leases",
@@ -164,7 +165,8 @@ pub async fn get_reservations(
         Err(subxt::error::StorageError::StorageEntryNotFound { .. }) => {
             return Ok(vec![]);
         }
-        Err(_) => {
+        Err(e) => {
+            tracing::debug!("Failed to fetch Broker::Reservations: {e:?}");
             return Err(BrokerStorageError::StorageFetchFailed {
                 pallet: "Broker",
                 entry: "Reservations",
@@ -212,9 +214,15 @@ pub async fn iter_workloads(
         let core: u32 = match entry.key() {
             Ok(storage_key) => match storage_key.decode() {
                 Ok(key) => key.0 as u32,
-                Err(_) => continue,
+                Err(e) => {
+                    tracing::debug!("Failed to decode workload key: {e:?}");
+                    continue;
+                }
             },
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to parse workload storage key: {e:?}");
+                continue;
+            }
         };
 
         // Decode workload value into typed struct and extract task
@@ -736,7 +744,8 @@ pub async fn iter_workplans(
         // Decode workplan value using DecodeAsType
         let items = match entry.value().decode_as::<Vec<ScheduleItem>>() {
             Ok(v) => v,
-            Err(_) => {
+            Err(err) => {
+                tracing::debug!("Failed to decode workplan schedule items: {err:?}");
                 // OptionQuery might wrap the value
                 match entry.value().decode_as::<Option<Vec<ScheduleItem>>>() {
                     Ok(Some(v)) => v,

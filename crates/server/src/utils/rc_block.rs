@@ -198,7 +198,10 @@ fn extract_ah_block_from_candidate_included(
 
     let para_id = match extract_para_id_from_candidate_receipt(candidate_receipt) {
         Ok(id) => id,
-        Err(_) => return None,
+        Err(e) => {
+            tracing::debug!("Failed to extract para ID from candidate receipt: {e:?}");
+            return None;
+        }
     };
 
     if para_id != target_para_id {

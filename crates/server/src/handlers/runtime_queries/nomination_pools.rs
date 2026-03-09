@@ -143,7 +143,10 @@ pub async fn get_bonded_pool(
     let addr = subxt::dynamic::storage::<_, scale_value::Value>("NominationPools", "BondedPools");
     let raw_bytes = match client_at_block.storage().fetch(addr, (pool_id,)).await {
         Ok(value) => value.into_bytes(),
-        Err(_) => return None,
+        Err(e) => {
+            tracing::debug!("Failed to fetch BondedPools storage: {e:?}");
+            return None;
+        }
     };
 
     // Try modern V2 format first (with commission)
@@ -176,7 +179,10 @@ pub async fn get_reward_pool(
     let addr = subxt::dynamic::storage::<_, scale_value::Value>("NominationPools", "RewardPools");
     let raw_bytes = match client_at_block.storage().fetch(addr, (pool_id,)).await {
         Ok(value) => value.into_bytes(),
-        Err(_) => return None,
+        Err(e) => {
+            tracing::debug!("Failed to fetch RewardPools storage: {e:?}");
+            return None;
+        }
     };
 
     // Try modern V2 format first (with commission tracking)

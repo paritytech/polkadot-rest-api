@@ -118,7 +118,10 @@ pub async fn extract_fee_info_for_extrinsic(
 
     let extrinsic_bytes = match hex::decode(extrinsic_hex.trim_start_matches("0x")) {
         Ok(bytes) => bytes,
-        Err(_) => return serde_json::Map::new(),
+        Err(e) => {
+            tracing::debug!("Failed to hex-decode extrinsic bytes: {e:?}");
+            return serde_json::Map::new();
+        }
     };
 
     // Check if we need fee details for Priority 2
