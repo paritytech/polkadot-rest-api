@@ -8,7 +8,7 @@ info:
   license:
     name: GPL-3.0-or-later
     url: https://github.com/paritytech/polkadot-rest-api/blob/main/LICENSE
-  version: 0.1.0-beta.3
+  version: 0.1.0-beta.4
 servers:
 - url: https://polkadot-public-sidecar.parity-chains.parity.io/
   description: Polkadot Parity public sidecar
