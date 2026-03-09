@@ -165,7 +165,7 @@ pub async fn get_validators_at_block(
     use crate::handlers::runtime_queries::session;
 
     session::get_validators(client_at_block).await.map_err(|e| {
-        tracing::debug!("Failed to get validators: {}", e);
+        tracing::debug!("Failed to get validators: {:?}", e);
         match e {
             session::SessionStorageError::NoValidatorsFound => GetBlockError::StorageDecodeFailed(
                 parity_scale_codec::Error::from("no validators found in storage"),
@@ -211,7 +211,11 @@ pub async fn extract_author_with_prefix(
     let validators = match get_validators_at_block(client_at_block).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::debug!("Failed to get validators for block {}: {}", block_number, e);
+            tracing::debug!(
+                "Failed to get validators for block {:?}: {:?}",
+                block_number,
+                e
+            );
             return None;
         }
     };
@@ -540,7 +544,12 @@ pub async fn build_block_response_generic(
                             match canonical_result {
                                 Ok(Some(canonical_hash)) => Some(canonical_hash == block_hash),
                                 Ok(None) => Some(false),
-                                Err(_) => Some(false),
+                                Err(e) => {
+                                    tracing::debug!(
+                                        "Failed to fetch canonical hash for block: {e:?}"
+                                    );
+                                    Some(false)
+                                }
                             }
                         } else {
                             Some(true)
@@ -552,7 +561,10 @@ pub async fn build_block_response_generic(
                     Some(false)
                 }
             }
-            Err(_) => None,
+            Err(e) => {
+                tracing::debug!("Failed to get finalized block number: {e:?}");
+                None
+            }
         }
     } else {
         None

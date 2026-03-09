@@ -119,7 +119,10 @@ pub async fn fetch_node_network(rpc_client: &RpcClient) -> Result<NodeNetworkRes
         .await
     {
         Ok(peers) => transform_peers_info(peers),
-        Err(_) => Value::String("Cannot query system_peers from node.".to_string()),
+        Err(e) => {
+            tracing::debug!("Failed to query system_peers: {e:?}");
+            Value::String("Cannot query system_peers from node.".to_string())
+        }
     };
 
     Ok(NodeNetworkResponse {
@@ -533,7 +536,10 @@ async fn calculate_priority(
                         "0".to_string()
                     }
                 }
-                Err(_) => "0".to_string(),
+                Err(e) => {
+                    tracing::debug!("Failed to query fee details for operational priority: {e:?}");
+                    "0".to_string()
+                }
             }
         }
         _ => "0".to_string(),

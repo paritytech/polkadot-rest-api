@@ -481,7 +481,8 @@ impl<'r, const CAMEL_CASE: bool> ScaleVisitor<'r, CAMEL_CASE> {
                 let field = field?;
                 match field.decode_with_visitor(ByteCollector) {
                     Ok(field_bytes) => bytes.extend(field_bytes),
-                    Err(_) => {
+                    Err(e) => {
+                        tracing::debug!("Failed to decode composite field bytes: {e:?}");
                         bytes.clear();
                         break;
                     }

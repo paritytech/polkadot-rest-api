@@ -439,7 +439,12 @@ impl<'r> Visitor for FieldWithTypeExtractor<'r> {
             {
                 match field_result {
                     Ok(inner_value) => return Ok((type_name, inner_value)),
-                    Err(_) => return Ok((type_name, JsonValue::Null)),
+                    Err(e) => {
+                        tracing::debug!(
+                            "Failed to decode Option::Some inner value (FieldWithTypeExtractor): {e:?}"
+                        );
+                        return Ok((type_name, JsonValue::Null));
+                    }
                 }
             }
             return Ok((type_name, JsonValue::Null));
@@ -669,7 +674,12 @@ impl<'r> Visitor for ValueExtractor<'r> {
             {
                 match field_result {
                     Ok(inner_value) => return Ok(inner_value),
-                    Err(_) => return Ok(JsonValue::Null),
+                    Err(e) => {
+                        tracing::debug!(
+                            "Failed to decode Option::Some inner value(ValueExtractor): {e:?}"
+                        );
+                        return Ok(JsonValue::Null);
+                    }
                 }
             }
             return Ok(JsonValue::Null);

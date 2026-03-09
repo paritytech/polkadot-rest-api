@@ -347,17 +347,26 @@ async fn fetch_liquidity_pools(
                                     )
                                 }
                             }
-                            Err(_) => serde_json::Value::Null,
+                            Err(e) => {
+                                tracing::debug!("Failed to decode pool storage key: {e:?}");
+                                serde_json::Value::Null
+                            }
                         }
                     }
-                    Err(_) => serde_json::Value::Null,
+                    Err(e) => {
+                        tracing::debug!("Failed to decode pool key: {e:?}");
+                        serde_json::Value::Null
+                    }
                 };
 
                 // Convert value (pool info) to JSON
                 // value.decode() returns Result<scale_value::Value, Error>
                 let lp_token = match value.decode() {
                     Ok(val) => scale_value_to_json(&val),
-                    Err(_) => serde_json::Value::Null,
+                    Err(e) => {
+                        tracing::debug!("Failed to decode pool value: {e:?}");
+                        serde_json::Value::Null
+                    }
                 };
 
                 pools.push(LiquidityPoolInfo {

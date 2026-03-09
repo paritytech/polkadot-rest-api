@@ -64,10 +64,13 @@ pub async fn get_broker_id(
     let addr = subxt::dynamic::constant::<u32>("Coretime", "BrokerId");
     match client_at_block.constants().entry(addr) {
         Ok(value) => Ok(Some(value)),
-        Err(_) => Err(CoretimeStorageError::ConstantFetchFailed {
-            pallet: "Coretime",
-            constant: "BrokerId",
-        }),
+        Err(e) => {
+            tracing::debug!("Failed to fetch Coretime::BrokerId constant: {e:?}");
+            Err(CoretimeStorageError::ConstantFetchFailed {
+                pallet: "Coretime",
+                constant: "BrokerId",
+            })
+        }
     }
 }
 
@@ -103,6 +106,9 @@ pub async fn get_max_historical_revenue(
         subxt::dynamic::constant::<u32>("OnDemandAssignmentProvider", "MaxHistoricalRevenue");
     match client_at_block.constants().entry(legacy_addr) {
         Ok(value) => Ok(Some(value)),
-        Err(_) => Ok(None),
+        Err(e) => {
+            tracing::debug!("Failed to fetch MaxHistoricalRevenue constant: {e:?}");
+            Ok(None)
+        }
     }
 }

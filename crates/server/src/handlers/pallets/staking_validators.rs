@@ -297,7 +297,10 @@ async fn fetch_active_validators_set(
 ) -> Result<HashSet<String>, PalletError> {
     // Try ErasStakersOverview first
     match fetch_active_era_index(client_at_block).await {
-        Err(_) => Err(PalletError::CurrentOrActiveEraNotFound),
+        Err(e) => {
+            tracing::debug!("Failed to fetch active era index: {e:?}");
+            Err(PalletError::CurrentOrActiveEraNotFound)
+        }
         Ok(active_era) => {
             if let Ok(set) =
                 fetch_era_stakers_overview_keys(client_at_block, active_era, ss58_prefix).await

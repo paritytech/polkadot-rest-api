@@ -1546,7 +1546,10 @@ pub async fn iter_staking_validators(
     while let Some(entry_result) = stream.next().await {
         let entry = match entry_result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to read validator prefs storage entry: {e:?}");
+                continue;
+            }
         };
 
         let key_bytes = entry.key_bytes();
@@ -1594,7 +1597,10 @@ pub async fn iter_era_stakers_overview_keys(
     while let Some(entry_result) = stream.next().await {
         let entry = match entry_result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to read era stakers overview storage entry: {e:?}");
+                continue;
+            }
         };
 
         let key_bytes = entry.key_bytes();
@@ -1653,7 +1659,10 @@ pub async fn iter_unapplied_slashes(
 
     let mut stream = match client_at_block.storage().iter(storage_addr, ()).await {
         Ok(s) => s,
-        Err(_) => return vec![],
+        Err(e) => {
+            tracing::debug!("Failed to iterate unapplied slashes storage: {e:?}");
+            return vec![];
+        }
     };
 
     let mut result = Vec::new();
@@ -1661,7 +1670,10 @@ pub async fn iter_unapplied_slashes(
     while let Some(entry_result) = stream.next().await {
         let entry = match entry_result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to read unapplied slashes storage entry: {e:?}");
+                continue;
+            }
         };
 
         let key_bytes = entry.key_bytes();
@@ -1678,7 +1690,10 @@ pub async fn iter_unapplied_slashes(
         let slashes: Vec<UnappliedSlashStorage> =
             match Vec::<UnappliedSlashStorage>::decode(&mut &value_bytes[..]) {
                 Ok(s) => s,
-                Err(_) => continue,
+                Err(e) => {
+                    tracing::debug!("Failed to decode unapplied slashes value: {e:?}");
+                    continue;
+                }
             };
 
         for slash in slashes {

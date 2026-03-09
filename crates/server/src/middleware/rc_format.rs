@@ -107,7 +107,10 @@ async fn process_rc_request(
     let (parts, body) = response.into_parts();
     let bytes = match body.collect().await {
         Ok(collected) => collected.to_bytes().to_vec(),
-        Err(_) => return Err(Response::from_parts(parts, Body::empty())),
+        Err(e) => {
+            tracing::debug!("Failed to collect response body: {e:?}");
+            return Err(Response::from_parts(parts, Body::empty()));
+        }
     };
 
     Ok((parts, bytes, at_param))

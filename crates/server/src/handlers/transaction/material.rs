@@ -432,7 +432,8 @@ async fn material_versioned_internal(
                 })
                 .unwrap_or_default()
         }
-        Err(_) => {
+        Err(e) => {
+            tracing::debug!("Failed to call metadata_versions runtime API: {e:?}");
             return Err(MaterialError::MetadataVersionsApiNotAvailable);
         }
     };
