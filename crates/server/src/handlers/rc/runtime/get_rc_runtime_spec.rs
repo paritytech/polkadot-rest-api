@@ -18,6 +18,9 @@ pub enum GetRcSpecError {
     #[error("Invalid block parameter")]
     InvalidBlockParam(#[from] crate::utils::BlockIdParseError),
 
+    #[error("Block resolution failed")]
+    BlockResolveFailed(#[from] utils::BlockResolveError),
+
     #[error(transparent)]
     RelayChain(#[from] RelayChainError),
 
@@ -41,6 +44,7 @@ impl IntoResponse for GetRcSpecError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
             GetRcSpecError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            GetRcSpecError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             GetRcSpecError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
@@ -75,6 +79,9 @@ impl From<utils::ResolveClientAtBlockError> for GetRcSpecError {
     fn from(err: utils::ResolveClientAtBlockError) -> Self {
         match err {
             utils::ResolveClientAtBlockError::ParseError(e) => GetRcSpecError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
+                GetRcSpecError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
             utils::ResolveClientAtBlockError::SubxtError(e) => {
                 GetRcSpecError::ClientAtBlockFailed(Box::new(e))
             }

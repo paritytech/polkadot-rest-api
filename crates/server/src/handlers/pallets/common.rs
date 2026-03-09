@@ -29,7 +29,7 @@ pub enum PalletError {
     BlockResolveFailed(#[from] crate::utils::BlockResolveError),
 
     #[error("Failed to get client at block")]
-    ClientAtBlockFailed(#[from] subxt::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] subxt::error::OnlineClientAtBlockError),
 
     #[error("Bad staking block: {0}")]
     BadStakingBlock(String),
@@ -169,11 +169,31 @@ pub enum PalletError {
     TimestampParseFailed,
 }
 
+impl From<crate::utils::AtBlockError> for PalletError {
+    fn from(err: crate::utils::AtBlockError) -> Self {
+        match err {
+            crate::utils::AtBlockError::BlockNotFound(msg) => {
+                PalletError::BlockResolveFailed(crate::utils::BlockResolveError::NotFound(msg))
+            }
+            crate::utils::AtBlockError::Client(e) => PalletError::ClientAtBlockFailed(e),
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for PalletError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        PalletError::from(crate::utils::AtBlockError::from(err))
+    }
+}
+
 impl From<crate::utils::ResolveClientAtBlockError> for PalletError {
     fn from(err: crate::utils::ResolveClientAtBlockError) -> Self {
         match err {
             crate::utils::ResolveClientAtBlockError::ParseError(e) => {
                 PalletError::InvalidBlockParam(e)
+            }
+            crate::utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
+                PalletError::BlockResolveFailed(crate::utils::BlockResolveError::NotFound(msg))
             }
             crate::utils::ResolveClientAtBlockError::SubxtError(e) => {
                 PalletError::ClientAtBlockFailed(e)
@@ -187,13 +207,13 @@ impl IntoResponse for PalletError {
         let (status, message) = match &self {
             // Block/Client errors
             PalletError::InvalidBlockParam(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            PalletError::BlockResolveFailed(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            PalletError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             PalletError::BadStakingBlock(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             PalletError::ClientAtBlockFailed(err) => {
                 if crate::utils::is_online_client_at_block_disconnected(err) {
                     (
                         StatusCode::SERVICE_UNAVAILABLE,
-                        format!("Service temporarily unavailable: {}", err),
+                        "Service temporarily unavailable".to_string(),
                     )
                 } else {
                     (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
@@ -207,7 +227,16 @@ impl IntoResponse for PalletError {
             PalletError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
-            PalletError::RcBlockError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            PalletError::RcBlockError(inner) => {
+                if matches!(
+                    inner,
+                    crate::utils::rc_block::RcBlockError::BlockNotFound(_)
+                ) {
+                    (StatusCode::BAD_REQUEST, inner.to_string())
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
             PalletError::UseRcBlockNotSupported => (StatusCode::BAD_REQUEST, self.to_string()),
             PalletError::AtParameterRequired => (StatusCode::BAD_REQUEST, self.to_string()),
 
@@ -324,10 +353,7 @@ pub async fn resolve_block_for_pallet(
         None => client.at_current_block().await?,
         Some(at_str) => {
             let block_id = at_str.parse::<crate::utils::BlockId>()?;
-            match block_id {
-                crate::utils::BlockId::Hash(hash) => client.at_block(hash).await?,
-                crate::utils::BlockId::Number(number) => client.at_block(number).await?,
-            }
+            client.at_block(block_id).await?
         }
     };
 

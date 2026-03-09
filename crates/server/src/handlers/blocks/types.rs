@@ -234,9 +234,20 @@ pub enum GetBlockError {
     RangeTooLarge,
 }
 
-impl From<OnlineClientAtBlockError> for GetBlockError {
-    fn from(err: OnlineClientAtBlockError) -> Self {
-        GetBlockError::ClientAtBlockFailed(Box::new(err))
+impl From<utils::AtBlockError> for GetBlockError {
+    fn from(err: utils::AtBlockError) -> Self {
+        match err {
+            utils::AtBlockError::BlockNotFound(msg) => {
+                GetBlockError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::AtBlockError::Client(e) => GetBlockError::ClientAtBlockFailed(Box::new(e)),
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for GetBlockError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        GetBlockError::from(utils::AtBlockError::from(err))
     }
 }
 
@@ -262,6 +273,9 @@ impl From<utils::ResolveClientAtBlockError> for GetBlockError {
     fn from(err: utils::ResolveClientAtBlockError) -> Self {
         match err {
             utils::ResolveClientAtBlockError::ParseError(e) => GetBlockError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
+                GetBlockError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
             utils::ResolveClientAtBlockError::SubxtError(e) => {
                 GetBlockError::ClientAtBlockFailed(Box::new(e))
             }
@@ -273,7 +287,6 @@ impl IntoResponse for GetBlockError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
             GetBlockError::InvalidBlockParam(_)
-            | GetBlockError::BlockResolveFailed(_)
             | GetBlockError::ExtrinsicIndexNotFound
             | GetBlockError::InvalidExtrinsicIndex(_)
             | GetBlockError::MissingRange
@@ -282,6 +295,7 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::InvalidRangeMax
             | GetBlockError::InvalidRangeMinMax
             | GetBlockError::RangeTooLarge => (StatusCode::BAD_REQUEST, self.to_string()),
+            GetBlockError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
             GetBlockError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
@@ -297,7 +311,7 @@ impl IntoResponse for GetBlockError {
             {
                 (
                     StatusCode::SERVICE_UNAVAILABLE,
-                    format!("Service temporarily unavailable: {}", self),
+                    "Service temporarily unavailable".to_string(),
                 )
             }
             // Handle RPC errors with appropriate status codes
@@ -319,10 +333,19 @@ impl IntoResponse for GetBlockError {
             | GetBlockError::MissingSignatureBytes
             | GetBlockError::MissingAddressBytes
             | GetBlockError::ExtrinsicDecodeFailed(_)
-            | GetBlockError::RcBlockError(_)
             | GetBlockError::UseRcBlockNotSupported
             | GetBlockError::HashComputationFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            }
+            GetBlockError::RcBlockError(inner) => {
+                if matches!(
+                    inner.as_ref(),
+                    crate::utils::rc_block::RcBlockError::BlockNotFound(_)
+                ) {
+                    (StatusCode::BAD_REQUEST, inner.to_string())
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
             }
         };
 
@@ -368,7 +391,24 @@ pub enum GetBlockHeaderError {
     RelayChain(#[from] RelayChainError),
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[from] OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] OnlineClientAtBlockError),
+}
+
+impl From<utils::AtBlockError> for GetBlockHeaderError {
+    fn from(err: utils::AtBlockError) -> Self {
+        match err {
+            utils::AtBlockError::BlockNotFound(msg) => {
+                GetBlockHeaderError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::AtBlockError::Client(e) => GetBlockHeaderError::ClientAtBlockFailed(e),
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for GetBlockHeaderError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        GetBlockHeaderError::from(utils::AtBlockError::from(err))
+    }
 }
 
 impl From<utils::ResolveClientAtBlockError> for GetBlockHeaderError {
@@ -376,6 +416,9 @@ impl From<utils::ResolveClientAtBlockError> for GetBlockHeaderError {
         match err {
             utils::ResolveClientAtBlockError::ParseError(e) => {
                 GetBlockHeaderError::InvalidBlockParam(e)
+            }
+            utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
+                GetBlockHeaderError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
             }
             utils::ResolveClientAtBlockError::SubxtError(e) => {
                 GetBlockHeaderError::ClientAtBlockFailed(e)
@@ -388,9 +431,11 @@ impl IntoResponse for GetBlockHeaderError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
             GetBlockHeaderError::InvalidBlockParam(_)
-            | GetBlockHeaderError::BlockResolveFailed(_)
             | GetBlockHeaderError::UseRcBlockNotSupported => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            GetBlockHeaderError::BlockResolveFailed(inner) => {
+                (inner.status_code(), inner.to_string())
             }
             GetBlockHeaderError::RelayChain(RelayChainError::NotConfigured) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
@@ -402,10 +447,28 @@ impl IntoResponse for GetBlockHeaderError {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             GetBlockHeaderError::HeaderFetchFailed(err) => utils::rpc_error_to_status(err),
+            GetBlockHeaderError::ClientAtBlockFailed(err) => {
+                if utils::is_online_client_at_block_disconnected(err) {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Service temporarily unavailable".to_string(),
+                    )
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
+            GetBlockHeaderError::RcBlockError(inner) => {
+                if matches!(
+                    inner,
+                    crate::utils::rc_block::RcBlockError::BlockNotFound(_)
+                ) {
+                    (StatusCode::BAD_REQUEST, inner.to_string())
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
             GetBlockHeaderError::HeaderFieldMissing(_)
             | GetBlockHeaderError::HashComputationFailed(_)
-            | GetBlockHeaderError::RcBlockError(_)
-            | GetBlockHeaderError::ClientAtBlockFailed(_)
             | GetBlockHeaderError::BlockHeaderFailed(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }

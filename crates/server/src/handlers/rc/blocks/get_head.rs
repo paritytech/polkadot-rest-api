@@ -94,11 +94,35 @@ pub enum GetRcBlockHeadError {
     #[error("Header field missing: {0}")]
     HeaderFieldMissing(String),
 
+    #[error("Block resolution failed")]
+    BlockResolveFailed(#[from] crate::utils::BlockResolveError),
+
     #[error("Failed to get client at block")]
-    ClientAtBlockFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
+    ClientAtBlockFailed(#[source] Box<subxt::error::OnlineClientAtBlockError>),
 
     #[error("Block processing error: {0}")]
     BlockProcessingError(#[from] GetBlockError),
+}
+
+impl From<crate::utils::AtBlockError> for GetRcBlockHeadError {
+    fn from(err: crate::utils::AtBlockError) -> Self {
+        match err {
+            crate::utils::AtBlockError::BlockNotFound(msg) => {
+                GetRcBlockHeadError::BlockResolveFailed(crate::utils::BlockResolveError::NotFound(
+                    msg,
+                ))
+            }
+            crate::utils::AtBlockError::Client(e) => {
+                GetRcBlockHeadError::ClientAtBlockFailed(Box::new(e))
+            }
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for GetRcBlockHeadError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        GetRcBlockHeadError::from(crate::utils::AtBlockError::from(err))
+    }
 }
 
 impl IntoResponse for GetRcBlockHeadError {
@@ -110,17 +134,23 @@ impl IntoResponse for GetRcBlockHeadError {
             GetRcBlockHeadError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
+            GetRcBlockHeadError::BlockResolveFailed(inner) => {
+                (inner.status_code(), inner.to_string())
+            }
             GetRcBlockHeadError::RpcCallFailed(err) => crate::utils::rpc_error_to_status(err),
-            GetRcBlockHeadError::BlockHeaderFailed(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+            GetRcBlockHeadError::ClientAtBlockFailed(err) => {
+                if crate::utils::is_online_client_at_block_disconnected(err) {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Service temporarily unavailable".to_string(),
+                    )
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
             }
-            GetRcBlockHeadError::HeaderFieldMissing(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            GetRcBlockHeadError::ClientAtBlockFailed(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-            }
-            GetRcBlockHeadError::BlockProcessingError(_) => {
+            GetRcBlockHeadError::BlockHeaderFailed(_)
+            | GetRcBlockHeadError::HeaderFieldMissing(_)
+            | GetRcBlockHeadError::BlockProcessingError(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
             }
         };
@@ -207,7 +237,7 @@ pub async fn get_rc_blocks_head(
                 relay_client
                     .at_block(best_hash)
                     .await
-                    .map_err(|e| GetRcBlockHeadError::ClientAtBlockFailed(Box::new(e)))
+                    .map_err(GetRcBlockHeadError::from)
             },
             async {
                 relay_client
@@ -273,10 +303,7 @@ pub async fn get_rc_blocks_head(
 
         if !fee_indices.is_empty() {
             let spec_version = client_at_block.spec_version();
-            let client_at_parent = relay_client
-                .at_block(header.parent_hash)
-                .await
-                .map_err(|e| GetRcBlockHeadError::ClientAtBlockFailed(Box::new(e)))?;
+            let client_at_parent = relay_client.at_block(header.parent_hash).await?;
 
             let fee_futures: Vec<_> = fee_indices
                 .iter()
