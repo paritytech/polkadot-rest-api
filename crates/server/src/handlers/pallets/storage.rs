@@ -789,6 +789,12 @@ pub async fn rc_get_pallets_storage_item(
     let client_at_block = relay_client.at_block(resolved.number).await?;
     let metadata = client_at_block.metadata();
 
+    let rc_ss58_prefix = if state.chain_info.chain_type == ChainType::Relay {
+        state.chain_info.ss58_prefix
+    } else {
+        state.get_relay_chain_info().await?.ss58_prefix
+    };
+
     let response = build_storage_item_response(
         &relay_rpc_client,
         &metadata,
@@ -798,7 +804,7 @@ pub async fn rc_get_pallets_storage_item(
         &resolved,
         params.metadata,
         &block_hash,
-        state.chain_info.ss58_prefix,
+        rc_ss58_prefix,
     )
     .await?;
 
