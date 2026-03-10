@@ -361,10 +361,8 @@ async fn check_block_for_inclusion(
             }
         };
 
-        if let Some(inclusion_block_num) =
-            extract_inclusion_info(&event_data, para_id, parachain_block_number)
-        {
-            return Some(inclusion_block_num);
+        if extract_inclusion_info(&event_data, para_id, parachain_block_number) {
+            return Some(block_num);
         }
     }
 
@@ -376,18 +374,14 @@ fn extract_inclusion_info(
     event: &CandidateIncludedEvent,
     target_para_id: u32,
     expected_block_number: u64,
-) -> Option<u64> {
+) -> bool {
     if event.receipt.descriptor.para_id != target_para_id {
-        return None;
+        return false;
     }
 
-    let block_number = extract_block_number_from_header(&event.head_data)?;
+    let block_number = extract_block_number_from_header(&event.head_data).unwrap_or_default();
 
-    if block_number == expected_block_number {
-        Some(block_number)
-    } else {
-        None
-    }
+    block_number == expected_block_number
 }
 
 #[cfg(test)]
