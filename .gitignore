@@ -12,3 +12,9 @@ metrics/grafana/data/
 .env
 
 docs/node_modules/
+
+# Benchmark results
+results/
+
+# Prometheus runtime data (created when running locally)
+data/

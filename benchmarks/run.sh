@@ -246,9 +246,32 @@ echo "=========================================="
 # Clean up endpoint print lock from previous run
 rm -f /tmp/_wrk_bench_endpoints_printed
 
+# Export env vars for report.lua (used to label metrics)
+export BENCH_ENDPOINT="$BENCHMARK_NAME"
+export BENCH_SERVICE="polkadot-rest-api"
+
+# Results directory
+RESULTS_DIR="${BENCH_RESULTS_DIR:-$PROJECT_ROOT/results}"
+mkdir -p "$RESULTS_DIR"
+
 # Run wrk benchmark
+# stdout = human-readable output (displayed)
+# stderr = JSON metrics line from report.lua (captured)
 cd "$SCRIPT_DIR"
-# Set LUA_PATH to include the benchmarks directory for require("../util")
+# Set LUA_PATH to include the benchmarks directory for require("report") etc.
 export LUA_PATH="$BENCHMARKS_DIR/?.lua;;"
+WRK_STDERR=$(mktemp)
 wrk -d"$DURATION" -t"$THREADS" -c"$CONNECTIONS" --timeout "${TIMEOUT:-120s}" --latency \
-    -s "./${BENCHMARK_NAME}.lua" "http://$SERVER_HOST:$SERVER_PORT"
+    -s "./${BENCHMARK_NAME}.lua" "http://$SERVER_HOST:$SERVER_PORT" \
+    2>"$WRK_STDERR"
+
+# Save JSON results to file
+if [ -s "$WRK_STDERR" ]; then
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    RESULT_FILE="$RESULTS_DIR/${BENCHMARK_NAME}_${TIMESTAMP}.json"
+    cp "$WRK_STDERR" "$RESULT_FILE"
+    echo ""
+    echo "Results saved: $RESULT_FILE"
+fi
+
+rm -f "$WRK_STDERR"

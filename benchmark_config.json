@@ -148,12 +148,12 @@
     "accounts_staking_info": {
       "endpoint": "/v1/accounts/:accountId/staking-info",
       "use_standard_scenarios": true,
-      "chains": ["relay"]
+      "chains": ["relay", "asset-hub"]
     },
     "accounts_staking_payouts": {
       "endpoint": "/v1/accounts/:accountId/staking-payouts",
       "use_standard_scenarios": true,
-      "chains": ["relay"]
+      "chains": ["relay", "asset-hub"]
     },
     "accounts_asset_balances": {
       "endpoint": "/v1/accounts/:accountId/asset-balances",
@@ -233,12 +233,12 @@
     "pallets_staking_progress": {
       "endpoint": "/v1/pallets/staking/progress",
       "use_standard_scenarios": true,
-      "chains": ["relay"]
+      "chains": ["relay", "asset-hub"]
     },
     "pallets_staking_validators": {
       "endpoint": "/v1/pallets/staking/validators",
       "use_standard_scenarios": true,
-      "chains": ["relay"]
+      "chains": ["relay", "asset-hub"]
     },
     "pallets_nomination_pools_info": {
       "endpoint": "/v1/pallets/nomination-pools/info",

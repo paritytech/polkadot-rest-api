@@ -1,0 +1,5 @@
+process_names:
+  - name: "polkadot-rest-api"
+    cmdline: ['polkadot-rest-api']
+  - name: "substrate-api-sidecar"
+    cmdline: ['node.*sidecar']

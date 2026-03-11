@@ -35,21 +35,11 @@ function util.print_endpoints(endpoints)
 end
 
 -- Signal that setup is complete and print statistics
+-- Uses report.lua to emit JSON to stderr (captured by run.sh)
+-- and prints human-readable summary to stdout
 function util.done()
-    return function(summary, latency, requests)
-        local bytes = summary.bytes
-        local errors = summary.errors.status -- http status is not at the beginning of 200,300
-        local total_requests = summary.requests -- total requests
-
-        print("--------------------------")
-        print("Total completed requests:       ", summary.requests)
-        print("Failed requests:                ", summary.errors.status)
-        print("Timeouts:                       ", summary.errors.connect or 0)
-        print("Avg RequestTime(Latency):          "..string.format("%.2f",latency.mean / 1000).."ms")
-        print("Max RequestTime(Latency):          "..(latency.max / 1000).."ms")
-        print("Min RequestTime(Latency):          "..(latency.min / 1000).."ms")
-        print("Benchmark finished.")
-    end
+    local report = require("report")
+    return report.done()
 end
 
 return util
