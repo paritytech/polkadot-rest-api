@@ -54,7 +54,7 @@ request = function()
     if counter > #blocks then
         counter = 1
     end
-    return wrk.format("GET", "/v1/pallets/staking/validators?at=" .. block)
+    return wrk.format("GET", util.prefix .. "/pallets/staking/validators?at=" .. block)
 end
 
 done = util.done()

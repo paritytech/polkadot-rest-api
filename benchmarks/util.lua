@@ -1,6 +1,10 @@
 -- Utility functions for wrk Lua scripts
 local util = {}
 
+-- API version prefix — override via BENCH_API_PREFIX env var
+-- rest-api: "/v1" (default), sidecar: "", future: "/v2"
+util.prefix = os.getenv("BENCH_API_PREFIX") or "/v1"
+
 -- Create a request function for a given endpoint
 function util.request(handler, path)
     return function()

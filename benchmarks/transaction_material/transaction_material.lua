@@ -28,7 +28,7 @@ request = function()
     if counter > #endpoints then
         counter = 1
     end
-    return wrk.format("GET", "/v1/transaction/" .. endpoint)
+    return wrk.format("GET", util.prefix .. "/transaction/" .. endpoint)
 end
 
 done = util.done()

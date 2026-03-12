@@ -46,7 +46,8 @@ detect_chain() {
     port=$(jq -r '.server.port' "$CONFIG_FILE")
     base_url="http://$host:$port"
 
-    response=$(curl -sf --connect-timeout 5 "$base_url/v1/capabilities" 2>/dev/null) || {
+    local prefix="${BENCH_API_PREFIX:-/v1}"
+    response=$(curl -sf --connect-timeout 5 "$base_url${prefix}/capabilities" 2>/dev/null) || {
         echo ""
         return
     }

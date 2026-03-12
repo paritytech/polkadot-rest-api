@@ -41,7 +41,7 @@ if chain == "statemint" or chain == "asset-hub-polkadot" then
         '11038369',      -- 46 extrinsics @ spec_version 2000003
         '11038074',      -- 46 extrinsics @ spec_version 2000003
         '13255796',      -- 156 extrinsics @ spec_version 2000007
-        '13254859'       -- 45 extrinsics @ spec_version 2000007
+        '13254859',      -- 45 extrinsics @ spec_version 2000007
         -- Blocks @ spec_version 2000000 and with more events under on_finalize
         '10255499',      -- 912 events
         '10256589',      -- 1740 events
@@ -140,7 +140,7 @@ request = function()
     if counter > #blocks then
         counter = 1
     end
-    return wrk.format("GET", "/v1/blocks/" .. block)
+    return wrk.format("GET", util.prefix .. "/blocks/" .. block)
 end
 
 done = util.done()

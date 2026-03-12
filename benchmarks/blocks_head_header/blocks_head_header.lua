@@ -5,7 +5,7 @@ local util = require("util")
 
 -- Setup the request
 request = function()
-    return wrk.format("GET", "/v1/blocks/head/header")
+    return wrk.format("GET", util.prefix .. "/blocks/head/header")
 end
 
 -- No delay between requests for maximum throughput
