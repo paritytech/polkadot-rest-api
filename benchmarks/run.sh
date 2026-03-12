@@ -41,21 +41,28 @@ spec_to_chain_type() {
 
 # Detect chain by querying the API
 detect_chain() {
-    local host port base_url response chain_spec
+    local host port base_url response chain_spec detect_url
     host=$(jq -r '.server.host' "$CONFIG_FILE")
     port=$(jq -r '.server.port' "$CONFIG_FILE")
     base_url="http://$host:$port"
 
     local prefix="${BENCH_API_PREFIX:-/v1}"
-    response=$(curl -sf --connect-timeout 5 "$base_url${prefix}/capabilities" 2>/dev/null) || {
+    detect_url="$base_url${prefix}/capabilities"
+    response=$(curl -sL --connect-timeout 5 "$detect_url" 2>/dev/null) || {
+        echo "  (Could not connect to $detect_url)" >&2
         echo ""
         return
     }
 
     chain_spec=$(echo "$response" | jq -r '.chain // empty' 2>/dev/null) || {
+        echo "  (Got response but could not parse chain field)" >&2
         echo ""
         return
     }
+
+    if [ -z "$chain_spec" ]; then
+        echo "  (Response missing chain field from $detect_url)" >&2
+    fi
 
     echo "$chain_spec"
 }
@@ -234,7 +241,7 @@ PROFILE_DESC=$(jq -r ".hardware_profiles.\"$HARDWARE_PROFILE\".description" "$CO
 # Generate display name from benchmark name (replace underscores with spaces)
 DISPLAY_NAME=$(echo "$BENCHMARK_NAME" | tr '_' ' ')
 
-ENDPOINT_PATH=$(jq -r ".benchmarks.\"$BENCHMARK_NAME\".endpoint // \"unknown\"" "$CONFIG_FILE")
+ENDPOINT_PATH="${BENCH_API_PREFIX:-/v1}$(jq -r ".benchmarks.\"$BENCHMARK_NAME\".endpoint // \"unknown\"" "$CONFIG_FILE")"
 
 echo "=========================================="
 echo "Benchmark:  $DISPLAY_NAME"
