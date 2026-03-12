@@ -9,14 +9,68 @@
 
 use frame_metadata::RuntimeMetadataPrefixed;
 use parity_scale_codec::Decode;
-use scale_value::ValueDef;
-use scale_value::scale::decode_as_type;
+use scale_decode::DecodeAsType;
 use serde_json::{Value, json};
 use sp_core::hashing::blake2_256;
 use std::cmp;
 use subxt::SubstrateConfig;
 use subxt::config::RpcConfigFor;
 use subxt_rpcs::{LegacyRpcMethods, RpcClient, client::rpc_params};
+
+// ================================================================================================
+// SCALE Decode Types for metadata constants
+// ================================================================================================
+
+/// BlockWeights constant structure
+#[derive(Debug, DecodeAsType)]
+#[allow(dead_code)]
+struct BlockWeights {
+    base_block: WeightValue,
+    max_block: WeightValue,
+    per_class: PerDispatchClass,
+}
+
+/// BlockLength constant structure
+#[derive(Debug, DecodeAsType)]
+#[allow(dead_code)]
+struct BlockLength {
+    max: PerDispatchClassLength,
+}
+
+/// Weight with ref_time and proof_size
+#[derive(Debug, DecodeAsType)]
+struct WeightValue {
+    ref_time: u64,
+    #[allow(dead_code)]
+    proof_size: u64,
+}
+
+/// Per-dispatch-class weights (not used for extraction, but needed for decoding)
+#[derive(Debug, DecodeAsType)]
+#[allow(dead_code)]
+struct PerDispatchClass {
+    normal: DispatchClassWeights,
+    operational: DispatchClassWeights,
+    mandatory: DispatchClassWeights,
+}
+
+/// Weights for a single dispatch class
+#[derive(Debug, DecodeAsType)]
+#[allow(dead_code)]
+struct DispatchClassWeights {
+    base_extrinsic: WeightValue,
+    max_extrinsic: Option<WeightValue>,
+    max_total: Option<WeightValue>,
+    reserved: Option<WeightValue>,
+}
+
+/// Per-dispatch-class lengths
+#[derive(Debug, DecodeAsType)]
+struct PerDispatchClassLength {
+    normal: u32,
+    operational: u32,
+    mandatory: u32,
+}
 
 use super::{NodeNetworkResponse, NodeVersionResponse};
 
@@ -566,27 +620,6 @@ async fn get_runtime_metadata(
         .map_err(FetchError::MetadataDecodeFailed)
 }
 
-fn extract_ref_time_from_decoded(decoded: &scale_value::Value<u32>) -> Option<u64> {
-    let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value else {
-        return None;
-    };
-
-    let (_, max_block_val) = fields.iter().find(|(name, _)| name == "maxBlock")?;
-
-    let ValueDef::Composite(scale_value::Composite::Named(weight_fields)) = &max_block_val.value
-    else {
-        return None;
-    };
-
-    let (_, ref_time_val) = weight_fields.iter().find(|(name, _)| name == "refTime")?;
-
-    let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &ref_time_val.value else {
-        return None;
-    };
-
-    Some(*n as u64)
-}
-
 fn extract_max_block_weight(metadata: &RuntimeMetadataPrefixed) -> Option<u64> {
     use frame_metadata::RuntimeMetadata;
 
@@ -610,45 +643,8 @@ fn extract_max_block_weight(metadata: &RuntimeMetadataPrefixed) -> Option<u64> {
         _ => return None,
     };
 
-    let mut bytes = constant_value;
-    let decoded = decode_as_type(&mut bytes, type_id, registry).ok()?;
-    extract_ref_time_from_decoded(&decoded)
-}
-
-fn extract_class_length_from_decoded(
-    decoded: &scale_value::Value<u32>,
-    class: &str,
-) -> Option<u64> {
-    let class_index = match class {
-        "normal" => 0,
-        "operational" => 1,
-        "mandatory" => 2,
-        _ => return None,
-    };
-
-    let ValueDef::Composite(scale_value::Composite::Named(fields)) = &decoded.value else {
-        return None;
-    };
-
-    let (_, max_val) = fields.iter().find(|(name, _)| name == "max")?;
-
-    if let ValueDef::Composite(scale_value::Composite::Unnamed(array_fields)) = &max_val.value {
-        let fields_vec: Vec<_> = array_fields.iter().collect();
-        if let Some(class_val) = fields_vec.get(class_index)
-            && let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &class_val.value
-        {
-            return Some(*n as u64);
-        }
-    }
-
-    if let ValueDef::Composite(scale_value::Composite::Named(named_fields)) = &max_val.value
-        && let Some((_, class_val)) = named_fields.iter().find(|(name, _)| name == class)
-        && let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &class_val.value
-    {
-        return Some(*n as u64);
-    }
-
-    None
+    let decoded = BlockWeights::decode_as_type(&mut &constant_value[..], type_id, registry).ok()?;
+    Some(decoded.max_block.ref_time)
 }
 
 fn extract_max_block_length(metadata: &RuntimeMetadataPrefixed, class: &str) -> Option<u64> {
@@ -674,9 +670,15 @@ fn extract_max_block_length(metadata: &RuntimeMetadataPrefixed, class: &str) -> 
         _ => return None,
     };
 
-    let mut bytes = constant_value;
-    let decoded = decode_as_type(&mut bytes, type_id, registry).ok()?;
-    extract_class_length_from_decoded(&decoded, class)
+    let decoded = BlockLength::decode_as_type(&mut &constant_value[..], type_id, registry).ok()?;
+
+    let length = match class {
+        "normal" => decoded.max.normal,
+        "operational" => decoded.max.operational,
+        "mandatory" => decoded.max.mandatory,
+        _ => return None,
+    };
+    Some(length as u64)
 }
 
 fn extract_operational_fee_multiplier(metadata: &RuntimeMetadataPrefixed) -> Option<u128> {
@@ -702,13 +704,8 @@ fn extract_operational_fee_multiplier(metadata: &RuntimeMetadataPrefixed) -> Opt
         _ => return None,
     };
 
-    let mut bytes = constant_value;
-    let decoded = decode_as_type(&mut bytes, type_id, registry).ok()?;
-
-    match &decoded.value {
-        ValueDef::Primitive(scale_value::Primitive::U128(n)) => Some(*n),
-        _ => None,
-    }
+    let decoded = u8::decode_as_type(&mut &constant_value[..], type_id, registry).ok()?;
+    Some(decoded as u128)
 }
 
 #[cfg(test)]

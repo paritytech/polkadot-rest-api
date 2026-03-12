@@ -523,6 +523,57 @@
         },
         "fixture_path": "polkadot/coretime_info_24000000.json",
         "description": "Test coretime info endpoint at Polkadot block 24,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage/Number",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "polkadot/pallets_system_storage_number_20000000.json",
+        "description": "Test System/Number storage item (Plain u32) at Polkadot block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/timestamp/storage/Now",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "polkadot/pallets_timestamp_storage_now_20000000.json",
+        "description": "Test Timestamp/Now storage item (Plain u64) at Polkadot block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/staking/storage/ValidatorCount",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "polkadot/pallets_staking_storage_validatorcount_20000000.json",
+        "description": "Test Staking/ValidatorCount storage item (Plain u32) at Polkadot block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/staking/storage/MinimumValidatorCount",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "20000000"
+        },
+        "fixture_path": "polkadot/pallets_staking_storage_minimumvalidatorcount_20000000.json",
+        "description": "Test Staking/MinimumValidatorCount storage item (Plain u32) at Polkadot block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/staking/storage/Bonded",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "keys[]": "16ZL8yLyXv3V3L3z9ofR1ovFLziyXaN1DPq4yffMAZ9czzBD",
+          "at": "20000000"
+        },
+        "fixture_path": "polkadot/pallets_staking_storage_bonded_20000000.json",
+        "description": "Test Staking/Bonded storage item (Map: AccountId32 -> AccountId32) at Polkadot block 20,000,000"
       }
     ],
     "kusama": [
@@ -737,6 +788,47 @@
         },
         "fixture_path": "kusama/coretime_info_29000000.json",
         "description": "Test coretime info endpoint at Kusama block 29,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage/Number",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "25000000"
+        },
+        "fixture_path": "kusama/pallets_system_storage_number_25000000.json",
+        "description": "Test System/Number storage item (Plain u32) at Kusama block 25,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/timestamp/storage/Now",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "25000000"
+        },
+        "fixture_path": "kusama/pallets_timestamp_storage_now_25000000.json",
+        "description": "Test Timestamp/Now storage item (Plain u64) at Kusama block 25,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/staking/storage/ValidatorCount",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "25000000"
+        },
+        "fixture_path": "kusama/pallets_staking_storage_validatorcount_25000000.json",
+        "description": "Test Staking/ValidatorCount storage item (Plain u32) at Kusama block 25,000,000"
+      },
+      {
+        "endpoint": "/v1/pallets/staking/storage/Bonded",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "keys[]": "CaKh7HmPMXxv22GnLgjEZxWHBUu7y7Twf2k8mP3mxpLYTH4",
+          "at": "25000000"
+        },
+        "fixture_path": "kusama/pallets_staking_storage_bonded_25000000.json",
+        "description": "Test Staking/Bonded storage item (Map: AccountId32 -> AccountId32) at Kusama block 25,000,000"
       }
     ],
     "asset-hub-polkadot": [
@@ -1523,6 +1615,26 @@
         "query_params": {},
         "fixture_path": "asset-hub-polkadot/accounts_validate_alice.json",
         "description": "Test accounts validate for Alice"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage/Number",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_system_storage_number_10260000.json",
+        "description": "Test System/Number storage item (Plain u32) at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/pallets/timestamp/storage/Now",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "10260000"
+        },
+        "fixture_path": "asset-hub-polkadot/pallets_timestamp_storage_now_10260000.json",
+        "description": "Test Timestamp/Now storage item (Plain u64) at Asset Hub Polkadot block 10,260,000"
       }
     ],
     "asset-hub-kusama": [
@@ -1785,6 +1897,26 @@
         },
         "fixture_path": "asset-hub-kusama/blocks_range_12949861-12949863_use_evm_format.json",
         "description": "Test blocks range endpoint with useEvmFormat parameter at Asset Hub Kusama blocks 12,949,861-12,949,863"
+      },
+      {
+        "endpoint": "/v1/pallets/system/storage/Number",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "11152000"
+        },
+        "fixture_path": "asset-hub-kusama/pallets_system_storage_number_11152000.json",
+        "description": "Test System/Number storage item (Plain u32) at Asset Hub Kusama block 11,152,000"
+      },
+      {
+        "endpoint": "/v1/pallets/timestamp/storage/Now",
+        "block_height": null,
+        "account_id": null,
+        "query_params": {
+          "at": "11152000"
+        },
+        "fixture_path": "asset-hub-kusama/pallets_timestamp_storage_now_11152000.json",
+        "description": "Test Timestamp/Now storage item (Plain u64) at Asset Hub Kusama block 11,152,000"
       }
     ],
     "coretime-kusama": [
