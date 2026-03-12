@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::state::{AppState, RelayChainError};
+use crate::utils::{WeightRaw, decode_runtime_dispatch_info};
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
+use parity_scale_codec::Encode;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use utoipa::ToSchema;
@@ -189,7 +191,6 @@ async fn fee_estimate_internal(
         return Err(FeeEstimateError::MissingTx);
     }
 
-    // Get finalized block
     let client_at = client.at_current_block().await.map_err(|e| {
         let cause = e.to_string();
         FeeEstimateError::FetchFailed {
@@ -212,113 +213,52 @@ async fn fee_estimate_internal(
         }
     })?;
 
-    // Call TransactionPaymentApi.query_info(extrinsic, len)
+    let mut params = tx_bytes.to_vec();
     let len = tx_bytes.len() as u32;
-    let extrinsic = subxt::dynamic::Value::from_bytes(tx_bytes);
-    let length = subxt::dynamic::Value::u128(len as u128);
+    len.encode_to(&mut params);
 
-    let method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
-        "TransactionPaymentApi",
-        "query_info",
-        (extrinsic, length),
-    );
-    let result = client_at.runtime_apis().call(method).await.map_err(|e| {
-        let cause = e.to_string();
+    let result_bytes = client_at
+        .runtime_apis()
+        .call_raw("TransactionPaymentApi_query_info", Some(&params))
+        .await
+        .map_err(|e| {
+            let cause = e.to_string();
+            FeeEstimateError::FetchFailed {
+                at_hash: Some(block_hash.clone()),
+                transaction: tx.to_string(),
+                cause: cause.clone(),
+                stack: format!("Error: {}\n    at fee_estimate", cause),
+            }
+        })?;
+
+    let dispatch_info = decode_runtime_dispatch_info(&result_bytes).ok_or_else(|| {
         FeeEstimateError::FetchFailed {
             at_hash: Some(block_hash.clone()),
             transaction: tx.to_string(),
-            cause: cause.clone(),
-            stack: format!("Error: {}\n    at fee_estimate", cause),
+            cause: "Failed to decode RuntimeDispatchInfo".to_string(),
+            stack: "Error: Failed to decode RuntimeDispatchInfo\n    at fee_estimate".to_string(),
         }
     })?;
 
-    parse_fee_estimate_response(result, tx, &block_hash)
-}
+    let weight = match &dispatch_info.weight {
+        WeightRaw::V1(w) => Weight {
+            ref_time: w.to_string(),
+            proof_size: "0".to_string(),
+        },
+        WeightRaw::V2 {
+            ref_time,
+            proof_size,
+        } => Weight {
+            ref_time: ref_time.to_string(),
+            proof_size: proof_size.to_string(),
+        },
+    };
 
-fn parse_fee_estimate_response(
-    result: scale_value::Value<()>,
-    tx: &str,
-    block_hash: &str,
-) -> Result<Json<FeeEstimateResponse>, FeeEstimateError> {
-    use scale_value::{Composite, ValueDef};
-
-    // Helper to get value by key from a Composite
-    fn get_named_value<'a>(
-        composite: &'a Composite<()>,
-        key: &str,
-    ) -> Option<&'a scale_value::Value<()>> {
-        match composite {
-            Composite::Named(vals) => vals.iter().find(|(k, _)| k == key).map(|(_, v)| v),
-            Composite::Unnamed(_) => None,
-        }
-    }
-
-    // Extract primitive as string
-    fn extract_u128(value: &scale_value::Value<()>) -> Option<String> {
-        if let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &value.value {
-            Some(n.to_string())
-        } else {
-            None
-        }
-    }
-
-    // The result is RuntimeDispatchInfo { weight, class, partialFee }
-    if let ValueDef::Composite(composite) = &result.value {
-        // Extract weight
-        let weight = if let Some(weight_val) = get_named_value(composite, "weight") {
-            if let ValueDef::Composite(weight_composite) = &weight_val.value {
-                let ref_time = get_named_value(weight_composite, "ref_time")
-                    .and_then(extract_u128)
-                    .unwrap_or_else(|| "0".to_string());
-                let proof_size = get_named_value(weight_composite, "proof_size")
-                    .and_then(extract_u128)
-                    .unwrap_or_else(|| "0".to_string());
-                Weight {
-                    ref_time,
-                    proof_size,
-                }
-            } else {
-                Weight {
-                    ref_time: "0".to_string(),
-                    proof_size: "0".to_string(),
-                }
-            }
-        } else {
-            Weight {
-                ref_time: "0".to_string(),
-                proof_size: "0".to_string(),
-            }
-        };
-
-        // Extract class (it's a variant: Normal, Operational, or Mandatory)
-        let class = if let Some(class_val) = get_named_value(composite, "class") {
-            if let ValueDef::Variant(variant) = &class_val.value {
-                variant.name.clone()
-            } else {
-                "Normal".to_string()
-            }
-        } else {
-            "Normal".to_string()
-        };
-
-        // Extract partialFee
-        let partial_fee = get_named_value(composite, "partial_fee")
-            .and_then(extract_u128)
-            .unwrap_or_else(|| "0".to_string());
-
-        return Ok(Json(FeeEstimateResponse {
-            weight,
-            class,
-            partial_fee,
-        }));
-    }
-
-    Err(FeeEstimateError::FetchFailed {
-        at_hash: Some(block_hash.to_string()),
-        transaction: tx.to_string(),
-        cause: "Unexpected response format".to_string(),
-        stack: "Error: Unexpected response format\n    at fee_estimate".to_string(),
-    })
+    Ok(Json(FeeEstimateResponse {
+        weight,
+        class: dispatch_info.class,
+        partial_fee: dispatch_info.partial_fee.to_string(),
+    }))
 }
 
 #[cfg(test)]
