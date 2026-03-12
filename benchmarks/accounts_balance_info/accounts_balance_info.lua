@@ -14,7 +14,7 @@ if chain == "asset-hub-polkadot" or chain == "statemint" then
     -- Asset Hub Polkadot-specific accounts and blocks
     local asset_hub_endpoints = {
         '13ezbfrX5PRUAozxBmjV3L3kxX7qtPgkgEfEiuyB6S5MTxfm/balance-info?at=13115694',    -- spec_version 2000007, account with reserved balance, 1 lock
-        '14fVzET43H1veBakLMfnBwc6TdyMDcYJp4SvURgvwTnwDTpJ/balance-info?at=12075832'     -- spec_version 2000006, account with 1 lock
+        '14fVzET43H1veBakLMfnBwc6TdyMDcYJp4SvURgvwTnwDTpJ/balance-info?at=12075832',    -- spec_version 2000006, account with 1 lock
         '1HJLZzCPyvkGPiSF8xGVUhdvCfjRNxAgR35ZeVAm7XmMbUq/balance-info?at=11416376',     -- spec_version 2000005, account with 1 lock
         '19KT274PAdSchBjDmnxh6vEMdy4QFU9Bo6jgMZhen3esYGG/balance-info?at=11020674',     -- spec_version 2000003, account with reserved balance, 0 locks
         '1UTL9yUkujidjibJNhK3rQaFxTofpw54ESyPKcyZbfrWBYp/balance-info?at=10354615',     -- spec_version 2000002, account with reserved balance, 1 lock
@@ -34,18 +34,18 @@ if chain == "asset-hub-polkadot" or chain == "statemint" then
 else
     -- Base endpoints: Polkadot relay accounts with historical blocks (matching Sidecar)
     local base_endpoints = {
-        '1KvKReVmUiTc2LW2a4qyHsaJJ9eE9LRsywZkMk5hyBeyHgw/balance-info?at=20000',
-        '1KvKReVmUiTc2LW2a4qyHsaJJ9eE9LRsywZkMk5hyBeyHgw/balance-info?at=198702',
-        '14Kq2Gt4buLr8XgRQmLtbWLHkejmhvGhiZDqLEzWcbe7jQTU/balance-info?at=2282256',
-        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=3574738',
-        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=4574738',
-        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=6574738',
-        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=7241122',
-        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=8000000',
-        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=8320000',
-        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=8500000',
-        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=9000000',
-        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=9500000',
+        '1KvKReVmUiTc2LW2a4qyHsaJJ9eE9LRsywZkMk5hyBeyHgw/balance-info?at=20000', -- v0
+        '1KvKReVmUiTc2LW2a4qyHsaJJ9eE9LRsywZkMk5hyBeyHgw/balance-info?at=198702', -- v5
+        '14Kq2Gt4buLr8XgRQmLtbWLHkejmhvGhiZDqLEzWcbe7jQTU/balance-info?at=2282256', -- v25
+        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=3574738', -- v26
+        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=4574738', -- v29
+        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=6574738', -- v9080
+        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=7241122', -- v9110
+        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=8000000', -- v9122
+        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=8320000', -- v9130
+        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=8500000', -- v9140
+        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=9000000', -- v9151
+        '15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX/balance-info?at=9500000', -- v9170
     }
     for _, ep in ipairs(base_endpoints) do
         endpoints[#endpoints + 1] = ep

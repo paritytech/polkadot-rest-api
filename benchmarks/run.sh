@@ -8,7 +8,7 @@
 # Usage: ./run.sh <benchmark_name> [scenario] [hardware_profile]
 #        ./run.sh --all [scenario] [hardware_profile] [results_dir]
 #
-# Chain detection is automatic by querying /v1/capabilities
+# Chain detection is automatic by querying $API_PREFIX/capabilities
 #
 # Examples:
 #   ./run.sh health
@@ -21,6 +21,7 @@ set -e
 BENCHMARKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$BENCHMARKS_DIR/.." && pwd)"
 CONFIG_FILE="$PROJECT_ROOT/benchmark_config.json"
+API_PREFIX="${BENCH_API_PREFIX:-/v1}"
 
 # --- Chain detection functions ---
 
@@ -46,7 +47,7 @@ detect_chain() {
     port=$(jq -r '.server.port' "$CONFIG_FILE")
     base_url="http://$host:$port"
 
-    local prefix="${BENCH_API_PREFIX:-/v1}"
+    local prefix="$API_PREFIX"
     detect_url="$base_url${prefix}/capabilities"
     response=$(curl -sL --connect-timeout 5 "$detect_url" 2>/dev/null) || {
         echo "  (Could not connect to $detect_url)" >&2
@@ -241,7 +242,7 @@ PROFILE_DESC=$(jq -r ".hardware_profiles.\"$HARDWARE_PROFILE\".description" "$CO
 # Generate display name from benchmark name (replace underscores with spaces)
 DISPLAY_NAME=$(echo "$BENCHMARK_NAME" | tr '_' ' ')
 
-ENDPOINT_PATH="${BENCH_API_PREFIX:-/v1}$(jq -r ".benchmarks.\"$BENCHMARK_NAME\".endpoint // \"unknown\"" "$CONFIG_FILE")"
+ENDPOINT_PATH="${API_PREFIX}$(jq -r ".benchmarks.\"$BENCHMARK_NAME\".endpoint // \"unknown\"" "$CONFIG_FILE")"
 
 echo "=========================================="
 echo "Benchmark:  $DISPLAY_NAME"
@@ -257,9 +258,14 @@ rm -f /tmp/_wrk_bench_endpoints_printed
 # Export env vars for report.lua (used to label metrics)
 export BENCH_ENDPOINT="$BENCHMARK_NAME"
 export BENCH_SERVICE="polkadot-rest-api"
+export BENCH_SCENARIO="$SCENARIO"
+export BENCH_HARDWARE="$HARDWARE_PROFILE"
+export BENCH_THREADS="$THREADS"
+export BENCH_CONNECTIONS="$CONNECTIONS"
+export BENCH_DURATION="$DURATION"
 
 # Results directory
-RESULTS_DIR="${BENCH_RESULTS_DIR:-$PROJECT_ROOT/results}"
+RESULTS_DIR="${BENCH_RESULTS_DIR:-$PROJECT_ROOT/results}/$BENCHMARK_NAME"
 mkdir -p "$RESULTS_DIR"
 
 # Run wrk benchmark
