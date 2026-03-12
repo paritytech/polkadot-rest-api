@@ -11,9 +11,28 @@ use axum::{
     response::IntoResponse,
 };
 use parity_scale_codec::Decode;
+use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
+
+// ================================================================================================
+// SCALE Decode Types for Runtime API responses
+// ================================================================================================
+
+/// RuntimeVersion returned by Core.version()
+#[derive(Debug, DecodeAsType)]
+#[allow(dead_code)]
+struct RuntimeVersion {
+    spec_name: String,
+    impl_name: String,
+    authoring_version: u32,
+    spec_version: u32,
+    impl_version: u32,
+    apis: Vec<([u8; 8], u32)>,
+    transaction_version: u32,
+    system_version: u8,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -412,28 +431,13 @@ async fn material_versioned_internal(
     let tx_version = client_at.transaction_version().to_string();
 
     // Get available metadata versions
-    let versions_method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
-        "Metadata",
-        "metadata_versions",
-        (),
-    );
+    let versions_method =
+        subxt::dynamic::runtime_api_call::<_, Vec<u32>>("Metadata", "metadata_versions", ());
     let available_versions_result = client_at.runtime_apis().call(versions_method).await;
 
     let available_versions: Vec<u32> = match available_versions_result {
-        Ok(versions_value) => {
-            // Convert scale_value to JSON and extract version numbers
-            let versions_json: Value = serde_json::to_value(&versions_value).unwrap_or_default();
-            versions_json
-                .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_u64().map(|n| n as u32))
-                        .collect()
-                })
-                .unwrap_or_default()
-        }
-        Err(e) => {
-            tracing::debug!("Failed to call metadata_versions runtime API: {e:?}");
+        Ok(versions) => versions,
+        Err(_) => {
             return Err(MaterialError::MetadataVersionsApiNotAvailable);
         }
     };
@@ -447,14 +451,9 @@ async fn material_versioned_internal(
 
     // Get runtime version for spec_name
     let version_method =
-        subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>("Core", "version", ());
+        subxt::dynamic::runtime_api_call::<_, RuntimeVersion>("Core", "version", ());
     let runtime_version = client_at.runtime_apis().call(version_method).await?;
-    let runtime_version_json: Value = serde_json::to_value(&runtime_version).unwrap_or_default();
-    let spec_name = runtime_version_json
-        .get("spec_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let spec_name = runtime_version.spec_name.clone();
 
     // Get genesis hash and chain name
     let genesis_hash = format!("{:#x}", client.genesis_hash());
@@ -472,27 +471,15 @@ async fn material_versioned_internal(
     // Get versioned metadata
     let metadata = if let Some(format) = metadata_format {
         // Call Metadata.metadata_at_version(version)
-        let metadata_method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
+        let metadata_method = subxt::dynamic::runtime_api_call::<_, Option<Vec<u8>>>(
             "Metadata",
             "metadata_at_version",
             (requested_version,),
         );
         let metadata_result = client_at.runtime_apis().call(metadata_method).await?;
 
-        // The result is Option<OpaqueMetadata>, extract the bytes
-        let metadata_json: Value = serde_json::to_value(&metadata_result).unwrap_or_default();
-
-        // Handle Option - could be {"Some": [...]} or null
-        let metadata_bytes: Option<Vec<u8>> = if let Some(some_value) = metadata_json.get("Some") {
-            // Extract bytes from the array
-            some_value.as_array().map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_u64().map(|n| n as u8))
-                    .collect()
-            })
-        } else {
-            None
-        };
+        // The result is Option<OpaqueMetadata>
+        let metadata_bytes: Option<Vec<u8>> = metadata_result;
 
         match (format, metadata_bytes) {
             (_, None) => {
@@ -565,11 +552,8 @@ async fn material_internal(
                 let number = client_at.block_number().to_string();
                 let spec_version = client_at.spec_version().to_string();
                 let tx_version = client_at.transaction_version().to_string();
-                let method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
-                    "Core",
-                    "version",
-                    (),
-                );
+                let method =
+                    subxt::dynamic::runtime_api_call::<_, RuntimeVersion>("Core", "version", ());
                 let runtime_version = client_at.runtime_apis().call(method).await?;
 
                 (hash, number, spec_version, tx_version, runtime_version)
@@ -593,7 +577,7 @@ async fn material_internal(
                         let number = client_at.block_number().to_string();
                         let spec_version = client_at.spec_version().to_string();
                         let tx_version = client_at.transaction_version().to_string();
-                        let method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
+                        let method = subxt::dynamic::runtime_api_call::<_, RuntimeVersion>(
                             "Core",
                             "version",
                             (),
@@ -612,7 +596,7 @@ async fn material_internal(
                         let number = client_at.block_number().to_string();
                         let spec_version = client_at.spec_version().to_string();
                         let tx_version = client_at.transaction_version().to_string();
-                        let method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
+                        let method = subxt::dynamic::runtime_api_call::<_, RuntimeVersion>(
                             "Core",
                             "version",
                             (),
@@ -640,13 +624,8 @@ async fn material_internal(
             }
         })?;
 
-    // Convert scale_value to JSON to extract specName
-    let runtime_version_json: Value = serde_json::to_value(&runtime_version).unwrap_or_default();
-    let spec_name = runtime_version_json
-        .get("spec_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
+    // Extract specName from typed runtime version
+    let spec_name = runtime_version.spec_name.clone();
 
     // Get metadata if requested
     let metadata = if let Some(format) = metadata_format {
