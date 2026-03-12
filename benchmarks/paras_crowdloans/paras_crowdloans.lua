@@ -35,7 +35,7 @@ request = function()
     if counter > #blocks then
         counter = 1
     end
-    return wrk.format("GET", "/v1/paras/crowdloans?at=" .. block)
+    return wrk.format("GET", util.prefix .. "/paras/crowdloans?at=" .. block)
 end
 
 done = util.done()

@@ -27,7 +27,7 @@ request = function()
     if counter > #endpoints then
         counter = 1
     end
-    return wrk.format("GET", "/v1/pallets/nomination-pools/" .. endpoint)
+    return wrk.format("GET", util.prefix .. "/pallets/nomination-pools/" .. endpoint)
 end
 
 done = util.done()

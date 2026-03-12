@@ -28,7 +28,7 @@ request = function()
     if counter > #blocks then
         counter = 1
     end
-    return wrk.format("GET", "/v1/blocks/" .. block .. "/para-inclusions")
+    return wrk.format("GET", util.prefix .. "/blocks/" .. block .. "/para-inclusions")
 end
 
 done = util.done()

@@ -31,7 +31,7 @@ request = function()
     if counter > #blocks then
         counter = 1
     end
-    return wrk.format("GET", "/v1/paras/leases/current?at=" .. block)
+    return wrk.format("GET", util.prefix .. "/paras/leases/current?at=" .. block)
 end
 
 done = util.done()

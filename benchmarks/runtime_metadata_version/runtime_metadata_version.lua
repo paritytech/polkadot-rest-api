@@ -16,7 +16,7 @@ request = function()
     if counter > #versions then
         counter = 1
     end
-    return wrk.format("GET", "/v1/runtime/metadata/" .. version)
+    return wrk.format("GET", util.prefix .. "/runtime/metadata/" .. version)
 end
 
 done = util.done()

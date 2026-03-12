@@ -5,20 +5,20 @@
 local util = require("util")
 
 -- Transaction pool with and without fee calculation (matching Sidecar)
-local endpoints = {
-    '/v1/node/transaction-pool',
-    '/v1/node/transaction-pool?includeFee=true',
+local paths = {
+    '/node/transaction-pool',
+    '/node/transaction-pool?includeFee=true',
 }
 
 local counter = 1
 
 request = function()
-    local endpoint = endpoints[counter]
+    local path = paths[counter]
     counter = counter + 1
-    if counter > #endpoints then
+    if counter > #paths then
         counter = 1
     end
-    return wrk.format("GET", endpoint)
+    return wrk.format("GET", util.prefix .. path)
 end
 
 done = util.done()

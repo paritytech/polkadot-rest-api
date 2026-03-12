@@ -29,7 +29,7 @@ request = function()
     if counter > #para_ids then
         counter = 1
     end
-    return wrk.format("GET", "/v1/paras/" .. para_id .. "/inclusion")
+    return wrk.format("GET", util.prefix .. "/paras/" .. para_id .. "/inclusion")
 end
 
 done = util.done()

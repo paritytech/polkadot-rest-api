@@ -8,7 +8,7 @@
 # Usage: ./run.sh <benchmark_name> [scenario] [hardware_profile]
 #        ./run.sh --all [scenario] [hardware_profile] [results_dir]
 #
-# Chain detection is automatic by querying /v1/capabilities
+# Chain detection is automatic by querying $API_PREFIX/capabilities
 #
 # Examples:
 #   ./run.sh health
@@ -21,6 +21,7 @@ set -e
 BENCHMARKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$BENCHMARKS_DIR/.." && pwd)"
 CONFIG_FILE="$PROJECT_ROOT/benchmark_config.json"
+API_PREFIX="${BENCH_API_PREFIX:-/v1}"
 
 # --- Chain detection functions ---
 
@@ -41,20 +42,28 @@ spec_to_chain_type() {
 
 # Detect chain by querying the API
 detect_chain() {
-    local host port base_url response chain_spec
+    local host port base_url response chain_spec detect_url
     host=$(jq -r '.server.host' "$CONFIG_FILE")
     port=$(jq -r '.server.port' "$CONFIG_FILE")
     base_url="http://$host:$port"
 
-    response=$(curl -sf --connect-timeout 5 "$base_url/v1/capabilities" 2>/dev/null) || {
+    local prefix="$API_PREFIX"
+    detect_url="$base_url${prefix}/capabilities"
+    response=$(curl -sL --connect-timeout 5 "$detect_url" 2>/dev/null) || {
+        echo "  (Could not connect to $detect_url)" >&2
         echo ""
         return
     }
 
     chain_spec=$(echo "$response" | jq -r '.chain // empty' 2>/dev/null) || {
+        echo "  (Got response but could not parse chain field)" >&2
         echo ""
         return
     }
+
+    if [ -z "$chain_spec" ]; then
+        echo "  (Response missing chain field from $detect_url)" >&2
+    fi
 
     echo "$chain_spec"
 }
@@ -233,7 +242,7 @@ PROFILE_DESC=$(jq -r ".hardware_profiles.\"$HARDWARE_PROFILE\".description" "$CO
 # Generate display name from benchmark name (replace underscores with spaces)
 DISPLAY_NAME=$(echo "$BENCHMARK_NAME" | tr '_' ' ')
 
-ENDPOINT_PATH=$(jq -r ".benchmarks.\"$BENCHMARK_NAME\".endpoint // \"unknown\"" "$CONFIG_FILE")
+ENDPOINT_PATH="${API_PREFIX}$(jq -r ".benchmarks.\"$BENCHMARK_NAME\".endpoint // \"unknown\"" "$CONFIG_FILE")"
 
 echo "=========================================="
 echo "Benchmark:  $DISPLAY_NAME"
@@ -246,9 +255,37 @@ echo "=========================================="
 # Clean up endpoint print lock from previous run
 rm -f /tmp/_wrk_bench_endpoints_printed
 
+# Export env vars for report.lua (used to label metrics)
+export BENCH_ENDPOINT="$BENCHMARK_NAME"
+export BENCH_SERVICE="polkadot-rest-api"
+export BENCH_SCENARIO="$SCENARIO"
+export BENCH_HARDWARE="$HARDWARE_PROFILE"
+export BENCH_THREADS="$THREADS"
+export BENCH_CONNECTIONS="$CONNECTIONS"
+export BENCH_DURATION="$DURATION"
+
+# Results directory
+RESULTS_DIR="${BENCH_RESULTS_DIR:-$PROJECT_ROOT/results}/$BENCHMARK_NAME"
+mkdir -p "$RESULTS_DIR"
+
 # Run wrk benchmark
+# stdout = human-readable output (displayed)
+# stderr = JSON metrics line from report.lua (captured)
 cd "$SCRIPT_DIR"
-# Set LUA_PATH to include the benchmarks directory for require("../util")
+# Set LUA_PATH to include the benchmarks directory for require("report") etc.
 export LUA_PATH="$BENCHMARKS_DIR/?.lua;;"
+WRK_STDERR=$(mktemp)
 wrk -d"$DURATION" -t"$THREADS" -c"$CONNECTIONS" --timeout "${TIMEOUT:-120s}" --latency \
-    -s "./${BENCHMARK_NAME}.lua" "http://$SERVER_HOST:$SERVER_PORT"
+    -s "./${BENCHMARK_NAME}.lua" "http://$SERVER_HOST:$SERVER_PORT" \
+    2>"$WRK_STDERR"
+
+# Save JSON results to file
+if [ -s "$WRK_STDERR" ]; then
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    RESULT_FILE="$RESULTS_DIR/${BENCHMARK_NAME}_${TIMESTAMP}.json"
+    cp "$WRK_STDERR" "$RESULT_FILE"
+    echo ""
+    echo "Results saved: $RESULT_FILE"
+fi
+
+rm -f "$WRK_STDERR"
