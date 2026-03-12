@@ -6,7 +6,6 @@ use crate::utils::BlockId;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sp_core::crypto::Ss58Codec;
 use thiserror::Error;
 
@@ -22,7 +21,15 @@ pub struct DryRunRequest {
 #[serde(rename_all = "camelCase")]
 pub struct DryRunResponse {
     pub result_type: String,
-    pub result: Value,
+    result: DryRunResult,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+enum DryRunResult {
+    DispatchOutcome(PostDispatchInfo),
+    DispatchError(DispatchErrorWithPostInfo),
+    TransactionValidityError(DryRunApiError),
 }
 
 #[derive(Debug, Serialize)]
@@ -512,16 +519,16 @@ fn parse_result_to_response(
         DryRunApiResult::Ok(effects) => match effects.execution_result {
             DispatchResultWithInfo::Ok(post_info) => Ok(Json(DryRunResponse {
                 result_type: "DispatchOutcome".to_string(),
-                result: serde_json::to_value(&post_info).unwrap_or(Value::Null),
+                result: DryRunResult::DispatchOutcome(post_info),
             })),
             DispatchResultWithInfo::Err(err_with_info) => Ok(Json(DryRunResponse {
                 result_type: "DispatchError".to_string(),
-                result: serde_json::to_value(&err_with_info).unwrap_or(Value::Null),
+                result: DryRunResult::DispatchError(err_with_info),
             })),
         },
         DryRunApiResult::Err(api_err) => Ok(Json(DryRunResponse {
             result_type: "TransactionValidityError".to_string(),
-            result: serde_json::to_value(&api_err).unwrap_or(Value::Null),
+            result: DryRunResult::TransactionValidityError(api_err),
         })),
     }
 }
@@ -529,16 +536,23 @@ fn parse_result_to_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn test_dry_run_response_serialization() {
         let response = DryRunResponse {
             result_type: "DispatchOutcome".to_string(),
-            result: json!({ "actualWeight": { "refTime": "1000", "proofSize": "2000" }, "paysFee": "Yes" }),
+            result: DryRunResult::DispatchOutcome(PostDispatchInfo {
+                actual_weight: Some(Weight {
+                    ref_time: 1000,
+                    proof_size: 2000,
+                }),
+                pays_fee: PaysFee::Yes,
+            }),
         };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["resultType"], "DispatchOutcome");
+        assert_eq!(json["result"]["actualWeight"]["refTime"], 1000);
+        assert_eq!(json["result"]["paysFee"], "Yes");
     }
 
     #[test]
