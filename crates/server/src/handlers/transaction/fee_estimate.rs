@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use utoipa::ToSchema;
 
+//! NOTE: Refrain from using DecodeAsType here, to avoid issues such as the one
+//! fixed by https://github.com/paritytech/polkadot-rest-api/pull/292.
+
 #[derive(Debug, Deserialize)]
 pub struct FeeEstimateRequest {
     pub tx: Option<String>,
