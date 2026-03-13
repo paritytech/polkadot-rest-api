@@ -6,7 +6,6 @@ use crate::utils::BlockId;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use scale_value::{Composite, ValueDef};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sp_core::crypto::Ss58Codec;
 use thiserror::Error;
 
@@ -22,7 +21,7 @@ pub struct DryRunRequest {
 #[serde(rename_all = "camelCase")]
 pub struct DryRunResponse {
     pub result_type: String,
-    pub result: Value,
+    pub result: scale_value::Value<()>,
 }
 
 #[derive(Debug, Serialize)]
@@ -316,39 +315,112 @@ async fn dry_run_internal(
         }
     };
 
-    // Build origin: { System: { Signed: account } }
     let sender_bytes = decode_ss58_address(sender).map_err(|e| DryRunError::ParseFailed {
         transaction: tx.to_string(),
         cause: e.clone(),
         stack: format!("Error: {}\n    at dry_run", e),
     })?;
 
-    let origin = subxt::dynamic::Value::named_composite([(
-        "System",
-        subxt::dynamic::Value::named_composite([(
-            "Signed",
-            subxt::dynamic::Value::from_bytes(sender_bytes),
-        )]),
-    )]);
-
-    // Decode transaction bytes
     let tx_bytes =
         hex::decode(tx.strip_prefix("0x").unwrap_or(tx)).map_err(|e| DryRunError::ParseFailed {
             transaction: tx.to_string(),
             cause: format!("Invalid hex encoding: {}", e),
             stack: format!("Error: Invalid hex encoding: {}\n    at dry_run", e),
         })?;
-    let call = subxt::dynamic::Value::from_bytes(tx_bytes);
 
-    // Call DryRunApi.dry_run_call(origin, call)
-    let method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
-        "DryRunApi",
-        "dry_run_call",
-        (origin, call),
+    let metadata = client_at.metadata();
+    let extrinsic_info = frame_decode::extrinsics::decode_extrinsic(
+        &mut &tx_bytes[..],
+        &*metadata,
+        metadata.types(),
+    )
+    .map_err(|e| {
+        let cause = format!("Failed to decode extrinsic: {}", e);
+        DryRunError::ParseFailed {
+            transaction: tx.to_string(),
+            cause: cause.clone(),
+            stack: format!("Error: {}\n    at dry_run", cause),
+        }
+    })?;
+    let call_bytes = &tx_bytes[extrinsic_info.call_data_range()];
+
+    let dry_run_api = metadata
+        .runtime_api_trait_by_name("DryRunApi")
+        .ok_or_else(|| DryRunError::DryRunApiNotAvailable {
+            transaction: tx.to_string(),
+        })?;
+    let dry_run_method = dry_run_api.method_by_name("dry_run_call").ok_or_else(|| {
+        DryRunError::DryRunApiNotAvailable {
+            transaction: tx.to_string(),
+        }
+    })?;
+    let inputs: Vec<_> = dry_run_method.inputs().collect();
+
+    let mut params = Vec::new();
+
+    let origin = scale_value::Value::unnamed_variant(
+        "system",
+        [scale_value::Value::unnamed_variant(
+            "Signed",
+            [subxt::dynamic::Value::from_bytes(sender_bytes)],
+        )],
     );
-    let result = client_at.runtime_apis().call(method).await?;
+    scale_value::scale::encode_as_type(&origin, inputs[0].id, metadata.types(), &mut params)
+        .map_err(|e| {
+            let cause = format!("Failed to encode origin: {}", e);
+            DryRunError::DryRunFailed {
+                transaction: tx.to_string(),
+                cause: cause.clone(),
+                stack: format!("Error: {}\n    at dry_run", cause),
+            }
+        })?;
 
-    parse_result_to_response(result, tx)
+    params.extend_from_slice(call_bytes);
+
+    let xcm_version_addr = subxt::dynamic::constant::<u32>("PolkadotXcm", "AdvertisedXcmVersion");
+    let xcm_version =
+        client_at
+            .constants()
+            .entry(xcm_version_addr)
+            .map_err(|e| DryRunError::DryRunFailed {
+                transaction: tx.to_string(),
+                cause: format!("Failed to fetch AdvertisedXcmVersion: {}", e),
+                stack: format!(
+                    "Error: Failed to fetch AdvertisedXcmVersion: {}\n    at dry_run",
+                    e
+                ),
+            })?;
+    params.extend_from_slice(&xcm_version.to_le_bytes());
+
+    let result_bytes = client_at
+        .runtime_apis()
+        .call_raw("DryRunApi_dry_run_call", Some(&params))
+        .await
+        .map_err(|e| {
+            let cause = e.to_string();
+            DryRunError::DryRunFailed {
+                transaction: tx.to_string(),
+                cause: cause.clone(),
+                stack: format!("Error: {}\n    at dry_run", cause),
+            }
+        })?;
+
+    let return_type_id = dry_run_method.output_ty();
+    let result = scale_value::scale::decode_as_type(
+        &mut &result_bytes[..],
+        return_type_id,
+        metadata.types(),
+    )
+    .map_err(|e| {
+        let cause = format!("Failed to decode dry-run result: {}", e);
+        DryRunError::DryRunFailed {
+            transaction: tx.to_string(),
+            cause: cause.clone(),
+            stack: format!("Error: {}\n    at dry_run", cause),
+        }
+    })?;
+
+    parse_result_to_response(result.remove_context(), tx)
 }
 
 fn validate_sender<'a>(sender: &'a Option<String>, tx: &str) -> Result<&'a str, DryRunError> {
@@ -390,10 +462,6 @@ fn parse_result_to_response(
     _tx: &str,
 ) -> Result<Json<DryRunResponse>, DryRunError> {
     // The result from DryRunApi is Result<CallDryRunEffects, XcmDryRunApiError>
-    // Convert scale_value::Value to serde_json::Value for the response
-    fn to_json(v: &scale_value::Value<()>) -> Value {
-        serde_json::to_value(v).unwrap_or(Value::Null)
-    }
 
     // Helper to get first value from a Composite
     fn get_first_value(composite: &Composite<()>) -> Option<&scale_value::Value<()>> {
@@ -431,15 +499,15 @@ fn parse_result_to_response(
                     return match exec_variant.name.as_str() {
                         "Ok" => Ok(Json(DryRunResponse {
                             result_type: "DispatchOutcome".to_string(),
-                            result: to_json(inner_value),
+                            result: inner_value.clone(),
                         })),
                         "Err" => Ok(Json(DryRunResponse {
                             result_type: "DispatchError".to_string(),
-                            result: to_json(inner_value),
+                            result: inner_value.clone(),
                         })),
                         _ => Ok(Json(DryRunResponse {
                             result_type: "DispatchOutcome".to_string(),
-                            result: to_json(ok_value),
+                            result: ok_value.clone(),
                         })),
                     };
                 };
@@ -449,7 +517,7 @@ fn parse_result_to_response(
                 let err_value = get_first_value(&variant.values).unwrap_or(&result);
                 return Ok(Json(DryRunResponse {
                     result_type: "TransactionValidityError".to_string(),
-                    result: to_json(err_value),
+                    result: err_value.clone(),
                 }));
             }
             _ => {}
@@ -459,20 +527,33 @@ fn parse_result_to_response(
     // If the structure doesn't match expected format, return as-is
     Ok(Json(DryRunResponse {
         result_type: "DispatchOutcome".to_string(),
-        result: to_json(&result),
+        result,
     }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use scale_value::{Composite, ValueDef};
 
     #[test]
     fn test_dry_run_response_serialization() {
+        let result = scale_value::Value {
+            value: ValueDef::Composite(Composite::Named(vec![(
+                "paysFee".to_string(),
+                scale_value::Value {
+                    value: ValueDef::Variant(scale_value::Variant {
+                        name: "Yes".to_string(),
+                        values: Composite::Unnamed(vec![]),
+                    }),
+                    context: (),
+                },
+            )])),
+            context: (),
+        };
         let response = DryRunResponse {
             result_type: "DispatchOutcome".to_string(),
-            result: json!({ "actualWeight": { "refTime": "1000", "proofSize": "2000" }, "paysFee": "Yes" }),
+            result,
         };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["resultType"], "DispatchOutcome");
