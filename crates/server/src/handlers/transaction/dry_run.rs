@@ -315,39 +315,112 @@ async fn dry_run_internal(
         }
     };
 
-    // Build origin: { System: { Signed: account } }
     let sender_bytes = decode_ss58_address(sender).map_err(|e| DryRunError::ParseFailed {
         transaction: tx.to_string(),
         cause: e.clone(),
         stack: format!("Error: {}\n    at dry_run", e),
     })?;
 
-    let origin = subxt::dynamic::Value::named_composite([(
-        "System",
-        subxt::dynamic::Value::named_composite([(
-            "Signed",
-            subxt::dynamic::Value::from_bytes(sender_bytes),
-        )]),
-    )]);
-
-    // Decode transaction bytes
     let tx_bytes =
         hex::decode(tx.strip_prefix("0x").unwrap_or(tx)).map_err(|e| DryRunError::ParseFailed {
             transaction: tx.to_string(),
             cause: format!("Invalid hex encoding: {}", e),
             stack: format!("Error: Invalid hex encoding: {}\n    at dry_run", e),
         })?;
-    let call = subxt::dynamic::Value::from_bytes(tx_bytes);
 
-    // Call DryRunApi.dry_run_call(origin, call)
-    let method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
-        "DryRunApi",
-        "dry_run_call",
-        (origin, call),
+    let metadata = client_at.metadata();
+    let extrinsic_info = frame_decode::extrinsics::decode_extrinsic(
+        &mut &tx_bytes[..],
+        &*metadata,
+        metadata.types(),
+    )
+    .map_err(|e| {
+        let cause = format!("Failed to decode extrinsic: {}", e);
+        DryRunError::ParseFailed {
+            transaction: tx.to_string(),
+            cause: cause.clone(),
+            stack: format!("Error: {}\n    at dry_run", cause),
+        }
+    })?;
+    let call_bytes = &tx_bytes[extrinsic_info.call_data_range()];
+
+    let dry_run_api = metadata
+        .runtime_api_trait_by_name("DryRunApi")
+        .ok_or_else(|| DryRunError::DryRunApiNotAvailable {
+            transaction: tx.to_string(),
+        })?;
+    let dry_run_method = dry_run_api.method_by_name("dry_run_call").ok_or_else(|| {
+        DryRunError::DryRunApiNotAvailable {
+            transaction: tx.to_string(),
+        }
+    })?;
+    let inputs: Vec<_> = dry_run_method.inputs().collect();
+
+    let mut params = Vec::new();
+
+    let origin = scale_value::Value::unnamed_variant(
+        "system",
+        [scale_value::Value::unnamed_variant(
+            "Signed",
+            [subxt::dynamic::Value::from_bytes(sender_bytes)],
+        )],
     );
-    let result = client_at.runtime_apis().call(method).await?;
+    scale_value::scale::encode_as_type(&origin, inputs[0].id, metadata.types(), &mut params)
+        .map_err(|e| {
+            let cause = format!("Failed to encode origin: {}", e);
+            DryRunError::DryRunFailed {
+                transaction: tx.to_string(),
+                cause: cause.clone(),
+                stack: format!("Error: {}\n    at dry_run", cause),
+            }
+        })?;
 
-    parse_result_to_response(result, tx)
+    params.extend_from_slice(call_bytes);
+
+    let xcm_version_addr = subxt::dynamic::constant::<u32>("PolkadotXcm", "AdvertisedXcmVersion");
+    let xcm_version =
+        client_at
+            .constants()
+            .entry(xcm_version_addr)
+            .map_err(|e| DryRunError::DryRunFailed {
+                transaction: tx.to_string(),
+                cause: format!("Failed to fetch AdvertisedXcmVersion: {}", e),
+                stack: format!(
+                    "Error: Failed to fetch AdvertisedXcmVersion: {}\n    at dry_run",
+                    e
+                ),
+            })?;
+    params.extend_from_slice(&xcm_version.to_le_bytes());
+
+    let result_bytes = client_at
+        .runtime_apis()
+        .call_raw("DryRunApi_dry_run_call", Some(&params))
+        .await
+        .map_err(|e| {
+            let cause = e.to_string();
+            DryRunError::DryRunFailed {
+                transaction: tx.to_string(),
+                cause: cause.clone(),
+                stack: format!("Error: {}\n    at dry_run", cause),
+            }
+        })?;
+
+    let return_type_id = dry_run_method.output_ty();
+    let result = scale_value::scale::decode_as_type(
+        &mut &result_bytes[..],
+        return_type_id,
+        metadata.types(),
+    )
+    .map_err(|e| {
+        let cause = format!("Failed to decode dry-run result: {}", e);
+        DryRunError::DryRunFailed {
+            transaction: tx.to_string(),
+            cause: cause.clone(),
+            stack: format!("Error: {}\n    at dry_run", cause),
+        }
+    })?;
+
+    parse_result_to_response(result.remove_context(), tx)
 }
 
 fn validate_sender<'a>(sender: &'a Option<String>, tx: &str) -> Result<&'a str, DryRunError> {
