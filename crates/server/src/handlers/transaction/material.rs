@@ -13,7 +13,6 @@ use axum::{
 use parity_scale_codec::Decode;
 use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use thiserror::Error;
 
 // ================================================================================================
@@ -52,6 +51,22 @@ pub struct At {
     pub height: String,
 }
 
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum Metadata {
+    Hex(String),
+    Structured(Box<frame_metadata::RuntimeMetadataPrefixed>),
+}
+
+impl std::fmt::Debug for Metadata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Metadata::Hex(s) => f.debug_tuple("Hex").field(s).finish(),
+            Metadata::Structured(_) => f.debug_tuple("Structured").field(&"<metadata>").finish(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MaterialResponse {
@@ -62,7 +77,7 @@ pub struct MaterialResponse {
     pub spec_version: String,
     pub tx_version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    pub metadata: Option<Metadata>,
 }
 
 #[derive(Debug, Serialize)]
@@ -488,7 +503,7 @@ async fn material_versioned_internal(
                 });
             }
             (MetadataFormat::Scale, Some(bytes)) => {
-                Some(Value::String(format!("0x{}", hex::encode(&bytes))))
+                Some(Metadata::Hex(format!("0x{}", hex::encode(&bytes))))
             }
             (MetadataFormat::Json, Some(bytes)) => {
                 let metadata = frame_metadata::RuntimeMetadataPrefixed::decode(&mut &bytes[..])
@@ -500,15 +515,7 @@ async fn material_versioned_internal(
                         }
                     })?;
 
-                let json = serde_json::to_value(&metadata).map_err(|e| {
-                    let cause = format!("Failed to serialize metadata to JSON: {}", e);
-                    MaterialError::FetchFailed {
-                        cause: cause.clone(),
-                        stack: format!("Error: {}\n    at material (metadata serialize)", cause),
-                    }
-                })?;
-
-                Some(json)
+                Some(Metadata::Structured(Box::new(metadata)))
             }
         }
     } else {
@@ -641,7 +648,7 @@ async fn material_internal(
             })?;
 
         match format {
-            MetadataFormat::Scale => Some(Value::String(metadata_hex)),
+            MetadataFormat::Scale => Some(Metadata::Hex(metadata_hex)),
             MetadataFormat::Json => {
                 // Decode the metadata and convert to JSON
                 let metadata_bytes =
@@ -666,15 +673,7 @@ async fn material_internal(
                             }
                         })?;
 
-                let json = serde_json::to_value(&metadata).map_err(|e| {
-                    let cause = format!("Failed to serialize metadata to JSON: {}", e);
-                    MaterialError::FetchFailed {
-                        cause: cause.clone(),
-                        stack: format!("Error: {}\n    at material (metadata serialize)", cause),
-                    }
-                })?;
-
-                Some(json)
+                Some(Metadata::Structured(Box::new(metadata)))
             }
         }
     } else {
@@ -790,7 +789,7 @@ mod tests {
             spec_name: "test".to_string(),
             spec_version: "1".to_string(),
             tx_version: "1".to_string(),
-            metadata: Some(Value::String("0xmetadata".to_string())),
+            metadata: Some(Metadata::Hex("0xmetadata".to_string())),
         };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["metadata"], "0xmetadata");

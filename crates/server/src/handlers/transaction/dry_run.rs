@@ -6,7 +6,6 @@ use crate::utils::BlockId;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use scale_value::{Composite, ValueDef};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sp_core::crypto::Ss58Codec;
 use thiserror::Error;
 
@@ -22,7 +21,7 @@ pub struct DryRunRequest {
 #[serde(rename_all = "camelCase")]
 pub struct DryRunResponse {
     pub result_type: String,
-    pub result: Value,
+    pub result: scale_value::Value<()>,
 }
 
 #[derive(Debug, Serialize)]
@@ -390,10 +389,6 @@ fn parse_result_to_response(
     _tx: &str,
 ) -> Result<Json<DryRunResponse>, DryRunError> {
     // The result from DryRunApi is Result<CallDryRunEffects, XcmDryRunApiError>
-    // Convert scale_value::Value to serde_json::Value for the response
-    fn to_json(v: &scale_value::Value<()>) -> Value {
-        serde_json::to_value(v).unwrap_or(Value::Null)
-    }
 
     // Helper to get first value from a Composite
     fn get_first_value(composite: &Composite<()>) -> Option<&scale_value::Value<()>> {
@@ -431,15 +426,15 @@ fn parse_result_to_response(
                     return match exec_variant.name.as_str() {
                         "Ok" => Ok(Json(DryRunResponse {
                             result_type: "DispatchOutcome".to_string(),
-                            result: to_json(inner_value),
+                            result: inner_value.clone(),
                         })),
                         "Err" => Ok(Json(DryRunResponse {
                             result_type: "DispatchError".to_string(),
-                            result: to_json(inner_value),
+                            result: inner_value.clone(),
                         })),
                         _ => Ok(Json(DryRunResponse {
                             result_type: "DispatchOutcome".to_string(),
-                            result: to_json(ok_value),
+                            result: ok_value.clone(),
                         })),
                     };
                 };
@@ -449,7 +444,7 @@ fn parse_result_to_response(
                 let err_value = get_first_value(&variant.values).unwrap_or(&result);
                 return Ok(Json(DryRunResponse {
                     result_type: "TransactionValidityError".to_string(),
-                    result: to_json(err_value),
+                    result: err_value.clone(),
                 }));
             }
             _ => {}
@@ -459,20 +454,33 @@ fn parse_result_to_response(
     // If the structure doesn't match expected format, return as-is
     Ok(Json(DryRunResponse {
         result_type: "DispatchOutcome".to_string(),
-        result: to_json(&result),
+        result,
     }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use scale_value::{Composite, ValueDef};
 
     #[test]
     fn test_dry_run_response_serialization() {
+        let result = scale_value::Value {
+            value: ValueDef::Composite(Composite::Named(vec![(
+                "paysFee".to_string(),
+                scale_value::Value {
+                    value: ValueDef::Variant(scale_value::Variant {
+                        name: "Yes".to_string(),
+                        values: Composite::Unnamed(vec![]),
+                    }),
+                    context: (),
+                },
+            )])),
+            context: (),
+        };
         let response = DryRunResponse {
             result_type: "DispatchOutcome".to_string(),
-            result: json!({ "actualWeight": { "refTime": "1000", "proofSize": "2000" }, "paysFee": "Yes" }),
+            result,
         };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["resultType"], "DispatchOutcome");
