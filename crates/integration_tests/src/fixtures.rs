@@ -90,10 +90,11 @@ impl FixtureLoader {
         for entry in std::fs::read_dir(&dir_path)? {
             let entry = entry?;
             let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |e| e == "json") {
-                if let Some(filename) = path.file_name() {
-                    fixtures.push(filename.to_string_lossy().to_string());
-                }
+            if path.is_file()
+                && path.extension().is_some_and(|e| e == "json")
+                && let Some(filename) = path.file_name()
+            {
+                fixtures.push(filename.to_string_lossy().to_string());
             }
         }
         fixtures.sort();

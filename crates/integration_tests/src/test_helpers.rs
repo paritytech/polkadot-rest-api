@@ -48,12 +48,11 @@ pub async fn is_coretime_chain(client: &TestClient) -> bool {
 
 /// Check if the connected chain has a specific pallet.
 pub async fn has_pallet(client: &TestClient, pallet_name: &str) -> bool {
-    if let Ok((status, json)) = client.get_json("/v1/capabilities").await {
-        if status.is_success() {
-            if let Some(pallets) = json["pallets"].as_array() {
-                return pallets.iter().any(|p| p.as_str() == Some(pallet_name));
-            }
-        }
+    if let Ok((status, json)) = client.get_json("/v1/capabilities").await
+        && status.is_success()
+        && let Some(pallets) = json["pallets"].as_array()
+    {
+        return pallets.iter().any(|p| p.as_str() == Some(pallet_name));
     }
     false
 }
