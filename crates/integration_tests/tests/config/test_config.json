@@ -531,7 +531,7 @@
         "query_params": {
           "at": "20000000"
         },
-        "fixture_path": "polkadot/pallets_system_storage_number_20000000.json",
+        "fixture_path": "polkadot/pallets/system/storage_number_20000000.json",
         "description": "Test System/Number storage item (Plain u32) at Polkadot block 20,000,000"
       },
       {
@@ -541,7 +541,7 @@
         "query_params": {
           "at": "20000000"
         },
-        "fixture_path": "polkadot/pallets_timestamp_storage_now_20000000.json",
+        "fixture_path": "polkadot/pallets/timestamp/storage_now_20000000.json",
         "description": "Test Timestamp/Now storage item (Plain u64) at Polkadot block 20,000,000"
       },
       {
@@ -796,7 +796,7 @@
         "query_params": {
           "at": "25000000"
         },
-        "fixture_path": "kusama/pallets_system_storage_number_25000000.json",
+        "fixture_path": "kusama/pallets/system/storage_number_25000000.json",
         "description": "Test System/Number storage item (Plain u32) at Kusama block 25,000,000"
       },
       {
@@ -806,7 +806,7 @@
         "query_params": {
           "at": "25000000"
         },
-        "fixture_path": "kusama/pallets_timestamp_storage_now_25000000.json",
+        "fixture_path": "kusama/pallets/timestamp/storage_now_25000000.json",
         "description": "Test Timestamp/Now storage item (Plain u64) at Kusama block 25,000,000"
       },
       {
@@ -1627,7 +1627,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_system_storage_number_10260000.json",
+        "fixture_path": "asset-hub-polkadot/pallets/system/storage_number_10260000.json",
         "description": "Test System/Number storage item (Plain u32) at Asset Hub Polkadot block 10,260,000"
       },
       {
@@ -1637,7 +1637,7 @@
         "query_params": {
           "at": "10260000"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_timestamp_storage_now_10260000.json",
+        "fixture_path": "asset-hub-polkadot/pallets/timestamp/storage_now_10260000.json",
         "description": "Test Timestamp/Now storage item (Plain u64) at Asset Hub Polkadot block 10,260,000"
       }
     ],
@@ -1913,7 +1913,7 @@
         "query_params": {
           "at": "11152000"
         },
-        "fixture_path": "asset-hub-kusama/pallets_system_storage_number_11152000.json",
+        "fixture_path": "asset-hub-kusama/pallets/system/storage_number_11152000.json",
         "description": "Test System/Number storage item (Plain u32) at Asset Hub Kusama block 11,152,000"
       },
       {
@@ -1923,7 +1923,7 @@
         "query_params": {
           "at": "11152000"
         },
-        "fixture_path": "asset-hub-kusama/pallets_timestamp_storage_now_11152000.json",
+        "fixture_path": "asset-hub-kusama/pallets/timestamp/storage_now_11152000.json",
         "description": "Test Timestamp/Now storage item (Plain u64) at Asset Hub Kusama block 11,152,000"
       }
     ],
