@@ -194,6 +194,16 @@ Run the resource monitor in one terminal, the benchmark in another:
 
 Runs a benchmark with resource monitoring in three phases: baseline (idle) → load (wrk benchmark) → cooldown (idle). Resource stats are merged into the benchmark JSON result file.
 
+### Why three phases?
+
+Running `run.sh` alone only gives you metrics during load. The 3-phase structure adds context:
+
+- **Baseline** — records resting memory and CPU before any load hits, giving you the "before" snapshot.
+- **Load** — runs the wrk benchmark while resource monitoring continues, capturing memory and CPU under stress.
+- **Cooldown** — shows whether memory drops back down after load stops. If RSS stays elevated after cooldown, that's a potential memory leak.
+
+This also produces a **single JSON result file** with both throughput/latency and resource data merged together, instead of having to manually correlate separate wrk output and CSV files.
+
 ```
 Usage: ./bench_monitored.sh <port> <benchmark_name> <scenario> <hardware>
 ```

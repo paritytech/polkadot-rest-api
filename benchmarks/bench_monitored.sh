@@ -6,7 +6,7 @@
 # Merges resource summary stats into the benchmark JSON file.
 # Keeps the resource CSV alongside for full time-series data.
 #
-# Usage: ./bench_with_monitor.sh <port> <benchmark_name> <scenario> <hardware>
+# Usage: ./bench_monitored.sh <port> <benchmark_name> <scenario> <hardware>
 #
 # Baseline and cooldown scale with scenario. Total time is automatic:
 #   light_load:   ~2.5 min  (1min baseline + 30s load  + 1min cooldown)
@@ -15,7 +15,7 @@
 #   stress_test:  ~9 min    (2min baseline + 300s load + 2min cooldown)
 #
 # Examples:
-#   ./bench_with_monitor.sh 8080 blocks_head medium_load dedicated_server
+#   ./bench_monitored.sh 8080 blocks_head medium_load dedicated_server
 
 set -euo pipefail
 export LC_ALL=C
