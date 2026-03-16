@@ -6,6 +6,27 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.0-beta.5] (2026-03-16)
+
+Fifth beta release with new Asset Hub benchmark data, observability improvements, and several bug fixes.
+
+### Features
+
+- **Asset Hub benchmark data and observability**: Added Asset Hub benchmark data and improved observability with better logging and metrics. (#289)
+
+### Fixes
+
+- **`transaction/dry-run` not working**: Fixed the `transaction/dry-run` endpoint which was returning errors. (#293)
+- **`fee-estimate` hangs**: Fixed the fee estimation endpoint hanging indefinitely. (#292)
+- **`NotAStashAccount` error not implemented**: Implemented the missing `NotAStashAccount` error variant for staking endpoints. (#291)
+- **Storage value decoding**: Fixed incorrect storage value decoding. (#286)
+- **`/paras/{number}/inclusion` relay chain block number**: Fixed the paras inclusion endpoint to correctly return the relay chain block number. (#288)
+- **Correct commit**: Applied a correctness fix. (#295)
+
+### Refactors
+
+- **Remove scale value with `DecodeAsType`**: Replaced `scale-value` usage with `DecodeAsType` for cleaner and more efficient type decoding. (#265)
+
 ## [0.1.0-beta.4] (2026-03-09)
 
 Fourth beta release with new features, performance improvements, and bug fixes across accounts, paras, and documentation endpoints.
