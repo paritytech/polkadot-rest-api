@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::extractors::JsonQuery;
+use crate::handlers::common::candidate_types::CandidateIncludedEvent;
 use crate::handlers::runtime_queries::parachain_info;
 use crate::state::{AppState, RelayChainError};
 use crate::utils::{self, extract_block_number_from_header, run_with_concurrency};
@@ -12,7 +13,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use futures::stream::StreamExt;
-use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use subxt::{OnlineClient, SubstrateConfig};
@@ -20,26 +20,6 @@ use thiserror::Error;
 use tracing::warn;
 
 use super::relay_parent_visitor;
-
-#[derive(DecodeAsType)]
-struct CandidateIncludedEvent {
-    receipt: CandidateReceiptDecoded,
-    head_data: Vec<u8>,
-    #[allow(dead_code)]
-    core_index: u32,
-    #[allow(dead_code)]
-    group_index: u32,
-}
-
-#[derive(DecodeAsType)]
-struct CandidateReceiptDecoded {
-    descriptor: CandidateDescriptorDecoded,
-}
-
-#[derive(DecodeAsType)]
-struct CandidateDescriptorDecoded {
-    para_id: u32,
-}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -361,10 +341,8 @@ async fn check_block_for_inclusion(
             }
         };
 
-        if let Some(inclusion_block_num) =
-            extract_inclusion_info(&event_data, para_id, parachain_block_number)
-        {
-            return Some(inclusion_block_num);
+        if extract_inclusion_info(&event_data, para_id, parachain_block_number) {
+            return Some(block_num);
         }
     }
 
@@ -376,18 +354,14 @@ fn extract_inclusion_info(
     event: &CandidateIncludedEvent,
     target_para_id: u32,
     expected_block_number: u64,
-) -> Option<u64> {
-    if event.receipt.descriptor.para_id != target_para_id {
-        return None;
+) -> bool {
+    if event.candidate.descriptor.para_id != target_para_id {
+        return false;
     }
 
-    let block_number = extract_block_number_from_header(&event.head_data)?;
+    let block_number = extract_block_number_from_header(&event.head_data).unwrap_or_default();
 
-    if block_number == expected_block_number {
-        Some(block_number)
-    } else {
-        None
-    }
+    block_number == expected_block_number
 }
 
 #[cfg(test)]

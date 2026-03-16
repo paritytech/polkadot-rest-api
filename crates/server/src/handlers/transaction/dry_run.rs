@@ -4,6 +4,7 @@
 use crate::state::{AppState, RelayChainError};
 use crate::utils::BlockId;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
+use scale_value::{Composite, ValueDef};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sp_core::crypto::Ss58Codec;
@@ -388,8 +389,6 @@ fn parse_result_to_response(
     result: scale_value::Value<()>,
     _tx: &str,
 ) -> Result<Json<DryRunResponse>, DryRunError> {
-    use scale_value::{Composite, ValueDef};
-
     // The result from DryRunApi is Result<CallDryRunEffects, XcmDryRunApiError>
     // Convert scale_value::Value to serde_json::Value for the response
     fn to_json(v: &scale_value::Value<()>) -> Value {

@@ -29,26 +29,16 @@ pub enum ReferendumStatus {
     Killed(u32),
 }
 
-/// Details for ongoing referenda - extract only what we need
+/// Details for ongoing referenda - extract only what we need.
+/// Fields not listed here (origin, proposal, tally, alarm, etc.) are
+/// automatically skipped by DecodeAsType's named-field matching.
 #[derive(Debug, DecodeAsType)]
 pub struct OngoingDetails {
     pub track: u16,
-    #[allow(dead_code)]
-    pub origin: scale_value::Value<()>,
-    #[allow(dead_code)]
-    pub proposal: scale_value::Value<()>,
     pub enactment: EnactmentType,
     pub submitted: u32,
     pub decision_deposit: Option<DepositDetails>,
-    #[allow(dead_code)]
-    pub submission_deposit: DepositDetails,
     pub deciding: Option<DecidingDetails>,
-    #[allow(dead_code)]
-    pub tally: scale_value::Value<()>,
-    #[allow(dead_code)]
-    pub in_queue: bool,
-    #[allow(dead_code)]
-    pub alarm: Option<scale_value::Value<()>>,
 }
 
 /// Enactment type enum

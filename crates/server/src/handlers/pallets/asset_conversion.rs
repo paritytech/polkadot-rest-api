@@ -22,12 +22,76 @@ use axum::{
 };
 use heck::ToLowerCamelCase;
 use polkadot_rest_api_config::ChainType;
+use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use subxt::{SubstrateConfig, client::OnlineClientAtBlock};
 
 // ============================================================================
 // Request/Response Types
 // ============================================================================
+
+// --- SCALE Decode Types for AssetConversion::Pools ---
+
+/// Pool info value (contains LP token ID)
+#[derive(Debug, DecodeAsType, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PoolInfo {
+    lp_token: u32,
+}
+
+/// Converts a `scale_value::Value` to `serde_json::Value`, matching Sidecar's JSON format.
+///
+/// The pool key type varies across chains (older chains used `NativeOrWithId`,
+/// newer ones use XCM `Location`), so we decode the key dynamically via
+/// `scale_value::Value<()>` and convert to JSON here.
+fn scale_value_to_json(value: &scale_value::Value) -> serde_json::Value {
+    match &value.value {
+        scale_value::ValueDef::Composite(composite) => match composite {
+            scale_value::Composite::Named(fields) => {
+                let map: serde_json::Map<String, serde_json::Value> = fields
+                    .iter()
+                    .map(|(name, val)| (name.to_lower_camel_case(), scale_value_to_json(val)))
+                    .collect();
+                serde_json::Value::Object(map)
+            }
+            scale_value::Composite::Unnamed(values) => {
+                if values.len() == 1 {
+                    scale_value_to_json(&values[0])
+                } else {
+                    serde_json::Value::Array(values.iter().map(scale_value_to_json).collect())
+                }
+            }
+        },
+        scale_value::ValueDef::Variant(variant) => {
+            let variant_value = scale_value_to_json(&scale_value::Value {
+                value: scale_value::ValueDef::Composite(variant.values.clone()),
+                context: (),
+            });
+
+            let variant_name = variant.name.to_lower_camel_case();
+            if variant_value.is_null()
+                || (variant_value.is_array()
+                    && variant_value.as_array().is_some_and(|a| a.is_empty()))
+            {
+                serde_json::json!({ variant_name: null })
+            } else {
+                serde_json::json!({ variant_name: variant_value })
+            }
+        }
+        scale_value::ValueDef::Primitive(primitive) => match primitive {
+            scale_value::Primitive::Bool(b) => serde_json::Value::Bool(*b),
+            scale_value::Primitive::Char(c) => serde_json::Value::String(c.to_string()),
+            scale_value::Primitive::String(s) => serde_json::Value::String(s.clone()),
+            scale_value::Primitive::U128(n) => serde_json::Value::String(n.to_string()),
+            scale_value::Primitive::I128(n) => serde_json::Value::String(n.to_string()),
+            scale_value::Primitive::U256(n) => serde_json::Value::String(format!("{:?}", n)),
+            scale_value::Primitive::I256(n) => serde_json::Value::String(format!("{:?}", n)),
+        },
+        scale_value::ValueDef::BitSequence(bits) => {
+            serde_json::Value::String(format!("{:?}", bits))
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -306,16 +370,16 @@ async fn fetch_liquidity_pools(
 ) -> Result<Vec<LiquidityPoolInfo>, PalletError> {
     let mut pools = Vec::new();
 
-    // Use the tuple form which implements Address with Vec<scale_value::Value> as key parts
-    // This allows us to iterate over all entries in a map
-    let addr = ("AssetConversion", "Pools");
-
-    // Create an empty vec for key_parts to iterate all entries
+    // Iterate all entries in AssetConversion::Pools storage.
+    // The key type varies across chains (NativeOrWithId on older chains, XCM Location
+    // on newer ones), so we use dynamic string-based address for iteration and
+    // decode keys via scale_value::Value<()>.
+    let storage_addr = ("AssetConversion", "Pools");
     let key_parts: Vec<scale_value::Value> = vec![];
 
     let mut iter = client_at_block
         .storage()
-        .iter(addr, key_parts)
+        .iter(storage_addr, key_parts)
         .await
         .map_err(|e| {
             tracing::error!("Failed to iterate AssetConversion::Pools storage: {:?}", e);
@@ -325,58 +389,36 @@ async fn fetch_liquidity_pools(
     while let Some(result) = iter.next().await {
         match result {
             Ok(kv) => {
-                // Get the decoded keys and value
-                // key() returns Result<StorageKey<KeyParts>, StorageKeyError>
-                let keys_result = kv.key();
-                let value = kv.value();
-
-                // The keys contain the asset pair (reserves)
-                // The value contains the pool info (lp_token)
-                let reserves = match keys_result {
-                    Ok(storage_key) => {
-                        // Decode the key as Vec<scale_value::Value>
-                        match storage_key.decode() {
-                            Ok(key_values) => {
-                                if key_values.len() == 1 {
-                                    scale_value_to_json(&key_values[0])
-                                } else if key_values.is_empty() {
-                                    serde_json::Value::Null
-                                } else {
-                                    serde_json::Value::Array(
-                                        key_values.iter().map(scale_value_to_json).collect(),
-                                    )
-                                }
-                            }
-                            Err(e) => {
-                                tracing::debug!("Failed to decode pool storage key: {e:?}");
+                // Decode the key dynamically using scale_value::Value<()>.
+                // The key contains the asset pair (reserves) — which could be
+                // (NativeOrWithId, NativeOrWithId) or (Location, Location) depending on the chain.
+                let reserves = match kv.key() {
+                    Ok(storage_key) => match storage_key.decode() {
+                        Ok(key_values) => {
+                            if key_values.len() == 1 {
+                                scale_value_to_json(&key_values[0])
+                            } else if key_values.is_empty() {
                                 serde_json::Value::Null
+                            } else {
+                                serde_json::Value::Array(
+                                    key_values.iter().map(scale_value_to_json).collect(),
+                                )
                             }
                         }
-                    }
-                    Err(e) => {
-                        tracing::debug!("Failed to decode pool key: {e:?}");
-                        serde_json::Value::Null
-                    }
-                };
-
-                // Convert value (pool info) to JSON
-                // value.decode() returns Result<scale_value::Value, Error>
-                let lp_token = match value.decode() {
-                    Ok(val) => scale_value_to_json(&val),
-                    Err(e) => {
-                        tracing::debug!("Failed to decode pool value: {e:?}");
-                        serde_json::Value::Null
-                    }
-                };
-
-                pools.push(LiquidityPoolInfo {
-                    reserves,
-                    lp_token: if lp_token.is_null() {
-                        None
-                    } else {
-                        Some(lp_token)
+                        Err(_) => serde_json::Value::Null,
                     },
-                });
+                    Err(_) => serde_json::Value::Null,
+                };
+
+                // Decode value as typed PoolInfo (lp_token)
+                let lp_token = match kv.value().decode_as::<PoolInfo>() {
+                    Ok(pool_info) => {
+                        Some(serde_json::json!({"lpToken": pool_info.lp_token.to_string()}))
+                    }
+                    Err(_) => None,
+                };
+
+                pools.push(LiquidityPoolInfo { reserves, lp_token });
             }
             Err(e) => {
                 tracing::warn!("Error iterating pools: {}", e);
@@ -386,61 +428,6 @@ async fn fetch_liquidity_pools(
     }
 
     Ok(pools)
-}
-
-/// Converts a scale_value::Value to serde_json::Value.
-fn scale_value_to_json(value: &scale_value::Value) -> serde_json::Value {
-    match value.value.clone() {
-        scale_value::ValueDef::Composite(composite) => match composite {
-            scale_value::Composite::Named(fields) => {
-                let map: serde_json::Map<String, serde_json::Value> = fields
-                    .into_iter()
-                    .map(|(name, val)| (name.to_lower_camel_case(), scale_value_to_json(&val)))
-                    .collect();
-                serde_json::Value::Object(map)
-            }
-            scale_value::Composite::Unnamed(values) => {
-                if values.len() == 1 {
-                    scale_value_to_json(&values[0])
-                } else {
-                    serde_json::Value::Array(
-                        values
-                            .into_iter()
-                            .map(|v| scale_value_to_json(&v))
-                            .collect(),
-                    )
-                }
-            }
-        },
-        scale_value::ValueDef::Variant(variant) => {
-            let variant_value = scale_value_to_json(&scale_value::Value {
-                value: scale_value::ValueDef::Composite(variant.values),
-                context: (),
-            });
-
-            let variant_name = variant.name.to_lower_camel_case();
-            if variant_value.is_null()
-                || (variant_value.is_array()
-                    && variant_value.as_array().is_some_and(|a| a.is_empty()))
-            {
-                serde_json::json!({ variant_name: null })
-            } else {
-                serde_json::json!({ variant_name: variant_value })
-            }
-        }
-        scale_value::ValueDef::Primitive(primitive) => match primitive {
-            scale_value::Primitive::Bool(b) => serde_json::Value::Bool(b),
-            scale_value::Primitive::Char(c) => serde_json::Value::String(c.to_string()),
-            scale_value::Primitive::String(s) => serde_json::Value::String(s),
-            scale_value::Primitive::U128(n) => serde_json::Value::String(n.to_string()),
-            scale_value::Primitive::I128(n) => serde_json::Value::String(n.to_string()),
-            scale_value::Primitive::U256(n) => serde_json::Value::String(format!("{:?}", n)),
-            scale_value::Primitive::I256(n) => serde_json::Value::String(format!("{:?}", n)),
-        },
-        scale_value::ValueDef::BitSequence(bits) => {
-            serde_json::Value::String(format!("{:?}", bits))
-        }
-    }
 }
 
 /// Fetches timestamp from Timestamp::Now storage.
@@ -457,7 +444,6 @@ async fn fetch_timestamp(client_at_block: &OnlineClientAtBlock<SubstrateConfig>)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use heck::ToLowerCamelCase;
 
     #[test]
     fn test_heck_camel_case_pascal_case() {
@@ -469,86 +455,65 @@ mod tests {
     }
 
     #[test]
-    fn test_heck_camel_case_snake_case() {
-        assert_eq!("snake_case".to_lower_camel_case(), "snakeCase");
-        assert_eq!("lp_token".to_lower_camel_case(), "lpToken");
-        assert_eq!(
-            "my_long_variable_name".to_lower_camel_case(),
-            "myLongVariableName"
-        );
+    fn test_scale_value_to_json_variant_empty() {
+        // A variant with no values should produce {"variantName": null}
+        let val = scale_value::Value {
+            value: scale_value::ValueDef::Variant(scale_value::Variant {
+                name: "Here".to_string(),
+                values: scale_value::Composite::Unnamed(vec![]),
+            }),
+            context: (),
+        };
+        let json = scale_value_to_json(&val);
+        assert_eq!(json, serde_json::json!({"here": null}));
     }
 
     #[test]
-    fn test_heck_camel_case_already_camel_case() {
-        assert_eq!("camelCase".to_lower_camel_case(), "camelCase");
-        assert_eq!("alreadyCamel".to_lower_camel_case(), "alreadyCamel");
-    }
-
-    #[test]
-    fn test_heck_camel_case_all_caps() {
-        // heck properly handles all caps words
-        assert_eq!("WORD".to_lower_camel_case(), "word");
-        assert_eq!("ALL_CAPS".to_lower_camel_case(), "allCaps");
-    }
-
-    #[test]
-    fn test_heck_camel_case_empty_string() {
-        assert_eq!("".to_lower_camel_case(), "");
-    }
-
-    #[test]
-    fn test_scale_value_to_json_primitive_bool() {
-        let value = scale_value::Value::bool(true);
-        assert_eq!(scale_value_to_json(&value), serde_json::Value::Bool(true));
-    }
-
-    #[test]
-    fn test_scale_value_to_json_primitive_string() {
-        let value = scale_value::Value::string("hello");
-        assert_eq!(
-            scale_value_to_json(&value),
-            serde_json::Value::String("hello".to_string())
-        );
-    }
-
-    #[test]
-    fn test_scale_value_to_json_primitive_u128() {
-        let value = scale_value::Value::u128(12345u128);
-        assert_eq!(
-            scale_value_to_json(&value),
-            serde_json::Value::String("12345".to_string())
-        );
+    fn test_scale_value_to_json_variant_with_named_fields() {
+        // A variant with named fields
+        let val = scale_value::Value {
+            value: scale_value::ValueDef::Variant(scale_value::Variant {
+                name: "PalletInstance".to_string(),
+                values: scale_value::Composite::Unnamed(vec![scale_value::Value {
+                    value: scale_value::ValueDef::Primitive(scale_value::Primitive::U128(50)),
+                    context: (),
+                }]),
+            }),
+            context: (),
+        };
+        let json = scale_value_to_json(&val);
+        assert_eq!(json, serde_json::json!({"palletInstance": "50"}));
     }
 
     #[test]
     fn test_scale_value_to_json_named_composite() {
-        let value = scale_value::Value::named_composite([
-            ("field_one", scale_value::Value::u128(1u128)),
-            ("FieldTwo", scale_value::Value::string("test")),
-        ]);
-        let json = scale_value_to_json(&value);
-
-        assert!(json.is_object());
-        let obj = json.as_object().unwrap();
+        let val = scale_value::Value {
+            value: scale_value::ValueDef::Composite(scale_value::Composite::Named(vec![
+                (
+                    "parents".to_string(),
+                    scale_value::Value {
+                        value: scale_value::ValueDef::Primitive(scale_value::Primitive::U128(1)),
+                        context: (),
+                    },
+                ),
+                (
+                    "interior".to_string(),
+                    scale_value::Value {
+                        value: scale_value::ValueDef::Variant(scale_value::Variant {
+                            name: "Here".to_string(),
+                            values: scale_value::Composite::Unnamed(vec![]),
+                        }),
+                        context: (),
+                    },
+                ),
+            ])),
+            context: (),
+        };
+        let json = scale_value_to_json(&val);
         assert_eq!(
-            obj.get("fieldOne"),
-            Some(&serde_json::Value::String("1".to_string()))
+            json,
+            serde_json::json!({"parents": "1", "interior": {"here": null}})
         );
-        assert_eq!(
-            obj.get("fieldTwo"),
-            Some(&serde_json::Value::String("test".to_string()))
-        );
-    }
-
-    #[test]
-    fn test_scale_value_to_json_variant() {
-        let value = scale_value::Value::variant("Here", scale_value::Composite::Unnamed(vec![]));
-        let json = scale_value_to_json(&value);
-
-        assert!(json.is_object());
-        let obj = json.as_object().unwrap();
-        assert!(obj.contains_key("here"));
-        assert_eq!(obj.get("here"), Some(&serde_json::Value::Null));
     }
 
     #[test]

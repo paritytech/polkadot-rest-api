@@ -407,15 +407,17 @@ pub async fn get_foreign_asset_account(
     }
 }
 
-/// Fallback fetch for older runtimes using scale_value dynamic decoding.
-/// Returns the raw scale_value Value for the caller to extract fields from.
+/// Fallback fetch for older runtimes using DecodeAsType with legacy struct layout.
+/// Returns the decoded AssetAccountLegacy for the caller to extract fields from.
 pub async fn get_foreign_asset_account_raw(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     location: &Location,
     account_bytes: &[u8; 32],
-) -> Result<Option<scale_value::Value<()>>, &'static str> {
-    let storage_addr =
-        subxt::dynamic::storage::<(Location, [u8; 32]), ()>("ForeignAssets", "Account");
+) -> Result<Option<super::assets_common::AssetAccountLegacy>, &'static str> {
+    let storage_addr = subxt::dynamic::storage::<
+        (Location, [u8; 32]),
+        super::assets_common::AssetAccountLegacy,
+    >("ForeignAssets", "Account");
 
     let result = client_at_block
         .storage()
@@ -423,12 +425,9 @@ pub async fn get_foreign_asset_account_raw(
         .await;
 
     match result {
-        Ok(value) => match value.decode_as::<scale_value::Value<()>>() {
+        Ok(value) => match value.decode() {
             Ok(decoded) => Ok(Some(decoded)),
-            Err(e) => {
-                tracing::debug!("Failed to decode ForeignAssets::Account as scale_value: {e:?}");
-                Err("Failed to decode ForeignAssets::Account as scale_value")
-            }
+            Err(_) => Err("Failed to decode ForeignAssets::Account with legacy struct"),
         },
         Err(_) => Ok(None), // No entry for this (location, account) pair
     }

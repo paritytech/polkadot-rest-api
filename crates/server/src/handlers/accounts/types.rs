@@ -315,6 +315,9 @@ impl From<crate::handlers::common::accounts::ProxyQueryError> for AccountsError 
 impl From<crate::handlers::common::accounts::StakingQueryError> for AccountsError {
     fn from(err: crate::handlers::common::accounts::StakingQueryError) -> Self {
         match err {
+            crate::handlers::common::accounts::StakingQueryError::NotAStashAccount => {
+                AccountsError::NotAStashAccount
+            }
             crate::handlers::common::accounts::StakingQueryError::BadStakingBlock(msg) => {
                 AccountsError::BadStakingBlock(msg)
             }
