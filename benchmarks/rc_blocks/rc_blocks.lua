@@ -6,7 +6,7 @@ local util = require("util")
 
 request = function()
     local block_id = math.random(1000000, 5000000)
-    return wrk.format("GET", "/v1/rc/blocks/" .. block_id)
+    return wrk.format("GET", util.prefix .. "/rc/blocks/" .. block_id)
 end
 
 done = util.done()

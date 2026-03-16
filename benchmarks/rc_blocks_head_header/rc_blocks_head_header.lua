@@ -5,7 +5,7 @@
 local util = require("util")
 
 request = function()
-    return wrk.format("GET", "/v1/rc/blocks/head/header")
+    return wrk.format("GET", util.prefix .. "/rc/blocks/head/header")
 end
 
 done = util.done()

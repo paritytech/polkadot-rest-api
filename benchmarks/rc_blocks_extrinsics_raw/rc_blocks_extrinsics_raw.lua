@@ -29,7 +29,7 @@ request = function()
     if counter > #blocks then
         counter = 1
     end
-    return wrk.format("GET", "/v1/rc/blocks/" .. block .. "/extrinsics-raw")
+    return wrk.format("GET", util.prefix .. "/rc/blocks/" .. block .. "/extrinsics-raw")
 end
 
 done = util.done()
