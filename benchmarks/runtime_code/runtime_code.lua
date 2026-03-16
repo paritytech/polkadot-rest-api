@@ -4,7 +4,7 @@
 local util = require("util")
 
 request = function()
-    return wrk.format("GET", "/v1/runtime/code")
+    return wrk.format("GET", util.prefix .. "/runtime/code")
 end
 
 done = util.done()

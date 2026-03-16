@@ -49,7 +49,7 @@ request = function()
     if counter > #endpoints then
         counter = 1
     end
-    return wrk.format("GET", "/v1/pallets/" .. endpoint)
+    return wrk.format("GET", util.prefix .. "/pallets/" .. endpoint)
 end
 
 done = util.done()

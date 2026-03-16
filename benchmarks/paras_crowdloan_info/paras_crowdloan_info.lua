@@ -30,7 +30,7 @@ request = function()
     if counter > #endpoints then
         counter = 1
     end
-    return wrk.format("GET", "/v1/paras/" .. endpoint)
+    return wrk.format("GET", util.prefix .. "/paras/" .. endpoint)
 end
 
 done = util.done()

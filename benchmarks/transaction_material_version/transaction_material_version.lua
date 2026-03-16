@@ -16,7 +16,7 @@ request = function()
     if counter > #versions then
         counter = 1
     end
-    return wrk.format("GET", "/v1/transaction/material/" .. version)
+    return wrk.format("GET", util.prefix .. "/transaction/material/" .. version)
 end
 
 done = util.done()

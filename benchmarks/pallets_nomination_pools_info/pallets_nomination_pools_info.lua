@@ -22,7 +22,7 @@ local blocks = chain_blocks[chain] or chain_blocks["polkadot"]
 -- Build full endpoint list for display
 local display_endpoints = {}
 for _, block in ipairs(blocks) do
-    display_endpoints[#display_endpoints + 1] = "/v1/pallets/nomination-pools/info?at=" .. block
+    display_endpoints[#display_endpoints + 1] = util.prefix .. "/pallets/nomination-pools/info?at=" .. block
 end
 util.print_endpoints(display_endpoints)
 
@@ -34,7 +34,7 @@ request = function()
     if counter > #blocks then
         counter = 1
     end
-    return wrk.format("GET", "/v1/pallets/nomination-pools/info?at=" .. block)
+    return wrk.format("GET", util.prefix .. "/pallets/nomination-pools/info?at=" .. block)
 end
 
 delay = function()

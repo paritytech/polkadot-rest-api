@@ -5,7 +5,7 @@
 local util = require("util")
 
 request = function()
-    return wrk.format("GET", "/v1/pallets/asset-conversion/liquidity-pools")
+    return wrk.format("GET", util.prefix .. "/pallets/asset-conversion/liquidity-pools")
 end
 
 done = util.done()

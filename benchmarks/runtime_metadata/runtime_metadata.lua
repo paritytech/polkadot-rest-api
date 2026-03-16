@@ -4,7 +4,7 @@
 local util = require("util")
 
 request = function()
-    return wrk.format("GET", "/v1/runtime/metadata")
+    return wrk.format("GET", util.prefix .. "/runtime/metadata")
 end
 
 done = util.done()

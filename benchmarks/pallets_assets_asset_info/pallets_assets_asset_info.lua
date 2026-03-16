@@ -25,7 +25,7 @@ request = function()
     if counter > #asset_ids then
         counter = 1
     end
-    return wrk.format("GET", "/v1/pallets/assets/" .. asset_id .. "/asset-info")
+    return wrk.format("GET", util.prefix .. "/pallets/assets/" .. asset_id .. "/asset-info")
 end
 
 done = util.done()
