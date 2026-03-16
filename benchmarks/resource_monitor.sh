@@ -4,16 +4,27 @@
 
 # Monitor CPU and memory usage of the API process during benchmarks
 #
-# Usage: ./resource_monitor.sh [duration_minutes] [output_dir]
+# Usage: ./resource_monitor.sh [port] [duration_minutes] [output_dir] [endpoint]
 #
-# Auto-detects the process listening on the given port (default 8080),
-# logs RSS/VSZ/CPU every 1 second to a timestamped CSV file, and prints
-# a summary when stopped (Ctrl+C or duration reached).
+# All arguments are optional. Auto-detects the process listening on the
+# given port, logs RSS/VSZ/CPU every 1 second to a timestamped CSV file,
+# and prints a summary when stopped (Ctrl+C or duration reached).
+#
+# Arguments:
+#   port             Port the API listens on (default: 8080, or MONITOR_PORT env)
+#   duration_minutes Monitoring duration in minutes (default: 15)
+#   output_dir       Output directory (default: ../results)
+#   endpoint         Label for filenames/display (default: general).
+#                    Used by bench_monitored.sh to tag resource data per benchmark.
 #
 # Examples:
-#   ./resource_monitor.sh                    # 15 min, default output dir
-#   ./resource_monitor.sh 30                 # 30 min
-#   ./resource_monitor.sh 15 ~/results       # 15 min, custom output dir
+#   ./resource_monitor.sh                                # monitor port 8080, 15 min
+#   ./resource_monitor.sh 8080                           # same, explicit port
+#   ./resource_monitor.sh 8080 5                         # port 8080, 5 min
+#   ./resource_monitor.sh 8080 15 ~/out                  # custom output dir
+#   ./resource_monitor.sh 8080 15 ~/out blocks_head      # label as blocks_head (used by bench_monitored.sh)
+#
+# Output file: resources_<service>_<endpoint>_<timestamp>.csv
 #
 # Environment:
 #   MONITOR_PORT  — port to find the process on (default: 8080)
@@ -23,9 +34,12 @@
 
 set -euo pipefail
 
-DURATION_MINUTES="${1:-15}"
-OUTPUT_DIR="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/results}"
-PORT="${MONITOR_PORT:-8080}"
+PORT="${1:-${MONITOR_PORT:-8080}}"
+DURATION_MINUTES="${2:-15}"
+OUTPUT_DIR="${3:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/results}"
+ENDPOINT="${4:-general}"
+
+SERVICE="rest-api"
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -61,10 +75,20 @@ else
 fi
 
 # Get process name for display and filename
+# Try multiple methods: comm (short), then args (full command line)
 PROC_NAME=$(ps -p "$PID" -o comm= 2>/dev/null | xargs)
+if [ -z "$PROC_NAME" ]; then
+    PROC_NAME=$(ps -p "$PID" -o args= 2>/dev/null | awk '{print $1}' | xargs)
+fi
+if [ -z "$PROC_NAME" ]; then
+    # Linux: read from /proc if ps fails
+    PROC_NAME=$(cat "/proc/$PID/comm" 2>/dev/null || echo "")
+fi
 if [ -z "$PROC_NAME" ]; then
     PROC_NAME="unknown"
 fi
+# Extract just the binary name (strip path)
+PROC_SHORT=$(basename "$PROC_NAME")
 
 # Get number of CPU cores for calculating CPU percentage
 if command -v nproc &>/dev/null; then
@@ -77,13 +101,15 @@ fi
 
 # --- Setup output file ---
 
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-SAFE_NAME=$(echo "$PROC_NAME" | tr '/' '_')
-CSV_FILE="$OUTPUT_DIR/resources_${SAFE_NAME}_${TIMESTAMP}.csv"
+# RUN_ID can be passed via env (from bench_monitored.sh) or generated here
+RUN_ID="${RUN_ID:-${SERVICE}_${ENDPOINT}_$(date +%Y%m%d_%H%M%S)}"
+CSV_FILE="$OUTPUT_DIR/resources_${RUN_ID}.csv"
 
 echo "Resource Monitor"
-echo "  Process:  $PROC_NAME (PID $PID)"
-echo "  Port:     $PORT"
+echo "  Service:  $SERVICE (port $PORT)"
+echo "  Endpoint: $ENDPOINT"
+echo "  Process:  $PROC_SHORT (PID $PID)"
+echo "  Command:  $PROC_NAME"
 echo "  CPUs:     $NUM_CPUS"
 echo "  Duration: ${DURATION_MINUTES}m"
 echo "  Interval: 1s"
@@ -92,7 +118,8 @@ echo ""
 echo "Monitoring... (Ctrl+C to stop early)"
 echo ""
 
-echo "timestamp,elapsed_s,rss_kb,vsz_kb,rss_mb,cpu_pct" > "$CSV_FILE"
+echo "# run_id: $RUN_ID | service: $SERVICE | endpoint: $ENDPOINT | process: $PROC_SHORT (PID $PID)" > "$CSV_FILE"
+echo "timestamp,elapsed_s,rss_kb,vsz_kb,rss_mb,cpu_pct" >> "$CSV_FILE"
 
 # --- Collect samples ---
 
@@ -155,7 +182,9 @@ print_summary() {
     echo "=========================================="
     echo "Resource Monitor Summary"
     echo "=========================================="
-    echo "  Process:   $PROC_NAME (PID $PID)"
+    echo "  Service:   $SERVICE (port $PORT)"
+    echo "  Endpoint:  $ENDPOINT"
+    echo "  Process:   $PROC_SHORT (PID $PID)"
     echo "  Duration:  ${mins}m ${secs}s"
     echo "  Samples:   $SAMPLE"
     echo "  ---"

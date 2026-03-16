@@ -4,21 +4,50 @@
 
 local util = require("util")
 
--- Historical blocks (matching Sidecar)
-local endpoints = {
-    'material',
-    'material?at=1000000',
-    'material?at=2000000',
-    'material?at=3000000',
-    'material?at=4000000',
-    'material?at=5000000',
-    'material?at=6000000',
-    'material?at=7000000',
-    'material?at=8000000',
-    'material?at=9000000',
-    'material?at=10000000',
-    'material?at=11000000',
-}
+local chain = os.getenv("BENCH_CHAIN") or "polkadot"
+
+local endpoints
+
+if chain == "statemint" or chain == "asset-hub-polkadot" then
+    -- Polkadot Asset Hub: transaction material across spec versions
+    endpoints = {
+        'material',
+        'material?at=12319018',      -- spec_version 2000007
+        'material?at=11896182',      -- spec_version 2000006
+        'material?at=11405258',      -- spec_version 2000005
+        'material?at=10637835',      -- spec_version 2000003
+        'material?at=10344187',      -- spec_version 2000002
+        'material?at=10286866',      -- spec_version 2000001
+        'material?at=10241801',      -- spec_version 2000000
+        'material?at=9784456',       -- spec_version 1007001
+        'material?at=9562299',       -- spec_version 1006000
+        'material?at=8926584',       -- spec_version 1005001
+        'material?at=8548146',       -- spec_version 1004002
+        'material?at=8297525',       -- spec_version 1004000
+        'material?at=7584039',       -- spec_version 1003004
+        'material?at=7342289',       -- spec_version 1003003
+        'material?at=7144963',       -- spec_version 1003000
+        'material?at=6643079',       -- spec_version 1002006
+        'material?at=6593078',       -- spec_version 1002005
+        'material?at=6451357',       -- spec_version 1002004
+    }
+else
+    -- Polkadot relay: historical blocks (matching Sidecar)
+    endpoints = {
+        'material',
+        'material?at=1000000',
+        'material?at=2000000',
+        'material?at=3000000',
+        'material?at=4000000',
+        'material?at=5000000',
+        'material?at=6000000',
+        'material?at=7000000',
+        'material?at=8000000',
+        'material?at=9000000',
+        'material?at=10000000',
+        'material?at=11000000',
+    }
+end
 
 local counter = 1
 

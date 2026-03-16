@@ -76,38 +76,104 @@ Each benchmark run saves a JSON file to `results/` with metrics:
 
 Files are named `<benchmark>_<timestamp>.json` (e.g., `blocks_head_20260306_143022.json`).
 
-## resource_monitor.sh
+## Modes Overview
 
-Monitors CPU and memory usage of the API process during benchmarks.
+| Mode | Command | What it does | What you get |
+|------|---------|-------------|--------------|
+| **Docker observability stack** | `docker compose -f docker-compose.local.yml up -d` | Runs the REST API + Prometheus + Grafana + process-exporter in containers | Live Grafana dashboards with API request metrics (latency, RPS, error rates) and process-level metrics (RSS, CPU) via process-exporter. Useful for continuous monitoring during development or manual exploratory testing. |
+| **Standalone resource monitor** | `./benchmarks/resource_monitor.sh [port]` | Monitors the CPU and memory of the API process on a given port | Timestamped CSV with per-second RSS, VSZ, and CPU samples + summary (start/peak/end RSS, avg/peak CPU). Lightweight, no load generation — pair with your own traffic or manual testing. No dependencies beyond `ps`. |
+| **Benchmark runner** | `./benchmarks/run.sh <name> <scenario> <hardware>` | Runs wrk-based HTTP load tests against specific endpoints | Human-readable wrk output (RPS, latency percentiles, transfer rates) + JSON results file. Auto-detects the connected chain and skips incompatible benchmarks. |
+| **Benchmark with resource monitoring** | `./benchmarks/bench_monitored.sh <port> <name> <scenario> <hardware>` | Combines the benchmark runner with the resource monitor in a 3-phase run: baseline → load → cooldown | Both benchmark metrics (latency, throughput) and resource metrics (memory, CPU) in a single correlated run. Resource stats are merged into the benchmark JSON. Baseline and cooldown phases capture idle resource usage for comparison against load. |
+
+## Docker Observability Stack
+
+Runs the REST API, Prometheus, Grafana, and process-exporter in Docker containers. Provides live dashboards for API request metrics (latency, RPS, error rates) and process-level resource metrics (RSS, CPU).
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) installed
+
+### Usage
+
+```bash
+# First time — build the API image
+docker compose -f docker-compose.local.yml build
+
+# Start rest-api & monitoring tools (prometheus, grafana, process-exporter)
+docker compose -f docker-compose.local.yml up -d
+
+# Open Grafana in browser
+open http://localhost:3000    # admin / admin
+
+# Run a benchmark (locally from your host)
+./benchmarks/run.sh blocks light_load development
+
+# Check Grafana update in real time during the benchmark
+```
+
+Configure the chain to test by editing the environment section in `docker-compose.local.yml`. For example, for Polkadot Asset Hub:
+
+```yaml
+environment:
+  SAS_SUBSTRATE_MULTI_CHAIN_URL: '[{"url":"wss://rpc.polkadot.io","type":"relay"}]'
+  SAS_SUBSTRATE_URL: wss://asset-hub-polkadot.dotters.network
+  SAS_METRICS_ENABLED: "true"
+```
+
+### Stopping
+
+```bash
+# Stop all containers
+docker compose -f docker-compose.local.yml down
+
+# View past results offline (Prometheus data persists on disk)
+docker compose -f docker-compose.local.yml up -d prometheus grafana
+```
+
+## Standalone resource monitor
+
+Monitors CPU and memory usage of the API process during benchmarks or standalone use. Auto-detects the process listening on the given port.
 
 ```
-Usage: ./resource_monitor.sh [duration_minutes] [output_dir]
+Usage: ./resource_monitor.sh [port] [duration_minutes] [output_dir] [endpoint]
 ```
+
+All arguments are optional.
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `port` | `8080` (or `MONITOR_PORT` env) | Port the API listens on |
+| `duration_minutes` | `15` | Monitoring duration in minutes |
+| `output_dir` | `../results` | Output directory |
+| `endpoint` | `general` | Label for filenames and display. Set automatically by `bench_monitored.sh` to tag resource data per benchmark. |
 
 ### Examples
 
 ```bash
-# Monitor for 15 minutes (default)
+# Monitor port 8080 for 15 minutes (all defaults)
 ./benchmarks/resource_monitor.sh
 
-# Monitor for 5 minutes
-./benchmarks/resource_monitor.sh 5
+# Monitor port 8080 for 5 minutes
+./benchmarks/resource_monitor.sh 8080 5
 
-# Monitor for 30 minutes, custom output dir
-./benchmarks/resource_monitor.sh 30 ~/results
+# Custom output directory
+./benchmarks/resource_monitor.sh 8080 15 ~/out
+
+# With endpoint label (used by bench_monitored.sh)
+./benchmarks/resource_monitor.sh 8080 15 ~/out blocks_head
 ```
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MONITOR_PORT` | `8080` | Port to find the API process on |
+| `MONITOR_PORT` | `8080` | Port to find the API process on (used when port arg is omitted) |
 | `MONITOR_PID` | _(auto-detect)_ | Skip port detection, monitor this PID directly |
 
 ### Output
 
 - **Live**: RSS and CPU updated every second in terminal
-- **CSV**: Saved to `results/resources_<process>_<timestamp>.csv` with columns: `timestamp, elapsed_s, rss_kb, vsz_kb, rss_mb, cpu_pct`
+- **CSV**: Saved to `results/resources_<service>_<endpoint>_<timestamp>.csv` with columns: `timestamp, elapsed_s, rss_kb, vsz_kb, rss_mb, cpu_pct`
 - **Summary**: Printed on exit (Ctrl+C or duration reached) with start/peak/end RSS, delta, avg/peak CPU
 
 ### Typical Workflow
@@ -116,7 +182,7 @@ Run the resource monitor in one terminal, the benchmark in another:
 
 ```bash
 # Terminal 1: start monitoring
-./benchmarks/resource_monitor.sh 5
+./benchmarks/resource_monitor.sh
 
 # Terminal 2: run benchmark
 ./benchmarks/run.sh blocks_head medium_load dedicated_server
@@ -124,68 +190,63 @@ Run the resource monitor in one terminal, the benchmark in another:
 # When the benchmark finishes, Ctrl+C the monitor to see the summary
 ```
 
-## compare.sh
+## Benchmark with resource monitoring
 
-Compare two benchmark runs side by side with percentage deltas.
+Runs a benchmark with resource monitoring in three phases: baseline (idle) → load (wrk benchmark) → cooldown (idle). Resource stats are merged into the benchmark JSON result file.
 
 ```
-Usage: ./compare.sh <file1.json> <file2.json> [resource1.csv] [resource2.csv]
+Usage: ./bench_monitored.sh <port> <benchmark_name> <scenario> <hardware>
 ```
 
-### Examples
+Baseline and cooldown durations scale with the scenario:
+
+| Scenario | Total time | Breakdown |
+|----------|-----------|-----------|
+| `light_load` | ~2.5 min | 1 min baseline + 30s load + 1 min cooldown |
+| `medium_load` | ~3 min | 1 min baseline + 60s load + 1 min cooldown |
+| `heavy_load` | ~4 min | 1 min baseline + 120s load + 1 min cooldown |
+| `stress_test` | ~9 min | 2 min baseline + 300s load + 2 min cooldown |
+
+### Example
 
 ```bash
-# Compare two runs (throughput + latency only)
-./benchmarks/compare.sh results/blocks_head_20260306_100000.json results/blocks_head_20260306_110000.json
+./benchmarks/bench_monitored.sh 8080 blocks_head medium_load dedicated_server
+```
 
-# Compare with resource data (adds memory + CPU)
-./benchmarks/compare.sh \
-  results/blocks_head_20260306_100000.json \
-  results/blocks_head_20260306_110000.json \
-  results/resources_polkadot-rest-api_20260306_100000.csv \
-  results/resources_node_20260306_110000.csv
+### Tip: combine with Docker observability stack
 
-# Custom labels
-LABEL_A="rest-api" LABEL_B="sidecar" ./benchmarks/compare.sh rust.json sidecar.json
+Run `bench_monitored.sh` while the Docker stack is up to get the best of both: JSON/CSV result files for offline analysis and live Grafana dashboards to observe the impact in real time (latency spikes, memory growth, CPU saturation).
+
+```bash
+# Terminal 1: start the Docker stack (see Docker Observability Stack section)
+docker compose -f docker-compose.local.yml up -d
+
+# Terminal 2: run a monitored benchmark
+./benchmarks/bench_monitored.sh 8080 blocks_head medium_load dedicated_server
+
+# Watch Grafana at http://localhost:3000 during the baseline → load → cooldown phases
 ```
 
 ### Output
 
-```
-==========================================
-Benchmark Comparison
-==========================================
+The JSON result file in `results/<benchmark>/` includes both wrk metrics and a `resources` section:
 
-  Endpoint A: blocks_head
-  Endpoint B: blocks_head
-
-                       rest-api         sidecar        Delta
-  ----------------------------------------------------------------
-  Throughput
-    RPS                  587.05          203.42       -65.3%
-    Total Requests        35256           12205
-    Duration             60.00s          60.00s
-  ----------------------------------------------------------------
-  Latency
-    Avg                 85.08ms        141.23ms       +66.0%
-    P50                 75.90ms        135.10ms       +78.0%
-    P90                 99.61ms        180.00ms       +80.7%
-    P99                301.12ms        420.12ms       +39.5%
-  ----------------------------------------------------------------
-  Memory (RSS)
-    Start                45.2MB          82.0MB       +81.4%
-    Peak                 78.3MB         245.0MB      +213.0%
-    End                  72.1MB         230.5MB      +219.7%
-  ----------------------------------------------------------------
-  CPU
-    Avg                  12.5%           45.3%      +262.4%
-    Peak                 35.0%           98.2%      +180.6%
-
-  RPS:     positive delta = better (more throughput)
-  Latency: negative delta = better (faster responses)
-  Memory:  negative delta = better (less memory used)
-  CPU:     negative delta = better (less CPU used)
-==========================================
+```json
+{
+  "endpoint": "blocks_head",
+  "rps": 587.05,
+  "p99_ms": 301.12,
+  "resources": {
+    "start_rss_mb": 45.2,
+    "peak_rss_mb": 78.3,
+    "end_rss_mb": 72.1,
+    "delta_rss_mb": 26.9,
+    "avg_cpu_pct": 12.5,
+    "peak_cpu_pct": 35.0,
+    "baseline_sec": 60,
+    "cooldown_sec": 60
+  }
+}
 ```
 
 ## Grafana Dashboard
@@ -274,14 +335,24 @@ docker run -d --name grafana --network monitoring -p 3000:3000 \
 
 ### Dashboard Panels
 
-| Row | Panels | Purpose |
-|-----|--------|---------|
-| **API Metrics** | Requests/sec, Request Duration (p50/p95/p99), Response Size | Real-time API performance |
-| **By Route** | Requests by Route, P95 Latency by Route | Per-endpoint breakdown (use `$route` dropdown to filter) |
-| **Process Resources** | Process CPU Usage, Process Memory (RSS) | Per-process CPU and memory via process-exporter |
-| **Throughput vs Resources** | Throughput vs CPU, Throughput vs Memory, Latency vs Memory | Correlation panels to spot bottlenecks |
-| **Saturation** | Error Rate vs Throughput, Latency Heatmap | Find breaking points |
-| **Rate of Change** | Memory Growth Rate, I/O | Detect leaks and I/O bottlenecks |
+All panels support the `$route` dropdown variable to filter by endpoint.
+
+| Row | Panel | Description |
+|-----|-------|-------------|
+| **API Performance** | Requests/sec | Success and error request rates (1m window) |
+| | Request Duration | Latency percentiles p50, p95, p99 (5m window) |
+| | Response Size | Response body size percentiles p50, p95, p99 |
+| | Requests by Route | Per-route request rate breakdown |
+| | P95 Latency by Route | Per-route p95 latency comparison |
+| | Error Rate vs Throughput | Overlays RPS with error rate to spot saturation |
+| | Latency Heatmap | Distribution of request durations over time (log scale) |
+| **Process Resources** | Process CPU Usage | Per-process CPU time (user/system mode) via process-exporter |
+| | Process Memory (RSS) | Per-process resident set size |
+| | Memory Growth Rate | `deriv()` of RSS — sustained positive values suggest a memory leak |
+| | Network I/O | Per-process I/O read/write rates |
+| **Correlation** | Throughput vs CPU | Dual-axis: RPS (left) overlaid with CPU usage (right) |
+| | Throughput vs Memory | Dual-axis: RPS (left) overlaid with RSS (right) |
+| | Latency vs Memory | Dual-axis: latency p50/p95/p99 (left) overlaid with RSS (right) — full width |
 
 ## Configuration
 
