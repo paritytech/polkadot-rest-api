@@ -192,35 +192,43 @@ Run the resource monitor in one terminal, the benchmark in another:
 
 ## Benchmark with resource monitoring
 
-Runs a benchmark with resource monitoring in three phases: baseline (idle) → load (wrk benchmark) → cooldown (idle). Resource stats are merged into the benchmark JSON result file.
+Runs a benchmark with resource monitoring in three phases: baseline (idle) → load (wrk benchmark, repeated N times) → cooldown (idle). Resource stats are merged into the benchmark JSON result file.
 
 ### Why three phases?
 
 Running `run.sh` alone only gives you metrics during load. The 3-phase structure adds context:
 
 - **Baseline** — records resting memory and CPU before any load hits, giving you the "before" snapshot.
-- **Load** — runs the wrk benchmark while resource monitoring continues, capturing memory and CPU under stress.
+- **Load** — runs the wrk benchmark while resource monitoring continues, capturing memory and CPU under stress. With `--runs N`, the load phase repeats N times back-to-back, each producing its own JSON result. Baseline and cooldown still run only once.
 - **Cooldown** — shows whether memory drops back down after load stops. If RSS stays elevated after cooldown, that's a potential memory leak.
 
-This also produces a **single JSON result file** with both throughput/latency and resource data merged together, instead of having to manually correlate separate wrk output and CSV files.
+This also produces a **single JSON result file** (per run) with both throughput/latency and resource data merged together, instead of having to manually correlate separate wrk output and CSV files. With `--runs`, a summary JSON is also produced with min/max/avg across all runs.
 
 ```
-Usage: ./bench_monitored.sh <port> <benchmark_name> <scenario> <hardware>
+Usage: ./bench_monitored.sh [--runs N] <port> <benchmark_name> <scenario> <hardware>
 ```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--runs N` | 1 | Repeat the load phase N times. Baseline and cooldown run once. |
 
 Baseline and cooldown durations scale with the scenario:
 
-| Scenario | Total time | Breakdown |
+| Scenario | Total time (1 run) | Breakdown |
 |----------|-----------|-----------|
 | `light_load` | ~2.5 min | 1 min baseline + 30s load + 1 min cooldown |
 | `medium_load` | ~3 min | 1 min baseline + 60s load + 1 min cooldown |
 | `heavy_load` | ~4 min | 1 min baseline + 120s load + 1 min cooldown |
 | `stress_test` | ~9 min | 2 min baseline + 300s load + 2 min cooldown |
 
-### Example
+### Examples
 
 ```bash
+# Single run
 ./benchmarks/bench_monitored.sh 8080 blocks_head medium_load dedicated_server
+
+# 5 load runs with shared baseline/cooldown
+./benchmarks/bench_monitored.sh --runs 5 8080 blocks_head medium_load dedicated_server
 ```
 
 ### Tip: combine with Docker observability stack

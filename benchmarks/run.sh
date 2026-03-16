@@ -281,8 +281,7 @@ wrk -d"$DURATION" -t"$THREADS" -c"$CONNECTIONS" --timeout "${TIMEOUT:-120s}" --l
 
 # Save JSON results to file
 if [ -s "$WRK_STDERR" ]; then
-    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    RESULT_FILE="$RESULTS_DIR/${BENCHMARK_NAME}_${TIMESTAMP}.json"
+    RESULT_FILE="$RESULTS_DIR/${RUN_ID:-${BENCHMARK_NAME}_$(date +%Y%m%d_%H%M%S)}.json"
     cp "$WRK_STDERR" "$RESULT_FILE"
     echo ""
     echo "Results saved: $RESULT_FILE"
