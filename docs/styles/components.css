@@ -454,6 +454,8 @@
   font-size: var(--font-size-sm);
   border-left: 2px solid transparent;
   transition: all var(--transition-fast);
+  overflow: hidden;
+  min-width: 0;
 }
 
 .nav-link:hover {

@@ -104,7 +104,10 @@ pub async fn iter_foreign_asset_locations(
     while let Some(result) = stream.next().await {
         let entry = match result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to iterate foreign asset location entry: {e:?}");
+                continue;
+            }
         };
 
         // Extract Location from storage key
@@ -142,7 +145,10 @@ pub async fn iter_foreign_assets(
     while let Some(result) = stream.next().await {
         let entry = match result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to iterate foreign asset entry: {e:?}");
+                continue;
+            }
         };
 
         // Extract Location from storage key
@@ -206,7 +212,10 @@ pub async fn iter_foreign_asset_metadata(
     while let Some(result) = stream.next().await {
         let entry = match result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to iterate foreign asset metadata entry: {e:?}");
+                continue;
+            }
         };
 
         // Extract Location from storage key
@@ -284,30 +293,46 @@ pub async fn get_foreign_asset_balance(
 }
 
 /// Get foreign asset balances for all locations for an account.
+///
+/// Note: Queries are executed in parallel for performance.
 pub async fn get_all_foreign_asset_balances(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
 ) -> Vec<DecodedForeignAssetBalance> {
+    use futures::future::join_all;
+
     // First get all locations
     let locations = match iter_foreign_asset_locations(client_at_block).await {
         Some(l) => l,
         None => return vec![],
     };
 
-    let mut balances = Vec::new();
     let account_bytes: [u8; 32] = *account.as_ref();
 
-    for location in locations {
-        let storage_addr = subxt::dynamic::storage::<(Location, [u8; 32]), AssetAccount>(
-            "ForeignAssets",
-            "Account",
-        );
+    // Create futures for all location queries in parallel
+    let futures: Vec<_> = locations
+        .into_iter()
+        .map(|location| async move {
+            let storage_addr = subxt::dynamic::storage::<(Location, [u8; 32]), AssetAccount>(
+                "ForeignAssets",
+                "Account",
+            );
 
-        let result = client_at_block
-            .storage()
-            .fetch(storage_addr, (location.clone(), account_bytes))
-            .await;
+            let result = client_at_block
+                .storage()
+                .fetch(storage_addr, (location.clone(), account_bytes))
+                .await;
 
+            (location, result)
+        })
+        .collect();
+
+    // Execute all queries in parallel
+    let results = join_all(futures).await;
+
+    // Process results
+    let mut balances = Vec::new();
+    for (location, result) in results {
         if let Ok(value) = result
             && let Ok(asset_account) = value.decode()
         {
@@ -372,22 +397,27 @@ pub async fn get_foreign_asset_account(
                         is_sufficient,
                     })
                 }
-                Err(_) => None,
+                Err(e) => {
+                    tracing::debug!("Failed to decode foreign asset account: {e:?}");
+                    None
+                }
             }
         }
         Err(_) => None, // No entry for this (location, account) pair
     }
 }
 
-/// Fallback fetch for older runtimes using scale_value dynamic decoding.
-/// Returns the raw scale_value Value for the caller to extract fields from.
+/// Fallback fetch for older runtimes using DecodeAsType with legacy struct layout.
+/// Returns the decoded AssetAccountLegacy for the caller to extract fields from.
 pub async fn get_foreign_asset_account_raw(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     location: &Location,
     account_bytes: &[u8; 32],
-) -> Result<Option<scale_value::Value<()>>, &'static str> {
-    let storage_addr =
-        subxt::dynamic::storage::<(Location, [u8; 32]), ()>("ForeignAssets", "Account");
+) -> Result<Option<super::assets_common::AssetAccountLegacy>, &'static str> {
+    let storage_addr = subxt::dynamic::storage::<
+        (Location, [u8; 32]),
+        super::assets_common::AssetAccountLegacy,
+    >("ForeignAssets", "Account");
 
     let result = client_at_block
         .storage()
@@ -395,9 +425,9 @@ pub async fn get_foreign_asset_account_raw(
         .await;
 
     match result {
-        Ok(value) => match value.decode_as::<scale_value::Value<()>>() {
+        Ok(value) => match value.decode() {
             Ok(decoded) => Ok(Some(decoded)),
-            Err(_) => Err("Failed to decode ForeignAssets::Account as scale_value"),
+            Err(_) => Err("Failed to decode ForeignAssets::Account with legacy struct"),
         },
         Err(_) => Ok(None), // No entry for this (location, account) pair
     }

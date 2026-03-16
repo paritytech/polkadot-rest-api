@@ -1,0 +1,21 @@
+{
+    "at": {
+        "hash": "0xec77b29816dec211e0565fdbdee1e29a7fc482f6f19e6e44ecdebc37545a155e",
+        "height": "10260000"
+    },
+    "nonce": "0",
+    "tokenSymbol": "DOT",
+    "free": "3.1415926535",
+    "reserved": "0",
+    "miscFrozen": "miscFrozen does not exist for this runtime",
+    "feeFrozen": "feeFrozen does not exist for this runtime",
+    "frozen": "3.1415926535",
+    "transferable": "0",
+    "locks": [
+        {
+            "id": "0x76657374696e6720",
+            "amount": "3.1415926535",
+            "reasons": "Misc"
+        }
+    ]
+}

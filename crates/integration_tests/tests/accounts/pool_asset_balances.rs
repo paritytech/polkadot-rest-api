@@ -311,6 +311,163 @@ async fn test_pool_asset_balances_use_rc_block() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_pool_asset_balances_response_structure() -> Result<()> {
+    let local_client = get_client().await?;
+
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
+    let endpoint = format!("/accounts/{}/pool-asset-balances", account_id);
+
+    println!(
+        "\n{} Testing pool asset balances response structure",
+        "Testing".cyan().bold()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    let response_obj = local_json.as_object().expect("Response is not an object");
+
+    // Validate 'at' field structure
+    let at = response_obj.get("at").expect("Missing 'at' field");
+    assert!(at.is_object(), "'at' should be an object");
+
+    let at_obj = at.as_object().unwrap();
+    assert!(
+        at_obj.get("hash").unwrap().is_string(),
+        "at.hash should be a string"
+    );
+    assert!(
+        at_obj.get("height").unwrap().is_string(),
+        "at.height should be a string"
+    );
+
+    // Validate 'poolAssets' field structure
+    let pool_assets = response_obj
+        .get("poolAssets")
+        .expect("Missing 'poolAssets' field");
+    assert!(pool_assets.is_array(), "'poolAssets' should be an array");
+
+    for (i, asset) in pool_assets.as_array().unwrap().iter().enumerate() {
+        let asset_obj = asset.as_object().unwrap();
+
+        let asset_id = asset_obj
+            .get("assetId")
+            .unwrap_or_else(|| panic!("Pool asset {} missing 'assetId'", i));
+        assert!(
+            asset_id.is_number(),
+            "Pool asset {} 'assetId' should be a number",
+            i
+        );
+
+        let balance = asset_obj
+            .get("balance")
+            .unwrap_or_else(|| panic!("Pool asset {} missing 'balance'", i));
+        assert!(
+            balance.is_string(),
+            "Pool asset {} 'balance' should be a string",
+            i
+        );
+
+        let is_frozen = asset_obj
+            .get("isFrozen")
+            .unwrap_or_else(|| panic!("Pool asset {} missing 'isFrozen'", i));
+        assert!(
+            is_frozen.is_boolean(),
+            "Pool asset {} 'isFrozen' should be a boolean",
+            i
+        );
+
+        let is_sufficient = asset_obj
+            .get("isSufficient")
+            .unwrap_or_else(|| panic!("Pool asset {} missing 'isSufficient'", i));
+        assert!(
+            is_sufficient.is_boolean(),
+            "Pool asset {} 'isSufficient' should be a boolean",
+            i
+        );
+
+        println!(
+            "    Pool asset {}: assetId={}, balance={}, isFrozen={}, isSufficient={}",
+            i,
+            asset_id.as_u64().unwrap(),
+            balance.as_str().unwrap_or("N/A"),
+            is_frozen.as_bool().unwrap(),
+            is_sufficient.as_bool().unwrap()
+        );
+    }
+
+    println!("{} Deep response structure validated!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_pool_asset_balances_use_rc_block_empty() -> Result<()> {
+    let local_client = get_client().await?;
+
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
+    let rc_block_number = 10554958;
+    let endpoint = format!(
+        "/accounts/{}/pool-asset-balances?useRcBlock=true&at={}",
+        account_id, rc_block_number
+    );
+
+    println!(
+        "\n{} Testing pool asset balances useRcBlock with empty RC block {}",
+        "Testing".cyan().bold(),
+        rc_block_number.to_string().yellow()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    // PoolAssets pallet may not exist at all blocks
+    if local_status.as_u16() == 400 {
+        let error_obj = local_json.as_object().unwrap();
+        let error_msg = error_obj.get("error").unwrap().as_str().unwrap();
+        if error_msg.contains("pool assets pallet") {
+            println!(
+                "{} PoolAssets pallet not available at this block",
+                "ℹ".blue()
+            );
+            println!("{}", "═".repeat(80).bright_white());
+            return Ok(());
+        }
+    }
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    let local_array = local_json
+        .as_array()
+        .expect("Response with useRcBlock=true should be an array");
+    assert!(
+        local_array.is_empty(),
+        "Expected empty array for RC block {}",
+        rc_block_number
+    );
+
+    println!("{} Response is empty array as expected", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_pool_asset_balances_hex_address() -> Result<()> {
     let local_client = get_client().await?;
 

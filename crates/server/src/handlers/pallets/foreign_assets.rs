@@ -72,8 +72,8 @@ pub struct PalletsForeignAssetsResponse {
     summary = "Foreign assets",
     description = "Returns all foreign assets with their details and metadata. Foreign assets use XCM MultiLocation as their identifier.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Foreign assets list", body = Object),

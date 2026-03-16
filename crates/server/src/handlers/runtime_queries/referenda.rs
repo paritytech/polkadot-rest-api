@@ -29,26 +29,16 @@ pub enum ReferendumStatus {
     Killed(u32),
 }
 
-/// Details for ongoing referenda - extract only what we need
+/// Details for ongoing referenda - extract only what we need.
+/// Fields not listed here (origin, proposal, tally, alarm, etc.) are
+/// automatically skipped by DecodeAsType's named-field matching.
 #[derive(Debug, DecodeAsType)]
 pub struct OngoingDetails {
     pub track: u16,
-    #[allow(dead_code)]
-    pub origin: scale_value::Value<()>,
-    #[allow(dead_code)]
-    pub proposal: scale_value::Value<()>,
     pub enactment: EnactmentType,
     pub submitted: u32,
     pub decision_deposit: Option<DepositDetails>,
-    #[allow(dead_code)]
-    pub submission_deposit: DepositDetails,
     pub deciding: Option<DecidingDetails>,
-    #[allow(dead_code)]
-    pub tally: scale_value::Value<()>,
-    #[allow(dead_code)]
-    pub in_queue: bool,
-    #[allow(dead_code)]
-    pub alarm: Option<scale_value::Value<()>>,
 }
 
 /// Enactment type enum
@@ -124,7 +114,10 @@ pub async fn get_referendum_info(
 
     match result {
         Ok(val) => val.decode().ok(),
-        Err(_) => None,
+        Err(e) => {
+            tracing::debug!("Failed to fetch referendum info: {e:?}");
+            None
+        }
     }
 }
 
@@ -144,7 +137,10 @@ pub async fn iter_referenda_batch(
                 let result = client.storage().fetch(storage_addr, (ref_id,)).await;
                 let decoded: Option<ReferendumStatus> = match result {
                     Ok(val) => val.decode().ok(),
-                    Err(_) => None,
+                    Err(e) => {
+                        tracing::debug!("Failed to fetch referendum {ref_id} in batch: {e:?}");
+                        None
+                    }
                 };
                 (ref_id, decoded)
             }

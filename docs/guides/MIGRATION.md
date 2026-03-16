@@ -39,6 +39,24 @@ Update all client URLs by prepending `/v1` to existing paths.
 |-----------|---------|-------------------|-------|
 | `useRcBlockFormat` | Supported (`array` or `object`) | Use `format=object` instead | Sidecar's `useRcBlockFormat=object` is equivalent to `format=object` combined with `useRcBlock=true`. Sidecar's `useRcBlockFormat=array` (or omitting the parameter) is the default behavior — no extra parameter needed. |
 
+### Asset balance endpoints no longer return zero balances by default
+
+The following endpoints now **exclude assets with zero balance** by default:
+
+- `GET /v1/accounts/{accountId}/asset-balances`
+- `GET /v1/accounts/{accountId}/pool-asset-balances`
+- `GET /v1/accounts/{accountId}/foreign-asset-balances`
+
+To include zero-balance assets (previous behavior), use the `showEmpty=true` query parameter:
+
+```
+GET /v1/accounts/{accountId}/asset-balances?showEmpty=true
+GET /v1/accounts/{accountId}/pool-asset-balances?showEmpty=true
+GET /v1/accounts/{accountId}/foreign-asset-balances?showEmpty=true
+```
+
+This change improves performance by reducing response payload size for accounts with many registered assets but few actual holdings.
+
 **Migration example:**
 
 ```

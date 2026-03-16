@@ -66,12 +66,12 @@ pub struct RcBlocksRangeQueryParams {
     summary = "RC get blocks by range",
     description = "Returns relay chain blocks within a specified range (max 500 blocks).",
     params(
-        ("range" = Option<String>, description = "Block range (e.g., '100-200')"),
-        ("eventDocs" = Option<bool>, description = "Include event documentation"),
-        ("extrinsicDocs" = Option<bool>, description = "Include extrinsic documentation"),
-        ("noFees" = Option<bool>, description = "Skip fee calculation"),
-        ("decodedXcmMsgs" = Option<bool>, description = "Decode and include XCM messages"),
-        ("paraId" = Option<u32>, description = "Filter XCM messages by parachain ID")
+        ("range" = Option<String>, Query, description = "Block range (e.g., '100-200')"),
+        ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include extrinsic documentation"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation"),
+        ("decodedXcmMsgs" = Option<bool>, Query, description = "Decode and include XCM messages"),
+        ("paraId" = Option<u32>, Query, description = "Filter XCM messages by parachain ID")
     ),
     responses(
         (status = 200, description = "Relay chain blocks", body = Object),
@@ -117,10 +117,7 @@ pub async fn get_rc_blocks(
             let params = base_params.clone();
             let state = state.clone();
             async move {
-                let client_at_block = relay_client
-                    .at_block(number)
-                    .await
-                    .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+                let client_at_block = relay_client.at_block(number).await?;
 
                 let block_hash = format!("{:#x}", client_at_block.block_hash());
 
@@ -215,10 +212,7 @@ async fn build_rc_block_response(
 
         if !fee_indices.is_empty() {
             let spec_version = client_at_block.spec_version();
-            let client_at_parent = relay_client
-                .at_block(header.parent_hash)
-                .await
-                .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+            let client_at_parent = relay_client.at_block(header.parent_hash).await?;
 
             let fee_futures: Vec<_> = fee_indices
                 .iter()

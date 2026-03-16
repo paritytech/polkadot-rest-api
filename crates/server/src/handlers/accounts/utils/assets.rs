@@ -29,8 +29,9 @@ pub async fn query_assets(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     assets: &[u32],
+    show_empty: bool,
 ) -> Result<Vec<AssetBalance>, AccountsError> {
-    let balances = assets_queries::get_asset_balances(client_at_block, account, assets)
+    let balances = assets_queries::get_asset_balances(client_at_block, account, assets, show_empty)
         .await
         .map_err(|_| {
             AccountsError::DecodeFailed(parity_scale_codec::Error::from(
@@ -41,7 +42,7 @@ pub async fn query_assets(
     Ok(balances
         .into_iter()
         .map(|(asset_id, decoded)| AssetBalance {
-            asset_id,
+            asset_id: asset_id.to_string(),
             balance: decoded.balance,
             is_frozen: decoded.is_frozen,
             is_sufficient: decoded.is_sufficient,

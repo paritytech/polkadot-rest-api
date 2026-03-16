@@ -95,7 +95,7 @@ pub struct BlockRawResponse {
     description = "Returns raw block data with hex-encoded extrinsics for a given block identifier. The extrinsics are returned as raw hex strings without decoding.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
-        ("useRcBlock" = Option<bool>, description = "When true, treat blockId as Relay Chain block and return Asset Hub blocks")
+        ("useRcBlock" = Option<bool>, Query, description = "When true, treat blockId as Relay Chain block and return Asset Hub blocks")
     ),
     responses(
         (status = 200, description = "Raw block data with hex-encoded extrinsics", body = Object),
@@ -179,11 +179,7 @@ async fn handle_use_rc_block(state: AppState, block_id: String) -> Result<Respon
 
     let mut results = Vec::new();
     for ah_block in ah_blocks {
-        let client_at_block = state
-            .client
-            .at_block(ah_block.number)
-            .await
-            .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+        let client_at_block = state.client.at_block(ah_block.number).await?;
 
         let mut response = build_block_raw_response(&state, ah_block.hash.clone()).await?;
 

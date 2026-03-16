@@ -229,7 +229,7 @@ async fn fetch_block_events_impl(
     let resolver = metadata.types();
 
     // Use dynamic storage address for System::Events
-    let addr = subxt::dynamic::storage::<(), scale_value::Value>("System", "Events");
+    let addr = subxt::dynamic::storage::<(), ()>("System", "Events");
     let events_value = client_at_block.storage().fetch(addr, ()).await?;
 
     // Decode events once using the visitor pattern which provides all needed data:

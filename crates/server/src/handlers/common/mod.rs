@@ -4,4 +4,5 @@
 //! Common utilities shared across handler modules.
 
 pub mod accounts;
+pub mod candidate_types;
 pub mod xcm_types;

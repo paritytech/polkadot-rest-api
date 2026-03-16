@@ -24,30 +24,6 @@ fn error_response(status: StatusCode, message: String) -> axum::response::Respon
     (status, body).into_response()
 }
 
-/// Macro to implement IntoResponse for error types with status code mapping.
-///
-/// Usage:
-/// ```ignore
-/// impl_error_response!(MyError,
-///     InvalidBlockParam(_) => BAD_REQUEST,
-///     InvalidAddress(_) => BAD_REQUEST,
-///     BlockResolveFailed(_) => NOT_FOUND,
-///     _ => INTERNAL_SERVER_ERROR
-/// );
-/// ```
-macro_rules! impl_error_response {
-    ($error_type:ty, $($variant:pat => $status:ident),+ $(,)?) => {
-        impl IntoResponse for $error_type {
-            fn into_response(self) -> axum::response::Response {
-                let status = match &self {
-                    $($variant => StatusCode::$status,)+
-                };
-                error_response(status, self.to_string())
-            }
-        }
-    };
-}
-
 // ================================================================================================
 // Query Parameters
 // ================================================================================================
@@ -63,8 +39,14 @@ pub struct AssetBalancesQueryParams {
     #[serde(default)]
     pub use_rc_block: bool,
 
-    /// Optional list of asset IDs to query (queries all if omitted)
+    /// Optional list of asset IDs to query (queries all if omitted).
+    /// Use PHP-style bracket notation: `?assets[]=1984&assets[]=2000`
+    #[serde(default)]
     pub assets: Option<Vec<u32>>,
+
+    /// When true, include assets with zero balance. Defaults to false.
+    #[serde(default)]
+    pub show_empty: bool,
 }
 
 // ================================================================================================
@@ -99,7 +81,8 @@ pub struct BlockInfo {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetBalance {
-    pub asset_id: u32,
+    /// Asset ID as string (matches Sidecar format)
+    pub asset_id: String,
     /// Balance as string (u128 serialized as decimal string)
     pub balance: String,
     pub is_frozen: bool,
@@ -286,9 +269,20 @@ impl From<StorageError> for AccountsError {
     }
 }
 
+impl From<utils::AtBlockError> for AccountsError {
+    fn from(err: utils::AtBlockError) -> Self {
+        match err {
+            utils::AtBlockError::BlockNotFound(msg) => {
+                AccountsError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
+            utils::AtBlockError::Client(e) => AccountsError::ClientAtBlockFailed(Box::new(e)),
+        }
+    }
+}
+
 impl From<OnlineClientAtBlockError> for AccountsError {
     fn from(err: OnlineClientAtBlockError) -> Self {
-        AccountsError::ClientAtBlockFailed(Box::new(err))
+        AccountsError::from(utils::AtBlockError::from(err))
     }
 }
 
@@ -296,6 +290,9 @@ impl From<utils::ResolveClientAtBlockError> for AccountsError {
     fn from(err: utils::ResolveClientAtBlockError) -> Self {
         match err {
             utils::ResolveClientAtBlockError::ParseError(e) => AccountsError::InvalidBlockParam(e),
+            utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
+                AccountsError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
+            }
             utils::ResolveClientAtBlockError::SubxtError(e) => {
                 AccountsError::ClientAtBlockFailed(Box::new(e))
             }
@@ -318,6 +315,9 @@ impl From<crate::handlers::common::accounts::ProxyQueryError> for AccountsError 
 impl From<crate::handlers::common::accounts::StakingQueryError> for AccountsError {
     fn from(err: crate::handlers::common::accounts::StakingQueryError) -> Self {
         match err {
+            crate::handlers::common::accounts::StakingQueryError::NotAStashAccount => {
+                AccountsError::NotAStashAccount
+            }
             crate::handlers::common::accounts::StakingQueryError::BadStakingBlock(msg) => {
                 AccountsError::BadStakingBlock(msg)
             }
@@ -350,31 +350,55 @@ impl From<StakingPayoutsQueryError> for AccountsError {
     }
 }
 
-impl_error_response!(AccountsError,
-    AccountsError::InvalidBlockParam(_) => BAD_REQUEST,
-    AccountsError::InvalidAddress(_) => BAD_REQUEST,
-    AccountsError::InvalidDelegateAddress(_) => BAD_REQUEST,
-    AccountsError::PalletNotAvailable(_) => BAD_REQUEST,
-    AccountsError::UseRcBlockNotSupported => BAD_REQUEST,
-    AccountsError::RelayChain(RelayChainError::NotConfigured) => BAD_REQUEST,
-    AccountsError::RelayChain(RelayChainError::ConnectionFailed(_)) => SERVICE_UNAVAILABLE,
-    AccountsError::BlockResolveFailed(_) => NOT_FOUND,
-    AccountsError::InvalidDenominatedParam => BAD_REQUEST,
-    AccountsError::InvalidToken(_) => BAD_REQUEST,
-    AccountsError::InvalidEra(_) => BAD_REQUEST,
-    AccountsError::InvalidDepth => BAD_REQUEST,
-    AccountsError::NoActiveEra => BAD_REQUEST,
-    AccountsError::BadStakingBlock(_) => BAD_REQUEST,
-    AccountsError::RelayChainConnectionRequired => BAD_REQUEST,
-    AccountsError::NotAStashAccount => BAD_REQUEST,
-    AccountsError::InvalidHexAccountId => BAD_REQUEST,
-    AccountsError::InvalidPrefix => BAD_REQUEST,
-    AccountsError::InvalidScheme => BAD_REQUEST,
-    AccountsError::TooManyAddresses => BAD_REQUEST,
-    AccountsError::NoAddresses => BAD_REQUEST,
-    AccountsError::InvalidForeignAsset(_) => BAD_REQUEST,
-    _ => INTERNAL_SERVER_ERROR
-);
+impl IntoResponse for AccountsError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, message) = match &self {
+            AccountsError::InvalidBlockParam(_)
+            | AccountsError::InvalidAddress(_)
+            | AccountsError::InvalidDelegateAddress(_)
+            | AccountsError::PalletNotAvailable(_)
+            | AccountsError::UseRcBlockNotSupported
+            | AccountsError::InvalidDenominatedParam
+            | AccountsError::InvalidToken(_)
+            | AccountsError::InvalidEra(_)
+            | AccountsError::InvalidDepth
+            | AccountsError::NoActiveEra
+            | AccountsError::BadStakingBlock(_)
+            | AccountsError::RelayChainConnectionRequired
+            | AccountsError::NotAStashAccount
+            | AccountsError::InvalidHexAccountId
+            | AccountsError::InvalidPrefix
+            | AccountsError::InvalidScheme
+            | AccountsError::TooManyAddresses
+            | AccountsError::NoAddresses
+            | AccountsError::InvalidForeignAsset(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            AccountsError::RelayChain(RelayChainError::NotConfigured) => {
+                (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            AccountsError::RelayChain(RelayChainError::ConnectionFailed(_)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
+            AccountsError::BlockResolveFailed(inner) => (inner.status_code(), inner.to_string()),
+            AccountsError::ClientAtBlockFailed(err) => {
+                if utils::is_online_client_at_block_disconnected(err) {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Service temporarily unavailable".to_string(),
+                    )
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                }
+            }
+            AccountsError::RcBlockMappingFailed(inner)
+                if matches!(inner, RcBlockError::BlockNotFound(_)) =>
+            {
+                (StatusCode::BAD_REQUEST, inner.to_string())
+            }
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+        error_response(status, message)
+    }
+}
 
 // ================================================================================================
 // Balance Info Types
@@ -490,8 +514,14 @@ pub struct PoolAssetBalancesQueryParams {
     #[serde(default)]
     pub use_rc_block: bool,
 
-    /// Optional list of asset IDs to query (queries all if omitted)
+    /// Optional list of asset IDs to query (queries all if omitted).
+    /// Use PHP-style bracket notation: `?assets[]=1&assets[]=2`
+    #[serde(default)]
     pub assets: Option<Vec<u32>>,
+
+    /// When true, include assets with zero balance. Defaults to false.
+    #[serde(default)]
+    pub show_empty: bool,
 }
 
 /// Response for GET /accounts/{accountId}/pool-asset-balances
@@ -514,7 +544,8 @@ pub struct PoolAssetBalancesResponse {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PoolAssetBalance {
-    pub asset_id: u32,
+    /// Asset ID as string (matches Sidecar format)
+    pub asset_id: String,
     /// Balance as string (u128 serialized as decimal string)
     pub balance: String,
     pub is_frozen: bool,
@@ -1031,47 +1062,13 @@ pub struct ForeignAssetBalancesQueryParams {
 
     /// Optional list of foreign asset multilocations as JSON strings to query
     /// (queries all if omitted). Each element is a JSON-encoded XCM Location.
-    /// Format follows Express 4.x array params: ?foreignAssets[]=JSON1&foreignAssets[]=JSON2
-    #[serde(
-        default,
-        rename = "foreignAssets[]",
-        deserialize_with = "string_or_vec"
-    )]
+    /// Use PHP-style bracket notation: `?foreignAssets[]=JSON1&foreignAssets[]=JSON2`
+    #[serde(default)]
     pub foreign_assets: Vec<String>,
-}
 
-/// Deserializer that accepts either a single string or a sequence of strings.
-/// Needed because `serde_urlencoded` (used by axum's `Query`) deserializes a
-/// single repeated query param as a plain string, not a one-element Vec.
-fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de;
-
-    struct StringOrVec;
-
-    impl<'de> de::Visitor<'de> for StringOrVec {
-        type Value = Vec<String>;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str("a string or a sequence of strings")
-        }
-
-        fn visit_str<E: de::Error>(self, value: &str) -> Result<Vec<String>, E> {
-            Ok(vec![value.to_owned()])
-        }
-
-        fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<String>, A::Error> {
-            let mut vec = Vec::new();
-            while let Some(val) = seq.next_element()? {
-                vec.push(val);
-            }
-            Ok(vec)
-        }
-    }
-
-    deserializer.deserialize_any(StringOrVec)
+    /// When true, include assets with zero balance. Defaults to false.
+    #[serde(default)]
+    pub show_empty: bool,
 }
 
 /// Response for GET /accounts/{accountId}/foreign-asset-balances
@@ -1181,6 +1178,71 @@ mod tests {
         let result: Result<ForeignAssetBalancesQueryParams, _> = serde_json::from_str(json);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("unknown field"));
+    }
+
+    // --- PHP-style bracket notation tests (serde_qs) ---
+
+    #[test]
+    fn test_asset_balances_bracket_notation_via_serde_qs() {
+        // serde_qs supports PHP-style bracket notation: ?assets[]=1984&assets[]=2000
+        let config = serde_qs::Config::new(5, false);
+        let params: AssetBalancesQueryParams = config
+            .deserialize_str("assets[]=1984&assets[]=2000")
+            .unwrap();
+        assert_eq!(params.assets, Some(vec![1984, 2000]));
+    }
+
+    #[test]
+    fn test_asset_balances_url_encoded_brackets_via_serde_qs() {
+        // Browsers typically URL-encode brackets: assets%5B%5D=1984&assets%5B%5D=2000
+        // serde_qs with strict=false handles this
+        let config = serde_qs::Config::new(5, false);
+        let params: AssetBalancesQueryParams = config
+            .deserialize_str("assets%5B%5D=1984&assets%5B%5D=2000")
+            .unwrap();
+        assert_eq!(params.assets, Some(vec![1984, 2000]));
+    }
+
+    #[test]
+    fn test_asset_balances_single_value_bracket_notation() {
+        // Single value with bracket notation: ?assets[]=1984
+        let config = serde_qs::Config::new(5, false);
+        let params: AssetBalancesQueryParams = config.deserialize_str("assets[]=1984").unwrap();
+        assert_eq!(params.assets, Some(vec![1984]));
+    }
+
+    #[test]
+    fn test_asset_balances_absent_is_none() {
+        let config = serde_qs::Config::new(5, false);
+        let params: AssetBalancesQueryParams = config.deserialize_str("").unwrap();
+        assert_eq!(params.assets, None);
+    }
+
+    #[test]
+    fn test_asset_balances_json_array_works() {
+        let json = r#"{"assets": [1984, 2000]}"#;
+        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.assets, Some(vec![1984, 2000]));
+    }
+
+    #[test]
+    fn test_pool_asset_balances_bracket_notation() {
+        let config = serde_qs::Config::new(5, false);
+        let params: PoolAssetBalancesQueryParams =
+            config.deserialize_str("assets[]=42&assets[]=100").unwrap();
+        assert_eq!(params.assets, Some(vec![42, 100]));
+    }
+
+    #[test]
+    fn test_foreign_assets_bracket_notation() {
+        let config = serde_qs::Config::new(5, false);
+        let params: ForeignAssetBalancesQueryParams = config
+            .deserialize_str("foreignAssets[]={\"parents\":1}&foreignAssets[]={\"parents\":2}")
+            .unwrap();
+        assert_eq!(
+            params.foreign_assets,
+            vec!["{\"parents\":1}", "{\"parents\":2}"]
+        );
     }
 
     #[test]

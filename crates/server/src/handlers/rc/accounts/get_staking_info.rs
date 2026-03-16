@@ -38,8 +38,8 @@ use polkadot_rest_api_config::ChainType;
     description = "Returns staking information for a given stash account on the relay chain.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded stash account address"),
-        ("at" = Option<String>, description = "Block identifier (number or hash)"),
-        ("includeClaimedRewards" = Option<bool>, description = "When true, include claimed rewards in the response")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
+        ("includeClaimedRewards" = Option<bool>, Query, description = "When true, include claimed rewards in the response")
     ),
     responses(
         (status = 200, description = "Staking information", body = RcStakingInfoResponse),
@@ -74,7 +74,12 @@ pub async fn get_staking_info(
     // For RC endpoints, use relay chain spec_name if available
     let rc_spec_name = match state.get_relay_chain_info().await {
         Ok(info) => info.spec_name.clone(),
-        Err(_) => state.chain_info.spec_name.clone(),
+        Err(e) => {
+            tracing::debug!(
+                "Failed to get relay chain info, falling back to local spec name: {e:?}"
+            );
+            state.chain_info.spec_name.clone()
+        }
     };
 
     let raw_info = query_staking_info(

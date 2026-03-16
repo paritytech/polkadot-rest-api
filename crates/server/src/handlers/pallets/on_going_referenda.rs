@@ -103,8 +103,8 @@ pub struct DecidingStatus {
     summary = "On-going referenda",
     description = "Returns all currently active referenda from the Referenda pallet.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Active referenda", body = Object),
@@ -327,7 +327,7 @@ pub struct RcOnGoingReferendaQueryParams {
     summary = "RC on-going referenda",
     description = "Returns all currently active referenda from the relay chain's Referenda pallet.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Active referenda from relay chain", body = Object),

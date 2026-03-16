@@ -59,7 +59,7 @@ pub struct AssetMetadata {
     pub is_frozen: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PalletsAssetsInfoResponse {
     pub at: AtResponse,
@@ -87,8 +87,8 @@ pub struct PalletsAssetsInfoResponse {
     description = "Returns details for a specific asset including supply, admin, and metadata.",
     params(
         ("assetId" = String, Path, description = "Asset ID"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Asset information", body = Object),

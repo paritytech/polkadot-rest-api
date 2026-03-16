@@ -41,10 +41,10 @@ use polkadot_rest_api_config::ChainType;
     description = "Returns staking payout information for a given account on the relay chain.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
-        ("at" = Option<String>, description = "Block identifier (number or hash)"),
-        ("depth" = Option<u32>, description = "Number of eras to query (default: 1)"),
-        ("era" = Option<u32>, description = "The era to query at (default: active_era - 1)"),
-        ("unclaimedOnly" = Option<bool>, description = "Only show unclaimed rewards (default: true)")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
+        ("depth" = Option<u32>, Query, description = "Number of eras to query (default: 1)"),
+        ("era" = Option<u32>, Query, description = "The era to query at (default: active_era - 1)"),
+        ("unclaimedOnly" = Option<bool>, Query, description = "Only show unclaimed rewards (default: true)")
     ),
     responses(
         (status = 200, description = "Staking payouts", body = RcStakingPayoutsResponse),
@@ -87,7 +87,12 @@ pub async fn get_staking_payouts(
     // For RC endpoints, use relay chain spec_name if available
     let rc_spec_name = match state.get_relay_chain_info().await {
         Ok(info) => info.spec_name.clone(),
-        Err(_) => state.chain_info.spec_name.clone(),
+        Err(e) => {
+            tracing::debug!(
+                "Failed to get relay chain info, falling back to local spec name: {e:?}"
+            );
+            state.chain_info.spec_name.clone()
+        }
     };
 
     // RC endpoints query the relay chain directly, no migration splitting needed

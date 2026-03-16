@@ -437,6 +437,134 @@ async fn test_pool_asset_approvals_use_rc_block() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_pool_asset_approvals_hex_address() -> Result<()> {
+    let local_client = get_client().await?;
+
+    let account_id = test_accounts::ALICE_HEX;
+    let delegate = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
+    let asset_id = 0;
+    let endpoint = format!(
+        "/accounts/{}/pool-asset-approvals?assetId={}&delegate={}",
+        account_id, asset_id, delegate
+    );
+
+    println!(
+        "\n{} Testing pool asset approvals with hex address",
+        "Testing".cyan().bold()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    let response_obj = local_json.as_object().unwrap();
+    assert!(
+        response_obj.contains_key("at"),
+        "Response missing 'at' field"
+    );
+    assert!(
+        response_obj.contains_key("amount"),
+        "Response missing 'amount' field"
+    );
+    assert!(
+        response_obj.contains_key("deposit"),
+        "Response missing 'deposit' field"
+    );
+
+    println!("{} Hex address validated!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_pool_asset_approvals_response_structure() -> Result<()> {
+    let local_client = get_client().await?;
+
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
+    let delegate = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
+    let asset_id = 0;
+    let endpoint = format!(
+        "/accounts/{}/pool-asset-approvals?assetId={}&delegate={}",
+        account_id, asset_id, delegate
+    );
+
+    println!(
+        "\n{} Testing pool asset approvals response structure",
+        "Testing".cyan().bold()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    let response_obj = local_json.as_object().expect("Response is not an object");
+
+    // Validate 'at' field structure
+    let at = response_obj.get("at").expect("Missing 'at' field");
+    assert!(at.is_object(), "'at' should be an object");
+
+    let at_obj = at.as_object().unwrap();
+    assert!(
+        at_obj.get("hash").unwrap().is_string(),
+        "at.hash should be a string"
+    );
+    assert!(
+        at_obj.get("height").unwrap().is_string(),
+        "at.height should be a string"
+    );
+
+    // Validate 'amount' field (can be string or null)
+    let amount = response_obj.get("amount").expect("Missing 'amount' field");
+    assert!(
+        amount.is_string() || amount.is_null(),
+        "'amount' should be a string or null"
+    );
+
+    // Validate 'deposit' field (can be string or null)
+    let deposit = response_obj
+        .get("deposit")
+        .expect("Missing 'deposit' field");
+    assert!(
+        deposit.is_string() || deposit.is_null(),
+        "'deposit' should be a string or null"
+    );
+
+    if amount.is_null() {
+        println!(
+            "  {} No approval found (amount: null, deposit: null)",
+            "ℹ".blue()
+        );
+    } else {
+        println!(
+            "  {} Approval found - amount: {}, deposit: {}",
+            "✓".green(),
+            amount.as_str().unwrap_or("N/A"),
+            deposit.as_str().unwrap_or("N/A")
+        );
+    }
+
+    println!("{} Deep response structure validated!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_pool_asset_approvals_non_existent_approval() -> Result<()> {
     let local_client = get_client().await?;
 

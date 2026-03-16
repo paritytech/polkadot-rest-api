@@ -184,9 +184,9 @@ pub struct PalletErrorItemResponse {
     description = "Returns all errors defined in a pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, description = "Only return error names"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return error names"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Pallet errors", body = Object),
@@ -230,9 +230,9 @@ pub async fn get_pallet_errors(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("errorItemId" = String, Path, description = "Name of the error"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("metadata" = Option<bool>, description = "Include metadata"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Error details", body = Object),
@@ -590,8 +590,8 @@ fn simplify_type_name(type_name: &str) -> String {
     description = "Returns all errors defined in a relay chain pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, description = "Only return error names")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return error names")
     ),
     responses(
         (status = 200, description = "Relay chain pallet errors", body = Object),
@@ -647,8 +647,8 @@ pub async fn rc_pallet_errors(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("errorItemId" = String, Path, description = "Name of the error"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("metadata" = Option<bool>, description = "Include metadata")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, Query, description = "Include metadata")
     ),
     responses(
         (status = 200, description = "Relay chain error details", body = Object),

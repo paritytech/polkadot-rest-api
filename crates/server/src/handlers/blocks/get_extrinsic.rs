@@ -44,11 +44,11 @@ use super::types::{
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
         ("extrinsicIndex" = String, Path, description = "Index of the extrinsic within the block"),
-        ("eventDocs" = Option<bool>, description = "Include documentation for events"),
-        ("extrinsicDocs" = Option<bool>, description = "Include documentation for extrinsics"),
-        ("noFees" = Option<bool>, description = "Skip fee calculation"),
-        ("useRcBlock" = Option<bool>, description = "When true, treat blockId as Relay Chain block and return Asset Hub extrinsics"),
-        ("useEvmFormat" = Option<bool>, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
+        ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
+        ("extrinsicDocs" = Option<bool>, Query, description = "Include documentation for extrinsics"),
+        ("noFees" = Option<bool>, Query, description = "Skip fee calculation"),
+        ("useRcBlock" = Option<bool>, Query, description = "When true, treat blockId as Relay Chain block and return Asset Hub extrinsics"),
+        ("useEvmFormat" = Option<bool>, Query, description = "Convert AccountId32 addresses to EVM format for revive pallet events")
     ),
     responses(
         (status = 200, description = "Extrinsic details", body = Object),
@@ -128,11 +128,7 @@ async fn handle_use_rc_block(
         let rc_block_hash = &rc_block_hash;
         let rc_block_number = &rc_block_number;
         async move {
-            let client_at_block = state
-                .client
-                .at_block(ah_block.number)
-                .await
-                .map_err(|e| GetBlockError::ClientAtBlockFailed(Box::new(e)))?;
+            let client_at_block = state.client.at_block(ah_block.number).await?;
 
             let mut response = build_extrinsic_response(
                 state,

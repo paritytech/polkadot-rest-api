@@ -19,6 +19,7 @@ mod asset_balances;
 mod balance_info;
 mod compare;
 mod convert;
+mod foreign_asset_balances;
 mod pool_asset_approvals;
 mod pool_asset_balances;
 mod proxy_info;

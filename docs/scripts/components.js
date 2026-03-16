@@ -41,7 +41,7 @@ export class UIComponents {
                         <li class="nav-subitem">
                             <a href="#endpoint-${endpoint.id}" class="nav-link" data-endpoint="${endpoint.id}">
                                 <span class="method-badge ${this.parser.getMethodColorClass(endpoint.method)}">${endpoint.method}</span>
-                                <span class="endpoint-path">${this.truncatePath(endpoint.path)}</span>
+                                <span class="endpoint-path" title="${endpoint.path}">${endpoint.path}</span>
                             </a>
                         </li>
                     `).join('')}

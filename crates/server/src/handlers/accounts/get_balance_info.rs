@@ -41,10 +41,10 @@ use serde_json::json;
     description = "Returns balance information for a given account including free, reserved, and locked balances.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier"),
-        ("token" = Option<String>, description = "Token symbol for chains with multiple tokens"),
-        ("denominated" = Option<bool>, description = "When true, denominate balances using chain decimals")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier"),
+        ("token" = Option<String>, Query, description = "Token symbol for chains with multiple tokens"),
+        ("denominated" = Option<bool>, Query, description = "When true, denominate balances using chain decimals")
     ),
     responses(
         (status = 200, description = "Account balance information", body = BalanceInfoResponse),

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::extractors::JsonQuery;
+use crate::handlers::common::candidate_types::CandidateIncludedEvent;
+use crate::handlers::runtime_queries::parachain_info;
 use crate::state::{AppState, RelayChainError};
-use crate::utils::{extract_block_number_from_header, run_with_concurrency};
+use crate::utils::{self, extract_block_number_from_header, run_with_concurrency};
 use axum::{
     Json,
     extract::{Path, State},
@@ -11,7 +13,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use futures::stream::StreamExt;
-use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use subxt::{OnlineClient, SubstrateConfig};
@@ -19,22 +20,6 @@ use thiserror::Error;
 use tracing::warn;
 
 use super::relay_parent_visitor;
-
-#[derive(DecodeAsType)]
-struct CandidateIncludedEvent {
-    receipt: CandidateReceiptDecoded,
-    head_data: Vec<u8>,
-}
-
-#[derive(DecodeAsType)]
-struct CandidateReceiptDecoded {
-    descriptor: CandidateDescriptorDecoded,
-}
-
-#[derive(DecodeAsType)]
-struct CandidateDescriptorDecoded {
-    para_id: u32,
-}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -96,6 +81,23 @@ pub enum ParasInclusionError {
     EventsFetchFailed(String),
 }
 
+impl From<utils::AtBlockError> for ParasInclusionError {
+    fn from(err: utils::AtBlockError) -> Self {
+        match err {
+            utils::AtBlockError::BlockNotFound(msg) => ParasInclusionError::InvalidBlockParam(msg),
+            utils::AtBlockError::Client(e) => {
+                ParasInclusionError::ClientAtBlockFailed(e.to_string())
+            }
+        }
+    }
+}
+
+impl From<subxt::error::OnlineClientAtBlockError> for ParasInclusionError {
+    fn from(err: subxt::error::OnlineClientAtBlockError) -> Self {
+        ParasInclusionError::from(utils::AtBlockError::from(err))
+    }
+}
+
 impl IntoResponse for ParasInclusionError {
     fn into_response(self) -> Response {
         let status = match &self {
@@ -144,7 +146,7 @@ fn default_depth() -> String {
     description = "Returns inclusion information for a given parachain block, searching relay chain blocks for when the parachain block was included.",
     params(
         ("number" = String, Path, description = "Parachain block number"),
-        ("depth" = Option<String>, description = "Search depth for relay chain blocks (max 100, default 10, must be divisible by 5)")
+        ("depth" = Option<String>, Query, description = "Search depth for relay chain blocks (max 100, default 10, must be divisible by 5)")
     ),
     responses(
         (status = 200, description = "Parachain inclusion information", body = Object),
@@ -208,24 +210,11 @@ fn validate_depth(depth: String) -> Result<u32, ParasInclusionError> {
 }
 
 async fn get_parachain_id(state: &AppState, block_number: u64) -> Result<u32, ParasInclusionError> {
-    let client_at_block = state
-        .client
-        .at_block(block_number)
+    let client_at_block = state.client.at_block(block_number).await?;
+
+    parachain_info::get_parachain_id(&client_at_block)
         .await
-        .map_err(|e| ParasInclusionError::ClientAtBlockFailed(e.to_string()))?;
-
-    let addr = subxt::dynamic::storage::<(), u32>("ParachainInfo", "ParachainId");
-
-    let result = match client_at_block.storage().fetch(addr, ()).await {
-        Ok(v) => v,
-        Err(_) => return Err(ParasInclusionError::NotAParachain),
-    };
-
-    let id = result
-        .decode()
-        .map_err(|e| ParasInclusionError::DecodeFailed(e.to_string()))?;
-
-    Ok(id)
+        .map_err(|_| ParasInclusionError::NotAParachain)
 }
 
 async fn extract_relay_parent_number(
@@ -236,11 +225,7 @@ async fn extract_relay_parent_number(
         .parse::<subxt::utils::H256>()
         .map_err(|e| ParasInclusionError::InvalidBlockParam(e.to_string()))?;
 
-    let client_at_block = state
-        .client
-        .at_block(block_hash_h256)
-        .await
-        .map_err(|e| ParasInclusionError::ClientAtBlockFailed(e.to_string()))?;
+    let client_at_block = state.client.at_block(block_hash_h256).await?;
 
     let extrinsics = client_at_block
         .extrinsics()
@@ -251,7 +236,10 @@ async fn extract_relay_parent_number(
     for ext_result in extrinsics.iter() {
         let ext = match ext_result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to decode extrinsic: {e:?}");
+                continue;
+            }
         };
 
         if ext.pallet_name() == "ParachainSystem" && ext.call_name() == "set_validation_data" {
@@ -334,7 +322,10 @@ async fn check_block_for_inclusion(
     for event_result in events.iter() {
         let event = match event_result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to decode event: {e:?}");
+                continue;
+            }
         };
 
         // Use the clean pallet_name() and event_name() API
@@ -344,13 +335,14 @@ async fn check_block_for_inclusion(
 
         let event_data: CandidateIncludedEvent = match event.decode_fields_unchecked_as() {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to decode CandidateIncluded event fields: {e:?}");
+                continue;
+            }
         };
 
-        if let Some(inclusion_block_num) =
-            extract_inclusion_info(&event_data, para_id, parachain_block_number)
-        {
-            return Some(inclusion_block_num);
+        if extract_inclusion_info(&event_data, para_id, parachain_block_number) {
+            return Some(block_num);
         }
     }
 
@@ -362,18 +354,14 @@ fn extract_inclusion_info(
     event: &CandidateIncludedEvent,
     target_para_id: u32,
     expected_block_number: u64,
-) -> Option<u64> {
-    if event.receipt.descriptor.para_id != target_para_id {
-        return None;
+) -> bool {
+    if event.candidate.descriptor.para_id != target_para_id {
+        return false;
     }
 
-    let block_number = extract_block_number_from_header(&event.head_data)?;
+    let block_number = extract_block_number_from_header(&event.head_data).unwrap_or_default();
 
-    if block_number == expected_block_number {
-        Some(block_number)
-    } else {
-        None
-    }
+    block_number == expected_block_number
 }
 
 #[cfg(test)]

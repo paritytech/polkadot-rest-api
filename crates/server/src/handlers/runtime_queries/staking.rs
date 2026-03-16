@@ -967,10 +967,8 @@ pub async fn get_era_exposures_bulk(
 
     // Try paged staking first (ErasStakersOverview + ErasStakersPaged)
     // Key type: (u32, [u8; 32]) for (era, validator)
-    let overview_addr = subxt::dynamic::storage::<(u32, [u8; 32]), scale_value::Value>(
-        "Staking",
-        "ErasStakersOverview",
-    );
+    let overview_addr =
+        subxt::dynamic::storage::<(u32, [u8; 32]), ()>("Staking", "ErasStakersOverview");
     let mut found_paged = false;
 
     // Use era as prefix key to iterate only entries for this specific era
@@ -1010,10 +1008,8 @@ pub async fn get_era_exposures_bulk(
     // If we found paged staking data, fetch the paged exposures for this era
     if found_paged && !validator_map.is_empty() {
         // Key type: (u32, [u8; 32], u32) for (era, validator, page)
-        let paged_addr = subxt::dynamic::storage::<(u32, [u8; 32], u32), scale_value::Value>(
-            "Staking",
-            "ErasStakersPaged",
-        );
+        let paged_addr =
+            subxt::dynamic::storage::<(u32, [u8; 32], u32), ()>("Staking", "ErasStakersPaged");
         // Use era as prefix key to iterate only pages for this specific era
         if let Ok(mut iter) = client_at_block.storage().iter(paged_addr, (era,)).await {
             while let Some(Ok(kv)) = iter.next().await {
@@ -1056,10 +1052,8 @@ pub async fn get_era_exposures_bulk(
 
     // Fall back to legacy ErasStakersClipped
     // Key type: (u32, [u8; 32]) for (era, validator)
-    let clipped_addr = subxt::dynamic::storage::<(u32, [u8; 32]), scale_value::Value>(
-        "Staking",
-        "ErasStakersClipped",
-    );
+    let clipped_addr =
+        subxt::dynamic::storage::<(u32, [u8; 32]), ()>("Staking", "ErasStakersClipped");
     // Use era as prefix key to iterate only entries for this specific era
     if let Ok(mut iter) = client_at_block.storage().iter(clipped_addr, (era,)).await {
         while let Some(Ok(kv)) = iter.next().await {
@@ -1301,7 +1295,7 @@ pub async fn get_validator_count(
 pub async fn get_force_era(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
 ) -> Option<ForceEra> {
-    let storage_addr = subxt::dynamic::storage::<(), scale_value::Value>("Staking", "ForceEra");
+    let storage_addr = subxt::dynamic::storage::<(), ()>("Staking", "ForceEra");
     let value = client_at_block
         .storage()
         .fetch(storage_addr, ())
@@ -1546,7 +1540,10 @@ pub async fn iter_staking_validators(
     while let Some(entry_result) = stream.next().await {
         let entry = match entry_result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to read validator prefs storage entry: {e:?}");
+                continue;
+            }
         };
 
         let key_bytes = entry.key_bytes();
@@ -1594,7 +1591,10 @@ pub async fn iter_era_stakers_overview_keys(
     while let Some(entry_result) = stream.next().await {
         let entry = match entry_result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to read era stakers overview storage entry: {e:?}");
+                continue;
+            }
         };
 
         let key_bytes = entry.key_bytes();
@@ -1653,7 +1653,10 @@ pub async fn iter_unapplied_slashes(
 
     let mut stream = match client_at_block.storage().iter(storage_addr, ()).await {
         Ok(s) => s,
-        Err(_) => return vec![],
+        Err(e) => {
+            tracing::debug!("Failed to iterate unapplied slashes storage: {e:?}");
+            return vec![];
+        }
     };
 
     let mut result = Vec::new();
@@ -1661,7 +1664,10 @@ pub async fn iter_unapplied_slashes(
     while let Some(entry_result) = stream.next().await {
         let entry = match entry_result {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("Failed to read unapplied slashes storage entry: {e:?}");
+                continue;
+            }
         };
 
         let key_bytes = entry.key_bytes();
@@ -1678,7 +1684,10 @@ pub async fn iter_unapplied_slashes(
         let slashes: Vec<UnappliedSlashStorage> =
             match Vec::<UnappliedSlashStorage>::decode(&mut &value_bytes[..]) {
                 Ok(s) => s,
-                Err(_) => continue,
+                Err(e) => {
+                    tracing::debug!("Failed to decode unapplied slashes value: {e:?}");
+                    continue;
+                }
             };
 
         for slash in slashes {

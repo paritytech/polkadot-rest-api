@@ -25,6 +25,11 @@
       "scenarios": ["light_load"]
     }
   },
+  "chain_types": {
+    "relay": ["polkadot", "kusama", "westend", "rococo", "paseo"],
+    "asset-hub": ["asset-hub-polkadot", "asset-hub-kusama", "asset-hub-westend", "asset-hub-paseo", "statemint", "statemine", "westmint"],
+    "coretime": ["coretime-polkadot", "coretime-kusama", "coretime-westend", "coretime-paseo"]
+  },
   "standard_scenarios": [
     {
       "name": "light_load",
@@ -62,319 +67,399 @@
   "benchmarks": {
     "health": {
       "endpoint": "/v1/health",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
     "runtime": {
       "endpoint": "/v1/runtime/spec",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
     "version": {
       "endpoint": "/v1/version",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
     "blocks": {
       "endpoint": "/v1/blocks/:blockId",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
     "blocks_head": {
       "endpoint": "/v1/blocks/head",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
     "blocks_head_header": {
       "endpoint": "/v1/blocks/head/header",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
     "blocks_header": {
       "endpoint": "/v1/blocks/:blockId/header",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
     "blocks_extrinsics": {
       "endpoint": "/v1/blocks/:blockId/extrinsics/:extrinsicIndex",
-      "use_standard_scenarios": true
-    },
-    "ahm_info": {
-      "endpoint": "/v1/ahm-info",
-      "use_standard_scenarios": true
-    },
-    "accounts_balance_info": {
-      "endpoint": "/v1/accounts/:accountId/balance-info",
-      "use_standard_scenarios": true
-    },
-    "accounts_convert": {
-      "endpoint": "/v1/accounts/:accountId/convert",
-      "use_standard_scenarios": true
-    },
-    "accounts_staking_info": {
-      "endpoint": "/v1/accounts/:accountId/staking-info",
-      "use_standard_scenarios": true
-    },
-    "accounts_staking_payouts": {
-      "endpoint": "/v1/accounts/:accountId/staking-payouts",
-      "use_standard_scenarios": true
-    },
-    "accounts_validate": {
-      "endpoint": "/v1/accounts/:accountId/validate",
-      "use_standard_scenarios": true
-    },
-    "accounts_vesting_info": {
-      "endpoint": "/v1/accounts/:accountId/vesting-info",
-      "use_standard_scenarios": true
-    },
-    "node_network": {
-      "endpoint": "/v1/node/network",
-      "use_standard_scenarios": true
-    },
-    "rc_node_network": {
-      "endpoint": "/v1/rc/node/network",
-      "use_standard_scenarios": true
-    },
-    "node_version": {
-      "endpoint": "/v1/node/version",
-      "use_standard_scenarios": true
-    },
-    "rc_node_version": {
-      "endpoint": "/v1/rc/node/version",
-      "use_standard_scenarios": true
-    },
-    "node_transaction_pool": {
-      "endpoint": "/v1/node/transaction-pool",
-      "use_standard_scenarios": true
-    },
-    "rc_node_transaction_pool": {
-      "endpoint": "/v1/rc/node/transaction-pool",
-      "use_standard_scenarios": true
-    },
-    "pallets_errors": {
-      "endpoint": "/v1/pallets/:palletId/errors",
-      "use_standard_scenarios": true
-    },
-    "pallets_errors_item": {
-      "endpoint": "/v1/pallets/:palletId/errors/:errorItemId",
-      "use_standard_scenarios": true
-    },
-    "pallets_storage": {
-      "endpoint": "/v1/pallets/:palletId/storage",
-      "use_standard_scenarios": true
-    },
-    "pallets_storage_item": {
-      "endpoint": "/v1/pallets/:palletId/storage/:storageItemId",
-      "use_standard_scenarios": true
-    },
-    "pallets_staking_progress": {
-      "endpoint": "/v1/pallets/staking/progress",
-      "use_standard_scenarios": true
-    },
-    "pallets_staking_validators": {
-      "endpoint": "/v1/pallets/staking/validators",
-      "use_standard_scenarios": true
-    },
-    "pallets_nomination_pools_info": {
-      "endpoint": "/v1/pallets/nomination-pools/info",
-      "use_standard_scenarios": true
-    },
-    "pallets_nomination_pools_id": {
-      "endpoint": "/v1/pallets/nomination-pools/:poolId",
-      "use_standard_scenarios": true
-    },
-    "paras": {
-      "endpoint": "/v1/paras",
-      "use_standard_scenarios": true
-    },
-    "paras_auctions_current": {
-      "endpoint": "/v1/paras/auctions/current",
-      "use_standard_scenarios": true
-    },
-    "paras_crowdloans": {
-      "endpoint": "/v1/paras/crowdloans",
-      "use_standard_scenarios": true
-    },
-    "paras_crowdloan_info": {
-      "endpoint": "/v1/paras/:paraId/crowdloan-info",
-      "use_standard_scenarios": true
-    },
-    "paras_leases_current": {
-      "endpoint": "/v1/paras/leases/current",
-      "use_standard_scenarios": true
-    },
-    "paras_lease_info": {
-      "endpoint": "/v1/paras/:paraId/lease-info",
-      "use_standard_scenarios": true
-    },
-    "transaction_material": {
-      "endpoint": "/v1/transaction/material",
-      "use_standard_scenarios": true
-    },
-    "capabilities": {
-      "endpoint": "/v1/capabilities",
-      "use_standard_scenarios": true
-    },
-    "accounts_proxy_info": {
-      "endpoint": "/v1/accounts/:accountId/proxy-info",
-      "use_standard_scenarios": true
-    },
-    "accounts_asset_balances": {
-      "endpoint": "/v1/accounts/:accountId/asset-balances",
-      "use_standard_scenarios": true
-    },
-    "accounts_asset_approvals": {
-      "endpoint": "/v1/accounts/:accountId/asset-approvals",
-      "use_standard_scenarios": true
-    },
-    "accounts_pool_asset_balances": {
-      "endpoint": "/v1/accounts/:accountId/pool-asset-balances",
-      "use_standard_scenarios": true
-    },
-    "accounts_pool_asset_approvals": {
-      "endpoint": "/v1/accounts/:accountId/pool-asset-approvals",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
     "blocks_extrinsics_raw": {
       "endpoint": "/v1/blocks/:blockId/extrinsics-raw",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
     "blocks_para_inclusions": {
       "endpoint": "/v1/blocks/:blockId/para-inclusions",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
-    "runtime_code": {
-      "endpoint": "/v1/runtime/code",
-      "use_standard_scenarios": true
+    "ahm_info": {
+      "endpoint": "/v1/ahm-info",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
-    "runtime_metadata": {
-      "endpoint": "/v1/runtime/metadata",
-      "use_standard_scenarios": true
+    "accounts_balance_info": {
+      "endpoint": "/v1/accounts/:accountId/balance-info",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
-    "runtime_metadata_versions": {
-      "endpoint": "/v1/runtime/metadata/versions",
-      "use_standard_scenarios": true
+    "accounts_convert": {
+      "endpoint": "/v1/accounts/:accountId/convert",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
-    "runtime_metadata_version": {
-      "endpoint": "/v1/runtime/metadata/:version",
-      "use_standard_scenarios": true
+    "accounts_validate": {
+      "endpoint": "/v1/accounts/:accountId/validate",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
-    "transaction_material_version": {
-      "endpoint": "/v1/transaction/material/:metadataVersion",
-      "use_standard_scenarios": true
+    "accounts_vesting_info": {
+      "endpoint": "/v1/accounts/:accountId/vesting-info",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
-    "pallets_dispatchables": {
-      "endpoint": "/v1/pallets/:palletId/dispatchables",
-      "use_standard_scenarios": true
+    "accounts_proxy_info": {
+      "endpoint": "/v1/accounts/:accountId/proxy-info",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
-    "pallets_dispatchables_item": {
-      "endpoint": "/v1/pallets/:palletId/dispatchables/:dispatchableId",
-      "use_standard_scenarios": true
+    "accounts_staking_info": {
+      "endpoint": "/v1/accounts/:accountId/staking-info",
+      "use_standard_scenarios": true,
+      "chains": ["relay"]
+    },
+    "accounts_staking_payouts": {
+      "endpoint": "/v1/accounts/:accountId/staking-payouts",
+      "use_standard_scenarios": true,
+      "chains": ["relay"]
+    },
+    "accounts_asset_balances": {
+      "endpoint": "/v1/accounts/:accountId/asset-balances",
+      "use_standard_scenarios": true,
+      "chains": ["asset-hub"]
+    },
+    "accounts_asset_approvals": {
+      "endpoint": "/v1/accounts/:accountId/asset-approvals",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "accounts_pool_asset_balances": {
+      "endpoint": "/v1/accounts/:accountId/pool-asset-balances",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "accounts_pool_asset_approvals": {
+      "endpoint": "/v1/accounts/:accountId/pool-asset-approvals",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "node_network": {
+      "endpoint": "/v1/node/network",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "node_version": {
+      "endpoint": "/v1/node/version",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "node_transaction_pool": {
+      "endpoint": "/v1/node/transaction-pool",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "pallets_errors": {
+      "endpoint": "/v1/pallets/:palletId/errors",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "pallets_errors_item": {
+      "endpoint": "/v1/pallets/:palletId/errors/:errorItemId",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "pallets_storage": {
+      "endpoint": "/v1/pallets/:palletId/storage",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "pallets_storage_item": {
+      "endpoint": "/v1/pallets/:palletId/storage/:storageItemId",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
     "pallets_consts": {
       "endpoint": "/v1/pallets/:palletId/consts",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["all"]
     },
     "pallets_consts_item": {
       "endpoint": "/v1/pallets/:palletId/consts/:constantItemId",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "pallets_dispatchables": {
+      "endpoint": "/v1/pallets/:palletId/dispatchables",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "pallets_dispatchables_item": {
+      "endpoint": "/v1/pallets/:palletId/dispatchables/:dispatchableId",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "pallets_staking_progress": {
+      "endpoint": "/v1/pallets/staking/progress",
+      "use_standard_scenarios": true,
+      "chains": ["relay"]
+    },
+    "pallets_staking_validators": {
+      "endpoint": "/v1/pallets/staking/validators",
+      "use_standard_scenarios": true,
+      "chains": ["relay"]
+    },
+    "pallets_nomination_pools_info": {
+      "endpoint": "/v1/pallets/nomination-pools/info",
+      "use_standard_scenarios": true,
+      "chains": ["relay"]
+    },
+    "pallets_nomination_pools_id": {
+      "endpoint": "/v1/pallets/nomination-pools/:poolId",
+      "use_standard_scenarios": true,
+      "chains": ["relay"]
     },
     "pallets_assets_asset_info": {
       "endpoint": "/v1/pallets/assets/:assetId/asset-info",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["asset-hub"]
     },
     "pallets_pool_assets_asset_info": {
       "endpoint": "/v1/pallets/pool-assets/:assetId/asset-info",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["asset-hub"]
     },
     "pallets_asset_conversion_liquidity_pools": {
       "endpoint": "/v1/pallets/asset-conversion/liquidity-pools",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["asset-hub"]
     },
     "pallets_asset_conversion_next_available_id": {
       "endpoint": "/v1/pallets/asset-conversion/next-available-id",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["asset-hub"]
     },
-    "coretime_info": {
-      "endpoint": "/v1/coretime/info",
-      "use_standard_scenarios": true
+    "paras_auctions_current": {
+      "endpoint": "/v1/paras/auctions/current",
+      "use_standard_scenarios": true,
+      "chains": ["none"],
+      "note": "Not implemented in API. Preserved for future use."
     },
-    "coretime_leases": {
-      "endpoint": "/v1/coretime/leases",
-      "use_standard_scenarios": true
+    "paras_crowdloans": {
+      "endpoint": "/v1/paras/crowdloans",
+      "use_standard_scenarios": true,
+      "chains": ["none"],
+      "note": "Not implemented in API. Preserved for future use."
     },
-    "coretime_regions": {
-      "endpoint": "/v1/coretime/regions",
-      "use_standard_scenarios": true
+    "paras_crowdloan_info": {
+      "endpoint": "/v1/paras/:paraId/crowdloan-info",
+      "use_standard_scenarios": true,
+      "chains": ["none"],
+      "note": "Not implemented in API. Preserved for future use."
     },
-    "coretime_renewals": {
-      "endpoint": "/v1/coretime/renewals",
-      "use_standard_scenarios": true
+    "paras_leases_current": {
+      "endpoint": "/v1/paras/leases/current",
+      "use_standard_scenarios": true,
+      "chains": ["none"],
+      "note": "Not implemented in API. Preserved for future use."
     },
-    "coretime_reservations": {
-      "endpoint": "/v1/coretime/reservations",
-      "use_standard_scenarios": true
+    "paras_lease_info": {
+      "endpoint": "/v1/paras/:paraId/lease-info",
+      "use_standard_scenarios": true,
+      "chains": ["none"],
+      "note": "Not implemented in API. Preserved for future use."
     },
     "paras_inclusion": {
       "endpoint": "/v1/paras/:number/inclusion",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["none"],
+      "note": "Only available on parachains (not relay). Route exists but not registered for relay chains."
+    },
+    "transaction_material": {
+      "endpoint": "/v1/transaction/material",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "transaction_material_version": {
+      "endpoint": "/v1/transaction/material/:metadataVersion",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "capabilities": {
+      "endpoint": "/v1/capabilities",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "runtime_code": {
+      "endpoint": "/v1/runtime/code",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "runtime_metadata": {
+      "endpoint": "/v1/runtime/metadata",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "runtime_metadata_versions": {
+      "endpoint": "/v1/runtime/metadata/versions",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "runtime_metadata_version": {
+      "endpoint": "/v1/runtime/metadata/:version",
+      "use_standard_scenarios": true,
+      "chains": ["all"]
+    },
+    "coretime_info": {
+      "endpoint": "/v1/coretime/info",
+      "use_standard_scenarios": true,
+      "chains": ["coretime"]
+    },
+    "coretime_leases": {
+      "endpoint": "/v1/coretime/leases",
+      "use_standard_scenarios": true,
+      "chains": ["coretime"]
+    },
+    "coretime_regions": {
+      "endpoint": "/v1/coretime/regions",
+      "use_standard_scenarios": true,
+      "chains": ["coretime"]
+    },
+    "coretime_renewals": {
+      "endpoint": "/v1/coretime/renewals",
+      "use_standard_scenarios": true,
+      "chains": ["coretime"]
+    },
+    "coretime_reservations": {
+      "endpoint": "/v1/coretime/reservations",
+      "use_standard_scenarios": true,
+      "chains": ["coretime"]
     },
     "rc_accounts_balance_info": {
       "endpoint": "/v1/rc/accounts/:accountId/balance-info",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_accounts_proxy_info": {
       "endpoint": "/v1/rc/accounts/:accountId/proxy-info",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_accounts_staking_info": {
       "endpoint": "/v1/rc/accounts/:accountId/staking-info",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_accounts_vesting_info": {
       "endpoint": "/v1/rc/accounts/:accountId/vesting-info",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_accounts_staking_payouts": {
       "endpoint": "/v1/rc/accounts/:accountId/staking-payouts",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_blocks": {
       "endpoint": "/v1/rc/blocks/:blockId",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_blocks_head": {
       "endpoint": "/v1/rc/blocks/head",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_blocks_head_header": {
       "endpoint": "/v1/rc/blocks/head/header",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_blocks_header": {
       "endpoint": "/v1/rc/blocks/:blockId/header",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_blocks_extrinsics": {
       "endpoint": "/v1/rc/blocks/:blockId/extrinsics/:extrinsicIndex",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_blocks_extrinsics_raw": {
       "endpoint": "/v1/rc/blocks/:blockId/extrinsics-raw",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_blocks_para_inclusions": {
       "endpoint": "/v1/rc/blocks/:blockId/para-inclusions",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_pallets_staking_progress": {
       "endpoint": "/v1/rc/pallets/staking/progress",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_pallets_staking_validators": {
       "endpoint": "/v1/rc/pallets/staking/validators",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
+    },
+    "rc_node_network": {
+      "endpoint": "/v1/rc/node/network",
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
+    },
+    "rc_node_version": {
+      "endpoint": "/v1/rc/node/version",
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
+    },
+    "rc_node_transaction_pool": {
+      "endpoint": "/v1/rc/node/transaction-pool",
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_transaction_material": {
       "endpoint": "/v1/rc/transaction/material",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     },
     "rc_transaction_material_version": {
       "endpoint": "/v1/rc/transaction/material/:metadataVersion",
-      "use_standard_scenarios": true
+      "use_standard_scenarios": true,
+      "chains": ["parachain"]
     }
   }
 }

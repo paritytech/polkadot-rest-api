@@ -6,6 +6,68 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.0-beta.4] (2026-03-09)
+
+Fourth beta release with new features, performance improvements, and bug fixes across accounts, paras, and documentation endpoints.
+
+### Features
+
+- **Chain-aware benchmark system**: Added a benchmarking system that is aware of chain-specific capabilities, enabling more accurate performance testing across different chain types. (#280)
+- **Show empty asset balances**: Added support for showing empty (zero) asset balances in account asset balance endpoints. (#277)
+- **HTTP log level tagging**: Implemented native HTTP log level tagging when `SAS_LOG_LEVEL=http`, enabling cleaner request/response logging. (#264)
+
+### Performance
+
+- **Subxt cached metadata in storage handlers**: Storage handlers now use subxt's cached metadata instead of fetching it on each request, reducing RPC round trips. (#262)
+- **Improved asset balance endpoints**: Improved performance of `/accounts/{accountId}/asset-balances` and related endpoints, with better Sidecar compatibility. (#279)
+- **Optimized `run_with_concurrency_collect`**: Improved the concurrent task collection utility for better throughput. (#263)
+
+### Fixes
+
+- **Inconsistent error messages**: Unified error message format across all endpoints for a consistent API experience. (#275)
+- **Deduplicated address helpers**: Removed duplicated address helper functions. (#281)
+- **`paras/{number}/inclusion` `paraId`**: Fixed the `paraId` field in the paras inclusion endpoint. (#274)
+- **`assets_balances` query params**: Fixed query parameter handling for asset balance endpoints. (#273)
+- **Utoipa query param annotations & UI sidebar**: Fixed OpenAPI query parameter annotations and the documentation UI sidebar navigation. (#278)
+- **Improved `/accounts/*` test coverage**: Added comprehensive test coverage for account endpoints. (#259)
+
+### Refactors
+
+- **Storage query segregation for coretime, paras and blocks**: Extended the storage query segregation pattern to coretime, paras, and blocks endpoints for improved maintainability. (#261)
+
+### Other
+
+- **Debug logging for errors**: Replaced silent `Err(_)` patterns with useful debug logging throughout the codebase. (#282)
+
+## [0.1.0-beta.3] (2026-03-02)
+
+Third beta release with performance improvements, storage query enhancements, and multi-arch Docker support.
+
+### Features
+
+- **jemalloc global allocator**: Use jemalloc as the global memory allocator for improved performance and reduced memory fragmentation. (#252)
+
+### Performance
+
+- **Improved balance-info RPC round trips**: Reduced the number of RPC calls needed for `/accounts/{accountId}/balance-info`, improving response times. (#247)
+- **Improved /blocks/* performance**: Optimized block endpoint handling for faster responses. (#245)
+
+### Fixes
+
+- **`keys[]` query parameter and map storage key hashing**: Fixed support for the `keys[]` query parameter in pallet storage endpoints and corrected map storage key hashing. (#256)
+- **Visitor pattern for `relay_parent_number` decoding**: Fixed decoding of `relay_parent_number` in the paras inclusion endpoint using a visitor pattern. (#255)
+- **Removed `paraId` from coretime/overview**: Removed extraneous `paraId` field from the `/v1/coretime/overview` response. (#251)
+- **`transaction/material` abbreviated genesis hash**: Fixed `/v1/transaction/material` returning an abbreviated genesis hash instead of the full value. (#249)
+
+### Refactors
+
+- **Storage query segregation**: Reorganized storage query handling into a cleaner, more maintainable structure. (#244)
+
+### CI/Infra
+
+- **Multi-arch Docker support**: Docker images are now built for both `amd64` and `arm64` architectures. (#257, #258)
+- **Docs build script**: Added a build script for the documentation site. (#243)
+
 ## [0.1.0-beta.2] (2026-02-23)
 
 Second beta release with improvements to error handling, relay chain connectivity, and developer experience.

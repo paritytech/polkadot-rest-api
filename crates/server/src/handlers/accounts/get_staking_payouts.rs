@@ -44,11 +44,11 @@ use sp_core::crypto::AccountId32;
     description = "Returns staking payout history for a given account including era rewards and claimed status.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded stash account address"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("depth" = Option<String>, description = "Number of eras to query (default: 1)"),
-        ("era" = Option<String>, description = "The era to query at (default: active_era - 1)"),
-        ("unclaimedOnly" = Option<bool>, description = "Only show unclaimed rewards (default: true)"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("depth" = Option<String>, Query, description = "Number of eras to query (default: 1)"),
+        ("era" = Option<String>, Query, description = "The era to query at (default: active_era - 1)"),
+        ("unclaimedOnly" = Option<bool>, Query, description = "Only show unclaimed rewards (default: true)"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Staking payout information", body = StakingPayoutsResponse),

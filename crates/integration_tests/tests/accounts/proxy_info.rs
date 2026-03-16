@@ -343,6 +343,108 @@ async fn test_proxy_info_use_rc_block() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_proxy_info_response_structure() -> Result<()> {
+    let local_client = get_client().await?;
+
+    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
+    let endpoint = format!("/accounts/{}/proxy-info", account_id);
+
+    println!(
+        "\n{} Testing proxy info response structure",
+        "Testing".cyan().bold()
+    );
+    println!("{}", "═".repeat(80).bright_white());
+
+    let (local_status, local_json) = local_client
+        .get_json(&format!("/v1{}", endpoint))
+        .await
+        .context("Failed to fetch from local API")?;
+
+    assert!(
+        local_status.is_success(),
+        "Local API returned status {}",
+        local_status
+    );
+
+    let response_obj = local_json.as_object().expect("Response is not an object");
+
+    // Validate 'at' field structure
+    let at = response_obj.get("at").expect("Missing 'at' field");
+    assert!(at.is_object(), "'at' should be an object");
+
+    let at_obj = at.as_object().unwrap();
+    assert!(
+        at_obj.get("hash").unwrap().is_string(),
+        "at.hash should be a string"
+    );
+    assert!(
+        at_obj.get("height").unwrap().is_string(),
+        "at.height should be a string"
+    );
+
+    // Validate 'delegatedAccounts' field structure
+    let delegated_accounts = response_obj
+        .get("delegatedAccounts")
+        .expect("Missing 'delegatedAccounts' field");
+    assert!(
+        delegated_accounts.is_array(),
+        "'delegatedAccounts' should be an array"
+    );
+
+    for (i, proxy) in delegated_accounts.as_array().unwrap().iter().enumerate() {
+        let proxy_obj = proxy.as_object().unwrap();
+
+        let delegate = proxy_obj
+            .get("delegate")
+            .unwrap_or_else(|| panic!("Proxy {} missing 'delegate'", i));
+        assert!(
+            delegate.is_string(),
+            "Proxy {} 'delegate' should be a string",
+            i
+        );
+
+        let proxy_type = proxy_obj
+            .get("proxyType")
+            .unwrap_or_else(|| panic!("Proxy {} missing 'proxyType'", i));
+        assert!(
+            proxy_type.is_string(),
+            "Proxy {} 'proxyType' should be a string",
+            i
+        );
+
+        let delay = proxy_obj
+            .get("delay")
+            .unwrap_or_else(|| panic!("Proxy {} missing 'delay'", i));
+        assert!(delay.is_string(), "Proxy {} 'delay' should be a string", i);
+
+        println!(
+            "    Proxy {}: delegate={}, type={}, delay={}",
+            i,
+            delegate.as_str().unwrap_or("N/A"),
+            proxy_type.as_str().unwrap_or("N/A"),
+            delay.as_str().unwrap_or("N/A")
+        );
+    }
+
+    // Validate 'depositHeld' field
+    let deposit_held = response_obj
+        .get("depositHeld")
+        .expect("Missing 'depositHeld' field");
+    assert!(deposit_held.is_string(), "'depositHeld' should be a string");
+
+    println!(
+        "  {} Account has {} proxy delegation(s), deposit: {}",
+        "ℹ".blue(),
+        delegated_accounts.as_array().unwrap().len(),
+        deposit_held.as_str().unwrap_or("N/A")
+    );
+
+    println!("{} Deep response structure validated!", "✓".green().bold());
+    println!("{}", "═".repeat(80).bright_white());
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_proxy_info_hex_address() -> Result<()> {
     let local_client = get_client().await?;
 

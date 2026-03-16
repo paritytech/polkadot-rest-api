@@ -117,9 +117,9 @@ pub struct EventField {
     description = "Returns all events defined in a pallet.",
     params(
         ("palletId" = String, Path, description = "Pallet name or index"),
-        ("at" = Option<String>, description = "Block identifier (number or hash)"),
-        ("onlyIds" = Option<bool>, description = "Only return event names"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return event names"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Pallet events", body = Object),
@@ -166,9 +166,9 @@ pub async fn get_pallet_events(
     params(
         ("palletId" = String, Path, description = "Pallet name or index"),
         ("eventItemId" = String, Path, description = "Event name"),
-        ("at" = Option<String>, description = "Block identifier (number or hash)"),
-        ("metadata" = Option<bool>, description = "Include full event metadata"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block identifier (number or hash)"),
+        ("metadata" = Option<bool>, Query, description = "Include full event metadata"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Event item details", body = Object),
@@ -514,8 +514,8 @@ fn extract_event_item_from_metadata(
     description = "Returns all events defined in a relay chain pallet.",
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("onlyIds" = Option<bool>, description = "Only return event names")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("onlyIds" = Option<bool>, Query, description = "Only return event names")
     ),
     responses(
         (status = 200, description = "Relay chain pallet events", body = Object),
@@ -571,8 +571,8 @@ pub async fn rc_pallet_events(
     params(
         ("palletId" = String, Path, description = "Name or index of the pallet"),
         ("eventItemId" = String, Path, description = "Event name"),
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("metadata" = Option<bool>, description = "Include full event metadata")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("metadata" = Option<bool>, Query, description = "Include full event metadata")
     ),
     responses(
         (status = 200, description = "Relay chain event details", body = Object),

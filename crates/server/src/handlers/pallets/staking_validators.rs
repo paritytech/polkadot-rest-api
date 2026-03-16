@@ -72,8 +72,8 @@ pub struct ValidatorInfo {
     summary = "Staking validators",
     description = "Returns the list of active validators and their info.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at"),
-        ("useRcBlock" = Option<bool>, description = "Treat 'at' as relay chain block identifier")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at"),
+        ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier")
     ),
     responses(
         (status = 200, description = "Validator information", body = Object),
@@ -119,7 +119,7 @@ pub async fn pallets_staking_validators(
     summary = "RC staking validators",
     description = "Returns the list of active validators from the relay chain.",
     params(
-        ("at" = Option<String>, description = "Block hash or number to query at")
+        ("at" = Option<String>, Query, description = "Block hash or number to query at")
     ),
     responses(
         (status = 200, description = "Relay chain validator information", body = Object),
@@ -297,7 +297,10 @@ async fn fetch_active_validators_set(
 ) -> Result<HashSet<String>, PalletError> {
     // Try ErasStakersOverview first
     match fetch_active_era_index(client_at_block).await {
-        Err(_) => Err(PalletError::CurrentOrActiveEraNotFound),
+        Err(e) => {
+            tracing::debug!("Failed to fetch active era index: {e:?}");
+            Err(PalletError::CurrentOrActiveEraNotFound)
+        }
         Ok(active_era) => {
             if let Ok(set) =
                 fetch_era_stakers_overview_keys(client_at_block, active_era, ss58_prefix).await

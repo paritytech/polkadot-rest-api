@@ -46,28 +46,135 @@ where
 ///
 /// Preserves input order despite out-of-order completion. Short-circuits on the
 /// first `Err`, propagating it to the caller.
+///
+/// Uses [`ExactSizeIterator`] to pre-allocate the output vector and avoid sorting.
+/// Results are placed directly at their original index as they complete.
 pub async fn run_with_concurrency_collect<F, T, E>(
     max_concurrent: usize,
-    tasks: impl IntoIterator<Item = F>,
+    tasks: impl ExactSizeIterator<Item = F>,
 ) -> Result<Vec<T>, E>
 where
     F: Future<Output = Result<T, E>>,
+    T: Default,
 {
-    let semaphore = Arc::new(Semaphore::new(max_concurrent));
-    let mut futs = FuturesUnordered::new();
+    let mut out: Vec<T> = (0..tasks.len()).map(|_| T::default()).collect();
 
-    for (idx, task) in tasks.into_iter().enumerate() {
-        let sem = semaphore.clone();
-        futs.push(async move {
-            let _permit = sem.acquire().await.expect("semaphore closed unexpectedly");
-            task.await.map(|val| (idx, val))
-        });
-    }
+    let tasks = tasks
+        .enumerate()
+        .map(|(idx, task)| async move { task.await.map(|val| (idx, val)) });
 
-    let mut indexed_results = Vec::new();
+    let mut futs = std::pin::pin!(run_with_concurrency(max_concurrent, tasks));
     while let Some(result) = futs.next().await {
-        indexed_results.push(result?);
+        let (idx, val) = result?;
+        out[idx] = val;
     }
-    indexed_results.sort_by_key(|(idx, _)| *idx);
-    Ok(indexed_results.into_iter().map(|(_, val)| val).collect())
+
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    type BoxedFuture<T, E> = std::pin::Pin<Box<dyn Future<Output = Result<T, E>> + Send>>;
+
+    #[tokio::test]
+    async fn test_run_with_concurrency_collect_preserves_order() {
+        // Tasks complete in reverse order but results should be in original order
+        let tasks: Vec<BoxedFuture<i32, ()>> = vec![
+            Box::pin(async {
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                Ok(1)
+            }),
+            Box::pin(async {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                Ok(2)
+            }),
+            Box::pin(async {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                Ok(3)
+            }),
+        ];
+
+        let results = run_with_concurrency_collect(3, tasks.into_iter())
+            .await
+            .unwrap();
+        assert_eq!(results, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn test_run_with_concurrency_collect_empty() {
+        let tasks: Vec<BoxedFuture<i32, ()>> = vec![];
+        let results = run_with_concurrency_collect(4, tasks.into_iter())
+            .await
+            .unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_run_with_concurrency_collect_single_item() {
+        let tasks: Vec<BoxedFuture<i32, ()>> = vec![Box::pin(async { Ok(42) })];
+        let results = run_with_concurrency_collect(4, tasks.into_iter())
+            .await
+            .unwrap();
+        assert_eq!(results, vec![42]);
+    }
+
+    #[tokio::test]
+    async fn test_run_with_concurrency_collect_error_propagation() {
+        let tasks: Vec<BoxedFuture<i32, &str>> = vec![
+            Box::pin(async { Ok(1) }),
+            Box::pin(async { Err("error") }),
+            Box::pin(async { Ok(3) }),
+        ];
+
+        let result = run_with_concurrency_collect(3, tasks.into_iter()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "error");
+    }
+
+    #[tokio::test]
+    async fn test_run_with_concurrency_collect_respects_concurrency_limit() {
+        let active_count = Arc::new(AtomicUsize::new(0));
+        let max_observed = Arc::new(AtomicUsize::new(0));
+
+        let tasks: Vec<_> = (0..10)
+            .map(|i| {
+                let active = active_count.clone();
+                let max_obs = max_observed.clone();
+                Box::pin(async move {
+                    let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_obs.fetch_max(current, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    Ok::<_, ()>(i)
+                }) as BoxedFuture<i32, ()>
+            })
+            .collect();
+
+        let results = run_with_concurrency_collect(3, tasks.into_iter())
+            .await
+            .unwrap();
+
+        // Results should be in order
+        assert_eq!(results, (0..10).collect::<Vec<_>>());
+
+        // Max concurrent should not exceed limit
+        assert!(max_observed.load(Ordering::SeqCst) <= 3);
+    }
+
+    #[tokio::test]
+    async fn test_run_with_concurrency_collect_many_items() {
+        let tasks: Vec<BoxedFuture<i32, ()>> = (0..100)
+            .map(|i| Box::pin(async move { Ok(i * 2) }) as _)
+            .collect();
+
+        let results = run_with_concurrency_collect(4, tasks.into_iter())
+            .await
+            .unwrap();
+        let expected: Vec<_> = (0..100).map(|i| i * 2).collect();
+        assert_eq!(results, expected);
+    }
 }
