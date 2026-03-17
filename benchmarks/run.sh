@@ -40,7 +40,7 @@ spec_to_chain_type() {
     esac
 }
 
-# Detect chain by querying the API
+# Detect chain by querying rest-api /capabilities -> .chain
 detect_chain() {
     local host port base_url response chain_spec detect_url
     host=$(jq -r '.server.host' "$CONFIG_FILE")
@@ -55,14 +55,9 @@ detect_chain() {
         return
     }
 
-    chain_spec=$(echo "$response" | jq -r '.chain // empty' 2>/dev/null) || {
-        echo "  (Got response but could not parse chain field)" >&2
-        echo ""
-        return
-    }
-
+    chain_spec=$(echo "$response" | jq -r '.chain // empty' 2>/dev/null) || chain_spec=""
     if [ -z "$chain_spec" ]; then
-        echo "  (Response missing chain field from $detect_url)" >&2
+        echo "  (Could not detect chain from $detect_url)" >&2
     fi
 
     echo "$chain_spec"

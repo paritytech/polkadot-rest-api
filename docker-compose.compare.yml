@@ -1,3 +1,4 @@
+name: bench-comparison
 # Side-by-side benchmark compose — both APIs + shared monitoring
 #
 # Usage:
@@ -13,10 +14,20 @@
 #   BENCH_API_PREFIX=/v1 ./benchmarks/run.sh blocks_head   # rest-api on :8080
 #   BENCH_API_PREFIX=    ./benchmarks/run.sh blocksHead     # sidecar on :8045 (set port in benchmark_config.json)
 
+  # ---------------------------------------------------------------
+  # Pinned versions for reproducible comparison:
+  #   rest-api:  62e5b11 — chore: release v0.1.0-beta.5
+  #   sidecar:   7289317 — chore(deps): bump docker/login-action from 3 to 4 #1912
+  # ---------------------------------------------------------------
+
 services:
   rest-api:
     container_name: rest-api-compare
-    build: .
+    build:
+      context: https://github.com/paritytech/polkadot-rest-api.git#62e5b11fcf006a79d2b5eabf078305a15fb36366
+      dockerfile: Dockerfile
+      args:
+        VCS_REF: 62e5b11fcf006a79d2b5eabf078305a15fb36366
     read_only: true
     restart: on-failure
     ports:
@@ -29,8 +40,10 @@ services:
   sidecar:
     container_name: sidecar
     build:
-      context: ../substrate-api-sidecar
+      context: https://github.com/paritytech/substrate-api-sidecar.git#728931747fe17750e46734d9b879229406b80e80
       dockerfile: Dockerfile
+      args:
+        VCS_REF: 728931747fe17750e46734d9b879229406b80e80
     restart: on-failure
     ports:
       - "8045:8080"
