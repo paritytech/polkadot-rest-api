@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Benchmark Report: rest-api vs sidecar</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+         background: #0d1117; color: #c9d1d9; padding: 24px; max-width: 1400px; margin: 0 auto; }
+  h1 { text-align: center; margin-bottom: 8px; font-size: 1.5em; color: #e6edf3; }
+  .subtitle { text-align: center; color: #8b949e; margin-bottom: 24px; font-size: 0.85em; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .card.full { grid-column: 1 / -1; }
+  .card h2 { font-size: 1em; color: #e6edf3; margin-bottom: 4px; }
+  .card .insight { font-size: 0.8em; color: #8b949e; margin-bottom: 12px; line-height: 1.5; }
+  .card .insight .better { color: #3fb950; font-weight: 600; }
+  .card .insight .worse { color: #f85149; font-weight: 600; }
+  .card .insight .neutral { color: #d29922; font-weight: 600; }
+  canvas { width: 100% !important; }
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px; text-align: center; }
+  .stat .label { font-size: 0.7em; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .value { font-size: 1.4em; font-weight: 700; margin-top: 4px; }
+  .stat .detail { font-size: 0.7em; color: #8b949e; margin-top: 2px; }
+  .better { color: #3fb950; }
+  .worse { color: #f85149; }
+  .neutral { color: #c9d1d9; }
+  .variance-note { background: #1c2128; border: 1px solid #30363d; border-radius: 8px;
+                   padding: 16px; margin-bottom: 20px; font-size: 0.85em; line-height: 1.6; }
+  .variance-note h3 { color: #d29922; font-size: 0.95em; margin-bottom: 8px; }
+  .meta { text-align: center; color: #484f58; font-size: 0.75em; margin-top: 20px; }
+</style>
+</head>
+<body>
+
+<h1>Benchmark Report: rest-api vs sidecar</h1>
+<p class="subtitle">
+  Endpoint: <strong>blocks_extrinsics</strong> |
+  Scenario: light_load |
+  Threads: 2, Connections: 10 |
+  Chain: statemint |
+  Runs: 3 vs 1 |
+  2026-03-12 20:38
+</p>
+
+<div class="summary">
+  <div class="stat">
+    <div class="label">Runs - rest-api</div>
+    <div class="value neutral">3</div>
+    <div class="detail">benchmark executions</div>
+  </div>
+  <div class="stat">
+    <div class="label">Runs - sidecar</div>
+    <div class="value neutral">1</div>
+    <div class="detail">benchmark executions</div>
+  </div>
+  <div class="stat">
+    <div class="label">Median RPS - rest-api</div>
+    <div class="value neutral">75.1500</div>
+    <div class="detail">avg: 74.3200 | stdev: 2.3192</div>
+  </div>
+  <div class="stat">
+    <div class="label">Median RPS - sidecar</div>
+    <div class="value neutral">76.8700</div>
+    <div class="detail">avg: 76.8700 | stdev: 0</div>
+  </div>
+  <div class="stat">
+    <div class="label">Median Latency - rest-api</div>
+    <div class="value neutral">155.0600ms</div>
+    <div class="detail">avg: 150.1567ms | stdev: 9.2121ms</div>
+  </div>
+  <div class="stat">
+    <div class="label">Median Latency - sidecar</div>
+    <div class="value neutral">164.3800ms</div>
+    <div class="detail">avg: 164.3800ms | stdev: 0ms</div>
+  </div>
+  <div class="stat">
+    <div class="label">Peak RSS - rest-api</div>
+    <div class="value neutral">203.8800 MB</div>
+    <div class="detail">start: 190.0000 MB | delta: 0.1400 MB</div>
+  </div>
+  <div class="stat">
+    <div class="label">Peak RSS - sidecar</div>
+    <div class="value neutral">202.3000 MB</div>
+    <div class="detail">start: 196.8800 MB | delta: 0.0000 MB</div>
+  </div>
+</div>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>Latency Percentiles (Median of Runs) - lower is better</h2>
+    <div class="insight" id="latencyInsight"></div>
+    <canvas id="latencyChart"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Throughput (RPS per Run) - higher is better</h2>
+    <div class="insight" id="rpsInsight"></div>
+    <canvas id="rpsChart"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Latency Distribution Curve (Median) - lower is better</h2>
+    <p style="font-size:0.75em; color:#8b949e; margin-bottom:8px;">
+      This chart shows how latency increases from the typical request (P50) to the worst cases (P99.9).
+      A <strong>flat line</strong> means consistent response times. A <strong>steep rise</strong> at the right
+      means some requests take much longer than average — the steeper the curve, the worse the tail latency.
+      The lower and flatter the line, the better.
+    </p>
+    <div class="insight" id="distInsight"></div>
+    <canvas id="distChart"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>P99 Latency per Run - lower &amp; tighter is better</h2>
+    <div class="insight" id="p99Insight"></div>
+    <canvas id="p99Chart"></canvas>
+  </div>
+
+  <div class="card full">
+    <h2>RPS per Run - higher &amp; tighter is better</h2>
+    <div class="insight" id="rpsRunInsight"></div>
+    <canvas id="rpsRunChart" style="height:250px"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Memory RSS (Median of Runs) - lower is better</h2>
+    <div class="insight" id="memInsight"></div>
+    <canvas id="memChart"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>CPU Usage (Median of Runs) - lower is better</h2>
+    <div class="insight" id="cpuInsight"></div>
+    <canvas id="cpuChart"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Peak RSS per Run (MB) - lower &amp; tighter is better</h2>
+    <div class="insight" id="peakRssRunInsight"></div>
+    <canvas id="peakRssRunChart"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Avg CPU per Run (%) - lower &amp; tighter is better</h2>
+    <div class="insight" id="avgCpuRunInsight"></div>
+    <canvas id="avgCpuRunChart"></canvas>
+  </div>
+
+</div>
+
+<div class="variance-note">
+  <h3>How to read this report</h3>
+  <p>
+    Each benchmark was run multiple times. The <strong>median</strong> is used for comparison because it
+    ignores outliers (e.g., a single slow run caused by GC, OS scheduling, or network jitter).
+  </p>
+  <p style="margin-top:8px">
+    If the <strong>average is significantly lower than the median</strong>, it means some runs were much
+    slower than typical — this indicates <strong>high variance</strong>. High variance is itself a performance
+    signal: it may indicate garbage collection pauses (common in Node.js/TypeScript runtimes like Sidecar),
+    memory pressure, or unstable response times under load. A tool with lower variance delivers more
+    predictable, reliable performance.
+  </p>
+  <p style="margin-top:8px">
+    <strong>stdev</strong> (standard deviation) quantifies the spread. Lower stdev = more consistent runs.
+  </p>
+</div>
+<script>
+const LA = 'rest-api';
+const LB = 'sidecar';
+const colorA = 'rgba(56, 166, 247, 0.8)';
+const colorB = 'rgba(240, 146, 53, 0.8)';
+const colorALight = 'rgba(56, 166, 247, 0.15)';
+const colorBLight = 'rgba(240, 146, 53, 0.15)';
+const borderA = 'rgb(56, 166, 247)';
+const borderB = 'rgb(240, 146, 53)';
+
+Chart.defaults.color = '#c9d1d9';
+Chart.defaults.borderColor = '#30363d';
+
+// --- Helpers ---
+function pctDiff(a, b) {
+  if (a === 0) return 'N/A';
+  return ((b - a) / a * 100).toFixed(1) + '%';
+}
+function winner(aVal, bVal, lowerIsBetter) {
+  if (Math.abs(aVal - bVal) / Math.max(aVal, bVal) < 0.02) return 'neutral';
+  if (lowerIsBetter) return aVal < bVal ? 'a' : 'b';
+  return aVal > bVal ? 'a' : 'b';
+}
+function winnerText(w, metricName, aVal, bVal, lowerIsBetter) {
+  const diff = Math.abs(((bVal - aVal) / aVal) * 100).toFixed(1);
+  if (w === 'neutral') return '<span class="neutral">Virtually identical</span> — within 2% difference.';
+  const winLabel = w === 'a' ? LA : LB;
+  const betterWord = lowerIsBetter ? 'lower' : 'higher';
+  return '<span class="better">' + winLabel + ' wins</span> with ' + diff + '% ' + betterWord + ' ' + metricName + '.';
+}
+
+// --- Median latency values ---
+const mA = { avg:155.0600, p50:119.8200, p75:128.4700, p90:151.0500, p95:410.1700, p99:886.8800, p999:1026.8900 };
+const mB = { avg:164.3800, p50:117.6300, p75:137.8200, p90:169.6900, p95:542.9000, p99:1195.8300, p999:1463.8100 };
+const mA_rps = 75.1500, mB_rps = 76.8700;
+const avgA_rps = 74.3200, avgB_rps = 76.8700;
+const sdA_rps = 2.3192, sdB_rps = 0;
+const sdA_p99 = 355.5774, sdB_p99 = 0;
+
+// Individual runs
+const runsA_rps = [75.15,76.11,71.70];
+const runsB_rps = [76.87];
+const runsA_avg = [155.88,155.06,139.53];
+const runsB_avg = [164.38];
+const runsA_p99 = [910.44,886.88,283.12];
+const runsB_p99 = [1195.83];
+
+// --- 1. Latency Percentiles Bar Chart ---
+new Chart(document.getElementById('latencyChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Avg', 'P50', 'P75', 'P90', 'P95', 'P99', 'P99.9'],
+    datasets: [
+      { label: LA, data: [mA.avg, mA.p50, mA.p75, mA.p90, mA.p95, mA.p99, mA.p999],
+        backgroundColor: colorA, borderColor: borderA, borderWidth: 1 },
+      { label: LB, data: [mB.avg, mB.p50, mB.p75, mB.p90, mB.p95, mB.p99, mB.p999],
+        backgroundColor: colorB, borderColor: borderB, borderWidth: 1 }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(2) + 'ms' }}},
+    scales: { y: { beginAtZero: true, title: { display: true, text: 'ms' }}}
+  }
+});
+// Insight
+(function(){
+  const w = winner(mA.p99, mB.p99, true);
+  let txt = winnerText(w, 'P99 latency', mA.p99, mB.p99, true);
+  const tailA = mA.p99 / mA.p50, tailB = mB.p99 / mB.p50;
+  if (tailA > tailB * 1.2) txt += ' ' + LA + ' has a longer tail (P99/P50 ratio: ' + tailA.toFixed(1) + 'x vs ' + tailB.toFixed(1) + 'x), meaning worse worst-case behavior.';
+  else if (tailB > tailA * 1.2) txt += ' ' + LB + ' has a longer tail (P99/P50 ratio: ' + tailB.toFixed(1) + 'x vs ' + tailA.toFixed(1) + 'x), meaning worse worst-case behavior.';
+  document.getElementById('latencyInsight').innerHTML = txt;
+})();
+
+// --- 2. RPS Bar (median + avg) ---
+new Chart(document.getElementById('rpsChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Median', 'Average'],
+    datasets: [
+      { label: LA, data: [mA_rps, avgA_rps], backgroundColor: colorA, borderColor: borderA, borderWidth: 1 },
+      { label: LB, data: [mB_rps, avgB_rps], backgroundColor: colorB, borderColor: borderB, borderWidth: 1 }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(2) + ' RPS' }}},
+    scales: { y: { beginAtZero: true, title: { display: true, text: 'Requests/sec' }}}
+  }
+});
+(function(){
+  const w = winner(mA_rps, mB_rps, false);
+  let txt = winnerText(w, 'throughput', mA_rps, mB_rps, false);
+  // Variance check
+  const varA = avgA_rps < mA_rps * 0.95;
+  const varB = avgB_rps < mB_rps * 0.95;
+  if (varA && !varB) txt += ' <span class="worse">' + LA + ' shows high variance</span> — average is notably below median, indicating inconsistent runs.';
+  if (varB && !varA) txt += ' <span class="worse">' + LB + ' shows high variance</span> — average is notably below median, indicating inconsistent runs (possible GC pauses or resource contention).';
+  if (varA && varB) txt += ' Both tools show high variance (average well below median).';
+  document.getElementById('rpsInsight').innerHTML = txt;
+})();
+
+// --- 3. Latency Distribution Line ---
+new Chart(document.getElementById('distChart'), {
+  type: 'line',
+  data: {
+    labels: ['P50', 'P75', 'P90', 'P95', 'P99', 'P99.9'],
+    datasets: [
+      { label: LA, data: [mA.p50, mA.p75, mA.p90, mA.p95, mA.p99, mA.p999],
+        borderColor: borderA, backgroundColor: colorALight, fill: true, tension: 0.3, pointRadius: 5 },
+      { label: LB, data: [mB.p50, mB.p75, mB.p90, mB.p95, mB.p99, mB.p999],
+        borderColor: borderB, backgroundColor: colorBLight, fill: true, tension: 0.3, pointRadius: 5 }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(2) + 'ms' }}},
+    scales: { y: { beginAtZero: true, title: { display: true, text: 'ms' }}}
+  }
+});
+(function(){
+  const slopeA = mA.p999 - mA.p50, slopeB = mB.p999 - mB.p50;
+  const w = winner(slopeA, slopeB, true);
+  let txt = 'Spread from P50 to P99.9: ' + LA + '=' + slopeA.toFixed(1) + 'ms, ' + LB + '=' + slopeB.toFixed(1) + 'ms. ';
+  if (w === 'a') txt += '<span class="better">' + LA + '</span> has a flatter curve — more predictable latency under load.';
+  else if (w === 'b') txt += '<span class="better">' + LB + '</span> has a flatter curve — more predictable latency under load.';
+  else txt += 'Both tools have similar latency spread.';
+  document.getElementById('distInsight').innerHTML = txt;
+})();
+
+// --- 4. P99 per run scatter ---
+const maxRuns = Math.max(runsA_p99.length, runsB_p99.length);
+const runLabels = Array.from({length: maxRuns}, (_, i) => 'Run ' + (i+1));
+new Chart(document.getElementById('p99Chart'), {
+  type: 'bar',
+  data: {
+    labels: runLabels,
+    datasets: [
+      { label: LA, data: runsA_p99, backgroundColor: colorA, borderColor: borderA, borderWidth: 1 },
+      { label: LB, data: runsB_p99, backgroundColor: colorB, borderColor: borderB, borderWidth: 1 }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(2) + 'ms' }}},
+    scales: { y: { beginAtZero: true, title: { display: true, text: 'P99 Latency (ms)' }}}
+  }
+});
+(function(){
+  let txt = 'P99 stdev across runs: ' + LA + '=' + sdA_p99.toFixed(1) + 'ms, ' + LB + '=' + sdB_p99.toFixed(1) + 'ms. ';
+  if (sdA_p99 > sdB_p99 * 1.5) txt += '<span class="worse">' + LA + ' has much higher P99 variance</span> — tail latency is less predictable.';
+  else if (sdB_p99 > sdA_p99 * 1.5) txt += '<span class="worse">' + LB + ' has much higher P99 variance</span> — tail latency is less predictable. This can indicate GC pauses or thread pool saturation.';
+  else txt += 'Both tools show similar P99 consistency.';
+  document.getElementById('p99Insight').innerHTML = txt;
+})();
+
+// --- 5. RPS per run ---
+new Chart(document.getElementById('rpsRunChart'), {
+  type: 'bar',
+  data: {
+    labels: runLabels,
+    datasets: [
+      { label: LA, data: runsA_rps, backgroundColor: colorA, borderColor: borderA, borderWidth: 1 },
+      { label: LB, data: runsB_rps, backgroundColor: colorB, borderColor: borderB, borderWidth: 1 }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(2) + ' RPS' }}},
+    scales: { y: { beginAtZero: true, title: { display: true, text: 'Requests/sec' }}}
+  }
+});
+(function(){
+  let txt = 'RPS stdev: ' + LA + '=' + sdA_rps.toFixed(2) + ', ' + LB + '=' + sdB_rps.toFixed(2) + '. ';
+  const cvA = sdA_rps / mA_rps, cvB = sdB_rps / mB_rps;
+  if (cvA > 0.1 || cvB > 0.1) {
+    const unstable = cvA > cvB ? LA : LB;
+    txt += '<span class="worse">' + unstable + ' has higher relative variance</span> (coefficient of variation: '
+        + (cvA*100).toFixed(1) + '% vs ' + (cvB*100).toFixed(1) + '%). ';
+    txt += 'High RPS variance suggests the tool\'s throughput is less stable — possible causes include garbage collection, connection pool churn, or runtime overhead.';
+  } else {
+    txt += 'Both tools show consistent throughput across runs.';
+  }
+  document.getElementById('rpsRunInsight').innerHTML = txt;
+})();
+
+// --- 6. Memory RSS Bar Chart ---
+const memA = { start:190.0000, peak:203.8800, end:203.8300, delta:0.1400 };
+const memB = { start:196.8800, peak:202.3000, end:196.8800, delta:0.0000 };
+
+new Chart(document.getElementById('memChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Start RSS', 'Peak RSS', 'End RSS', 'Delta RSS'],
+    datasets: [
+      { label: LA, data: [memA.start, memA.peak, memA.end, memA.delta],
+        backgroundColor: colorA, borderColor: borderA, borderWidth: 1 },
+      { label: LB, data: [memB.start, memB.peak, memB.end, memB.delta],
+        backgroundColor: colorB, borderColor: borderB, borderWidth: 1 }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(2) + ' MB' }}},
+    scales: { y: { beginAtZero: true, title: { display: true, text: 'MB' }}}
+  }
+});
+(function(){
+  const w = winner(memA.peak, memB.peak, true);
+  let txt = winnerText(w, 'peak memory', memA.peak, memB.peak, true);
+  if (memA.delta > memB.delta * 1.5) txt += ' <span class="worse">' + LA + ' grew ' + memA.delta.toFixed(1) + ' MB vs ' + memB.delta.toFixed(1) + ' MB</span> — higher memory growth under load.';
+  else if (memB.delta > memA.delta * 1.5) txt += ' <span class="worse">' + LB + ' grew ' + memB.delta.toFixed(1) + ' MB vs ' + memA.delta.toFixed(1) + ' MB</span> — higher memory growth under load.';
+  document.getElementById('memInsight').innerHTML = txt;
+})();
+
+// --- 7. CPU Bar Chart ---
+const cpuA = { avg:4.5000, peak:28.2000 };
+const cpuB = { avg:3.1000, peak:17.4000 };
+
+new Chart(document.getElementById('cpuChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Avg CPU %', 'Peak CPU %'],
+    datasets: [
+      { label: LA, data: [cpuA.avg, cpuA.peak],
+        backgroundColor: colorA, borderColor: borderA, borderWidth: 1 },
+      { label: LB, data: [cpuB.avg, cpuB.peak],
+        backgroundColor: colorB, borderColor: borderB, borderWidth: 1 }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(1) + '%' }}},
+    scales: { y: { beginAtZero: true, title: { display: true, text: 'CPU %' }}}
+  }
+});
+(function(){
+  const w = winner(cpuA.avg, cpuB.avg, true);
+  let txt = winnerText(w, 'CPU usage', cpuA.avg, cpuB.avg, true);
+  if (cpuA.peak > cpuB.peak * 1.3) txt += ' ' + LA + ' also has higher peak CPU (' + cpuA.peak.toFixed(1) + '% vs ' + cpuB.peak.toFixed(1) + '%).';
+  else if (cpuB.peak > cpuA.peak * 1.3) txt += ' ' + LB + ' also has higher peak CPU (' + cpuB.peak.toFixed(1) + '% vs ' + cpuA.peak.toFixed(1) + '%).';
+  document.getElementById('cpuInsight').innerHTML = txt;
+})();
+
+// --- 8. Peak RSS per run ---
+const runsA_peakRss = [196.62,203.88,206.08];
+const runsB_peakRss = [202.30];
+
+new Chart(document.getElementById('peakRssRunChart'), {
+  type: 'bar',
+  data: {
+    labels: runLabels,
+    datasets: [
+      { label: LA, data: runsA_peakRss, backgroundColor: colorA, borderColor: borderA, borderWidth: 1 },
+      { label: LB, data: runsB_peakRss, backgroundColor: colorB, borderColor: borderB, borderWidth: 1 }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(2) + ' MB' }}},
+    scales: { y: { beginAtZero: true, title: { display: true, text: 'Peak RSS (MB)' }}}
+  }
+});
+(function(){
+  const avgA = runsA_peakRss.reduce((a,b)=>a+b,0)/runsA_peakRss.length;
+  const avgB = runsB_peakRss.reduce((a,b)=>a+b,0)/runsB_peakRss.length;
+  const w = winner(avgA, avgB, true);
+  document.getElementById('peakRssRunInsight').innerHTML = winnerText(w, 'memory footprint', avgA, avgB, true);
+})();
+
+// --- 9. Avg CPU per run ---
+const runsA_avgCpu = [4.5,4.8,3.6];
+const runsB_avgCpu = [3.1];
+
+new Chart(document.getElementById('avgCpuRunChart'), {
+  type: 'bar',
+  data: {
+    labels: runLabels,
+    datasets: [
+      { label: LA, data: runsA_avgCpu, backgroundColor: colorA, borderColor: borderA, borderWidth: 1 },
+      { label: LB, data: runsB_avgCpu, backgroundColor: colorB, borderColor: borderB, borderWidth: 1 }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(1) + '%' }}},
+    scales: { y: { beginAtZero: true, title: { display: true, text: 'Avg CPU (%)' }}}
+  }
+});
+(function(){
+  const avgA = runsA_avgCpu.reduce((a,b)=>a+b,0)/runsA_avgCpu.length;
+  const avgB = runsB_avgCpu.reduce((a,b)=>a+b,0)/runsB_avgCpu.length;
+  const w = winner(avgA, avgB, true);
+  document.getElementById('avgCpuRunInsight').innerHTML = winnerText(w, 'CPU efficiency', avgA, avgB, true);
+})();
+</script>
+
+<p class="meta">
+  Generated by compare_runs.sh | rest-api (3 runs) vs sidecar (1 runs) | 2026-03-12 20:38:12
+</p>
+
+</body>
+</html>

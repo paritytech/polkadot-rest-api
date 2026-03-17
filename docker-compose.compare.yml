@@ -1,0 +1,88 @@
+# Side-by-side benchmark compose — both APIs + shared monitoring
+#
+# Usage:
+#   docker compose -f docker-compose.compare.yml up -d --build
+#
+# Then:
+#   - rest-api:    http://localhost:8080
+#   - sidecar:     http://localhost:8045
+#   - Grafana:     http://localhost:3000 (admin/admin)
+#   - Prometheus:  http://localhost:9090
+#
+# Run benchmarks from host:
+#   BENCH_API_PREFIX=/v1 ./benchmarks/run.sh blocks_head   # rest-api on :8080
+#   BENCH_API_PREFIX=    ./benchmarks/run.sh blocksHead     # sidecar on :8045 (set port in benchmark_config.json)
+
+services:
+  rest-api:
+    container_name: rest-api-compare
+    build: .
+    read_only: true
+    restart: on-failure
+    ports:
+      - "8080:8080"
+    environment:
+      SAS_SUBSTRATE_MULTI_CHAIN_URL: '[{"url":"wss://rpc.polkadot.io","type":"relay"}]'
+      SAS_SUBSTRATE_URL: wss://asset-hub-polkadot.dotters.network
+      SAS_METRICS_ENABLED: "true"
+
+  sidecar:
+    container_name: sidecar
+    build:
+      context: ../substrate-api-sidecar
+      dockerfile: Dockerfile
+    restart: on-failure
+    ports:
+      - "8045:8080"
+      - "9100:9100"
+    environment:
+      SAS_SUBSTRATE_MULTI_CHAIN_URL: '[{"url":"wss://rpc.polkadot.io","type":"relay"}]'
+      SAS_SUBSTRATE_URL: wss://asset-hub-polkadot.dotters.network
+      SAS_EXPRESS_PORT: "8080"
+      SAS_EXPRESS_BIND_HOST: "0.0.0.0"
+      SAS_METRICS_ENABLED: "true"
+      SAS_METRICS_PROM_HOST: "0.0.0.0"
+      SAS_METRICS_PROM_PORT: "9100"
+
+  process-exporter:
+    container_name: process-exporter
+    image: ncabatoff/process-exporter:latest
+    pid: host
+    privileged: true
+    volumes:
+      - /proc:/host/proc:ro
+      - ./metrics/process-exporter-compare.yml:/config/process-exporter.yml:ro
+    command:
+      - "--procfs=/host/proc"
+      - "-config.path=/config/process-exporter.yml"
+    ports:
+      - "9256:9256"
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:latest
+    volumes:
+      - ./metrics/prometheus-compare.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    depends_on:
+      - rest-api
+      - sidecar
+      - process-exporter
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:latest
+    volumes:
+      - ./metrics/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      - prometheus

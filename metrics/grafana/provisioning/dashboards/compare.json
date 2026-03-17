@@ -1,0 +1,453 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "title": "Throughput",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "expr": "rate(polkadot_rest_api_http_request_success[1m])",
+          "legendFormat": "rest-api (success)",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(sas_http_request_success_total[1m])",
+          "legendFormat": "sidecar (success)",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(polkadot_rest_api_http_request_error[1m])",
+          "legendFormat": "rest-api (errors)",
+          "refId": "C"
+        },
+        {
+          "expr": "rate(sas_http_request_error_total[1m])",
+          "legendFormat": "sidecar (errors)",
+          "refId": "D"
+        }
+      ],
+      "title": "Requests/sec",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(rate(polkadot_rest_api_request_duration_seconds_count{route=~\"$route\"}[1m]))",
+          "legendFormat": "rest-api",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(sas_request_duration_seconds_count{route=~\"$route\"}[1m]))",
+          "legendFormat": "sidecar",
+          "refId": "B"
+        }
+      ],
+      "title": "Requests/sec by Route",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "targets": [
+        {
+          "expr": "rate(polkadot_rest_api_http_request_error[1m])",
+          "legendFormat": "rest-api errors",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(sas_http_request_error_total[1m])",
+          "legendFormat": "sidecar errors",
+          "refId": "B"
+        }
+      ],
+      "title": "Error Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
+          "unit": "decbytes"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "targets": [
+        {
+          "expr": "rate(polkadot_rest_api_response_size_bytes_sum[1m]) / rate(polkadot_rest_api_response_size_bytes_count[1m])",
+          "legendFormat": "rest-api avg response",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(sas_response_size_bytes_sum[1m]) / rate(sas_response_size_bytes_count[1m])",
+          "legendFormat": "sidecar avg response",
+          "refId": "B"
+        }
+      ],
+      "title": "Response Size",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "title": "Latency",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(polkadot_rest_api_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "rest-api p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(sas_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "sidecar p50",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(polkadot_rest_api_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "rest-api p95",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(sas_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "sidecar p95",
+          "refId": "D"
+        }
+      ],
+      "title": "Latency P50 / P95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(polkadot_rest_api_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "rest-api p99",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(sas_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "sidecar p99",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.999, sum by (le) (rate(polkadot_rest_api_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "rest-api p99.9",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.999, sum by (le) (rate(sas_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "sidecar p99.9",
+          "refId": "D"
+        }
+      ],
+      "title": "Latency P99 / P99.9",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "targets": [
+        {
+          "expr": "rate(polkadot_rest_api_request_duration_seconds_sum{route=~\"$route\"}[1m]) / rate(polkadot_rest_api_request_duration_seconds_count{route=~\"$route\"}[1m])",
+          "legendFormat": "rest-api avg",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(sas_request_duration_seconds_sum{route=~\"$route\"}[1m]) / rate(sas_request_duration_seconds_count{route=~\"$route\"}[1m])",
+          "legendFormat": "sidecar avg",
+          "refId": "B"
+        }
+      ],
+      "title": "Request Duration (avg)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "title": "Process Resources",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
+          "unit": "decbytes"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 35 },
+      "targets": [
+        {
+          "expr": "namedprocess_namegroup_memory_bytes{groupname=\"polkadot-rest-api\", memtype=\"resident\"}",
+          "legendFormat": "rest-api RSS",
+          "refId": "A"
+        },
+        {
+          "expr": "namedprocess_namegroup_memory_bytes{groupname=\"substrate-api-sidecar\", memtype=\"resident\"}",
+          "legendFormat": "sidecar RSS",
+          "refId": "B"
+        }
+      ],
+      "title": "Memory (RSS)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 35 },
+      "targets": [
+        {
+          "expr": "rate(namedprocess_namegroup_cpu_seconds_total{groupname=\"polkadot-rest-api\"}[1m])",
+          "legendFormat": "rest-api CPU ({{mode}})",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(namedprocess_namegroup_cpu_seconds_total{groupname=\"substrate-api-sidecar\"}[1m])",
+          "legendFormat": "sidecar CPU ({{mode}})",
+          "refId": "B"
+        }
+      ],
+      "title": "CPU Usage",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 },
+      "title": "Correlation",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 44 },
+      "targets": [
+        {
+          "expr": "sum(rate(polkadot_rest_api_request_duration_seconds_count[1m]))",
+          "legendFormat": "rest-api RPS",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(sas_request_duration_seconds_count[1m]))",
+          "legendFormat": "sidecar RPS",
+          "refId": "B"
+        },
+        {
+          "expr": "namedprocess_namegroup_memory_bytes{groupname=\"polkadot-rest-api\", memtype=\"resident\"} / 1e6",
+          "legendFormat": "rest-api RSS (MB)",
+          "refId": "C"
+        },
+        {
+          "expr": "namedprocess_namegroup_memory_bytes{groupname=\"substrate-api-sidecar\", memtype=\"resident\"} / 1e6",
+          "legendFormat": "sidecar RSS (MB)",
+          "refId": "D"
+        }
+      ],
+      "title": "Throughput vs Memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 44 },
+      "targets": [
+        {
+          "expr": "sum(rate(polkadot_rest_api_request_duration_seconds_count[1m]))",
+          "legendFormat": "rest-api RPS",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(sas_request_duration_seconds_count[1m]))",
+          "legendFormat": "sidecar RPS",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(namedprocess_namegroup_cpu_seconds_total{groupname=\"polkadot-rest-api\"}[1m])",
+          "legendFormat": "rest-api CPU",
+          "refId": "C"
+        },
+        {
+          "expr": "rate(namedprocess_namegroup_cpu_seconds_total{groupname=\"substrate-api-sidecar\"}[1m])",
+          "legendFormat": "sidecar CPU",
+          "refId": "D"
+        }
+      ],
+      "title": "Throughput vs CPU",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(polkadot_rest_api_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "rest-api p99",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(sas_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "sidecar p99",
+          "refId": "B"
+        },
+        {
+          "expr": "namedprocess_namegroup_memory_bytes{groupname=\"polkadot-rest-api\", memtype=\"resident\"} / 1e6",
+          "legendFormat": "rest-api RSS (MB)",
+          "refId": "C"
+        },
+        {
+          "expr": "namedprocess_namegroup_memory_bytes{groupname=\"substrate-api-sidecar\", memtype=\"resident\"} / 1e6",
+          "legendFormat": "sidecar RSS (MB)",
+          "refId": "D"
+        }
+      ],
+      "title": "Latency vs Memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(polkadot_rest_api_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "rest-api p99",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(sas_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "sidecar p99",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(namedprocess_namegroup_cpu_seconds_total{groupname=\"polkadot-rest-api\"}[1m])",
+          "legendFormat": "rest-api CPU",
+          "refId": "C"
+        },
+        {
+          "expr": "rate(namedprocess_namegroup_cpu_seconds_total{groupname=\"substrate-api-sidecar\"}[1m])",
+          "legendFormat": "sidecar CPU",
+          "refId": "D"
+        }
+      ],
+      "title": "Latency vs CPU",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "tags": ["polkadot", "compare", "benchmark"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+        "definition": "label_values({__name__=~\"polkadot_rest_api_request_duration_seconds_count|sas_request_duration_seconds_count\"}, route)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Endpoint",
+        "multi": true,
+        "name": "route",
+        "query": {
+          "query": "label_values({__name__=~\"polkadot_rest_api_request_duration_seconds_count|sas_request_duration_seconds_count\"}, route)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-15m", "to": "now" },
+  "title": "REST API vs Sidecar Comparison",
+  "uid": "compare-rest-api-sidecar"
+}
