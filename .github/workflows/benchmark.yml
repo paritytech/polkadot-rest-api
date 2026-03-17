@@ -89,7 +89,12 @@ jobs:
             # Skip if no lua file (not a benchmark directory)
             if [ -f "$benchmark_dir/${BENCHMARK_NAME}.lua" ]; then
               echo "Running benchmark: $BENCHMARK_NAME"
-              ./benchmarks/run.sh "$BENCHMARK_NAME" "$SCENARIO" "$HARDWARE_PROFILE" > "artifacts/benchmark_${BENCHMARK_NAME}.txt" 2>&1
+              OUTPUT=$(./benchmarks/run.sh "$BENCHMARK_NAME" "$SCENARIO" "$HARDWARE_PROFILE" 2>&1)
+              if echo "$OUTPUT" | grep -q "Requests/sec:"; then
+                echo "$OUTPUT" > "artifacts/benchmark_${BENCHMARK_NAME}.txt"
+              else
+                echo "  Skipped (not compatible with chain)"
+              fi
             fi
           done
 
