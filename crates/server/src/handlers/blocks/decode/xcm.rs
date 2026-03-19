@@ -432,3 +432,313 @@ impl<'a> XcmDecoder<'a> {
         messages
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parity_scale_codec::Encode;
+    use staging_xcm::VersionedXcm;
+    use staging_xcm::v4 as xcm_v4;
+    use staging_xcm::v5 as xcm_v5;
+
+    /// Helper: SCALE-encode a VersionedXcm and return it as a "0x"-prefixed hex string.
+    fn encode_versioned_xcm(msg: VersionedXcm<()>) -> String {
+        let bytes = msg.encode();
+        format!("0x{}", hex::encode(bytes))
+    }
+
+    #[test]
+    fn test_decode_v4_xcm_withdraw_and_deposit() {
+        // Build a V4 XCM: WithdrawAsset + BuyExecution + DepositAsset
+        let xcm = VersionedXcm::V4(xcm_v4::Xcm(vec![
+            xcm_v4::Instruction::WithdrawAsset(
+                vec![xcm_v4::Asset {
+                    id: xcm_v4::AssetId(xcm_v4::Location::here()),
+                    fun: xcm_v4::Fungibility::Fungible(1_000_000_000),
+                }]
+                .into(),
+            ),
+            xcm_v4::Instruction::BuyExecution {
+                fees: xcm_v4::Asset {
+                    id: xcm_v4::AssetId(xcm_v4::Location::here()),
+                    fun: xcm_v4::Fungibility::Fungible(500_000_000),
+                },
+                weight_limit: xcm_v4::WeightLimit::Unlimited,
+            },
+            xcm_v4::Instruction::DepositAsset {
+                assets: xcm_v4::AssetFilter::Wild(xcm_v4::WildAsset::AllCounted(1)),
+                beneficiary: xcm_v4::Location {
+                    parents: 0,
+                    interior: xcm_v4::Junctions::X1(
+                        [xcm_v4::Junction::AccountId32 {
+                            network: None,
+                            id: [1u8; 32],
+                        }]
+                        .into(),
+                    ),
+                },
+            },
+        ]));
+
+        let hex_str = encode_versioned_xcm(xcm);
+        let result = decode_xcm_message(&hex_str);
+
+        // Should be an array with one element containing "v4" key
+        let arr = result.as_array().expect("result should be an array");
+        assert_eq!(arr.len(), 1, "should have exactly one decoded message");
+        let msg = arr[0].as_object().expect("message should be an object");
+        assert!(
+            msg.contains_key("v4"),
+            "should contain 'v4' key, got keys: {:?}",
+            msg.keys().collect::<Vec<_>>()
+        );
+
+        // The V4 value should be an array of 3 instructions
+        let instructions = msg["v4"]
+            .as_array()
+            .expect("v4 should contain an array of instructions");
+        assert_eq!(instructions.len(), 3, "should have 3 instructions");
+
+        // Check instruction names
+        let first = instructions[0].as_object().unwrap();
+        assert!(
+            first.contains_key("withdrawAsset"),
+            "first instruction should be withdrawAsset"
+        );
+        let second = instructions[1].as_object().unwrap();
+        assert!(
+            second.contains_key("buyExecution"),
+            "second instruction should be buyExecution"
+        );
+        let third = instructions[2].as_object().unwrap();
+        assert!(
+            third.contains_key("depositAsset"),
+            "third instruction should be depositAsset"
+        );
+    }
+
+    #[test]
+    fn test_decode_v5_xcm_withdraw_and_deposit() {
+        // Build a V5 XCM: WithdrawAsset + BuyExecution + DepositAsset
+        let xcm = VersionedXcm::V5(xcm_v5::Xcm(vec![
+            xcm_v5::Instruction::WithdrawAsset(
+                vec![xcm_v5::Asset {
+                    id: xcm_v5::AssetId(xcm_v5::Location::here()),
+                    fun: xcm_v5::Fungibility::Fungible(1_000_000_000),
+                }]
+                .into(),
+            ),
+            xcm_v5::Instruction::BuyExecution {
+                fees: xcm_v5::Asset {
+                    id: xcm_v5::AssetId(xcm_v5::Location::here()),
+                    fun: xcm_v5::Fungibility::Fungible(500_000_000),
+                },
+                weight_limit: xcm_v5::WeightLimit::Unlimited,
+            },
+            xcm_v5::Instruction::DepositAsset {
+                assets: xcm_v5::AssetFilter::Wild(xcm_v5::WildAsset::AllCounted(1)),
+                beneficiary: xcm_v5::Location {
+                    parents: 0,
+                    interior: xcm_v5::Junctions::X1(
+                        [xcm_v5::Junction::AccountId32 {
+                            network: None,
+                            id: [1u8; 32],
+                        }]
+                        .into(),
+                    ),
+                },
+            },
+        ]));
+
+        let hex_str = encode_versioned_xcm(xcm);
+        let result = decode_xcm_message(&hex_str);
+
+        // Should be an array with one element containing "v5" key
+        let arr = result.as_array().expect("result should be an array");
+        assert_eq!(arr.len(), 1, "should have exactly one decoded message");
+        let msg = arr[0].as_object().expect("message should be an object");
+        assert!(
+            msg.contains_key("v5"),
+            "should contain 'v5' key, got keys: {:?}",
+            msg.keys().collect::<Vec<_>>()
+        );
+
+        // The V5 value should be an array of 3 instructions
+        let instructions = msg["v5"]
+            .as_array()
+            .expect("v5 should contain an array of instructions");
+        assert_eq!(instructions.len(), 3, "should have 3 instructions");
+
+        // Check instruction names
+        let first = instructions[0].as_object().unwrap();
+        assert!(
+            first.contains_key("withdrawAsset"),
+            "first instruction should be withdrawAsset"
+        );
+        let second = instructions[1].as_object().unwrap();
+        assert!(
+            second.contains_key("buyExecution"),
+            "second instruction should be buyExecution"
+        );
+        let third = instructions[2].as_object().unwrap();
+        assert!(
+            third.contains_key("depositAsset"),
+            "third instruction should be depositAsset"
+        );
+    }
+
+    #[test]
+    fn test_decode_v5_xcm_with_set_topic() {
+        // V5 XCM with ClearOrigin and SetTopic (common pattern)
+        let topic = [0xABu8; 32];
+        let xcm = VersionedXcm::V5(xcm_v5::Xcm(vec![
+            xcm_v5::Instruction::ClearOrigin,
+            xcm_v5::Instruction::SetTopic(topic),
+        ]));
+
+        let hex_str = encode_versioned_xcm(xcm);
+        let result = decode_xcm_message(&hex_str);
+
+        let arr = result.as_array().unwrap();
+        let msg = arr[0].as_object().unwrap();
+        assert!(msg.contains_key("v5"), "should decode as v5");
+
+        let instructions = msg["v5"].as_array().unwrap();
+        assert_eq!(instructions.len(), 2);
+
+        let first = instructions[0].as_object().unwrap();
+        assert!(first.contains_key("clearOrigin"));
+        let second = instructions[1].as_object().unwrap();
+        assert!(second.contains_key("setTopic"));
+    }
+
+    #[test]
+    fn test_decode_v5_xcm_reserve_asset_deposited() {
+        // V5 XCM: ReserveAssetDeposited + ClearOrigin + BuyExecution + DepositAsset
+        // This is a common pattern for cross-chain transfers
+        let xcm = VersionedXcm::V5(xcm_v5::Xcm(vec![
+            xcm_v5::Instruction::ReserveAssetDeposited(
+                vec![xcm_v5::Asset {
+                    id: xcm_v5::AssetId(xcm_v5::Location {
+                        parents: 1,
+                        interior: xcm_v5::Junctions::Here,
+                    }),
+                    fun: xcm_v5::Fungibility::Fungible(5_000_000_000),
+                }]
+                .into(),
+            ),
+            xcm_v5::Instruction::ClearOrigin,
+            xcm_v5::Instruction::BuyExecution {
+                fees: xcm_v5::Asset {
+                    id: xcm_v5::AssetId(xcm_v5::Location {
+                        parents: 1,
+                        interior: xcm_v5::Junctions::Here,
+                    }),
+                    fun: xcm_v5::Fungibility::Fungible(500_000_000),
+                },
+                weight_limit: xcm_v5::WeightLimit::Unlimited,
+            },
+            xcm_v5::Instruction::DepositAsset {
+                assets: xcm_v5::AssetFilter::Wild(xcm_v5::WildAsset::All),
+                beneficiary: xcm_v5::Location {
+                    parents: 0,
+                    interior: xcm_v5::Junctions::X1(
+                        [xcm_v5::Junction::AccountId32 {
+                            network: None,
+                            id: [2u8; 32],
+                        }]
+                        .into(),
+                    ),
+                },
+            },
+        ]));
+
+        let hex_str = encode_versioned_xcm(xcm);
+        let result = decode_xcm_message(&hex_str);
+
+        let arr = result.as_array().unwrap();
+        let msg = arr[0].as_object().unwrap();
+        assert!(msg.contains_key("v5"));
+
+        let instructions = msg["v5"].as_array().unwrap();
+        assert_eq!(instructions.len(), 4);
+
+        assert!(
+            instructions[0]
+                .as_object()
+                .unwrap()
+                .contains_key("reserveAssetDeposited")
+        );
+        assert!(
+            instructions[1]
+                .as_object()
+                .unwrap()
+                .contains_key("clearOrigin")
+        );
+        assert!(
+            instructions[2]
+                .as_object()
+                .unwrap()
+                .contains_key("buyExecution")
+        );
+        assert!(
+            instructions[3]
+                .as_object()
+                .unwrap()
+                .contains_key("depositAsset")
+        );
+    }
+
+    #[test]
+    fn test_decode_invalid_hex_returns_raw_string() {
+        // Invalid hex should return the raw string
+        let result = decode_xcm_message("not_valid_hex");
+        assert_eq!(result, Value::String("not_valid_hex".to_string()));
+    }
+
+    #[test]
+    fn test_decode_malformed_xcm_returns_raw_hex() {
+        // Valid hex but not a valid XCM message - should return raw hex
+        let result = decode_xcm_message("0xdeadbeef");
+        // The decode should fail and return the raw hex string
+        assert!(
+            result.is_string(),
+            "malformed XCM should return raw hex string"
+        );
+        assert_eq!(result.as_str().unwrap(), "0xdeadbeef");
+    }
+
+    #[test]
+    fn test_v4_and_v5_produce_different_encodings() {
+        // Same logical message encoded as V4 vs V5 should produce different hex
+        // (because the version discriminant byte differs: V4=0x04, V5=0x05)
+        let instructions_v4 = vec![xcm_v4::Instruction::ClearOrigin];
+        let instructions_v5 = vec![xcm_v5::Instruction::ClearOrigin];
+
+        let v4_hex = encode_versioned_xcm(VersionedXcm::V4(xcm_v4::Xcm(instructions_v4)));
+        let v5_hex = encode_versioned_xcm(VersionedXcm::V5(xcm_v5::Xcm(instructions_v5)));
+
+        assert_ne!(v4_hex, v5_hex, "V4 and V5 should have different encodings");
+
+        // V4 should start with "0x04", V5 with "0x05"
+        assert!(
+            v4_hex.starts_with("0x04"),
+            "V4 should start with 0x04, got {}",
+            &v4_hex[..6]
+        );
+        assert!(
+            v5_hex.starts_with("0x05"),
+            "V5 should start with 0x05, got {}",
+            &v5_hex[..6]
+        );
+
+        // Both should decode successfully
+        let r4 = decode_xcm_message(&v4_hex);
+        let r5 = decode_xcm_message(&v5_hex);
+
+        let r4_obj = r4.as_array().unwrap()[0].as_object().unwrap();
+        let r5_obj = r5.as_array().unwrap()[0].as_object().unwrap();
+        assert!(r4_obj.contains_key("v4"));
+        assert!(r5_obj.contains_key("v5"));
+    }
+}

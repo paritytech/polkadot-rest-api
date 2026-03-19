@@ -352,6 +352,16 @@
         "description": "Test block endpoint at Polkadot block 28,490,503 with XCM decoding"
       },
       {
+        "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 28490504,
+        "account_id": null,
+        "query_params": {
+          "decodedXcmMsgs": "true"
+        },
+        "fixture_path": "polkadot/blocks_28490504_decode_xcm_v5.json",
+        "description": "Test block endpoint at Polkadot block 28,490,504 with V5 XCM decoding"
+      },
+      {
         "endpoint": "/v1/blocks/{blockId}/para-inclusions",
         "block_height": 10293194,
         "account_id": null,

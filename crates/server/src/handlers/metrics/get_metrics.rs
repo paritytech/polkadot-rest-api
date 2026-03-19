@@ -40,20 +40,20 @@ pub async fn get_metrics_json() -> impl IntoResponse {
         .iter()
         .map(|mf: &MetricFamily| {
             json!({
-                "name": mf.get_name(),
-                "help": mf.get_help(),
+                "name": mf.name(),
+                "help": mf.help(),
                 "type": format!("{:?}", mf.get_field_type()),
                 "metrics": mf.get_metric().iter().map(|m| {
                     json!({
                         "labels": m.get_label().iter().map(|l| {
                             json!({
-                                "name": l.get_name(),
-                                "value": l.get_value()
+                                "name": l.name(),
+                                "value": l.value()
                             })
                         }).collect::<Vec<_>>(),
-                        "value": if m.has_counter() {
-                            json!(m.get_counter().get_value())
-                        } else if m.has_histogram() {
+                        "value": if m.get_counter().is_some() {
+                            json!(m.get_counter().value())
+                        } else if m.get_histogram().is_some() {
                             let h = m.get_histogram();
                             json!({
                                 "sample_count": h.get_sample_count(),
