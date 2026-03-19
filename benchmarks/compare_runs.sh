@@ -431,7 +431,11 @@ cat > "$OUTPUT" <<'HTMLEOF'
 HTMLEOF
 
 # Now inject actual values using sed
-sed -i '' "s/LABEL_A_PH/$LABEL_A/g; s/LABEL_B_PH/$LABEL_B/g" "$OUTPUT"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' "s/LABEL_A_PH/$LABEL_A/g; s/LABEL_B_PH/$LABEL_B/g" "$OUTPUT"
+else
+    sed -i "s/LABEL_A_PH/$LABEL_A/g; s/LABEL_B_PH/$LABEL_B/g" "$OUTPUT"
+fi
 
 cat >> "$OUTPUT" <<EOF
 
