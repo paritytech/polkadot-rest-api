@@ -181,7 +181,8 @@ stdev() {
     awk '{sum+=$1; sumsq+=$1*$1; n++} END {
         if(n<2) { printf "0"; exit }
         mean=sum/n
-        printf "%.4f", sqrt((sumsq - n*mean*mean)/(n-1))
+        var = (sumsq - n*mean*mean)/(n-1)
+        printf "%.4f", sqrt(var < 0 ? 0 : var)
     }'
 }
 
