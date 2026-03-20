@@ -1483,6 +1483,92 @@ cat >> "$OUTPUT" <<'GLOSSARYEOF'
 
 GLOSSARYEOF
 
+# --- Raw Data Table ---
+cat >> "$OUTPUT" <<'RAWTABLESTYLE'
+
+<div class="section-title">Raw Data — All Runs</div>
+<div class="card full" style="overflow-x: auto;">
+  <h2>Per-Run Results</h2>
+  <p class="insight">Every individual benchmark run with all metrics. Scroll right for resource data.</p>
+  <table style="width: 100%; border-collapse: collapse; font-size: 0.8em; margin-top: 12px;">
+    <thead>
+      <tr style="border-bottom: 2px solid #30363d; text-align: right;">
+        <th style="text-align: left; padding: 8px 6px;">Service</th>
+        <th style="padding: 8px 6px;">Run</th>
+        <th style="padding: 8px 6px;">RPS</th>
+        <th style="padding: 8px 6px;">Avg (ms)</th>
+        <th style="padding: 8px 6px;">P50 (ms)</th>
+        <th style="padding: 8px 6px;">P75 (ms)</th>
+        <th style="padding: 8px 6px;">P90 (ms)</th>
+        <th style="padding: 8px 6px;">P95 (ms)</th>
+        <th style="padding: 8px 6px;">P99 (ms)</th>
+        <th style="padding: 8px 6px;">P999 (ms)</th>
+        <th style="padding: 8px 6px;">Requests</th>
+        <th style="padding: 8px 6px;">Errors</th>
+        <th style="padding: 8px 6px;">Peak RSS</th>
+        <th style="padding: 8px 6px;">Avg CPU</th>
+        <th style="padding: 8px 6px;">Peak CPU</th>
+      </tr>
+    </thead>
+    <tbody>
+RAWTABLESTYLE
+
+RUN_NUM=0
+for f in "${FILES_A[@]}"; do
+    RUN_NUM=$((RUN_NUM + 1))
+    jq -r --arg svc "$LABEL_A" --argjson run "$RUN_NUM" '
+        "<tr style=\"border-bottom: 1px solid #21262d; text-align: right;\">" +
+        "<td style=\"text-align: left; padding: 6px; color: #3fb950; font-weight: 600;\">" + $svc + "</td>" +
+        "<td style=\"padding: 6px;\">" + ($run | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.rps // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.avg_latency_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.p50_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.p75_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.p90_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.p95_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.p99_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.p999_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.total_requests // 0) | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + (((.errors_total // .errors) // 0) | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + (if .resources.peak_rss_mb then ((.resources.peak_rss_mb * 10 | round / 10 | tostring) + " MB") else "\u2014" end) + "</td>" +
+        "<td style=\"padding: 6px;\">" + (if .resources.avg_cpu_pct then ((.resources.avg_cpu_pct * 10 | round / 10 | tostring) + "%") else "\u2014" end) + "</td>" +
+        "<td style=\"padding: 6px;\">" + (if .resources.peak_cpu_pct then ((.resources.peak_cpu_pct * 10 | round / 10 | tostring) + "%") else "\u2014" end) + "</td>" +
+        "</tr>"
+    ' "$f" >> "$OUTPUT"
+done
+
+echo '<tr style="border-bottom: 2px solid #30363d;"><td colspan="15"></td></tr>' >> "$OUTPUT"
+
+RUN_NUM=0
+for f in "${FILES_B[@]}"; do
+    RUN_NUM=$((RUN_NUM + 1))
+    jq -r --arg svc "$LABEL_B" --argjson run "$RUN_NUM" '
+        "<tr style=\"border-bottom: 1px solid #21262d; text-align: right;\">" +
+        "<td style=\"text-align: left; padding: 6px; color: #58a6ff; font-weight: 600;\">" + $svc + "</td>" +
+        "<td style=\"padding: 6px;\">" + ($run | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.rps // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.avg_latency_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.p50_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.p75_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.p90_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.p95_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.p99_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.p999_ms // 0) * 10 | round / 10 | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + ((.total_requests // 0) | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + (((.errors_total // .errors) // 0) | tostring) + "</td>" +
+        "<td style=\"padding: 6px;\">" + (if .resources.peak_rss_mb then ((.resources.peak_rss_mb * 10 | round / 10 | tostring) + " MB") else "\u2014" end) + "</td>" +
+        "<td style=\"padding: 6px;\">" + (if .resources.avg_cpu_pct then ((.resources.avg_cpu_pct * 10 | round / 10 | tostring) + "%") else "\u2014" end) + "</td>" +
+        "<td style=\"padding: 6px;\">" + (if .resources.peak_cpu_pct then ((.resources.peak_cpu_pct * 10 | round / 10 | tostring) + "%") else "\u2014" end) + "</td>" +
+        "</tr>"
+    ' "$f" >> "$OUTPUT"
+done
+
+cat >> "$OUTPUT" <<'RAWTABLEEND'
+    </tbody>
+  </table>
+</div>
+RAWTABLEEND
+
 cat >> "$OUTPUT" <<EOF
 
 <p class="meta">
