@@ -107,6 +107,9 @@ struct EnvConfig {
     #[serde(default = "default_substrate_multi_chain_url")]
     substrate_multi_chain_url: String,
 
+    #[serde(default = "default_substrate_parachain_rpc_urls")]
+    substrate_parachain_rpc_urls: String,
+
     #[serde(default = "default_substrate_reconnect_initial_delay_ms")]
     substrate_reconnect_initial_delay_ms: u64,
 
@@ -191,6 +194,10 @@ fn default_substrate_url() -> String {
 }
 
 fn default_substrate_multi_chain_url() -> String {
+    String::new()
+}
+
+fn default_substrate_parachain_rpc_urls() -> String {
     String::new()
 }
 
@@ -290,6 +297,19 @@ impl SidecarConfig {
             serde_json::from_str(&env_config.substrate_multi_chain_url)?
         };
 
+        // Parse parachain RPC URLs from JSON: {"3428":"wss://...", "3367":"wss://..."}
+        let parachain_rpc_urls: std::collections::HashMap<u32, String> =
+            if env_config.substrate_parachain_rpc_urls.is_empty() {
+                std::collections::HashMap::new()
+            } else {
+                // Parse as String->String first, then convert keys to u32
+                let raw: std::collections::HashMap<String, String> =
+                    serde_json::from_str(&env_config.substrate_parachain_rpc_urls)?;
+                raw.into_iter()
+                    .filter_map(|(k, v)| k.parse::<u32>().ok().map(|id| (id, v)))
+                    .collect()
+            };
+
         // Map to nested structure
         let config = Self {
             express: ExpressConfig {
@@ -311,6 +331,7 @@ impl SidecarConfig {
             substrate: SubstrateConfig {
                 url: env_config.substrate_url,
                 multi_chain_urls,
+                parachain_rpc_urls,
                 reconnect_initial_delay_ms: env_config.substrate_reconnect_initial_delay_ms,
                 reconnect_max_delay_ms: env_config.substrate_reconnect_max_delay_ms,
                 reconnect_request_timeout_ms: env_config.substrate_reconnect_request_timeout_ms,

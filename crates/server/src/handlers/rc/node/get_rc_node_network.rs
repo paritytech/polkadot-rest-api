@@ -141,6 +141,7 @@ mod tests {
                 polkadot_rest_api_config::ChainConfig::default(),
             )),
             route_registry: crate::routes::RouteRegistry::new(),
+            para_metadata_cache: None,
         }
     }
 

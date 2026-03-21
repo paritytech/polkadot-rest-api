@@ -185,6 +185,7 @@ mod tests {
             )),
             route_registry: crate::routes::RouteRegistry::new(),
             relay_chain_rpc: Arc::new(tokio::sync::OnceCell::new()),
+            para_metadata_cache: None,
         }
     }
 

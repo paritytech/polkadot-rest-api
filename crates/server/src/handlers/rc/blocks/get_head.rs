@@ -354,8 +354,12 @@ pub async fn get_rc_blocks_head(
     }
 
     let decoded_xcm_msgs = if params.decoded_xcm_msgs {
-        let decoder = XcmDecoder::new(ChainType::Relay, &extrinsics_with_events, params.para_id);
-        Some(decoder.decode())
+        let mut decoder =
+            XcmDecoder::new(ChainType::Relay, &extrinsics_with_events, params.para_id);
+        if let Some(cache) = &state.para_metadata_cache {
+            decoder = decoder.with_metadata_cache(cache);
+        }
+        Some(decoder.decode().await)
     } else {
         None
     };

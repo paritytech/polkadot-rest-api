@@ -179,6 +179,14 @@ pub struct SubstrateConfig {
     /// Default: []
     pub multi_chain_urls: Vec<ChainUrl>,
 
+    /// Parachain RPC URLs for metadata-based UMP message decoding
+    ///
+    /// Env: SAS_SUBSTRATE_PARACHAIN_RPC_URLS
+    /// Format: JSON object mapping parachain ID (as string) to RPC URL
+    /// Example: '{"3428":"wss://sora.api.onfinality.io/public-ws","3367":"wss://rpc.hyperbridge.network"}'
+    /// Default: {}
+    pub parachain_rpc_urls: std::collections::HashMap<u32, String>,
+
     /// Initial delay in milliseconds for reconnection backoff
     ///
     /// Env: SAS_SUBSTRATE_RECONNECT_INITIAL_DELAY_MS
@@ -264,6 +272,7 @@ impl Default for SubstrateConfig {
         Self {
             url: "ws://127.0.0.1:9944".to_string(),
             multi_chain_urls: vec![],
+            parachain_rpc_urls: std::collections::HashMap::new(),
             reconnect_initial_delay_ms: 100,
             reconnect_max_delay_ms: 10000,
             reconnect_request_timeout_ms: 30000,

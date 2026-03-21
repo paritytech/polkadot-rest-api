@@ -657,12 +657,15 @@ pub async fn build_block_response_generic(
     }
 
     let decoded_xcm_msgs = if params.decoded_xcm_msgs {
-        let decoder = XcmDecoder::new(
+        let mut decoder = XcmDecoder::new(
             ctx.chain_type.clone(),
             &extrinsics_with_events,
             params.para_id,
         );
-        Some(decoder.decode())
+        if let Some(cache) = &ctx.state.para_metadata_cache {
+            decoder = decoder.with_metadata_cache(cache);
+        }
+        Some(decoder.decode().await)
     } else {
         None
     };

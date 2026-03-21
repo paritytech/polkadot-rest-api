@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::handlers::blocks::decode::ParachainMetadataCache;
 use crate::routes::RouteRegistry;
 use crate::utils::QueryFeeDetailsCache;
 use polkadot_rest_api_config::{ChainType, SidecarConfig};
@@ -93,6 +94,8 @@ pub struct AppState {
     pub relay_rpc_client: Arc<OnceCell<Arc<RpcClient>>>,
     /// Relay chain legacy RPC methods — lazy-init from relay_rpc_client
     pub relay_chain_rpc: Arc<OnceCell<Arc<SubstrateLegacyRpc>>>,
+    /// Cache for parachain metadata used to decode non-XCM UMP messages
+    pub para_metadata_cache: Option<Arc<ParachainMetadataCache>>,
 }
 
 impl AppState {
@@ -190,6 +193,20 @@ impl AppState {
             relay_chain_info_cell.set(info).ok();
         }
 
+        // Initialize parachain metadata cache if any parachain RPC URLs are configured
+        let para_metadata_cache = if config.substrate.parachain_rpc_urls.is_empty() {
+            None
+        } else {
+            tracing::info!(
+                num_parachains = config.substrate.parachain_rpc_urls.len(),
+                para_ids = ?config.substrate.parachain_rpc_urls.keys().collect::<Vec<_>>(),
+                "Parachain metadata cache enabled for UMP message decoding"
+            );
+            Some(Arc::new(ParachainMetadataCache::new(
+                config.substrate.parachain_rpc_urls.clone(),
+            )))
+        };
+
         Ok(Self {
             config,
             client: Arc::new(client),
@@ -204,6 +221,7 @@ impl AppState {
             route_registry: RouteRegistry::new(),
             relay_rpc_client: relay_rpc_client_cell,
             relay_chain_rpc: relay_chain_rpc_cell,
+            para_metadata_cache,
         })
     }
 

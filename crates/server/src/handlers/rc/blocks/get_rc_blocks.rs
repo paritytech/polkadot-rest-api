@@ -263,12 +263,15 @@ async fn build_rc_block_response(
     }
 
     let decoded_xcm_msgs = if params.decoded_xcm_msgs {
-        let decoder = XcmDecoder::new(
+        let mut decoder = XcmDecoder::new(
             relay_chain_info.chain_type.clone(),
             &extrinsics_with_events,
             params.para_id,
         );
-        Some(decoder.decode())
+        if let Some(cache) = &state.para_metadata_cache {
+            decoder = decoder.with_metadata_cache(cache);
+        }
+        Some(decoder.decode().await)
     } else {
         None
     };
