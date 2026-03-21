@@ -362,6 +362,16 @@
         "description": "Test block endpoint at Polkadot block 28,490,504 with V5 XCM decoding"
       },
       {
+        "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 30219740,
+        "account_id": null,
+        "query_params": {
+          "decodedXcmMsgs": "true"
+        },
+        "fixture_path": "polkadot/blocks_30219740_decode_xcm_non_xcm_ump.json",
+        "description": "Test block with non-XCM UMP messages from SORA (para 3428) — verifies Tier-3 structured fallback with decodingNote for bridge protocol messages"
+      },
+      {
         "endpoint": "/v1/blocks/{blockId}/para-inclusions",
         "block_height": 10293194,
         "account_id": null,
