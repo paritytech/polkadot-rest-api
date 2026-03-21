@@ -194,6 +194,10 @@ fn build_xcm_registry() -> (PortableRegistry, u32) {
     (registry.into(), type_id.id)
 }
 
+/// XCMP format byte for `ConcatenatedVersionedXcm`.
+/// See: `cumulus_primitives_core::XcmpMessageFormat`
+const XCMP_FORMAT_CONCATENATED_VERSIONED_XCM: u8 = 0x00;
+
 /// Decode a hex-encoded XCM message into a JSON value.
 /// Returns the decoded XCM instructions if successful, or the raw hex string if decoding fails.
 fn decode_xcm_message(hex_str: &str) -> Value {
@@ -202,20 +206,47 @@ fn decode_xcm_message(hex_str: &str) -> Value {
         return Value::String(hex_str.to_string());
     };
 
+    if bytes.is_empty() {
+        return Value::String(hex_str.to_string());
+    }
+
     // Build registry with VersionedXcm type
     let (registry, type_id) = build_xcm_registry();
 
-    // Decode using scale-value for proper JSON serialization
-    match decode_as_type(&mut &bytes[..], type_id, &registry) {
-        Ok(value) => {
-            // Wrap in array to match sidecar format: "data": [{ "v4": [...] }]
-            Value::Array(vec![scale_value_to_json(value, &registry)])
+    // Try direct decode first
+    if let Ok(value) = decode_as_type(&mut &bytes[..], type_id, &registry) {
+        return Value::Array(vec![scale_value_to_json(value, &registry)]);
+    }
+
+    // Strip XCMP ConcatenatedVersionedXcm prefix (0x00) and decode concatenated messages.
+    if bytes[0] == XCMP_FORMAT_CONCATENATED_VERSIONED_XCM && bytes.len() > 1 {
+        let payload = &bytes[1..];
+        let mut decoded_messages = Vec::new();
+        let mut remaining = payload;
+
+        while !remaining.is_empty() {
+            match decode_as_type(&mut remaining, type_id, &registry) {
+                Ok(value) => {
+                    decoded_messages.push(scale_value_to_json(value, &registry));
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        remaining_bytes = remaining.len(),
+                        "Failed to decode concatenated XCM message: {e:?}"
+                    );
+                    break;
+                }
+            }
         }
-        Err(e) => {
-            tracing::debug!("Failed to decode XCM message: {e:?}");
-            Value::String(hex_str.to_string())
+
+        if !decoded_messages.is_empty() {
+            return Value::Array(decoded_messages);
         }
     }
+
+    // All decode attempts failed — return raw hex
+    tracing::debug!("Failed to decode XCM message, returning raw hex");
+    Value::String(hex_str.to_string())
 }
 
 /// Decodes XCM messages from block extrinsics.
@@ -355,11 +386,7 @@ impl<'a> XcmDecoder<'a> {
                 continue;
             }
 
-            let Some(data) = extrinsic.args.get("data") else {
-                continue;
-            };
-
-            let Some(inbound_data) = data.get("inbound_messages_data") else {
+            let Some(inbound_data) = extrinsic.args.get("inbound_messages_data") else {
                 continue;
             };
 
@@ -394,20 +421,40 @@ impl<'a> XcmDecoder<'a> {
                 && let Some(full_msgs) = horizontal.get("fullMessages").and_then(|v| v.as_array())
             {
                 for msg in full_msgs {
-                    let sent_at = msg
-                        .get("sentAt")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                    let origin_para_id = msg
-                        .get("originParaId")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("0")
-                        .to_string();
-                    let msg_data = msg
-                        .get("data")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
+                    // HRMP fullMessages are tuples: [originParaId, { sentAt, data }]
+                    let (origin_para_id, sent_at, msg_data) = if let Some(tuple) = msg.as_array()
+                        && tuple.len() == 2
+                    {
+                        let origin = tuple[0].as_str().unwrap_or("0").to_string();
+                        let inner = &tuple[1];
+                        let sent = inner
+                            .get("sentAt")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        let data = inner
+                            .get("data")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        (origin, sent, data)
+                    } else {
+                        // Fallback: object format
+                        let origin = msg
+                            .get("originParaId")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("0")
+                            .to_string();
+                        let sent = msg
+                            .get("sentAt")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        let data = msg
+                            .get("data")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        (origin, sent, data)
+                    };
 
                     // Apply paraId filter if specified
                     if self
@@ -420,7 +467,7 @@ impl<'a> XcmDecoder<'a> {
                     if !msg_data.is_empty() {
                         messages.horizontal_messages.push(HorizontalMessage {
                             origin_para_id,
-                            destination_para_id: None, // Not available for parachain perspective
+                            destination_para_id: None,
                             sent_at,
                             data: decode_xcm_message(&msg_data),
                         });
@@ -740,5 +787,305 @@ mod tests {
         let r5_obj = r5.as_array().unwrap()[0].as_object().unwrap();
         assert!(r4_obj.contains_key("v4"));
         assert!(r5_obj.contains_key("v5"));
+    }
+
+    // Parachain decode path tests
+
+    /// Build a minimal ExtrinsicInfo for parachainSystem.setValidationData.
+    fn build_parachain_system_extrinsic(args: serde_json::Map<String, Value>) -> ExtrinsicInfo {
+        use crate::handlers::blocks::types::MethodInfo;
+        use crate::utils::EraInfo;
+
+        ExtrinsicInfo {
+            method: MethodInfo {
+                pallet: "parachainSystem".to_string(),
+                method: "setValidationData".to_string(),
+            },
+            signature: None,
+            nonce: None,
+            args,
+            tip: None,
+            hash: "0x00".to_string(),
+            info: serde_json::Map::new(),
+            era: EraInfo {
+                immortal_era: Some("true".to_string()),
+                mortal_era: None,
+            },
+            events: vec![],
+            success: true,
+            pays_fee: None,
+            docs: None,
+            raw_hex: String::new(),
+        }
+    }
+
+    #[test]
+    fn test_parachain_hrmp_tuple_format() {
+        let xcm = VersionedXcm::V5(xcm_v5::Xcm(vec![xcm_v5::Instruction::ClearOrigin]));
+        let hex_str = encode_versioned_xcm(xcm);
+
+        let hrmp_msg = Value::Array(vec![
+            Value::String("2034".to_string()),
+            serde_json::json!({
+                "sentAt": "30441355",
+                "data": hex_str,
+            }),
+        ]);
+
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "data".to_string(),
+            serde_json::json!({ "validationData": {} }),
+        );
+        args.insert(
+            "inbound_messages_data".to_string(),
+            serde_json::json!({
+                "downwardMessages": { "fullMessages": [], "hashedMessages": [] },
+                "horizontalMessages": { "fullMessages": [hrmp_msg], "hashedMessages": [] }
+            }),
+        );
+
+        let extrinsics = vec![build_parachain_system_extrinsic(args)];
+        let decoder = XcmDecoder::new(ChainType::AssetHub, &extrinsics, None);
+        let result = decoder.decode();
+
+        assert!(
+            result.downward_messages.is_empty(),
+            "should have no downward messages"
+        );
+        assert_eq!(
+            result.horizontal_messages.len(),
+            1,
+            "should have 1 horizontal message"
+        );
+
+        let msg = &result.horizontal_messages[0];
+        assert_eq!(msg.origin_para_id, "2034");
+        assert_eq!(msg.sent_at, Some("30441355".to_string()));
+
+        let data_arr = msg.data.as_array().expect("should decode to array");
+        assert_eq!(data_arr.len(), 1);
+        assert!(
+            data_arr[0].as_object().unwrap().contains_key("v5"),
+            "should decode as V5 XCM"
+        );
+    }
+
+    #[test]
+    fn test_parachain_inbound_messages_data_is_top_level_arg() {
+        let xcm = VersionedXcm::V5(xcm_v5::Xcm(vec![xcm_v5::Instruction::ClearOrigin]));
+        let hex_str = encode_versioned_xcm(xcm);
+
+        let hrmp_msg = Value::Array(vec![
+            Value::String("1000".to_string()),
+            serde_json::json!({
+                "sentAt": "100",
+                "data": hex_str,
+            }),
+        ]);
+
+        // Wrong: inbound_messages_data nested inside data — should find nothing
+        let mut args_wrong = serde_json::Map::new();
+        args_wrong.insert(
+            "data".to_string(),
+            serde_json::json!({
+                "inbound_messages_data": {
+                    "downwardMessages": { "fullMessages": [], "hashedMessages": [] },
+                    "horizontalMessages": { "fullMessages": [hrmp_msg.clone()], "hashedMessages": [] }
+                }
+            }),
+        );
+
+        let extrinsics_wrong = vec![build_parachain_system_extrinsic(args_wrong)];
+        let decoder = XcmDecoder::new(ChainType::AssetHub, &extrinsics_wrong, None);
+        let result = decoder.decode();
+        assert!(
+            result.horizontal_messages.is_empty(),
+            "nested inbound_messages_data under data should NOT be found"
+        );
+
+        // Correct: inbound_messages_data at top level
+        let mut args_correct = serde_json::Map::new();
+        args_correct.insert(
+            "data".to_string(),
+            serde_json::json!({ "validationData": {} }),
+        );
+        args_correct.insert(
+            "inbound_messages_data".to_string(),
+            serde_json::json!({
+                "downwardMessages": { "fullMessages": [], "hashedMessages": [] },
+                "horizontalMessages": { "fullMessages": [hrmp_msg], "hashedMessages": [] }
+            }),
+        );
+
+        let extrinsics_correct = vec![build_parachain_system_extrinsic(args_correct)];
+        let decoder = XcmDecoder::new(ChainType::AssetHub, &extrinsics_correct, None);
+        let result = decoder.decode();
+        assert_eq!(
+            result.horizontal_messages.len(),
+            1,
+            "top-level inbound_messages_data should be found"
+        );
+    }
+
+    #[test]
+    fn test_parachain_para_id_filter_on_hrmp() {
+        let xcm = VersionedXcm::V5(xcm_v5::Xcm(vec![xcm_v5::Instruction::ClearOrigin]));
+        let hex_str = encode_versioned_xcm(xcm);
+
+        let hrmp_msgs = vec![
+            Value::Array(vec![
+                Value::String("1000".to_string()),
+                serde_json::json!({ "sentAt": "100", "data": &hex_str }),
+            ]),
+            Value::Array(vec![
+                Value::String("2034".to_string()),
+                serde_json::json!({ "sentAt": "101", "data": &hex_str }),
+            ]),
+        ];
+
+        let mut args = serde_json::Map::new();
+        args.insert("data".to_string(), serde_json::json!({}));
+        args.insert(
+            "inbound_messages_data".to_string(),
+            serde_json::json!({
+                "downwardMessages": { "fullMessages": [] },
+                "horizontalMessages": { "fullMessages": hrmp_msgs }
+            }),
+        );
+
+        let extrinsics = vec![build_parachain_system_extrinsic(args)];
+
+        // Filter for para 2034 only
+        let decoder = XcmDecoder::new(ChainType::Parachain, &extrinsics, Some(2034));
+        let result = decoder.decode();
+        assert_eq!(result.horizontal_messages.len(), 1);
+        assert_eq!(result.horizontal_messages[0].origin_para_id, "2034");
+    }
+
+    // XCMP format prefix tests
+
+    #[test]
+    fn test_xcmp_format_prefix_stripped_for_hrmp() {
+        let xcm = VersionedXcm::<()>::V5(xcm_v5::Xcm(vec![xcm_v5::Instruction::ClearOrigin]));
+        let xcm_bytes = xcm.encode();
+
+        // Prepend 0x00 format byte
+        let mut prefixed = vec![0x00u8];
+        prefixed.extend_from_slice(&xcm_bytes);
+        let hex_str = format!("0x{}", hex::encode(&prefixed));
+
+        let result = decode_xcm_message(&hex_str);
+
+        let arr = result.as_array().expect("should decode to array");
+        assert!(!arr.is_empty());
+        assert!(arr[0].as_object().unwrap().contains_key("v5"));
+    }
+
+    #[test]
+    fn test_xcmp_concatenated_multiple_messages() {
+        let xcm1 = VersionedXcm::<()>::V5(xcm_v5::Xcm(vec![xcm_v5::Instruction::ClearOrigin]));
+        let xcm2 = VersionedXcm::<()>::V5(xcm_v5::Xcm(vec![xcm_v5::Instruction::RefundSurplus]));
+
+        let mut prefixed = vec![0x00u8];
+        prefixed.extend_from_slice(&xcm1.encode());
+        prefixed.extend_from_slice(&xcm2.encode());
+        let hex_str = format!("0x{}", hex::encode(&prefixed));
+
+        let result = decode_xcm_message(&hex_str);
+
+        let arr = result.as_array().expect("should decode to array");
+        assert_eq!(arr.len(), 2);
+        assert!(arr[0].as_object().unwrap().contains_key("v5"));
+        assert!(arr[1].as_object().unwrap().contains_key("v5"));
+    }
+
+    #[test]
+    fn test_direct_versioned_xcm_still_works() {
+        let xcm = VersionedXcm::V5(xcm_v5::Xcm(vec![xcm_v5::Instruction::ClearOrigin]));
+        let hex_str = encode_versioned_xcm(xcm);
+
+        let result = decode_xcm_message(&hex_str);
+
+        let arr = result.as_array().expect("should decode to array");
+        assert_eq!(arr.len(), 1);
+        assert!(arr[0].as_object().unwrap().contains_key("v5"));
+    }
+
+    #[test]
+    fn test_real_asset_hub_hrmp_message() {
+        // Real HRMP message from Hydration → Asset Hub block 13619496
+        let hex_str = "0x00051400040002043205e5140007e72ce8f0020a130002043205e5140007e72ce8f002000d01020400010100\
+            74a9accd4e9b0d530c7047e0ede0a6b1d1d8ba5ccc8827c47f09ffa7fe95c33c2c92c56616c34b1e62b561ae924cb1623aa4325b89d1bce94de1bdd2d4f7506c20";
+
+        let result = decode_xcm_message(hex_str);
+
+        let arr = result.as_array().expect("should decode to array");
+        assert!(!arr.is_empty());
+        let msg = arr[0].as_object().expect("should be an object");
+        assert!(msg.contains_key("v5"));
+
+        let instructions = msg["v5"]
+            .as_array()
+            .expect("v5 should be an array of instructions");
+        assert!(!instructions.is_empty());
+    }
+
+    #[test]
+    fn test_build_xcm_registry_contains_versioned_xcm() {
+        let (registry, type_id) = build_xcm_registry();
+        let ty = registry
+            .resolve(type_id)
+            .expect("VersionedXcm type should be in registry");
+        // VersionedXcm is an enum with V3, V4, V5 variants
+        match &ty.type_def {
+            scale_info::TypeDef::Variant(v) => {
+                let names: Vec<&str> = v.variants.iter().map(|v| v.name.as_str()).collect();
+                assert!(names.contains(&"V3"), "missing V3 variant");
+                assert!(names.contains(&"V4"), "missing V4 variant");
+                assert!(names.contains(&"V5"), "missing V5 variant");
+            }
+            _ => panic!("VersionedXcm should be a Variant type"),
+        }
+    }
+
+    #[test]
+    fn test_decode_v3_xcm() {
+        use staging_xcm::v3::{self as xcm_v3, Instruction as V3Instruction};
+        let xcm = VersionedXcm::<()>::V3(xcm_v3::Xcm(vec![V3Instruction::ClearOrigin]));
+        let hex_str = format!("0x{}", hex::encode(xcm.encode()));
+        let result = decode_xcm_message(&hex_str);
+        let arr = result.as_array().expect("should decode to array");
+        assert!(arr[0].as_object().unwrap().contains_key("v3"));
+    }
+
+    #[test]
+    fn test_decode_empty_bytes_returns_raw_hex() {
+        let result = decode_xcm_message("0x");
+        assert!(result.is_string(), "empty bytes should return raw hex");
+    }
+
+    #[test]
+    fn test_decode_non_xcm_discriminant_returns_raw_hex() {
+        // 0x99 is not a valid VersionedXcm discriminant (3, 4, or 5)
+        let result = decode_xcm_message("0x99aabbcc");
+        assert!(
+            result.is_string(),
+            "invalid discriminant should return raw hex"
+        );
+    }
+
+    #[test]
+    fn test_xcmp_prefix_only_returns_raw_hex() {
+        // Just the 0x00 prefix byte with nothing after it
+        let result = decode_xcm_message("0x00");
+        assert!(result.is_string(), "lone XCMP prefix should return raw hex");
+    }
+
+    #[test]
+    fn test_decode_truncated_xcm_returns_raw_hex() {
+        // Valid V5 discriminant but truncated payload
+        let result = decode_xcm_message("0x0504");
+        assert!(result.is_string(), "truncated XCM should return raw hex");
     }
 }
