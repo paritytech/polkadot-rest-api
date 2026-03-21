@@ -6,11 +6,27 @@
 //! This module provides:
 //! - `XcmDecoder` for extracting and decoding XCM messages from extrinsics
 //! - `scale_value_to_json` for registry-aware conversion of SCALE values to JSON
+//! - `ParachainMetadataCache` for fetching and caching parachain runtime metadata
+//!   to decode non-XCM UMP messages using the sending parachain's type registry
+//!
+//! ## Decoding Strategy
+//!
+//! UMP (Upward Message Passing) channels carry `Vec<u8>` — parachains can send
+//! any bytes, not just `VersionedXcm`. The decoder uses a tiered approach:
+//!
+//! 1. **XCM decode** — Try `VersionedXcm` (V3/V4/V5) via a local type registry
+//! 2. **Parachain metadata decode** — If XCM fails and a parachain RPC URL is
+//!    configured, fetch the parachain's runtime metadata and attempt to decode
+//!    using candidate types found in the `PortableRegistry`
+//! 3. **Fallback** — Return raw hex with a `decodingNote` explaining the failure
 
 use heck::ToLowerCamelCase;
 use scale_info::{PortableRegistry, TypeDef};
 use scale_value::scale::decode_as_type;
 use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use super::super::types::{
     DownwardMessage, ExtrinsicInfo, HorizontalMessage, UpwardMessage, XcmMessages,
@@ -184,6 +200,186 @@ pub fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRe
 }
 
 // ================================================================================================
+// Parachain Metadata Cache
+// ================================================================================================
+
+/// Cached metadata for a parachain, used for decoding non-XCM UMP messages.
+#[derive(Clone)]
+pub struct CachedParachainMetadata {
+    /// The portable type registry from the parachain's runtime metadata
+    registry: Arc<PortableRegistry>,
+    /// Candidate type IDs that might represent UMP message payloads.
+    /// Discovered by scanning the registry for types whose paths contain
+    /// keywords like "BridgeMessage", "Call", "OutboundMessage", etc.
+    candidate_type_ids: Vec<(u32, String)>,
+}
+
+/// Cache of parachain runtime metadata, keyed by para_id.
+///
+/// Fetches metadata lazily from configured parachain RPC endpoints and caches
+/// the `PortableRegistry` for reuse across requests.
+#[derive(Clone, Default)]
+pub struct ParachainMetadataCache {
+    /// Cached metadata per para_id
+    cache: Arc<RwLock<HashMap<u32, CachedParachainMetadata>>>,
+    /// Configured parachain RPC URLs, keyed by para_id
+    rpc_urls: Arc<HashMap<u32, String>>,
+}
+
+impl ParachainMetadataCache {
+    /// Create a new cache with the given parachain RPC URL mappings.
+    pub fn new(rpc_urls: HashMap<u32, String>) -> Self {
+        Self {
+            cache: Arc::new(RwLock::new(HashMap::new())),
+            rpc_urls: Arc::new(rpc_urls),
+        }
+    }
+
+    /// Check if we have a configured RPC URL for this parachain.
+    pub fn has_rpc_url(&self, para_id: u32) -> bool {
+        self.rpc_urls.contains_key(&para_id)
+    }
+
+    /// Get the cached metadata for a parachain, fetching it if not cached.
+    /// Returns None if no RPC URL is configured or if fetching fails.
+    pub async fn get_metadata(&self, para_id: u32) -> Option<CachedParachainMetadata> {
+        // Check cache first
+        {
+            let cache = self.cache.read().await;
+            if let Some(cached) = cache.get(&para_id) {
+                return Some(cached.clone());
+            }
+        }
+
+        // Fetch metadata from RPC
+        let rpc_url = self.rpc_urls.get(&para_id)?;
+        tracing::info!(
+            para_id,
+            rpc_url,
+            "Fetching parachain metadata for UMP decode"
+        );
+
+        match self.fetch_and_cache_metadata(para_id, rpc_url).await {
+            Ok(cached) => Some(cached),
+            Err(e) => {
+                tracing::warn!(para_id, error = %e, "Failed to fetch parachain metadata");
+                None
+            }
+        }
+    }
+
+    /// Fetch metadata from the parachain RPC and cache it.
+    async fn fetch_and_cache_metadata(
+        &self,
+        para_id: u32,
+        rpc_url: &str,
+    ) -> Result<CachedParachainMetadata, Box<dyn std::error::Error + Send + Sync>> {
+        use parity_scale_codec::Decode;
+        use subxt_rpcs::RpcClient;
+        use subxt_rpcs::rpc_params;
+
+        // Connect to the parachain RPC
+        let rpc_client = RpcClient::from_insecure_url(rpc_url).await?;
+
+        // Fetch raw metadata via state_getMetadata
+        let metadata_hex: String = rpc_client
+            .request("state_getMetadata", rpc_params![])
+            .await?;
+        let metadata_bytes = hex::decode(metadata_hex.trim_start_matches("0x"))?;
+
+        // Decode the RuntimeMetadataPrefixed to extract the PortableRegistry
+        let metadata_prefixed =
+            frame_metadata::RuntimeMetadataPrefixed::decode(&mut &metadata_bytes[..])?;
+        let registry = match metadata_prefixed.1 {
+            frame_metadata::RuntimeMetadata::V14(ref m) => m.types.clone(),
+            frame_metadata::RuntimeMetadata::V15(ref m) => m.types.clone(),
+            _ => return Err(format!("Unsupported metadata version for para {}", para_id).into()),
+        };
+
+        // Scan registry for candidate UMP message types
+        let candidate_type_ids = find_candidate_ump_types(&registry);
+        tracing::info!(
+            para_id,
+            num_candidates = candidate_type_ids.len(),
+            candidates = ?candidate_type_ids.iter().map(|(id, name)| format!("{name} (id={id})")).collect::<Vec<_>>(),
+            "Discovered candidate UMP types in parachain metadata"
+        );
+
+        let cached = CachedParachainMetadata {
+            registry: Arc::new(registry),
+            candidate_type_ids,
+        };
+
+        // Store in cache
+        let mut cache = self.cache.write().await;
+        cache.insert(para_id, cached.clone());
+
+        Ok(cached)
+    }
+}
+
+/// Scan a PortableRegistry for types that are likely UMP message payloads.
+///
+/// Strategy: Look for types whose paths contain keywords associated with
+/// bridge/cross-chain messaging. These are candidate types we'll try to
+/// decode UMP bytes against.
+fn find_candidate_ump_types(registry: &PortableRegistry) -> Vec<(u32, String)> {
+    let keywords = [
+        "BridgeMessage",
+        "BridgeCall",
+        "OutboundMessage",
+        "UmpMessage",
+        "ParachainAppCall",
+        "SubstrateBridgeMessage",
+        "BridgeTimepoint",
+        "MessagePayload",
+    ];
+
+    let mut candidates = Vec::new();
+
+    for ty in registry.types.iter() {
+        let path = ty.ty.path.segments.join("::");
+        let type_name = ty.ty.path.segments.last().map(|s| s.as_str()).unwrap_or("");
+
+        // Check if this type's name matches any of our keywords
+        if keywords.iter().any(|kw| type_name.contains(kw)) {
+            candidates.push((ty.id, path.clone()));
+        }
+
+        // Also check for top-level RuntimeCall variants — these often contain
+        // bridge-related calls as nested variants
+        if type_name == "RuntimeCall" {
+            candidates.push((ty.id, path.clone()));
+        }
+    }
+
+    candidates
+}
+
+// ================================================================================================
+// XCM / UMP Message Classification
+// ================================================================================================
+
+/// Known VersionedXcm SCALE discriminants from staging-xcm.
+/// V0/V1 never existed. V2 was dropped in staging-xcm v21.
+const VALID_XCM_DISCRIMINANTS: std::ops::RangeInclusive<u8> = 0x03..=0x05;
+
+/// Check if a first byte is a known VersionedXcm SCALE discriminant.
+fn is_likely_xcm(first_byte: u8) -> bool {
+    VALID_XCM_DISCRIMINANTS.contains(&first_byte)
+}
+
+/// Return a human-readable label for an XCM version byte.
+fn xcm_version_label(first_byte: u8) -> &'static str {
+    match first_byte {
+        0x03 => "V3",
+        0x04 => "V4",
+        0x05 => "V5",
+        _ => "unknown",
+    }
+}
+
+// ================================================================================================
 // XCM Decoder
 // ================================================================================================
 
@@ -194,35 +390,150 @@ fn build_xcm_registry() -> (PortableRegistry, u32) {
     (registry.into(), type_id.id)
 }
 
-/// Decode a hex-encoded XCM message into a JSON value.
-/// Returns the decoded XCM instructions if successful, or the raw hex string if decoding fails.
-fn decode_xcm_message(hex_str: &str) -> Value {
+/// Attempt to decode raw bytes using candidate types from a parachain's metadata.
+///
+/// Tries each candidate type ID in order. Returns the first successful decode
+/// as a JSON value with the type path as the key.
+fn try_parachain_metadata_decode(
+    bytes: &[u8],
+    metadata: &CachedParachainMetadata,
+) -> Option<Value> {
+    for (type_id, type_path) in &metadata.candidate_type_ids {
+        match decode_as_type(&mut &bytes[..], *type_id, metadata.registry.as_ref()) {
+            Ok(value) => {
+                let json_value = scale_value_to_json(value, metadata.registry.as_ref());
+                let mut result = serde_json::Map::new();
+                // Use the last segment of the type path as the key (e.g., "BridgeMessage")
+                let type_name = type_path
+                    .rsplit("::")
+                    .next()
+                    .unwrap_or(type_path)
+                    .to_lower_camel_case();
+                result.insert(type_name, json_value);
+                result.insert(
+                    "decodedUsing".to_string(),
+                    Value::String(format!(
+                        "parachain metadata type: {type_path} (id={type_id})"
+                    )),
+                );
+                tracing::debug!(
+                    type_id,
+                    type_path,
+                    "Successfully decoded UMP message using parachain metadata"
+                );
+                return Some(Value::Object(result));
+            }
+            Err(_) => continue,
+        }
+    }
+    None
+}
+
+/// Decode a hex-encoded UMP/DMP/HRMP message into a JSON value.
+///
+/// Uses a three-tier strategy:
+/// 1. **XCM decode** — Try `VersionedXcm` (V3/V4/V5) via a local type registry
+/// 2. **Parachain metadata decode** — If XCM fails and parachain metadata is
+///    available, try candidate types from the parachain's `PortableRegistry`
+/// 3. **Fallback** — Return raw hex with a `decodingNote` explaining the failure
+fn decode_xcm_message(hex_str: &str, para_metadata: Option<&CachedParachainMetadata>) -> Value {
     let hex_clean = hex_str.strip_prefix("0x").unwrap_or(hex_str);
     let Ok(bytes) = hex::decode(hex_clean) else {
         return Value::String(hex_str.to_string());
     };
 
-    // Build registry with VersionedXcm type
-    let (registry, type_id) = build_xcm_registry();
+    if bytes.is_empty() {
+        return Value::String(hex_str.to_string());
+    }
 
-    // Decode using scale-value for proper JSON serialization
-    match decode_as_type(&mut &bytes[..], type_id, &registry) {
-        Ok(value) => {
-            // Wrap in array to match sidecar format: "data": [{ "v4": [...] }]
-            Value::Array(vec![scale_value_to_json(value, &registry)])
-        }
-        Err(e) => {
-            tracing::debug!("Failed to decode XCM message: {e:?}");
-            Value::String(hex_str.to_string())
+    let first_byte = bytes[0];
+
+    // Tier 1: If first byte looks like XCM, try VersionedXcm decode
+    if is_likely_xcm(first_byte) {
+        let (registry, type_id) = build_xcm_registry();
+        match decode_as_type(&mut &bytes[..], type_id, &registry) {
+            Ok(value) => {
+                return Value::Array(vec![scale_value_to_json(value, &registry)]);
+            }
+            Err(e) => {
+                tracing::debug!(
+                    first_byte = format!("0x{:02x}", first_byte),
+                    version = xcm_version_label(first_byte),
+                    error = %e,
+                    "XCM first byte matches {} but SCALE decode failed",
+                    xcm_version_label(first_byte)
+                );
+                // XCM-like first byte but decode failed — return structured error
+                let mut result = serde_json::Map::new();
+                result.insert("data".to_string(), Value::String(hex_str.to_string()));
+                result.insert(
+                    "decodingNote".to_string(),
+                    Value::String(format!(
+                        "First byte 0x{:02x} suggests XCM {} but decoding failed: {e}",
+                        first_byte,
+                        xcm_version_label(first_byte)
+                    )),
+                );
+                return Value::Object(result);
+            }
         }
     }
+
+    // Tier 2: Non-XCM first byte — try parachain metadata if available
+    if let Some(metadata) = para_metadata {
+        if let Some(decoded) = try_parachain_metadata_decode(&bytes, metadata) {
+            return decoded;
+        }
+        tracing::debug!(
+            first_byte = format!("0x{:02x}", first_byte),
+            "Parachain metadata available but no candidate type could decode this message"
+        );
+    }
+
+    // Tier 3: Fallback — return raw hex with classification note
+    let mut result = serde_json::Map::new();
+    result.insert("data".to_string(), Value::String(hex_str.to_string()));
+    let note = if first_byte <= 0x01 {
+        format!(
+            "First byte 0x{:02x} is not a known VersionedXcm discriminant (V3=0x03, V4=0x04, V5=0x05). \
+             This is likely a custom bridge protocol message. {}",
+            first_byte,
+            if para_metadata.is_some() {
+                "Parachain metadata was available but no matching type was found."
+            } else {
+                "No parachain RPC URL configured for metadata-based decoding."
+            }
+        )
+    } else {
+        format!(
+            "First byte 0x{:02x} is not a known VersionedXcm discriminant (V3=0x03, V4=0x04, V5=0x05). {}",
+            first_byte,
+            if para_metadata.is_some() {
+                "Parachain metadata was available but no matching type was found."
+            } else {
+                "No parachain RPC URL configured for metadata-based decoding."
+            }
+        )
+    };
+    result.insert("decodingNote".to_string(), Value::String(note));
+    Value::Object(result)
 }
 
 /// Decodes XCM messages from block extrinsics.
+///
+/// Uses a three-tier decode strategy:
+/// 1. Try `VersionedXcm` decode (handles V3/V4/V5)
+/// 2. Try parachain metadata decode if RPC URL is configured for the sending para
+/// 3. Fall back to raw hex with a `decodingNote`
 pub struct XcmDecoder<'a> {
     chain_type: ChainType,
     extrinsics: &'a [ExtrinsicInfo],
     para_id_filter: Option<u32>,
+    /// Optional cache of parachain metadata for decoding non-XCM UMP messages
+    para_metadata_cache: Option<&'a ParachainMetadataCache>,
+    /// Pre-fetched parachain metadata (resolved from cache before sync decode)
+    /// Maps para_id -> CachedParachainMetadata
+    resolved_metadata: HashMap<u32, CachedParachainMetadata>,
 }
 
 impl<'a> XcmDecoder<'a> {
@@ -235,17 +546,74 @@ impl<'a> XcmDecoder<'a> {
             chain_type,
             extrinsics,
             para_id_filter,
+            para_metadata_cache: None,
+            resolved_metadata: HashMap::new(),
         }
     }
 
+    /// Set the parachain metadata cache for non-XCM UMP decode.
+    pub fn with_metadata_cache(mut self, cache: &'a ParachainMetadataCache) -> Self {
+        self.para_metadata_cache = Some(cache);
+        self
+    }
+
     /// Decode XCM messages from the extrinsics.
-    pub fn decode(&self) -> XcmMessages {
+    ///
+    /// This is async because it may need to fetch parachain metadata from
+    /// remote RPC endpoints on the first call for a given para_id.
+    pub async fn decode(&mut self) -> XcmMessages {
+        // Pre-fetch metadata for all para_ids we'll encounter
+        if let Some(cache) = self.para_metadata_cache {
+            let para_ids = self.collect_para_ids();
+            for para_id in para_ids {
+                if cache.has_rpc_url(para_id)
+                    && let Some(metadata) = cache.get_metadata(para_id).await
+                {
+                    self.resolved_metadata.insert(para_id, metadata);
+                }
+            }
+        }
+
         match self.chain_type {
             ChainType::Relay => self.decode_relay_messages(),
             ChainType::Parachain | ChainType::AssetHub | ChainType::Coretime => {
                 self.decode_parachain_messages()
             }
         }
+    }
+
+    /// Collect all unique para_ids that appear in the extrinsics.
+    fn collect_para_ids(&self) -> Vec<u32> {
+        let mut para_ids = Vec::new();
+
+        for extrinsic in self.extrinsics {
+            if extrinsic.method.pallet == "paraInherent"
+                && extrinsic.method.method == "enter"
+                && let Some(data) = extrinsic.args.get("data")
+                && let Some(backed_candidates) =
+                    data.get("backedCandidates").and_then(|v| v.as_array())
+            {
+                for candidate in backed_candidates {
+                    if let Some(para_id) = candidate
+                        .get("candidate")
+                        .and_then(|c| c.get("descriptor"))
+                        .and_then(|d| d.get("paraId"))
+                        .and_then(|p| p.as_str())
+                        .and_then(|s| s.parse::<u32>().ok())
+                        && !para_ids.contains(&para_id)
+                    {
+                        para_ids.push(para_id);
+                    }
+                }
+            }
+        }
+
+        para_ids
+    }
+
+    /// Get cached parachain metadata for a given para_id (sync, pre-resolved).
+    fn get_para_metadata(&self, para_id: u32) -> Option<&CachedParachainMetadata> {
+        self.resolved_metadata.get(&para_id)
     }
 
     /// Decode XCM messages from relay chain extrinsics.
@@ -289,6 +657,10 @@ impl<'a> XcmDecoder<'a> {
                     continue;
                 };
 
+                // Look up parachain metadata for this para_id (for non-XCM decode fallback)
+                let para_id_u32 = para_id.parse::<u32>().unwrap_or(0);
+                let para_meta = self.get_para_metadata(para_id_u32);
+
                 // Extract upward messages
                 // upwardMessages can be either:
                 // 1. An array of hex strings (when there are multiple messages or empty)
@@ -299,7 +671,7 @@ impl<'a> XcmDecoder<'a> {
                         if !msg_data.is_empty() && msg_data != "0x" {
                             messages.upward_messages.push(UpwardMessage {
                                 origin_para_id: para_id.to_string(),
-                                data: decode_xcm_message(msg_data),
+                                data: decode_xcm_message(msg_data, para_meta),
                             });
                         }
                     } else if let Some(upward_msgs) = upward_value.as_array() {
@@ -310,7 +682,7 @@ impl<'a> XcmDecoder<'a> {
                             {
                                 messages.upward_messages.push(UpwardMessage {
                                     origin_para_id: para_id.to_string(),
-                                    data: decode_xcm_message(msg_data),
+                                    data: decode_xcm_message(msg_data, para_meta),
                                 });
                             }
                         }
@@ -332,7 +704,7 @@ impl<'a> XcmDecoder<'a> {
                                 origin_para_id: para_id.to_string(),
                                 destination_para_id: Some(recipient.to_string()),
                                 sent_at: None,
-                                data: decode_xcm_message(msg_data),
+                                data: decode_xcm_message(msg_data, para_meta),
                             });
                         }
                     }
@@ -383,7 +755,7 @@ impl<'a> XcmDecoder<'a> {
                         messages.downward_messages.push(DownwardMessage {
                             sent_at,
                             msg: msg_hex.clone(),
-                            data: decode_xcm_message(&msg_hex),
+                            data: decode_xcm_message(&msg_hex, None),
                         });
                     }
                 }
@@ -422,7 +794,7 @@ impl<'a> XcmDecoder<'a> {
                             origin_para_id,
                             destination_para_id: None, // Not available for parachain perspective
                             sent_at,
-                            data: decode_xcm_message(&msg_data),
+                            data: decode_xcm_message(&msg_data, None),
                         });
                     }
                 }
@@ -481,7 +853,7 @@ mod tests {
         ]));
 
         let hex_str = encode_versioned_xcm(xcm);
-        let result = decode_xcm_message(&hex_str);
+        let result = decode_xcm_message(&hex_str, None);
 
         // Should be an array with one element containing "v4" key
         let arr = result.as_array().expect("result should be an array");
@@ -551,7 +923,7 @@ mod tests {
         ]));
 
         let hex_str = encode_versioned_xcm(xcm);
-        let result = decode_xcm_message(&hex_str);
+        let result = decode_xcm_message(&hex_str, None);
 
         // Should be an array with one element containing "v5" key
         let arr = result.as_array().expect("result should be an array");
@@ -597,7 +969,7 @@ mod tests {
         ]));
 
         let hex_str = encode_versioned_xcm(xcm);
-        let result = decode_xcm_message(&hex_str);
+        let result = decode_xcm_message(&hex_str, None);
 
         let arr = result.as_array().unwrap();
         let msg = arr[0].as_object().unwrap();
@@ -654,7 +1026,7 @@ mod tests {
         ]));
 
         let hex_str = encode_versioned_xcm(xcm);
-        let result = decode_xcm_message(&hex_str);
+        let result = decode_xcm_message(&hex_str, None);
 
         let arr = result.as_array().unwrap();
         let msg = arr[0].as_object().unwrap();
@@ -692,20 +1064,222 @@ mod tests {
     #[test]
     fn test_decode_invalid_hex_returns_raw_string() {
         // Invalid hex should return the raw string
-        let result = decode_xcm_message("not_valid_hex");
+        let result = decode_xcm_message("not_valid_hex", None);
         assert_eq!(result, Value::String("not_valid_hex".to_string()));
     }
 
     #[test]
-    fn test_decode_malformed_xcm_returns_raw_hex() {
-        // Valid hex but not a valid XCM message - should return raw hex
-        let result = decode_xcm_message("0xdeadbeef");
-        // The decode should fail and return the raw hex string
-        assert!(
-            result.is_string(),
-            "malformed XCM should return raw hex string"
+    fn test_decode_malformed_xcm_returns_structured_fallback() {
+        // Valid hex but not a valid XCM message (0xde is not a known XCM discriminant)
+        // Should return a structured fallback with data and decodingNote
+        let result = decode_xcm_message("0xdeadbeef", None);
+        let obj = result
+            .as_object()
+            .expect("should return a JSON object with data + decodingNote");
+        assert_eq!(
+            obj.get("data").and_then(|v| v.as_str()),
+            Some("0xdeadbeef"),
+            "should contain original hex in 'data' field"
         );
-        assert_eq!(result.as_str().unwrap(), "0xdeadbeef");
+        assert!(
+            obj.contains_key("decodingNote"),
+            "should contain a 'decodingNote' explaining the failure"
+        );
+    }
+
+    // ========================================================================================
+    // Tier 2 & Tier 3 tests — parachain metadata decode path
+    // ========================================================================================
+
+    /// Build a fake CachedParachainMetadata with a known SCALE type (u64)
+    /// so that we can test the Tier 2 code path without a real parachain RPC.
+    fn build_test_metadata_with_u64() -> CachedParachainMetadata {
+        // Register a simple u64 type into a portable registry
+        let mut registry = scale_info::Registry::new();
+        let type_id = registry.register_type(&scale_info::meta_type::<u64>());
+        let portable: PortableRegistry = registry.into();
+        CachedParachainMetadata {
+            registry: Arc::new(portable),
+            candidate_type_ids: vec![(type_id.id, "test::TestMessage".to_string())],
+        }
+    }
+
+    /// Build a fake CachedParachainMetadata with RuntimeCall-like name but an
+    /// empty candidate list (simulating metadata fetched but no matching types).
+    fn build_test_metadata_empty_candidates() -> CachedParachainMetadata {
+        let registry = scale_info::Registry::new();
+        let portable: PortableRegistry = registry.into();
+        CachedParachainMetadata {
+            registry: Arc::new(portable),
+            candidate_type_ids: vec![],
+        }
+    }
+
+    #[test]
+    fn test_tier2_successful_decode_with_parachain_metadata() {
+        // Construct a SCALE-encoded u64 value (little-endian)
+        let value: u64 = 42;
+        let encoded = value.encode();
+        // First byte of u64 encoding will be 0x2a (42), which is NOT an XCM discriminant
+        let hex_str = format!("0x{}", hex::encode(&encoded));
+
+        let metadata = build_test_metadata_with_u64();
+        let result = decode_xcm_message(&hex_str, Some(&metadata));
+
+        // Tier 2 should succeed: the message should be decoded using the candidate type
+        let obj = result
+            .as_object()
+            .expect("Tier 2 success should return a JSON object");
+        assert!(
+            obj.contains_key("testMessage"),
+            "Should contain key derived from type path 'test::TestMessage' → 'testMessage', got keys: {:?}",
+            obj.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            obj.contains_key("decodedUsing"),
+            "Should contain 'decodedUsing' field"
+        );
+        let decoded_using = obj["decodedUsing"].as_str().unwrap();
+        assert!(
+            decoded_using.contains("test::TestMessage"),
+            "decodedUsing should reference the type path"
+        );
+    }
+
+    #[test]
+    fn test_tier2_failure_falls_to_tier3_with_metadata_note() {
+        // Protobuf-like bytes that won't SCALE-decode as u64 (too short for u64)
+        let hex_str = "0x0198";
+
+        let metadata = build_test_metadata_with_u64();
+        let result = decode_xcm_message(hex_str, Some(&metadata));
+
+        // Should fall through Tier 2 to Tier 3 with "metadata was available" note
+        let obj = result
+            .as_object()
+            .expect("should return a JSON object with data + decodingNote");
+        assert_eq!(
+            obj.get("data").and_then(|v| v.as_str()),
+            Some("0x0198"),
+            "should contain original hex"
+        );
+        let note = obj["decodingNote"]
+            .as_str()
+            .expect("should have decodingNote");
+        assert!(
+            note.contains("Parachain metadata was available but no matching type was found"),
+            "decodingNote should mention metadata was available, got: {note}"
+        );
+    }
+
+    #[test]
+    fn test_tier2_empty_candidates_falls_to_tier3() {
+        // Even with metadata provided, if there are no candidate types, should fall to Tier 3
+        let hex_str = "0x0198aabbccdd";
+
+        let metadata = build_test_metadata_empty_candidates();
+        let result = decode_xcm_message(hex_str, Some(&metadata));
+
+        let obj = result.as_object().expect("should return fallback object");
+        let note = obj["decodingNote"]
+            .as_str()
+            .expect("should have decodingNote");
+        assert!(
+            note.contains("Parachain metadata was available but no matching type was found"),
+            "should indicate metadata was available: {note}"
+        );
+    }
+
+    #[test]
+    fn test_tier3_no_metadata_note() {
+        // Non-XCM bytes with NO parachain metadata → Tier 3 with "no RPC configured" note
+        let hex_str = "0x0198aabbccdd";
+
+        let result = decode_xcm_message(hex_str, None);
+
+        let obj = result.as_object().expect("should return fallback object");
+        let note = obj["decodingNote"]
+            .as_str()
+            .expect("should have decodingNote");
+        assert!(
+            note.contains("No parachain RPC URL configured for metadata-based decoding"),
+            "should indicate no RPC configured: {note}"
+        );
+    }
+
+    #[test]
+    fn test_tier3_bridge_protocol_pattern() {
+        // Real-world pattern from para 3428: starts with 0x01 0x98 (bridge protocol)
+        let hex_str =
+            "0x01980024080112207b213f6092fd22eb2493a9e7889927f003d881618d0d0984b5555db7ecb2f9";
+
+        // Without metadata
+        let result_no_meta = decode_xcm_message(hex_str, None);
+        let obj = result_no_meta.as_object().unwrap();
+        let note = obj["decodingNote"].as_str().unwrap();
+        assert!(
+            note.contains("custom bridge protocol message"),
+            "0x01 prefix should be classified as bridge protocol: {note}"
+        );
+        assert!(
+            note.contains("No parachain RPC URL configured"),
+            "without metadata should say no RPC configured: {note}"
+        );
+
+        // With metadata but empty candidates (simulating Tier 2 attempt with no matching types)
+        // Note: We use empty candidates here because a simple u64 type would accidentally
+        // "succeed" by consuming just the first 8 bytes of the protobuf data.
+        let metadata = build_test_metadata_empty_candidates();
+        let result_with_meta = decode_xcm_message(hex_str, Some(&metadata));
+        let obj2 = result_with_meta.as_object().unwrap();
+        let note2 = obj2["decodingNote"].as_str().unwrap();
+        assert!(
+            note2.contains("Parachain metadata was available but no matching type was found"),
+            "with metadata should say metadata was available: {note2}"
+        );
+    }
+
+    #[test]
+    fn test_xcm_discriminant_that_fails_decode_returns_structured_error() {
+        // 0x04 is V4 discriminant but followed by garbage bytes → Tier 1 fails with structured error
+        let hex_str = "0x04deadbeefcafe";
+        let result = decode_xcm_message(hex_str, None);
+
+        let obj = result.as_object().expect("should return structured error");
+        assert_eq!(obj.get("data").and_then(|v| v.as_str()), Some(hex_str));
+        let note = obj["decodingNote"].as_str().unwrap();
+        assert!(
+            note.contains("suggests XCM V4 but decoding failed"),
+            "should explain V4 decode failure: {note}"
+        );
+    }
+
+    #[test]
+    fn test_is_likely_xcm() {
+        // 0x03=V3, 0x04=V4, 0x05=V5 are XCM discriminants
+        assert!(is_likely_xcm(0x03));
+        assert!(is_likely_xcm(0x04));
+        assert!(is_likely_xcm(0x05));
+        // Everything else is not
+        assert!(!is_likely_xcm(0x00));
+        assert!(!is_likely_xcm(0x01));
+        assert!(!is_likely_xcm(0x02));
+        assert!(!is_likely_xcm(0x06));
+        assert!(!is_likely_xcm(0xFF));
+    }
+
+    #[test]
+    fn test_find_candidate_ump_types() {
+        // Create a registry with a type that has "RuntimeCall" in its path
+        // The find_candidate_ump_types function checks the last path segment
+        let registry = scale_info::Registry::new();
+        let portable: PortableRegistry = registry.into();
+        // With an empty registry, should find no candidates
+        let candidates = find_candidate_ump_types(&portable);
+        assert!(
+            candidates.is_empty(),
+            "empty registry should have no candidates"
+        );
     }
 
     #[test]
@@ -733,8 +1307,8 @@ mod tests {
         );
 
         // Both should decode successfully
-        let r4 = decode_xcm_message(&v4_hex);
-        let r5 = decode_xcm_message(&v5_hex);
+        let r4 = decode_xcm_message(&v4_hex, None);
+        let r5 = decode_xcm_message(&v5_hex, None);
 
         let r4_obj = r4.as_array().unwrap()[0].as_object().unwrap();
         let r5_obj = r5.as_array().unwrap()[0].as_object().unwrap();

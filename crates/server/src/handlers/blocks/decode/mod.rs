@@ -28,4 +28,4 @@ pub use events::{
     try_convert_accountid_to_ss58,
 };
 pub use type_name::GetTypeName;
-pub use xcm::XcmDecoder;
+pub use xcm::{ParachainMetadataCache, XcmDecoder};
