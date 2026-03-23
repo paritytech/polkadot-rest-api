@@ -7,6 +7,8 @@
 //! - `XcmDecoder` for extracting and decoding XCM messages from extrinsics
 //! - `scale_value_to_json` for registry-aware conversion of SCALE values to JSON
 
+use std::sync::LazyLock;
+
 use heck::ToLowerCamelCase;
 use parity_scale_codec::Encode;
 use polkadot_parachain_primitives::primitives::XcmpMessageFormat;
@@ -189,12 +191,11 @@ pub fn scale_value_to_json(value: scale_value::Value<u32>, registry: &PortableRe
 // XCM Decoder
 // ================================================================================================
 
-/// Build a portable registry containing just the VersionedXcm type
-fn build_xcm_registry() -> (PortableRegistry, u32) {
+static XCM_REGISTRY: LazyLock<(PortableRegistry, u32)> = LazyLock::new(|| {
     let mut registry = scale_info::Registry::new();
     let type_id = registry.register_type(&scale_info::meta_type::<staging_xcm::VersionedXcm<()>>());
     (registry.into(), type_id.id)
-}
+});
 
 /// XCMP format byte for `ConcatenatedVersionedXcm`, derived from the canonical enum.
 /// Uses the SCALE-encoded discriminant of the first variant.
@@ -214,12 +215,11 @@ fn decode_xcm_message(hex_str: &str) -> Value {
         return Value::String(hex_str.to_string());
     }
 
-    // Build registry with VersionedXcm type
-    let (registry, type_id) = build_xcm_registry();
+    let (registry, type_id) = &*XCM_REGISTRY;
 
     // Try direct decode first
-    if let Ok(value) = decode_as_type(&mut &bytes[..], type_id, &registry) {
-        return Value::Array(vec![scale_value_to_json(value, &registry)]);
+    if let Ok(value) = decode_as_type(&mut &bytes[..], *type_id, registry) {
+        return Value::Array(vec![scale_value_to_json(value, registry)]);
     }
 
     // Strip XCMP ConcatenatedVersionedXcm prefix and decode concatenated messages.
@@ -229,9 +229,9 @@ fn decode_xcm_message(hex_str: &str) -> Value {
         let mut remaining = payload;
 
         while !remaining.is_empty() {
-            match decode_as_type(&mut remaining, type_id, &registry) {
+            match decode_as_type(&mut remaining, *type_id, registry) {
                 Ok(value) => {
-                    decoded_messages.push(scale_value_to_json(value, &registry));
+                    decoded_messages.push(scale_value_to_json(value, registry));
                 }
                 Err(e) => {
                     tracing::debug!(
@@ -1037,9 +1037,9 @@ mod tests {
 
     #[test]
     fn test_build_xcm_registry_contains_versioned_xcm() {
-        let (registry, type_id) = build_xcm_registry();
+        let (registry, type_id) = &*XCM_REGISTRY;
         let ty = registry
-            .resolve(type_id)
+            .resolve(*type_id)
             .expect("VersionedXcm type should be in registry");
         // VersionedXcm is an enum with V3, V4, V5 variants
         match &ty.type_def {
