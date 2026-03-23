@@ -39,6 +39,7 @@ rustc-hex = "2.1"
 hex = "0.4"
 ss58-registry = "1.51"
 parity-scale-codec = { version = "3.0", features = ["derive"] }
+polkadot-parachain-primitives = { version = "20", default-features = false, features = ["std"] }
 sp-core = "34"
 sp-runtime = "39"
 sp-consensus-babe = "0.40"

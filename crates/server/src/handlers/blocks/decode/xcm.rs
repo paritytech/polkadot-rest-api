@@ -8,6 +8,8 @@
 //! - `scale_value_to_json` for registry-aware conversion of SCALE values to JSON
 
 use heck::ToLowerCamelCase;
+use parity_scale_codec::Encode;
+use polkadot_parachain_primitives::primitives::XcmpMessageFormat;
 use scale_info::{PortableRegistry, TypeDef};
 use scale_value::scale::decode_as_type;
 use serde_json::Value;
@@ -194,9 +196,11 @@ fn build_xcm_registry() -> (PortableRegistry, u32) {
     (registry.into(), type_id.id)
 }
 
-/// XCMP format byte for `ConcatenatedVersionedXcm`.
-/// See: `cumulus_primitives_core::XcmpMessageFormat`
-const XCMP_FORMAT_CONCATENATED_VERSIONED_XCM: u8 = 0x00;
+/// XCMP format byte for `ConcatenatedVersionedXcm`, derived from the canonical enum.
+/// Uses the SCALE-encoded discriminant of the first variant.
+fn xcmp_format_concatenated_versioned_xcm() -> u8 {
+    XcmpMessageFormat::ConcatenatedVersionedXcm.encode()[0]
+}
 
 /// Decode a hex-encoded XCM message into a JSON value.
 /// Returns the decoded XCM instructions if successful, or the raw hex string if decoding fails.
@@ -218,8 +222,8 @@ fn decode_xcm_message(hex_str: &str) -> Value {
         return Value::Array(vec![scale_value_to_json(value, &registry)]);
     }
 
-    // Strip XCMP ConcatenatedVersionedXcm prefix (0x00) and decode concatenated messages.
-    if bytes[0] == XCMP_FORMAT_CONCATENATED_VERSIONED_XCM && bytes.len() > 1 {
+    // Strip XCMP ConcatenatedVersionedXcm prefix and decode concatenated messages.
+    if bytes[0] == xcmp_format_concatenated_versioned_xcm() && bytes.len() > 1 {
         let payload = &bytes[1..];
         let mut decoded_messages = Vec::new();
         let mut remaining = payload;
