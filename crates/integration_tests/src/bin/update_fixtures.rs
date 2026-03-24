@@ -245,7 +245,7 @@ fn save_fixture(chain: &str, filename: &str, data: &Value) -> Result<()> {
     let fixture_path = fixtures_dir.join(filename);
 
     println!("  Saving to {:?}...", fixture_path);
-    let json_string = serde_json::to_string_pretty(data)?;
+    let json_string = format!("{}\n", serde_json::to_string_pretty(data)?);
     std::fs::write(&fixture_path, &json_string)
         .context(format!("Failed to write fixture: {:?}", fixture_path))?;
 
