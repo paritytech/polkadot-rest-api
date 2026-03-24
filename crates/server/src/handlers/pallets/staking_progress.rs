@@ -224,30 +224,10 @@ pub async fn pallets_staking_progress(
     let validators = if is_asset_hub {
         if let Ok(relay_client) = state.get_relay_chain_client().await {
             let relay_chain_info = state.get_relay_chain_info().await?;
-            let relay_rpc = state.get_relay_chain_rpc().await?;
-            let relay_block_hash = relay_rpc
-                .chain_get_block_hash(None)
+            let relay_client_at_block = relay_client
+                .at_current_block()
                 .await
                 .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
-            let relay_rpc_client = state.get_relay_chain_rpc_client().await?;
-            let relay_block_number = if let Some(hash) = relay_block_hash {
-                let hash_str = format!("{:?}", hash);
-                let header: serde_json::Value = relay_rpc_client
-                    .request("chain_getHeader", subxt_rpcs::rpc_params![hash_str])
-                    .await
-                    .map_err(|e| PalletError::StorageEntryFetchFailed {
-                        pallet: "System",
-                        entry: "BlockHash",
-                        error: e.to_string(),
-                    })?;
-                header["number"]
-                    .as_str()
-                    .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
-                    .unwrap_or(0)
-            } else {
-                0
-            };
-            let relay_client_at_block = relay_client.at_block(relay_block_number).await?;
             fetch_staking_validators(&relay_client_at_block, relay_chain_info.ss58_prefix).await?
         } else {
             fetch_staking_validators(&resolved.client_at_block, state.chain_info.ss58_prefix)
