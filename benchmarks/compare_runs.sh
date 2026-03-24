@@ -1508,6 +1508,7 @@ cat >> "$OUTPUT" <<'RAWTABLESTYLE'
         <th style="padding: 8px 6px;">Peak RSS</th>
         <th style="padding: 8px 6px;">Avg CPU</th>
         <th style="padding: 8px 6px;">Peak CPU</th>
+        <th style="text-align: left; padding: 8px 6px;">File</th>
       </tr>
     </thead>
     <tbody>
@@ -1516,7 +1517,8 @@ RAWTABLESTYLE
 RUN_NUM=0
 for f in "${FILES_A[@]}"; do
     RUN_NUM=$((RUN_NUM + 1))
-    jq -r --arg svc "$LABEL_A" --argjson run "$RUN_NUM" '
+    FNAME="$(basename "$f")"
+    jq -r --arg svc "$LABEL_A" --argjson run "$RUN_NUM" --arg fname "$FNAME" '
         "<tr style=\"border-bottom: 1px solid #21262d; text-align: right;\">" +
         "<td style=\"text-align: left; padding: 6px; color: #3fb950; font-weight: 600;\">" + $svc + "</td>" +
         "<td style=\"padding: 6px;\">" + ($run | tostring) + "</td>" +
@@ -1533,16 +1535,18 @@ for f in "${FILES_A[@]}"; do
         "<td style=\"padding: 6px;\">" + (if .resources.peak_rss_mb then ((.resources.peak_rss_mb * 10 | round / 10 | tostring) + " MB") else "\u2014" end) + "</td>" +
         "<td style=\"padding: 6px;\">" + (if .resources.avg_cpu_pct then ((.resources.avg_cpu_pct * 10 | round / 10 | tostring) + "%") else "\u2014" end) + "</td>" +
         "<td style=\"padding: 6px;\">" + (if .resources.peak_cpu_pct then ((.resources.peak_cpu_pct * 10 | round / 10 | tostring) + "%") else "\u2014" end) + "</td>" +
+        "<td style=\"text-align: left; padding: 6px; font-size: 0.85em; color: #8b949e;\">" + $fname + "</td>" +
         "</tr>"
     ' "$f" >> "$OUTPUT"
 done
 
-echo '<tr style="border-bottom: 2px solid #30363d;"><td colspan="15"></td></tr>' >> "$OUTPUT"
+echo '<tr style="border-bottom: 2px solid #30363d;"><td colspan="16"></td></tr>' >> "$OUTPUT"
 
 RUN_NUM=0
 for f in "${FILES_B[@]}"; do
     RUN_NUM=$((RUN_NUM + 1))
-    jq -r --arg svc "$LABEL_B" --argjson run "$RUN_NUM" '
+    FNAME="$(basename "$f")"
+    jq -r --arg svc "$LABEL_B" --argjson run "$RUN_NUM" --arg fname "$FNAME" '
         "<tr style=\"border-bottom: 1px solid #21262d; text-align: right;\">" +
         "<td style=\"text-align: left; padding: 6px; color: #58a6ff; font-weight: 600;\">" + $svc + "</td>" +
         "<td style=\"padding: 6px;\">" + ($run | tostring) + "</td>" +
@@ -1559,6 +1563,7 @@ for f in "${FILES_B[@]}"; do
         "<td style=\"padding: 6px;\">" + (if .resources.peak_rss_mb then ((.resources.peak_rss_mb * 10 | round / 10 | tostring) + " MB") else "\u2014" end) + "</td>" +
         "<td style=\"padding: 6px;\">" + (if .resources.avg_cpu_pct then ((.resources.avg_cpu_pct * 10 | round / 10 | tostring) + "%") else "\u2014" end) + "</td>" +
         "<td style=\"padding: 6px;\">" + (if .resources.peak_cpu_pct then ((.resources.peak_cpu_pct * 10 | round / 10 | tostring) + "%") else "\u2014" end) + "</td>" +
+        "<td style=\"text-align: left; padding: 6px; font-size: 0.85em; color: #8b949e;\">" + $fname + "</td>" +
         "</tr>"
     ' "$f" >> "$OUTPUT"
 done
