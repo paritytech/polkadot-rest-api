@@ -147,14 +147,23 @@ async fn update_chain_fixtures(
     }
 
     for test_case in &test_cases {
-        // Build endpoint URL, substituting {blockId} if block_height is provided
-        let endpoint = if let Some(block_height) = test_case.block_height {
-            test_case
-                .endpoint
-                .replace("{blockId}", &block_height.to_string())
-        } else {
-            test_case.endpoint.clone()
-        };
+        // Build endpoint URL, substituting path parameters
+        let mut endpoint = test_case.endpoint.clone();
+        if let Some(block_height) = test_case.block_height {
+            endpoint = endpoint.replace("{blockId}", &block_height.to_string());
+        }
+        if let Some(ref account_id) = test_case.account_id {
+            endpoint = endpoint.replace("{accountId}", account_id);
+        }
+        if let Some(ref asset_id) = test_case.asset_id {
+            endpoint = endpoint.replace("{assetId}", asset_id);
+        }
+        if let Some(ref pool_id) = test_case.pool_id {
+            endpoint = endpoint.replace("{poolId}", pool_id);
+        }
+        if let Some(extrinsic_index) = test_case.extrinsic_index {
+            endpoint = endpoint.replace("{extrinsicIndex}", &extrinsic_index.to_string());
+        }
 
         // Build query string from query_params
         let query_string: String = test_case
@@ -213,8 +222,8 @@ async fn fetch_endpoint_from_api(client: &Client, url: &str) -> Result<Value> {
         .await
         .context(format!("Failed to parse JSON response from {}", url))?;
 
-    if !data.is_object() {
-        anyhow::bail!("API response is not a JSON object");
+    if !data.is_object() && !data.is_array() {
+        anyhow::bail!("API response is not a JSON object or array");
     }
 
     println!("  ✓ Response received");

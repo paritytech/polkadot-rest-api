@@ -3,26 +3,20 @@
     "hash": "0xec77b29816dec211e0565fdbdee1e29a7fc482f6f19e6e44ecdebc37545a155e",
     "height": "10260000"
   },
-  "pallet": "balances",
-  "palletIndex": "10",
   "items": [
     {
-      "name": "transfer_allow_death",
-      "fields": [
+      "args": [
         {
           "name": "dest",
-          "type": "252",
-          "typeName": "AccountIdLookupOf<T>",
-          "docs": []
+          "type": "MultiAddress",
+          "typeName": "AccountIdLookupOf"
         },
         {
           "name": "value",
-          "type": "75",
-          "typeName": "T::Balance",
-          "docs": []
+          "type": "Compact<u128>",
+          "typeName": "Balance"
         }
       ],
-      "index": "0",
       "docs": [
         "Transfer some liquid free balance to another account.",
         "",
@@ -32,7 +26,30 @@
         "",
         "The dispatch origin for this call must be `Signed` by the transactor."
       ],
+      "fields": [
+        {
+          "docs": [],
+          "name": "dest",
+          "type": "252",
+          "typeName": "AccountIdLookupOf<T>"
+        },
+        {
+          "docs": [],
+          "name": "value",
+          "type": "75",
+          "typeName": "T::Balance"
+        }
+      ],
+      "index": "0",
+      "name": "transfer_allow_death"
+    },
+    {
       "args": [
+        {
+          "name": "source",
+          "type": "MultiAddress",
+          "typeName": "AccountIdLookupOf"
+        },
         {
           "name": "dest",
           "type": "MultiAddress",
@@ -43,41 +60,36 @@
           "type": "Compact<u128>",
           "typeName": "Balance"
         }
-      ]
-    },
-    {
-      "name": "force_transfer",
-      "fields": [
-        {
-          "name": "source",
-          "type": "252",
-          "typeName": "AccountIdLookupOf<T>",
-          "docs": []
-        },
-        {
-          "name": "dest",
-          "type": "252",
-          "typeName": "AccountIdLookupOf<T>",
-          "docs": []
-        },
-        {
-          "name": "value",
-          "type": "75",
-          "typeName": "T::Balance",
-          "docs": []
-        }
       ],
-      "index": "2",
       "docs": [
         "Exactly as `transfer_allow_death`, except the origin must be root and the source account",
         "may be specified."
       ],
-      "args": [
+      "fields": [
         {
+          "docs": [],
           "name": "source",
-          "type": "MultiAddress",
-          "typeName": "AccountIdLookupOf"
+          "type": "252",
+          "typeName": "AccountIdLookupOf<T>"
         },
+        {
+          "docs": [],
+          "name": "dest",
+          "type": "252",
+          "typeName": "AccountIdLookupOf<T>"
+        },
+        {
+          "docs": [],
+          "name": "value",
+          "type": "75",
+          "typeName": "T::Balance"
+        }
+      ],
+      "index": "2",
+      "name": "force_transfer"
+    },
+    {
+      "args": [
         {
           "name": "dest",
           "type": "MultiAddress",
@@ -88,25 +100,7 @@
           "type": "Compact<u128>",
           "typeName": "Balance"
         }
-      ]
-    },
-    {
-      "name": "transfer_keep_alive",
-      "fields": [
-        {
-          "name": "dest",
-          "type": "252",
-          "typeName": "AccountIdLookupOf<T>",
-          "docs": []
-        },
-        {
-          "name": "value",
-          "type": "75",
-          "typeName": "T::Balance",
-          "docs": []
-        }
       ],
-      "index": "3",
       "docs": [
         "Same as the [`transfer_allow_death`] call, but with a check that the transfer will not",
         "kill the origin account.",
@@ -115,6 +109,24 @@
         "",
         "[`transfer_allow_death`]: struct.Pallet.html#method.transfer"
       ],
+      "fields": [
+        {
+          "docs": [],
+          "name": "dest",
+          "type": "252",
+          "typeName": "AccountIdLookupOf<T>"
+        },
+        {
+          "docs": [],
+          "name": "value",
+          "type": "75",
+          "typeName": "T::Balance"
+        }
+      ],
+      "index": "3",
+      "name": "transfer_keep_alive"
+    },
+    {
       "args": [
         {
           "name": "dest",
@@ -122,29 +134,11 @@
           "typeName": "AccountIdLookupOf"
         },
         {
-          "name": "value",
-          "type": "Compact<u128>",
-          "typeName": "Balance"
-        }
-      ]
-    },
-    {
-      "name": "transfer_all",
-      "fields": [
-        {
-          "name": "dest",
-          "type": "252",
-          "typeName": "AccountIdLookupOf<T>",
-          "docs": []
-        },
-        {
-          "name": "keep_alive",
-          "type": "8",
-          "typeName": "bool",
-          "docs": []
+          "name": "keepAlive",
+          "type": "bool",
+          "typeName": "bool"
         }
       ],
-      "index": "4",
       "docs": [
         "Transfer the entire transferable balance from the caller account.",
         "",
@@ -162,41 +156,24 @@
         "  transfer everything except at least the existential deposit, which will guarantee to",
         "  keep the sender account alive (true)."
       ],
-      "args": [
-        {
-          "name": "dest",
-          "type": "MultiAddress",
-          "typeName": "AccountIdLookupOf"
-        },
-        {
-          "name": "keepAlive",
-          "type": "bool",
-          "typeName": "bool"
-        }
-      ]
-    },
-    {
-      "name": "force_unreserve",
       "fields": [
         {
-          "name": "who",
+          "docs": [],
+          "name": "dest",
           "type": "252",
-          "typeName": "AccountIdLookupOf<T>",
-          "docs": []
+          "typeName": "AccountIdLookupOf<T>"
         },
         {
-          "name": "amount",
-          "type": "6",
-          "typeName": "T::Balance",
-          "docs": []
+          "docs": [],
+          "name": "keep_alive",
+          "type": "8",
+          "typeName": "bool"
         }
       ],
-      "index": "5",
-      "docs": [
-        "Unreserve some balance from a user by force.",
-        "",
-        "Can only be called by ROOT."
-      ],
+      "index": "4",
+      "name": "transfer_all"
+    },
+    {
       "args": [
         {
           "name": "who",
@@ -208,19 +185,37 @@
           "type": "u128",
           "typeName": "Balance"
         }
-      ]
-    },
-    {
-      "name": "upgrade_accounts",
+      ],
+      "docs": [
+        "Unreserve some balance from a user by force.",
+        "",
+        "Can only be called by ROOT."
+      ],
       "fields": [
         {
+          "docs": [],
           "name": "who",
-          "type": "89",
-          "typeName": "Vec<T::AccountId>",
-          "docs": []
+          "type": "252",
+          "typeName": "AccountIdLookupOf<T>"
+        },
+        {
+          "docs": [],
+          "name": "amount",
+          "type": "6",
+          "typeName": "T::Balance"
         }
       ],
-      "index": "6",
+      "index": "5",
+      "name": "force_unreserve"
+    },
+    {
+      "args": [
+        {
+          "name": "who",
+          "type": "Vec<AccountId32>",
+          "typeName": "Vec<AccountId>"
+        }
+      ],
       "docs": [
         "Upgrade a specified account.",
         "",
@@ -231,36 +226,18 @@
         "be upgraded. (We let some not have to be upgraded just in order to allow for the",
         "possibility of churn)."
       ],
-      "args": [
-        {
-          "name": "who",
-          "type": "Vec<AccountId32>",
-          "typeName": "Vec<AccountId>"
-        }
-      ]
-    },
-    {
-      "name": "force_set_balance",
       "fields": [
         {
+          "docs": [],
           "name": "who",
-          "type": "252",
-          "typeName": "AccountIdLookupOf<T>",
-          "docs": []
-        },
-        {
-          "name": "new_free",
-          "type": "75",
-          "typeName": "T::Balance",
-          "docs": []
+          "type": "89",
+          "typeName": "Vec<T::AccountId>"
         }
       ],
-      "index": "8",
-      "docs": [
-        "Set the regular balance of a given account.",
-        "",
-        "The dispatch origin for this call is `root`."
-      ],
+      "index": "6",
+      "name": "upgrade_accounts"
+    },
+    {
       "args": [
         {
           "name": "who",
@@ -272,32 +249,30 @@
           "type": "Compact<u128>",
           "typeName": "Balance"
         }
-      ]
-    },
-    {
-      "name": "force_adjust_total_issuance",
+      ],
+      "docs": [
+        "Set the regular balance of a given account.",
+        "",
+        "The dispatch origin for this call is `root`."
+      ],
       "fields": [
         {
-          "name": "direction",
-          "type": "254",
-          "typeName": "AdjustmentDirection",
-          "docs": []
+          "docs": [],
+          "name": "who",
+          "type": "252",
+          "typeName": "AccountIdLookupOf<T>"
         },
         {
-          "name": "delta",
+          "docs": [],
+          "name": "new_free",
           "type": "75",
-          "typeName": "T::Balance",
-          "docs": []
+          "typeName": "T::Balance"
         }
       ],
-      "index": "9",
-      "docs": [
-        "Adjust the total issuance in a saturating way.",
-        "",
-        "Can only be called by root and always needs a positive `delta`.",
-        "",
-        "# Example"
-      ],
+      "index": "8",
+      "name": "force_set_balance"
+    },
+    {
       "args": [
         {
           "name": "direction",
@@ -309,34 +284,32 @@
           "type": "Compact<u128>",
           "typeName": "Balance"
         }
-      ]
-    },
-    {
-      "name": "burn",
+      ],
+      "docs": [
+        "Adjust the total issuance in a saturating way.",
+        "",
+        "Can only be called by root and always needs a positive `delta`.",
+        "",
+        "# Example"
+      ],
       "fields": [
         {
-          "name": "value",
-          "type": "75",
-          "typeName": "T::Balance",
-          "docs": []
+          "docs": [],
+          "name": "direction",
+          "type": "254",
+          "typeName": "AdjustmentDirection"
         },
         {
-          "name": "keep_alive",
-          "type": "8",
-          "typeName": "bool",
-          "docs": []
+          "docs": [],
+          "name": "delta",
+          "type": "75",
+          "typeName": "T::Balance"
         }
       ],
-      "index": "10",
-      "docs": [
-        "Burn the specified liquid free balance from the origin account.",
-        "",
-        "If the origin's account ends up below the existential deposit as a result",
-        "of the burn and `keep_alive` is false, the account will be reaped.",
-        "",
-        "Unlike sending funds to a _burn_ address, which merely makes the funds inaccessible,",
-        "this `burn` operation will reduce total issuance by the amount _burned_."
-      ],
+      "index": "9",
+      "name": "force_adjust_total_issuance"
+    },
+    {
       "args": [
         {
           "name": "value",
@@ -348,7 +321,34 @@
           "type": "bool",
           "typeName": "bool"
         }
-      ]
+      ],
+      "docs": [
+        "Burn the specified liquid free balance from the origin account.",
+        "",
+        "If the origin's account ends up below the existential deposit as a result",
+        "of the burn and `keep_alive` is false, the account will be reaped.",
+        "",
+        "Unlike sending funds to a _burn_ address, which merely makes the funds inaccessible,",
+        "this `burn` operation will reduce total issuance by the amount _burned_."
+      ],
+      "fields": [
+        {
+          "docs": [],
+          "name": "value",
+          "type": "75",
+          "typeName": "T::Balance"
+        },
+        {
+          "docs": [],
+          "name": "keep_alive",
+          "type": "8",
+          "typeName": "bool"
+        }
+      ],
+      "index": "10",
+      "name": "burn"
     }
-  ]
+  ],
+  "pallet": "balances",
+  "palletIndex": "10"
 }
