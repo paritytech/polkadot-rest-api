@@ -67,15 +67,16 @@
       "options": { "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [{ "rawQueryText": "SELECT ROUND(MAX(peak_rss_mb),1) FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' AND service='sidecar'", "queryType": "table", "refId": "A" }]
     },
+
     {
       "type": "row",
-      "title": "Throughput",
+      "title": "API Performance",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
       "collapsed": false
     },
     {
       "type": "barchart",
-      "title": "RPS per Run",
+      "title": "RPS per Run — higher & tighter is better",
       "description": "Each bar is one benchmark run. Shows consistency across runs.",
       "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
@@ -93,7 +94,8 @@
     },
     {
       "type": "barchart",
-      "title": "Avg Latency per Run (ms)",
+      "title": "Request Duration (Median) per Run — lower is better",
+      "description": "Median request duration from each run. Lower and tighter is better.",
       "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
       "fieldConfig": {
@@ -110,10 +112,117 @@
     },
     {
       "type": "barchart",
-      "title": "Error Rate per Run",
-      "description": "Total errors per run. Zero is ideal.",
+      "title": "Max Request Duration per Run — single slowest request",
+      "description": "Slowest single request in each run. Shows worst-case tail latency.",
       "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rest-api" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "sidecar" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.6, "groupWidth": 0.7 },
+      "targets": [
+        { "rawQueryText": "SELECT 'Run ' || run_number as run, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN max_latency_ms END), 1) as \"rest-api\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN max_latency_ms END), 1) as \"sidecar\" FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY run_number ORDER BY run_number", "queryType": "table", "refId": "A" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Avg Latency per Run (ms)",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rest-api" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "sidecar" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.6, "groupWidth": 0.7 },
+      "targets": [
+        { "rawQueryText": "SELECT 'Run ' || run_number as run, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_latency_ms END), 1) as \"rest-api\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN avg_latency_ms END), 1) as \"sidecar\" FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY run_number ORDER BY run_number", "queryType": "table", "refId": "A" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Transfer Rate (Median) — higher is better",
+      "description": "Data throughput in MB/s. Higher is better — measures how much response data the API can push per second.",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "fieldConfig": {
+        "defaults": { "unit": "MBs", "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rest-api" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "sidecar" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.6, "groupWidth": 0.7 },
+      "targets": [
+        { "rawQueryText": "WITH r AS (SELECT service, transfer_per_sec, ROW_NUMBER() OVER (PARTITION BY service ORDER BY transfer_per_sec) as rn, COUNT(*) OVER (PARTITION BY service) as cnt FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}') SELECT 'Median' as metric, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN transfer_per_sec END) / 1048576.0, 2) as \"rest-api\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN transfer_per_sec END) / 1048576.0, 2) as \"sidecar\" FROM r WHERE rn IN (cnt/2, cnt/2+1)", "queryType": "table", "refId": "A" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Avg Response Size (Median) — similar means apples-to-apples",
+      "description": "Average bytes per response. Similar values across services means apples-to-apples comparison.",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "fieldConfig": {
+        "defaults": { "unit": "decbytes", "decimals": 0 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rest-api" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "sidecar" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.6, "groupWidth": 0.7 },
+      "targets": [
+        { "rawQueryText": "WITH r AS (SELECT service, CASE WHEN total_requests > 0 THEN bytes * 1.0 / total_requests ELSE 0 END as resp_size, ROW_NUMBER() OVER (PARTITION BY service ORDER BY CASE WHEN total_requests > 0 THEN bytes * 1.0 / total_requests ELSE 0 END) as rn, COUNT(*) OVER (PARTITION BY service) as cnt FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}') SELECT 'Median' as metric, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN resp_size END), 0) as \"rest-api\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN resp_size END), 0) as \"sidecar\" FROM r WHERE rn IN (cnt/2, cnt/2+1)", "queryType": "table", "refId": "A" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Latency Percentiles — rest-api vs sidecar",
+      "description": "Average latency at each percentile across all runs. Green = rest-api, Blue = sidecar.",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 30 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rest-api" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "sidecar" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.5, "groupWidth": 0.7 },
+      "targets": [
+        { "rawQueryText": "SELECT 'p50' as percentile, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_p END),1) as \"rest-api\", ROUND(MAX(CASE WHEN service='sidecar' THEN avg_p END),1) as \"sidecar\" FROM (SELECT service, AVG(p50_ms) as avg_p FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service) UNION ALL SELECT 'p75', ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_p END),1), ROUND(MAX(CASE WHEN service='sidecar' THEN avg_p END),1) FROM (SELECT service, AVG(p75_ms) as avg_p FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service) UNION ALL SELECT 'p90', ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_p END),1), ROUND(MAX(CASE WHEN service='sidecar' THEN avg_p END),1) FROM (SELECT service, AVG(p90_ms) as avg_p FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service) UNION ALL SELECT 'p95', ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_p END),1), ROUND(MAX(CASE WHEN service='sidecar' THEN avg_p END),1) FROM (SELECT service, AVG(p95_ms) as avg_p FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service) UNION ALL SELECT 'p99', ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_p END),1), ROUND(MAX(CASE WHEN service='sidecar' THEN avg_p END),1) FROM (SELECT service, AVG(p99_ms) as avg_p FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service) UNION ALL SELECT 'p999', ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_p END),1), ROUND(MAX(CASE WHEN service='sidecar' THEN avg_p END),1) FROM (SELECT service, AVG(p999_ms) as avg_p FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service)", "queryType": "table", "refId": "A" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "P99 per Run — lower & tighter is better",
+      "description": "P99 latency from each run, both services overlaid",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rest-api" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "sidecar" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.5, "groupWidth": 0.7 },
+      "targets": [
+        { "rawQueryText": "SELECT 'Run ' || run_number as run, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN p99_ms END), 1) as \"rest-api\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN p99_ms END), 1) as \"sidecar\" FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY run_number ORDER BY run_number", "queryType": "table", "refId": "A" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Error Rate per Run — lower is better (0 is ideal)",
+      "description": "Total errors per run. Zero is ideal.",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
       "fieldConfig": {
         "defaults": {},
         "overrides": [
@@ -131,7 +240,7 @@
       "title": "Summary — Median Across Runs",
       "description": "Median of each metric computed independently across all runs",
       "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 48 },
       "fieldConfig": {
         "defaults": {},
         "overrides": [
@@ -139,58 +248,19 @@
           { "matcher": { "id": "byName", "options": "median_latency" }, "properties": [{ "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 }] },
           { "matcher": { "id": "byName", "options": "median_p50" }, "properties": [{ "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 }] },
           { "matcher": { "id": "byName", "options": "median_p99" }, "properties": [{ "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 }] },
+          { "matcher": { "id": "byName", "options": "median_max_latency" }, "properties": [{ "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 }] },
           { "matcher": { "id": "byName", "options": "peak_rss" }, "properties": [{ "id": "unit", "value": "decmbytes" }, { "id": "decimals", "value": 1 }] },
-          { "matcher": { "id": "byName", "options": "avg_cpu" }, "properties": [{ "id": "unit", "value": "percent" }, { "id": "decimals", "value": 1 }] }
+          { "matcher": { "id": "byName", "options": "avg_cpu" }, "properties": [{ "id": "unit", "value": "percent" }, { "id": "decimals", "value": 1 }] },
+          { "matcher": { "id": "byName", "options": "median_transfer" }, "properties": [{ "id": "unit", "value": "Bps" }, { "id": "decimals", "value": 0 }] }
         ]
       },
-      "targets": [{ "rawQueryText": "SELECT service, COUNT(*) as runs, ROUND(AVG(rps),1) as median_rps, ROUND(AVG(avg_latency_ms),1) as median_latency, ROUND(AVG(p50_ms),1) as median_p50, ROUND(AVG(p99_ms),1) as median_p99, ROUND(MAX(peak_rss_mb),1) as peak_rss, ROUND(AVG(avg_cpu_pct),1) as avg_cpu, SUM(total_requests) as total_reqs, SUM(errors_total) as total_errors FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service ORDER BY service", "queryType": "table", "refId": "A" }]
+      "targets": [{ "rawQueryText": "SELECT service, COUNT(*) as runs, ROUND(AVG(rps),1) as median_rps, ROUND(AVG(avg_latency_ms),1) as median_latency, ROUND(AVG(max_latency_ms),1) as median_max_latency, ROUND(AVG(p50_ms),1) as median_p50, ROUND(AVG(p99_ms),1) as median_p99, ROUND(MAX(peak_rss_mb),1) as peak_rss, ROUND(AVG(avg_cpu_pct),1) as avg_cpu, ROUND(AVG(transfer_per_sec),0) as median_transfer, SUM(total_requests) as total_reqs, SUM(errors_total) as total_errors FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service ORDER BY service", "queryType": "table", "refId": "A" }]
     },
-    {
-      "type": "row",
-      "title": "Latency Percentiles",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
-      "collapsed": false
-    },
-    {
-      "type": "barchart",
-      "title": "Latency Percentiles — rest-api vs sidecar",
-      "description": "Average latency at each percentile across all runs. Green = rest-api, Blue = sidecar.",
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 23 },
-      "fieldConfig": {
-        "defaults": { "unit": "ms" },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "rest-api" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "sidecar" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
-        ]
-      },
-      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.5, "groupWidth": 0.7 },
-      "targets": [
-        { "rawQueryText": "SELECT 'p50' as percentile, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_p END),1) as \"rest-api\", ROUND(MAX(CASE WHEN service='sidecar' THEN avg_p END),1) as \"sidecar\" FROM (SELECT service, AVG(p50_ms) as avg_p FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service) UNION ALL SELECT 'p75', ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_p END),1), ROUND(MAX(CASE WHEN service='sidecar' THEN avg_p END),1) FROM (SELECT service, AVG(p75_ms) as avg_p FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service) UNION ALL SELECT 'p90', ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_p END),1), ROUND(MAX(CASE WHEN service='sidecar' THEN avg_p END),1) FROM (SELECT service, AVG(p90_ms) as avg_p FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service) UNION ALL SELECT 'p95', ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_p END),1), ROUND(MAX(CASE WHEN service='sidecar' THEN avg_p END),1) FROM (SELECT service, AVG(p95_ms) as avg_p FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service) UNION ALL SELECT 'p99', ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_p END),1), ROUND(MAX(CASE WHEN service='sidecar' THEN avg_p END),1) FROM (SELECT service, AVG(p99_ms) as avg_p FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service) UNION ALL SELECT 'p999', ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_p END),1), ROUND(MAX(CASE WHEN service='sidecar' THEN avg_p END),1) FROM (SELECT service, AVG(p999_ms) as avg_p FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service)", "queryType": "table", "refId": "A" }
-      ]
-    },
-    {
-      "type": "barchart",
-      "title": "P99 per Run — Side by Side",
-      "description": "P99 latency from each run, both services overlaid",
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 31 },
-      "fieldConfig": {
-        "defaults": { "unit": "ms" },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "rest-api" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "sidecar" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
-        ]
-      },
-      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.5, "groupWidth": 0.7 },
-      "targets": [
-        { "rawQueryText": "SELECT 'Run ' || run_number as run, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN p99_ms END), 1) as \"rest-api\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN p99_ms END), 1) as \"sidecar\" FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY run_number ORDER BY run_number", "queryType": "table", "refId": "A" }
-      ]
-    },
+
     {
       "type": "row",
       "title": "Process Resources",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 56 },
       "collapsed": false
     },
     {
@@ -198,7 +268,7 @@
       "title": "Memory (RSS) Over Time",
       "description": "RSS during baseline → load → cooldown. X axis = seconds elapsed. Green = rest-api, Blue = sidecar.",
       "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 40 },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 57 },
       "fieldConfig": {
         "defaults": {
           "unit": "decmbytes",
@@ -223,7 +293,7 @@
       "title": "CPU Usage Over Time",
       "description": "CPU % during baseline → load → cooldown. 100% = 1 core. X axis = seconds elapsed.",
       "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 40 },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 57 },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -244,11 +314,47 @@
       ]
     },
     {
+      "type": "barchart",
+      "title": "Peak RSS per Run (MB) — lower & tighter is better",
+      "description": "Peak memory (RSS) during each benchmark run.",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 67 },
+      "fieldConfig": {
+        "defaults": { "unit": "decmbytes" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rest-api" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "sidecar" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.6, "groupWidth": 0.7 },
+      "targets": [
+        { "rawQueryText": "SELECT 'Run ' || run_number as run, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN peak_rss_mb END), 1) as \"rest-api\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN peak_rss_mb END), 1) as \"sidecar\" FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY run_number ORDER BY run_number", "queryType": "table", "refId": "A" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Avg CPU per Run (%) — lower & tighter is better",
+      "description": "Average CPU usage during each benchmark run.",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 67 },
+      "fieldConfig": {
+        "defaults": { "unit": "percent" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rest-api" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "sidecar" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.6, "groupWidth": 0.7 },
+      "targets": [
+        { "rawQueryText": "SELECT 'Run ' || run_number as run, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_cpu_pct END), 1) as \"rest-api\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN avg_cpu_pct END), 1) as \"sidecar\" FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY run_number ORDER BY run_number", "queryType": "table", "refId": "A" }
+      ]
+    },
+    {
       "type": "trend",
       "title": "Memory Growth Rate (RSS delta per sample)",
       "description": "Positive = memory growing, negative = shrinking. Sustained positive values under load may indicate a memory leak.",
       "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 50 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 75 },
       "fieldConfig": {
         "defaults": {
           "unit": "decmbytes",
@@ -272,7 +378,7 @@
       "type": "stat",
       "title": "Resource Summary",
       "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 50 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 75 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" } },
         "overrides": []
@@ -280,18 +386,79 @@
       "options": { "graphMode": "none", "textMode": "value_and_name", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [{ "rawQueryText": "SELECT service || ' Start RSS' as metric, ROUND(start_rss_mb, 1) as value FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service UNION ALL SELECT service || ' Peak RSS', ROUND(MAX(peak_rss_mb), 1) FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service UNION ALL SELECT service || ' End RSS', ROUND(end_rss_mb, 1) FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service UNION ALL SELECT service || ' Avg CPU %', ROUND(avg_cpu_pct, 1) FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service UNION ALL SELECT service || ' Peak CPU %', ROUND(peak_cpu_pct, 1) FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY service", "queryType": "table", "refId": "A" }]
     },
+
     {
       "type": "row",
-      "title": "Correlation (Throughput vs Resources)",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 58 },
+      "title": "Correlation (API vs Resources)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 83 },
       "collapsed": false
+    },
+    {
+      "type": "barchart",
+      "title": "Throughput vs Memory per Run",
+      "description": "RPS and Peak RSS overlaid per run. Higher RPS with lower memory = more efficient.",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
+      "gridPos": { "h": 10, "w": 8, "x": 0, "y": 84 },
+      "fieldConfig": {
+        "defaults": { "custom": { "lineWidth": 0, "fillOpacity": 80, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rest-api RPS" }, "properties": [{ "id": "custom.axisPlacement", "value": "left" }, { "id": "unit", "value": "reqps" }, { "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "sidecar RPS" }, "properties": [{ "id": "custom.axisPlacement", "value": "left" }, { "id": "unit", "value": "reqps" }, { "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "rest-api RSS" }, "properties": [{ "id": "custom.axisPlacement", "value": "right" }, { "id": "unit", "value": "decmbytes" }, { "id": "color", "value": { "fixedColor": "rgba(115,191,105,0.4)", "mode": "fixed" } }, { "id": "custom.lineWidth", "value": 2 }, { "id": "custom.fillOpacity", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "sidecar RSS" }, "properties": [{ "id": "custom.axisPlacement", "value": "right" }, { "id": "unit", "value": "decmbytes" }, { "id": "color", "value": { "fixedColor": "rgba(87,148,242,0.4)", "mode": "fixed" } }, { "id": "custom.lineWidth", "value": 2 }, { "id": "custom.fillOpacity", "value": 0 }] }
+        ]
+      },
+      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.5, "groupWidth": 0.7 },
+      "targets": [
+        { "rawQueryText": "SELECT 'Run ' || run_number as run, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN rps END), 1) as \"rest-api RPS\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN rps END), 1) as \"sidecar RPS\", ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN peak_rss_mb END), 1) as \"rest-api RSS\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN peak_rss_mb END), 1) as \"sidecar RSS\" FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY run_number ORDER BY run_number", "queryType": "table", "refId": "A" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Throughput vs CPU per Run",
+      "description": "RPS and Avg CPU overlaid per run. Higher RPS with lower CPU = more efficient.",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
+      "gridPos": { "h": 10, "w": 8, "x": 8, "y": 84 },
+      "fieldConfig": {
+        "defaults": { "custom": { "lineWidth": 0, "fillOpacity": 80, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rest-api RPS" }, "properties": [{ "id": "custom.axisPlacement", "value": "left" }, { "id": "unit", "value": "reqps" }, { "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "sidecar RPS" }, "properties": [{ "id": "custom.axisPlacement", "value": "left" }, { "id": "unit", "value": "reqps" }, { "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "rest-api CPU" }, "properties": [{ "id": "custom.axisPlacement", "value": "right" }, { "id": "unit", "value": "percent" }, { "id": "color", "value": { "fixedColor": "rgba(115,191,105,0.4)", "mode": "fixed" } }, { "id": "custom.lineWidth", "value": 2 }, { "id": "custom.fillOpacity", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "sidecar CPU" }, "properties": [{ "id": "custom.axisPlacement", "value": "right" }, { "id": "unit", "value": "percent" }, { "id": "color", "value": { "fixedColor": "rgba(87,148,242,0.4)", "mode": "fixed" } }, { "id": "custom.lineWidth", "value": 2 }, { "id": "custom.fillOpacity", "value": 0 }] }
+        ]
+      },
+      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.5, "groupWidth": 0.7 },
+      "targets": [
+        { "rawQueryText": "SELECT 'Run ' || run_number as run, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN rps END), 1) as \"rest-api RPS\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN rps END), 1) as \"sidecar RPS\", ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN avg_cpu_pct END), 1) as \"rest-api CPU\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN avg_cpu_pct END), 1) as \"sidecar CPU\" FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY run_number ORDER BY run_number", "queryType": "table", "refId": "A" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Latency vs Memory per Run",
+      "description": "P99 latency and Peak RSS overlaid per run. Lower latency with lower memory = more efficient.",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 84 },
+      "fieldConfig": {
+        "defaults": { "custom": { "lineWidth": 0, "fillOpacity": 80, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rest-api P99" }, "properties": [{ "id": "custom.axisPlacement", "value": "left" }, { "id": "unit", "value": "ms" }, { "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "sidecar P99" }, "properties": [{ "id": "custom.axisPlacement", "value": "left" }, { "id": "unit", "value": "ms" }, { "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "rest-api RSS" }, "properties": [{ "id": "custom.axisPlacement", "value": "right" }, { "id": "unit", "value": "decmbytes" }, { "id": "color", "value": { "fixedColor": "rgba(115,191,105,0.4)", "mode": "fixed" } }, { "id": "custom.lineWidth", "value": 2 }, { "id": "custom.fillOpacity", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "sidecar RSS" }, "properties": [{ "id": "custom.axisPlacement", "value": "right" }, { "id": "unit", "value": "decmbytes" }, { "id": "color", "value": { "fixedColor": "rgba(87,148,242,0.4)", "mode": "fixed" } }, { "id": "custom.lineWidth", "value": 2 }, { "id": "custom.fillOpacity", "value": 0 }] }
+        ]
+      },
+      "options": { "orientation": "vertical", "showValue": "always", "barWidth": 0.5, "groupWidth": 0.7 },
+      "targets": [
+        { "rawQueryText": "SELECT 'Run ' || run_number as run, ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN p99_ms END), 1) as \"rest-api P99\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN p99_ms END), 1) as \"sidecar P99\", ROUND(MAX(CASE WHEN service LIKE '%rest-api%' THEN peak_rss_mb END), 1) as \"rest-api RSS\", ROUND(MAX(CASE WHEN service = 'sidecar' THEN peak_rss_mb END), 1) as \"sidecar RSS\" FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' GROUP BY run_number ORDER BY run_number", "queryType": "table", "refId": "A" }
+      ]
     },
     {
       "type": "trend",
       "title": "CPU vs Memory — rest-api",
       "description": "Dual axis: CPU (left) and RSS (right). Shows how memory grows with CPU load.",
       "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 59 },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 94 },
       "fieldConfig": {
         "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } },
         "overrides": [
@@ -309,7 +476,7 @@
       "title": "CPU vs Memory — sidecar",
       "description": "Dual axis: CPU (left) and RSS (right).",
       "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 59 },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 94 },
       "fieldConfig": {
         "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } },
         "overrides": [
@@ -322,30 +489,33 @@
         { "rawQueryText": "SELECT elapsed_s, cpu_pct as \"CPU %\", rss_mb as \"RSS (MB)\" FROM resource_samples WHERE endpoint='${endpoint}' AND service='sidecar' ORDER BY elapsed_s", "queryType": "table", "refId": "A" }
       ]
     },
+
     {
       "type": "row",
       "title": "Per-Run Details",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 69 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 104 },
       "collapsed": false
     },
     {
       "type": "table",
       "title": "All Runs — Raw Data",
       "datasource": { "type": "frser-sqlite-datasource", "uid": "benchmarks" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 70 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 105 },
       "fieldConfig": {
         "defaults": {},
         "overrides": [
           { "matcher": { "id": "byName", "options": "rps" }, "properties": [{ "id": "unit", "value": "reqps" }, { "id": "decimals", "value": 1 }] },
           { "matcher": { "id": "byName", "options": "avg_latency_ms" }, "properties": [{ "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 }] },
+          { "matcher": { "id": "byName", "options": "max_latency_ms" }, "properties": [{ "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 }] },
           { "matcher": { "id": "byName", "options": "p50_ms" }, "properties": [{ "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 }] },
           { "matcher": { "id": "byName", "options": "p99_ms" }, "properties": [{ "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 }] },
           { "matcher": { "id": "byName", "options": "p999_ms" }, "properties": [{ "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 }] },
           { "matcher": { "id": "byName", "options": "peak_rss_mb" }, "properties": [{ "id": "unit", "value": "decmbytes" }, { "id": "decimals", "value": 1 }] },
-          { "matcher": { "id": "byName", "options": "transfer_per_sec" }, "properties": [{ "id": "unit", "value": "Bps" }, { "id": "decimals", "value": 0 }] }
+          { "matcher": { "id": "byName", "options": "transfer_per_sec" }, "properties": [{ "id": "unit", "value": "Bps" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "avg_resp_bytes" }, "properties": [{ "id": "unit", "value": "decbytes" }, { "id": "decimals", "value": 0 }] }
         ]
       },
-      "targets": [{ "rawQueryText": "SELECT service, run_number as run, rps, avg_latency_ms, p50_ms, p99_ms, p999_ms, total_requests, errors_total as errors, peak_rss_mb, avg_cpu_pct, peak_cpu_pct, ROUND(transfer_per_sec, 0) as transfer_per_sec FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' ORDER BY service, run_number", "queryType": "table", "refId": "A" }]
+      "targets": [{ "rawQueryText": "SELECT service, run_number as run, rps, avg_latency_ms, max_latency_ms, p50_ms, p99_ms, p999_ms, total_requests, errors_total as errors, peak_rss_mb, avg_cpu_pct, peak_cpu_pct, ROUND(transfer_per_sec, 0) as transfer_per_sec, CASE WHEN total_requests > 0 THEN ROUND(bytes * 1.0 / total_requests, 0) ELSE 0 END as avg_resp_bytes FROM benchmark_runs WHERE endpoint='${endpoint}' AND scenario='${scenario}' ORDER BY service, run_number", "queryType": "table", "refId": "A" }]
     }
   ],
   "refresh": "",
