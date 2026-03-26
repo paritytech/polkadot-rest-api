@@ -1134,6 +1134,12 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "convert_case"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
+
+[[package]]
+name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "633458d4ef8c78b72454de2d54fd6ab2e60f9e02be22f3c6104cdc8a4e0fceb9"
@@ -1356,6 +1362,19 @@ dependencies = [
 
 [[package]]
 name = "derive_more"
+version = "0.99.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6edb4b64a43d977b8e99788fe3a04d483834fba1215a7e02caa415b626497f7f"
+dependencies = [
+ "convert_case 0.4.0",
+ "proc-macro2",
+ "quote",
+ "rustc_version",
+ "syn 2.0.114",
+]
+
+[[package]]
+name = "derive_more"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a9b99b9cbbe49445b21764dc0625032a89b145a2642e67603e1c936f5458d05"
@@ -1389,7 +1408,7 @@ version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "799a97264921d8623a957f6c3b9011f3b5492f557bbb7a5a19b7fa6d06ba8dcb"
 dependencies = [
- "convert_case",
+ "convert_case 0.10.0",
  "proc-macro2",
  "quote",
  "rustc_version",
@@ -2614,7 +2633,7 @@ dependencies = [
 
 [[package]]
 name = "integration_tests"
-version = "0.1.0-beta.5"
+version = "0.1.0-beta.6"
 dependencies = [
  "anyhow",
  "colored",
@@ -3495,8 +3514,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
+name = "polkadot-core-primitives"
+version = "21.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc3e1e843b3bab4df488ae15f14822527e8f5003a49efd50b8cdfb55c503a7ee"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core 39.0.0",
+ "sp-runtime 45.0.0",
+]
+
+[[package]]
+name = "polkadot-parachain-primitives"
+version = "20.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4944ed05ba89885a746af800b34fcf96455601d9d38350666418675d607baf9"
+dependencies = [
+ "array-bytes 6.2.3",
+ "bounded-collections 0.3.2",
+ "derive_more 0.99.20",
+ "parity-scale-codec",
+ "polkadot-core-primitives",
+ "scale-info",
+ "serde",
+ "sp-core 39.0.0",
+ "sp-runtime 45.0.0",
+ "sp-weights 33.2.0",
+]
+
+[[package]]
 name = "polkadot-rest-api"
-version = "0.1.0-beta.5"
+version = "0.1.0-beta.6"
 dependencies = [
  "axum",
  "frame-decode",
@@ -3510,6 +3559,7 @@ dependencies = [
  "merkleized-metadata",
  "nu-ansi-term",
  "parity-scale-codec",
+ "polkadot-parachain-primitives",
  "polkadot-rest-api-config",
  "primitive-types 0.13.1",
  "prometheus 0.14.0",
@@ -3550,7 +3600,7 @@ dependencies = [
 
 [[package]]
 name = "polkadot-rest-api-config"
-version = "0.1.0-beta.5"
+version = "0.1.0-beta.6"
 dependencies = [
  "clap",
  "dotenv",

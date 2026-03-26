@@ -1,48 +1,13 @@
 [
   {
-    "number": "1404442",
-    "hash": "0xa3172bce76d4835bb8ca2384f690418775c148cf188b70e21871cf4fda36ec73",
-    "parentHash": "0xf30d9142fc8c45dfa6125afa8cd3ac6fe752562d1886de27e2ffc162e831cabd",
-    "stateRoot": "0x7c3450cd8c648317fe3380821ca14a87a4f50245681f6315c5300ca0a0be1532",
-    "extrinsicsRoot": "0x7bc201b50dfe20b97c1dc1a26af930166323c6c890ec02735197987172c54ccb",
+    "ahTimestamp": "1654075446360",
     "authorId": "12ixt2xmCJKuLXjM3gh1SY7C3aj4gBoBUqExTBTGhLCSATFw",
-    "logs": [
-      {
-        "type": "PreRuntime",
-        "index": "6",
-        "value": [
-          "0x61757261",
-          "0x0444370800000000"
-        ]
-      },
-      {
-        "type": "Seal",
-        "index": "5",
-        "value": [
-          "0x61757261",
-          "0xe5348674de9f2191c2aa907fe3ac30e5a261479fe1eefc5556dfdb5a044ee52c9e82a2c45bbf42d8b9a78356f03be0b87717c90b455876b0b5db8b48d8394704"
-        ]
-      }
-    ],
-    "onInitialize": {
-      "events": []
-    },
     "extrinsics": [
       {
-        "method": {
-          "pallet": "parachainSystem",
-          "method": "setValidationData"
-        },
-        "signature": null,
-        "nonce": null,
         "args": {
           "data": {
-            "validationData": {
-              "parentHead": "0x883f6bbe6fcf7e909f2f91bc36b07a9e983745f849b7fb1db0067c4bd4bbecd166b85500e8902650a7736ab7e66fe5928ad8224e62849c44d9a357b0da6e19d7afc91604ae4550c16c99e8a162ea658ba6b08446aefa4f6cb4485b6ecbe158d0813cb31908066175726120034437080000000005617572610101eb00ede12d434b6fd4b9a2bec7214b2814149a2ccb9d9f14f84aee427f6e4ddd393c04103ced038dc199b6471ea0d288a736a07841ab8d296359f4b1fd15a80c",
-              "relayParentNumber": "10554955",
-              "relayParentStorageRoot": "0x6beded653e21f0c51e3401aa8c8121bb45765ce10c645714671e173eac39d663",
-              "maxPovSize": "5242880"
-            },
+            "downwardMessages": [],
+            "horizontalMessages": [],
             "relayChainState": {
               "trieNodes": [
                 "0x56ff6f7d467b87a9e803000080835193418d7dc401d962144b1908d945088266d951a19fa806175c9a4f5248e2",
@@ -72,75 +37,110 @@
                 "0x9f0d7fefc408aac59dbfe80a72ac8e3ce54abe80f344ec9a0e59b400d0fc7f87fea6857d0cfa14877533a02b5fd993ff35be0e3780860e6017a2a495c3294d525646ab1322e165350d5be7cee3ff4388f730d27564800ae2299fc1313fef63dc14856d7887632b4fefb7160ca6f5bae6ebd9418ad8818062ac89f4a1aac127c5481d6b6b72e1285ed70efe0487da7219c9ca205d438e9680f6f6fba234476e2303e7283a7ec7ab8219837cd6a4a2acfd41fc20ed165a29d980031842b092a0847f3b8d001901e0c41759cf54f4534e74f4fa82da0d666c9bdb80d1749af20dc37d161a740722948ef4d2b12c1f1ae3a74ddb46ed855c65c72c1480025b52c5c7892b1faab835ab264b767b4af0e6ce2a1693cad2630f12a93b1b1a8090e1fc08bfc3442a9145e27e34d61cf473606bbf63f758be384fd38ae02ba365"
               ]
             },
-            "downwardMessages": [],
-            "horizontalMessages": []
+            "validationData": {
+              "maxPovSize": "5242880",
+              "parentHead": "0x883f6bbe6fcf7e909f2f91bc36b07a9e983745f849b7fb1db0067c4bd4bbecd166b85500e8902650a7736ab7e66fe5928ad8224e62849c44d9a357b0da6e19d7afc91604ae4550c16c99e8a162ea658ba6b08446aefa4f6cb4485b6ecbe158d0813cb31908066175726120034437080000000005617572610101eb00ede12d434b6fd4b9a2bec7214b2814149a2ccb9d9f14f84aee427f6e4ddd393c04103ced038dc199b6471ea0d288a736a07841ab8d296359f4b1fd15a80c",
+              "relayParentNumber": "10554955",
+              "relayParentStorageRoot": "0x6beded653e21f0c51e3401aa8c8121bb45765ce10c645714671e173eac39d663"
+            }
           }
         },
-        "tip": null,
-        "hash": "0xb851659684a09cf8d40b626fca90d1d15c8355a9fd977c5fa299dcfc184a5e5a",
-        "info": {},
         "era": {
           "immortalEra": "0x00"
         },
         "events": [
           {
-            "method": {
-              "pallet": "system",
-              "method": "ExtrinsicSuccess"
-            },
             "data": [
               {
-                "weight": "0",
                 "class": "Mandatory",
-                "paysFee": "Yes"
+                "paysFee": "Yes",
+                "weight": "0"
               }
-            ]
+            ],
+            "method": {
+              "method": "ExtrinsicSuccess",
+              "pallet": "system"
+            }
           }
         ],
+        "hash": "0xb851659684a09cf8d40b626fca90d1d15c8355a9fd977c5fa299dcfc184a5e5a",
+        "info": {},
+        "method": {
+          "method": "setValidationData",
+          "pallet": "parachainSystem"
+        },
+        "nonce": null,
+        "paysFee": false,
+        "signature": null,
         "success": true,
-        "paysFee": false
+        "tip": null
       },
       {
-        "method": {
-          "pallet": "timestamp",
-          "method": "set"
-        },
-        "signature": null,
-        "nonce": null,
         "args": {
           "now": "1654075446360"
         },
-        "tip": null,
-        "hash": "0x579cedb46cebfaa5c89a43827484ee163e17f287264cae2145b27da7d40d7044",
-        "info": {},
         "era": {
           "immortalEra": "0x00"
         },
         "events": [
           {
-            "method": {
-              "pallet": "system",
-              "method": "ExtrinsicSuccess"
-            },
             "data": [
               {
-                "weight": "128490000",
                 "class": "Mandatory",
-                "paysFee": "Yes"
+                "paysFee": "Yes",
+                "weight": "128490000"
               }
-            ]
+            ],
+            "method": {
+              "method": "ExtrinsicSuccess",
+              "pallet": "system"
+            }
           }
         ],
+        "hash": "0x579cedb46cebfaa5c89a43827484ee163e17f287264cae2145b27da7d40d7044",
+        "info": {},
+        "method": {
+          "method": "set",
+          "pallet": "timestamp"
+        },
+        "nonce": null,
+        "paysFee": false,
+        "signature": null,
         "success": true,
-        "paysFee": false
+        "tip": null
       }
     ],
+    "extrinsicsRoot": "0x7bc201b50dfe20b97c1dc1a26af930166323c6c890ec02735197987172c54ccb",
+    "finalized": true,
+    "hash": "0xa3172bce76d4835bb8ca2384f690418775c148cf188b70e21871cf4fda36ec73",
+    "logs": [
+      {
+        "index": "6",
+        "type": "PreRuntime",
+        "value": [
+          "0x61757261",
+          "0x0444370800000000"
+        ]
+      },
+      {
+        "index": "5",
+        "type": "Seal",
+        "value": [
+          "0x61757261",
+          "0xe5348674de9f2191c2aa907fe3ac30e5a261479fe1eefc5556dfdb5a044ee52c9e82a2c45bbf42d8b9a78356f03be0b87717c90b455876b0b5db8b48d8394704"
+        ]
+      }
+    ],
+    "number": "1404442",
     "onFinalize": {
       "events": []
     },
-    "finalized": true,
+    "onInitialize": {
+      "events": []
+    },
+    "parentHash": "0xf30d9142fc8c45dfa6125afa8cd3ac6fe752562d1886de27e2ffc162e831cabd",
     "rcBlockHash": "0x006f2d60659d04555dfa1143142d8396aaa82c2debee8ff06263cd8f704dd1e5",
     "rcBlockNumber": "10554957",
-    "ahTimestamp": "1654075446360"
+    "stateRoot": "0x7c3450cd8c648317fe3380821ca14a87a4f50245681f6315c5300ca0a0be1532"
   }
 ]

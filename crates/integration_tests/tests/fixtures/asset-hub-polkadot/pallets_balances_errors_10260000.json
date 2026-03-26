@@ -1,1 +1,118 @@
-{"at":{"hash":"0xec77b29816dec211e0565fdbdee1e29a7fc482f6f19e6e44ecdebc37545a155e","height":"10260000"},"pallet":"balances","palletIndex":"10","items":[{"name":"VestingBalance","fields":[],"index":"0","docs":["Vesting balance too high to send value."],"args":[]},{"name":"LiquidityRestrictions","fields":[],"index":"1","docs":["Account liquidity restrictions prevent withdrawal."],"args":[]},{"name":"InsufficientBalance","fields":[],"index":"2","docs":["Balance too low to send value."],"args":[]},{"name":"ExistentialDeposit","fields":[],"index":"3","docs":["Value too low to create account due to existential deposit."],"args":[]},{"name":"Expendability","fields":[],"index":"4","docs":["Transfer/payment would kill account."],"args":[]},{"name":"ExistingVestingSchedule","fields":[],"index":"5","docs":["A vesting schedule already exists for this account."],"args":[]},{"name":"DeadAccount","fields":[],"index":"6","docs":["Beneficiary account must pre-exist."],"args":[]},{"name":"TooManyReserves","fields":[],"index":"7","docs":["Number of named reserves exceed `MaxReserves`."],"args":[]},{"name":"TooManyHolds","fields":[],"index":"8","docs":["Number of holds exceed `VariantCountOf<T::RuntimeHoldReason>`."],"args":[]},{"name":"TooManyFreezes","fields":[],"index":"9","docs":["Number of freezes exceed `MaxFreezes`."],"args":[]},{"name":"IssuanceDeactivated","fields":[],"index":"10","docs":["The issuance cannot be modified since it is already deactivated."],"args":[]},{"name":"DeltaZero","fields":[],"index":"11","docs":["The delta cannot be zero."],"args":[]}]}
+{
+  "at": {
+    "hash": "0xec77b29816dec211e0565fdbdee1e29a7fc482f6f19e6e44ecdebc37545a155e",
+    "height": "10260000"
+  },
+  "items": [
+    {
+      "args": [],
+      "docs": [
+        "Vesting balance too high to send value."
+      ],
+      "fields": [],
+      "index": "0",
+      "name": "VestingBalance"
+    },
+    {
+      "args": [],
+      "docs": [
+        "Account liquidity restrictions prevent withdrawal."
+      ],
+      "fields": [],
+      "index": "1",
+      "name": "LiquidityRestrictions"
+    },
+    {
+      "args": [],
+      "docs": [
+        "Balance too low to send value."
+      ],
+      "fields": [],
+      "index": "2",
+      "name": "InsufficientBalance"
+    },
+    {
+      "args": [],
+      "docs": [
+        "Value too low to create account due to existential deposit."
+      ],
+      "fields": [],
+      "index": "3",
+      "name": "ExistentialDeposit"
+    },
+    {
+      "args": [],
+      "docs": [
+        "Transfer/payment would kill account."
+      ],
+      "fields": [],
+      "index": "4",
+      "name": "Expendability"
+    },
+    {
+      "args": [],
+      "docs": [
+        "A vesting schedule already exists for this account."
+      ],
+      "fields": [],
+      "index": "5",
+      "name": "ExistingVestingSchedule"
+    },
+    {
+      "args": [],
+      "docs": [
+        "Beneficiary account must pre-exist."
+      ],
+      "fields": [],
+      "index": "6",
+      "name": "DeadAccount"
+    },
+    {
+      "args": [],
+      "docs": [
+        "Number of named reserves exceed `MaxReserves`."
+      ],
+      "fields": [],
+      "index": "7",
+      "name": "TooManyReserves"
+    },
+    {
+      "args": [],
+      "docs": [
+        "Number of holds exceed `VariantCountOf<T::RuntimeHoldReason>`."
+      ],
+      "fields": [],
+      "index": "8",
+      "name": "TooManyHolds"
+    },
+    {
+      "args": [],
+      "docs": [
+        "Number of freezes exceed `MaxFreezes`."
+      ],
+      "fields": [],
+      "index": "9",
+      "name": "TooManyFreezes"
+    },
+    {
+      "args": [],
+      "docs": [
+        "The issuance cannot be modified since it is already deactivated."
+      ],
+      "fields": [],
+      "index": "10",
+      "name": "IssuanceDeactivated"
+    },
+    {
+      "args": [],
+      "docs": [
+        "The delta cannot be zero."
+      ],
+      "fields": [],
+      "index": "11",
+      "name": "DeltaZero"
+    }
+  ],
+  "pallet": "balances",
+  "palletIndex": "10"
+}

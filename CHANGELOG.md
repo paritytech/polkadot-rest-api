@@ -6,6 +6,31 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.0-beta.6] (2026-03-23)
+
+Sixth beta release with XCM v5 support, XCM decoding improvements, and performance optimizations.
+
+### Features
+
+- **XCM v5 support**: Added support for decoding XCM v5 messages. (#301)
+
+### Fixes
+
+- **Decode XCM messages on system chains**: Fixed XCM message decoding to work correctly on system chains. (#305)
+
+### Performance
+
+- **LazyLock for XCM registry**: Use `LazyLock` for the XCM portable registry to avoid rebuilding it on every decode call. (#306)
+
+### CI
+
+- **Docs GitHub Pages**: Added GitHub Pages deployment for documentation. (#302)
+- **Skip incompatible benchmarks**: Skip incompatible benchmarks without creating result files. (#300)
+
+### Other
+
+- **Update manifests**: Updated manifests to enable metrics and Loki. (#104)
+
 ## [0.1.0-beta.5] (2026-03-16)
 
 Fifth beta release with new Asset Hub benchmark data, observability improvements, and several bug fixes.
