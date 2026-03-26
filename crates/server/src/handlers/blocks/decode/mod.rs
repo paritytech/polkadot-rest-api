@@ -9,12 +9,12 @@
 //! into JSON. It is separate from `processing/` because decoding requires specialized
 //! visitor patterns and type-aware logic that differs based on the data source:
 //!
-//! - **Extrinsic args** use `JsonVisitor` (type-aware at decode time)
-//! - **Events** use `EventsVisitor` + post-processing transforms (different JSON format)
+//! - **Extrinsic args** use `JsonVisitor`/`CallArgsVisitor` (type-aware at decode time)
+//! - **Events** use `EventsVisitor` + `EventJsonVisitor` (type-aware at decode time)
 //! - **XCM messages** use `scale_value` + registry-aware conversion (different decode path)
 //!
-//! Each decoder produces different JSON output formats to match substrate-api-sidecar's
-//! API compatibility requirements.
+//! All decoders use `ScaleVisitor` from `args.rs` for type-aware JSON serialization,
+//! with different const generic parameters for field casing and enum variant handling.
 
 pub mod args;
 pub mod events;
@@ -22,10 +22,7 @@ pub mod type_name;
 pub mod xcm;
 
 // Re-export commonly used types
-pub use args::JsonVisitor;
-pub use events::{
-    EventField, EventInfo, EventPhase, EventsVisitor, convert_bytes_to_hex, transform_json_unified,
-    try_convert_accountid_to_ss58,
-};
+pub use args::{EventJsonVisitor, JsonVisitor};
+pub use events::{EventInfo, EventPhase, EventsVisitor};
 pub use type_name::GetTypeName;
 pub use xcm::XcmDecoder;

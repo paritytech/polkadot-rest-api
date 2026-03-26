@@ -10,10 +10,11 @@
 //! Type aliases:
 //! - `JsonVisitor`: Uses camelCase for field names (general API responses)
 //! - `CallArgsVisitor`: Keeps snake_case for field names (extrinsic call args, matching sidecar)
+//! - `EventJsonVisitor`: Uses camelCase, preserves basic enum variant casing (event fields)
 //!
 //! For enum types, it distinguishes between "basic" enums (all variants have no data)
 //! and "non-basic" enums (any variant has data):
-//! - Basic enums serialize as strings: `"Normal"`, `"Yes"`
+//! - Basic enums serialize as strings: `"normal"` or `"Normal"` (depending on `PRESERVE_ENUM_CASE`)
 //! - Non-basic enums serialize as objects: `{"unlimited": null}`, `{"limited": {...}}`
 
 use heck::ToLowerCamelCase;
@@ -24,10 +25,13 @@ use serde_json::Value;
 use sp_core::crypto::{AccountId32, Ss58Codec};
 
 /// Type alias for the visitor that converts field names to camelCase.
-pub type JsonVisitor<'r> = ScaleVisitor<'r, true>;
+pub type JsonVisitor<'r> = ScaleVisitor<'r, true, false>;
 
 /// Type alias for the visitor that keeps field names in snake_case.
-pub type CallArgsVisitor<'r> = ScaleVisitor<'r, false>;
+pub type CallArgsVisitor<'r> = ScaleVisitor<'r, false, false>;
+
+/// Type alias for event field decoding: camelCase keys, preserved basic enum variant casing.
+pub type EventJsonVisitor<'r> = ScaleVisitor<'r, true, true>;
 
 /// Check if an enum type is "basic" (all variants have no associated data).
 fn is_basic_enum(resolver: &PortableRegistry, type_id: u32) -> bool {
@@ -95,12 +99,16 @@ fn try_items_to_hex(items: &[Value]) -> Option<String> {
 ///
 /// - `CAMEL_CASE = true`: Convert field names to camelCase (use `JsonVisitor` alias)
 /// - `CAMEL_CASE = false`: Keep field names in snake_case (use `CallArgsVisitor` alias)
-pub struct ScaleVisitor<'r, const CAMEL_CASE: bool> {
+/// - `PRESERVE_ENUM_CASE = true`: Keep basic enum variant names as-is (use `EventJsonVisitor`)
+/// - `PRESERVE_ENUM_CASE = false`: Lowercase first char of basic enum variants (default)
+pub struct ScaleVisitor<'r, const CAMEL_CASE: bool, const PRESERVE_ENUM_CASE: bool> {
     ss58_prefix: u16,
     resolver: &'r PortableRegistry,
 }
 
-impl<'r, const CAMEL_CASE: bool> ScaleVisitor<'r, CAMEL_CASE> {
+impl<'r, const CAMEL_CASE: bool, const PRESERVE_ENUM_CASE: bool>
+    ScaleVisitor<'r, CAMEL_CASE, PRESERVE_ENUM_CASE>
+{
     pub fn new(ss58_prefix: u16, resolver: &'r PortableRegistry) -> Self {
         Self {
             ss58_prefix,
@@ -113,7 +121,9 @@ impl<'r, const CAMEL_CASE: bool> ScaleVisitor<'r, CAMEL_CASE> {
     }
 }
 
-impl<'r, const CAMEL_CASE: bool> scale_decode::Visitor for ScaleVisitor<'r, CAMEL_CASE> {
+impl<'r, const CAMEL_CASE: bool, const PRESERVE_ENUM_CASE: bool> scale_decode::Visitor
+    for ScaleVisitor<'r, CAMEL_CASE, PRESERVE_ENUM_CASE>
+{
     type Value<'scale, 'resolver> = Value;
     type Error = scale_decode::Error;
     type TypeResolver = PortableRegistry;
@@ -346,14 +356,20 @@ impl<'r, const CAMEL_CASE: bool> scale_decode::Visitor for ScaleVisitor<'r, CAME
             return self.decode_call_variant(value);
         }
 
-        let variant_name = crate::utils::lowercase_first_char(name);
-
         if is_basic_enum(self.resolver, type_id) {
             for field in value.fields() {
                 field?.decode_with_visitor(SkipVisitor)?;
             }
+            let variant_name = if PRESERVE_ENUM_CASE {
+                name.to_string()
+            } else {
+                crate::utils::lowercase_first_char(name)
+            };
             return Ok(Value::String(variant_name));
         }
+
+        // Non-basic enums: always lowercase the key
+        let variant_name = crate::utils::lowercase_first_char(name);
 
         let is_junction = is_junction_variant(name);
         let fields: Vec<_> = value.fields().collect::<Result<Vec<_>, _>>()?;
@@ -454,7 +470,9 @@ impl<'r, const CAMEL_CASE: bool> scale_decode::Visitor for ScaleVisitor<'r, CAME
     }
 }
 
-impl<'r, const CAMEL_CASE: bool> ScaleVisitor<'r, CAMEL_CASE> {
+impl<'r, const CAMEL_CASE: bool, const PRESERVE_ENUM_CASE: bool>
+    ScaleVisitor<'r, CAMEL_CASE, PRESERVE_ENUM_CASE>
+{
     fn try_extract_single_byte(
         &self,
         value: &mut visitor::types::Composite<'_, '_, PortableRegistry>,

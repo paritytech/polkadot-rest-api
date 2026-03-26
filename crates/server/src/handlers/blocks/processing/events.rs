@@ -17,10 +17,7 @@ use crate::state::AppState;
 use serde_json::Value;
 
 use super::super::common::BlockClient;
-use super::super::decode::{
-    EventPhase as VisitorEventPhase, EventsVisitor, convert_bytes_to_hex, transform_json_unified,
-    try_convert_accountid_to_ss58,
-};
+use super::super::decode::{EventPhase as VisitorEventPhase, EventsVisitor};
 use super::super::types::{
     ActualWeight, Event, EventPhase, ExtrinsicOutcome, GetBlockError, MethodInfo, OnFinalize,
     OnInitialize, ParsedEvent,
@@ -232,10 +229,11 @@ async fn fetch_block_events_impl(
     let addr = subxt::dynamic::storage::<(), ()>("System", "Events");
     let events_value = client_at_block.storage().fetch(addr, ()).await?;
 
-    // Decode events once using the visitor pattern which provides all needed data:
-    // phase, pallet_name, event_name, and typed fields
+    // Decode events using the visitor pattern with type-aware field decoding.
+    // EventJsonVisitor handles all transformations at decode time:
+    // AccountId32 → SS58, numbers → strings, camelCase keys, byte arrays → hex.
     let events_with_types = events_value
-        .visit(EventsVisitor::new(resolver))
+        .visit(EventsVisitor::new(ss58_prefix, resolver))
         .map_err(|e| {
             tracing::warn!(
                 "Failed to decode events for block {}: {:?}",
@@ -256,47 +254,11 @@ async fn fetch_block_events_impl(
             VisitorEventPhase::Finalization => EventPhase::Finalization,
         };
 
-        // Use the visitor's field values which have proper type-level enum serialization
-        // (basic enums as strings, non-basic enums as objects)
-        let event_data: Vec<Value> = event_info
-            .fields
-            .into_iter()
-            .map(|event_field| {
-                let json_value = event_field.value;
-                let type_name = event_field.type_name;
-                let type_name_ref = type_name.as_deref();
-
-                if let Some(tn) = type_name_ref {
-                    if tn == "AccountId32" || tn == "MultiAddress" || tn == "AccountId" {
-                        let with_hex = convert_bytes_to_hex(json_value.clone());
-                        if let Some(ss58_value) =
-                            try_convert_accountid_to_ss58(&with_hex, ss58_prefix)
-                        {
-                            return ss58_value;
-                        }
-                    } else if tn == "RewardDestination"
-                        && let Some(account_value) = json_value.get("account")
-                    {
-                        let with_hex = convert_bytes_to_hex(account_value.clone());
-                        if let Some(ss58_value) =
-                            try_convert_accountid_to_ss58(&with_hex, ss58_prefix)
-                        {
-                            return serde_json::json!({
-                                "account": ss58_value
-                            });
-                        }
-                    }
-                }
-                // Apply remaining transformations (bytes to hex, numbers to strings, camelCase keys)
-                transform_json_unified(json_value, None)
-            })
-            .collect();
-
         parsed_events.push(ParsedEvent {
             phase,
             pallet_name: event_info.pallet_name,
             event_name: event_info.event_name,
-            event_data,
+            event_data: event_info.fields,
         });
     }
 
