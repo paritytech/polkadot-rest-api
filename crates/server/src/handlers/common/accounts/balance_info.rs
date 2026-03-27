@@ -104,8 +104,18 @@ pub async fn query_balance_info(
     // Get token decimals
     let token_decimals = get_default_token_decimals(spec_name);
 
-    // Fetch existential deposit from runtime constants (sync - reads from metadata)
-    let existential_deposit = fetch_existential_deposit(client_at_block)?;
+    // Fetch existential deposit from runtime constants (sync - reads from metadata).
+    // Fall back to a hardcoded default if the constant is not available in the metadata
+    // (e.g. very early blocks on Kusama Asset Hub where the Balances pallet metadata
+    // may not expose ExistentialDeposit).
+    let existential_deposit = fetch_existential_deposit(client_at_block).unwrap_or_else(|_| {
+        let default_ed = get_default_existential_deposit(spec_name);
+        tracing::warn!(
+            "ExistentialDeposit constant not found in runtime metadata, using default: {}",
+            default_ed
+        );
+        default_ed
+    });
 
     let (account_data, locks) = tokio::join!(
         balances_queries::get_account_data_or_default(client_at_block, account),
