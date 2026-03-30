@@ -24,6 +24,24 @@ use super::super::types::{
 };
 use super::super::utils::extract_number_as_string;
 
+/// Recursively unwrap single-element arrays in a JSON value
+fn unwrap_single_element_arrays(value: Value) -> Value {
+    match value {
+        Value::Array(arr) if arr.len() == 1 => {
+            unwrap_single_element_arrays(arr.into_iter().next().unwrap_or(Value::Array(vec![])))
+        }
+        Value::Array(arr) => {
+            Value::Array(arr.into_iter().map(unwrap_single_element_arrays).collect())
+        }
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(k, v)| (k, unwrap_single_element_arrays(v)))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
 /// Extract `paysFee` value from DispatchInfo in event data
 ///
 /// DispatchInfo contains: { weight, class, paysFee }
@@ -254,11 +272,17 @@ async fn fetch_block_events_impl(
             VisitorEventPhase::Finalization => EventPhase::Finalization,
         };
 
+        let event_data: Vec<Value> = event_info
+            .fields
+            .into_iter()
+            .map(unwrap_single_element_arrays)
+            .collect();
+
         parsed_events.push(ParsedEvent {
             phase,
             pallet_name: event_info.pallet_name,
             event_name: event_info.event_name,
-            event_data: event_info.fields,
+            event_data,
         });
     }
 
