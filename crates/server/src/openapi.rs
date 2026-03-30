@@ -13,7 +13,7 @@ use utoipa::OpenApi;
         contact(url = "https://github.com/paritytech/polkadot-rest-api")
     ),
     servers(
-        (url = "http://localhost:8080", description = "Localhost")
+        (url = "http://localhost:8080/v1", description = "Localhost")
     ),
     tags(
         (name = "health", description = "Health check"),
