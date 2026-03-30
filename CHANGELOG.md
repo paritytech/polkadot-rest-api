@@ -6,6 +6,19 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.0-beta.7] (2026-03-30)
+
+Seventh beta release with fixes for relay chain block lookup, updated PAH fixtures, and an OpenAPI spec correction.
+
+### Fixes
+
+- **Relay chain block lookup in staking progress**: Fixed relay chain block lookup in staking progress validator fetch, removing unnecessary manual block resolution. (#308)
+- **Missing params in fixture update script**: Added missing parameters in the fixture update script and updated integration test fixtures for Polkadot Asset Hub. (#309)
+
+### Other
+
+- **`/v1` prefix in OpenAPI server URL**: Added the `/v1` prefix to the OpenAPI server URL so that the interactive docs target the correct base path. (#311)
+
 ## [0.1.0-beta.6] (2026-03-23)
 
 Sixth beta release with XCM v5 support, XCM decoding improvements, and performance optimizations.
