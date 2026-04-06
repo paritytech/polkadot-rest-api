@@ -584,6 +584,26 @@
         },
         "fixture_path": "polkadot/pallets_staking_storage_bonded_20000000.json",
         "description": "Test Staking/Bonded storage item (Map: AccountId32 -> AccountId32) at Polkadot block 20,000,000"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/balance-info",
+        "block_height": null,
+        "account_id": "1KvKReVmUiTc2LW2a4qyHsaJJ9eE9LRsywZkMk5hyBeyHgw",
+        "query_params": {
+          "at": "20000"
+        },
+        "fixture_path": "polkadot/accounts_balance_info_20000.json",
+        "description": "Test balance-info at Polkadot block 20,000 (earliest refcount-era AccountInfo format, 69 bytes)"
+      },
+      {
+        "endpoint": "/v1/accounts/{accountId}/balance-info",
+        "block_height": null,
+        "account_id": "15kUt2i86LHRWCkE3D9Bg1HZAoc2smhn1fwPzDERTb1BXAkX",
+        "query_params": {
+          "at": "4574738"
+        },
+        "fixture_path": "polkadot/accounts_balance_info_4574738.json",
+        "description": "Test balance-info at Polkadot block 4,574,738 (pre-sufficients AccountInfo format, 76 bytes)"
       }
     ],
     "kusama": [

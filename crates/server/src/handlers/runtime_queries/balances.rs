@@ -55,6 +55,27 @@ struct AccountInfoLegacy {
     data: AccountDataLegacy,
 }
 
+/// Account info structure for pre-sufficients era (before runtime v29).
+/// Layout: nonce(4) + consumers(4) + providers(4) + AccountDataLegacy(64) = 76 bytes.
+#[derive(Debug, Clone, Decode)]
+#[allow(dead_code)]
+struct AccountInfoPreSufficients {
+    nonce: u32,
+    consumers: u32,
+    providers: u32,
+    data: AccountDataLegacy,
+}
+
+/// Account info structure for earliest runtimes (single refcount field).
+/// Layout: nonce(4) + refcount(u8) + AccountDataLegacy(64) = 69 bytes.
+#[derive(Debug, Clone, Decode)]
+#[allow(dead_code)]
+struct AccountInfoRefcount {
+    nonce: u32,
+    refcount: u8,
+    data: AccountDataLegacy,
+}
+
 /// Balance lock structure
 #[derive(Debug, Clone, Decode)]
 struct BalanceLock {
@@ -247,30 +268,76 @@ pub async fn get_vesting_schedules(
 // ================================================================================================
 
 fn decode_account_info(raw_bytes: &[u8]) -> Option<DecodedAccountData> {
-    // Try modern format first (with frozen field)
-    if let Ok(account_info) = AccountInfoModern::decode(&mut &raw_bytes[..]) {
-        return Some(DecodedAccountData {
-            nonce: account_info.nonce,
-            free: account_info.data.free,
-            reserved: account_info.data.reserved,
+    let len = raw_bytes.len();
+
+    /// Helper: build `DecodedAccountData` for modern runtimes (frozen field, no misc/fee frozen).
+    fn modern_data(nonce: u32, data: &AccountDataModern) -> DecodedAccountData {
+        DecodedAccountData {
+            nonce,
+            free: data.free,
+            reserved: data.reserved,
             misc_frozen: None,
             fee_frozen: None,
-            frozen: Some(account_info.data.frozen),
-        });
+            frozen: Some(data.frozen),
+        }
     }
 
-    // Fall back to legacy format (with misc_frozen/fee_frozen fields)
-    if let Ok(account_info) = AccountInfoLegacy::decode(&mut &raw_bytes[..]) {
-        return Some(DecodedAccountData {
-            nonce: account_info.nonce,
-            free: account_info.data.free,
-            reserved: account_info.data.reserved,
-            misc_frozen: Some(account_info.data.misc_frozen),
-            fee_frozen: Some(account_info.data.fee_frozen),
+    /// Helper: build `DecodedAccountData` for legacy runtimes (misc_frozen/fee_frozen, no frozen).
+    fn legacy_data(nonce: u32, data: &AccountDataLegacy) -> DecodedAccountData {
+        DecodedAccountData {
+            nonce,
+            free: data.free,
+            reserved: data.reserved,
+            misc_frozen: Some(data.misc_frozen),
+            fee_frozen: Some(data.fee_frozen),
             frozen: None,
-        });
+        }
     }
 
+    // Modern format: nonce + consumers + providers + sufficients + {free, reserved, frozen, flags}
+    // Layout: 4+4+4+4 + 16+16+16+16 = 80 bytes
+    //
+    // NOTE: Both AccountInfoModern and AccountInfoLegacy are 80 bytes with identical SCALE
+    // layouts — the last two u128 fields are (frozen, flags) vs (misc_frozen, fee_frozen).
+    // We try Modern first because the `frozen` field was introduced in the same runtime
+    // upgrade that added `sufficients` (making the struct 80 bytes). Any 80-byte payload
+    // from a runtime that still used misc_frozen/fee_frozen would also have `sufficients`,
+    // which didn't exist before `frozen` — so Modern-first is correct in practice.
+    // The Legacy fallback exists only as a safety net for unexpected edge cases.
+    if len == 80 {
+        if let Ok(info) = AccountInfoModern::decode(&mut &raw_bytes[..]) {
+            return Some(modern_data(info.nonce, &info.data));
+        }
+        if let Ok(info) = AccountInfoLegacy::decode(&mut &raw_bytes[..]) {
+            return Some(legacy_data(info.nonce, &info.data));
+        }
+    }
+
+    // Pre-sufficients format (before runtime v29): nonce + consumers + providers + {free, reserved, misc_frozen, fee_frozen}
+    // Layout: 4+4+4 + 16+16+16+16 = 76 bytes
+    if len == 76
+        && let Ok(info) = AccountInfoPreSufficients::decode(&mut &raw_bytes[..])
+    {
+        return Some(legacy_data(info.nonce, &info.data));
+    }
+
+    // Earliest format (single refcount): nonce + refcount(u8) + {free, reserved, misc_frozen, fee_frozen}
+    // Layout: 4+1 + 16+16+16+16 = 69 bytes
+    if len == 69
+        && let Ok(info) = AccountInfoRefcount::decode(&mut &raw_bytes[..])
+    {
+        return Some(legacy_data(info.nonce, &info.data));
+    }
+
+    // No fallback: we only decode sizes we explicitly understand (69, 76, 80).
+    // SCALE Decode will happily consume a prefix of a larger buffer, which would silently
+    // return wrong data for future runtime layouts with a different size. If we encounter
+    // an unknown size, log it and return None so the caller can handle it gracefully.
+    tracing::warn!(
+        "Failed to decode AccountInfo ({} bytes): 0x{}",
+        len,
+        hex::encode(&raw_bytes[..len.min(32)])
+    );
     None
 }
 
@@ -350,4 +417,161 @@ fn decode_vesting_schedules(raw_bytes: &[u8]) -> Option<Vec<DecodedVestingInfo>>
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Manually build a raw 80-byte modern AccountInfo payload (SCALE little-endian):
+    /// nonce(4) + consumers(4) + providers(4) + sufficients(4) + free(16) + reserved(16) + frozen(16) + flags(16)
+    fn build_modern_bytes(nonce: u32, free: u128, reserved: u128, frozen: u128) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(80);
+        buf.extend_from_slice(&nonce.to_le_bytes());
+        buf.extend_from_slice(&1u32.to_le_bytes()); // consumers
+        buf.extend_from_slice(&1u32.to_le_bytes()); // providers
+        buf.extend_from_slice(&0u32.to_le_bytes()); // sufficients
+        buf.extend_from_slice(&free.to_le_bytes());
+        buf.extend_from_slice(&reserved.to_le_bytes());
+        buf.extend_from_slice(&frozen.to_le_bytes());
+        buf.extend_from_slice(&0u128.to_le_bytes()); // flags
+        assert_eq!(buf.len(), 80);
+        buf
+    }
+
+    /// Manually build a raw 76-byte pre-sufficients AccountInfo payload:
+    /// nonce(4) + consumers(4) + providers(4) + free(16) + reserved(16) + misc_frozen(16) + fee_frozen(16)
+    fn build_pre_sufficients_bytes(
+        nonce: u32,
+        free: u128,
+        reserved: u128,
+        misc_frozen: u128,
+        fee_frozen: u128,
+    ) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(76);
+        buf.extend_from_slice(&nonce.to_le_bytes());
+        buf.extend_from_slice(&1u32.to_le_bytes()); // consumers
+        buf.extend_from_slice(&1u32.to_le_bytes()); // providers
+        buf.extend_from_slice(&free.to_le_bytes());
+        buf.extend_from_slice(&reserved.to_le_bytes());
+        buf.extend_from_slice(&misc_frozen.to_le_bytes());
+        buf.extend_from_slice(&fee_frozen.to_le_bytes());
+        assert_eq!(buf.len(), 76);
+        buf
+    }
+
+    /// Manually build a raw 69-byte refcount-era AccountInfo payload:
+    /// nonce(4) + refcount(1) + free(16) + reserved(16) + misc_frozen(16) + fee_frozen(16)
+    fn build_refcount_bytes(
+        nonce: u32,
+        refcount: u8,
+        free: u128,
+        reserved: u128,
+        misc_frozen: u128,
+        fee_frozen: u128,
+    ) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(69);
+        buf.extend_from_slice(&nonce.to_le_bytes());
+        buf.push(refcount);
+        buf.extend_from_slice(&free.to_le_bytes());
+        buf.extend_from_slice(&reserved.to_le_bytes());
+        buf.extend_from_slice(&misc_frozen.to_le_bytes());
+        buf.extend_from_slice(&fee_frozen.to_le_bytes());
+        assert_eq!(buf.len(), 69);
+        buf
+    }
+
+    #[test]
+    fn test_decode_modern_account_info_80_bytes() {
+        let bytes = build_modern_bytes(42, 1_000_000_000_000, 500_000, 100_000);
+
+        let result = decode_account_info(&bytes).expect("should decode modern format");
+        assert_eq!(result.nonce, 42);
+        assert_eq!(result.free, 1_000_000_000_000);
+        assert_eq!(result.reserved, 500_000);
+        assert_eq!(result.frozen, Some(100_000));
+        assert_eq!(result.misc_frozen, None);
+        assert_eq!(result.fee_frozen, None);
+    }
+
+    #[test]
+    fn test_decode_pre_sufficients_account_info_76_bytes() {
+        // Simulates Polkadot blocks between runtime v29 introduction and sufficients addition
+        let bytes = build_pre_sufficients_bytes(79219, 466_398_602_382_908_664, 0, 0, 0);
+
+        let result =
+            decode_account_info(&bytes).expect("should decode pre-sufficients format (76 bytes)");
+        assert_eq!(result.nonce, 79219);
+        assert_eq!(result.free, 466_398_602_382_908_664);
+        assert_eq!(result.reserved, 0);
+        assert_eq!(result.misc_frozen, Some(0));
+        assert_eq!(result.fee_frozen, Some(0));
+        assert_eq!(result.frozen, None);
+    }
+
+    #[test]
+    fn test_decode_refcount_account_info_69_bytes() {
+        // Simulates earliest Polkadot blocks (e.g. block 20000)
+        let bytes = build_refcount_bytes(1, 0, 1_000_000_000_000_000, 0, 0, 0);
+
+        let result = decode_account_info(&bytes).expect("should decode refcount format (69 bytes)");
+        assert_eq!(result.nonce, 1);
+        assert_eq!(result.free, 1_000_000_000_000_000);
+        assert_eq!(result.reserved, 0);
+        assert_eq!(result.misc_frozen, Some(0));
+        assert_eq!(result.fee_frozen, Some(0));
+        assert_eq!(result.frozen, None);
+    }
+
+    #[test]
+    fn test_decode_empty_bytes_returns_none() {
+        let result = decode_account_info(&[]);
+        assert!(result.is_none(), "empty bytes should return None");
+    }
+
+    #[test]
+    fn test_decode_short_bytes_returns_none() {
+        let result = decode_account_info(&[0u8; 10]);
+        assert!(result.is_none(), "too-short bytes should return None");
+    }
+
+    #[test]
+    fn test_decode_pre_sufficients_with_nonzero_frozen() {
+        // Polkadot block ~3574738 era: pre-sufficients with actual frozen balances
+        let bytes = build_pre_sufficients_bytes(
+            47101,
+            4_533_720_292_342_876_436_692_992u128,
+            0,
+            100_000,
+            50_000,
+        );
+
+        let result =
+            decode_account_info(&bytes).expect("should decode pre-sufficients with nonzero frozen");
+        assert_eq!(result.nonce, 47101);
+        assert_eq!(result.free, 4_533_720_292_342_876_436_692_992u128);
+        assert_eq!(result.misc_frozen, Some(100_000));
+        assert_eq!(result.fee_frozen, Some(50_000));
+        assert_eq!(result.frozen, None);
+    }
+
+    #[test]
+    fn test_decode_refcount_with_nonzero_refcount() {
+        // Earliest Polkadot blocks had refcount > 0 for active accounts
+        let bytes = build_refcount_bytes(5, 2, 500_000_000_000, 100_000_000, 0, 0);
+
+        let result =
+            decode_account_info(&bytes).expect("should decode refcount format with refcount > 0");
+        assert_eq!(result.nonce, 5);
+        assert_eq!(result.free, 500_000_000_000);
+        assert_eq!(result.reserved, 100_000_000);
+    }
+
+    #[test]
+    fn test_size_invariants() {
+        // Verify the struct sizes match our expectations
+        assert_eq!(build_modern_bytes(0, 0, 0, 0).len(), 80);
+        assert_eq!(build_pre_sufficients_bytes(0, 0, 0, 0, 0).len(), 76);
+        assert_eq!(build_refcount_bytes(0, 0, 0, 0, 0, 0).len(), 69);
+    }
 }
