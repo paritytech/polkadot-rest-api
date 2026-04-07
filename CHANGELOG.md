@@ -6,6 +6,19 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.0] (2026-04-07)
+
+First stable release of `polkadot-rest-api`.
+
+### Fixes
+
+- **Decode AccountInfo for pre-sufficients and refcount-era blocks**: Added support for decoding historical `AccountInfo` structures from early Polkadot blocks that used different layouts (69-byte refcount era, 76-byte pre-sufficients era) than the modern 80-byte format. (#317)
+
+### Docs
+
+- **Release guide**: Added a release guide for maintainers. (#316)
+- **Updated docs**: Documentation updates. (#315)
+
 ## [0.1.0-beta.7] (2026-03-30)
 
 Seventh beta release with fixes for relay chain block lookup, updated PAH fixtures, and an OpenAPI spec correction.
