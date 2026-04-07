@@ -2633,7 +2633,7 @@ dependencies = [
 
 [[package]]
 name = "integration_tests"
-version = "0.1.0-beta.7"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "colored",
@@ -3545,7 +3545,7 @@ dependencies = [
 
 [[package]]
 name = "polkadot-rest-api"
-version = "0.1.0-beta.7"
+version = "0.1.0"
 dependencies = [
  "axum",
  "frame-decode",
@@ -3600,7 +3600,7 @@ dependencies = [
 
 [[package]]
 name = "polkadot-rest-api-config"
-version = "0.1.0-beta.7"
+version = "0.1.0"
 dependencies = [
  "clap",
  "dotenv",
