@@ -1,6 +1,21 @@
 # Polkadot REST API
 
-> **Note:** This project is in a beta release. Changes are to be expected until it's stable. 
+A REST service for interacting with Polkadot SDK-based blockchain nodes, rewritten from the ground up in Rust.
+
+## Public Instances
+
+Parity hosts public instances of the Polkadot REST API for the following chains:
+
+| Chain | URL |
+|-------|-----|
+| **Polkadot** | https://polkadot-relay-rest-api.parity.io/v1 |
+| **Kusama** | https://kusama-relay-rest-api.parity.io/v1 |
+| **Westend** | https://westend-relay-rest-api.parity.io/v1 |
+| **Polkadot Asset Hub** | https://polkadot-hub-rest-api.parity.io/v1 |
+| **Kusama Asset Hub** | https://kusama-hub-rest-api.parity.io/v1 |
+| **Westend Asset Hub** | https://westend-hub-rest-api.parity.io/v1 |
+
+Interactive API documentation is available at `/docs` on each instance (e.g., [Polkadot Docs](https://polkadot-relay-rest-api.parity.io/docs)).
 
 ## Implementation Details
 
