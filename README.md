@@ -17,6 +17,10 @@ Parity hosts public instances of the Polkadot REST API for the following chains:
 
 Interactive API documentation is available at `/docs` on each instance (e.g., [Polkadot Docs](https://polkadot-relay-rest-api.parity.io/docs)).
 
+**Usage Limits & Production Warning**
+
+These public instances are subject to rate limiting and are not intended for production use. For consistent testing or development, it is highly recommended to implement a retry strategy (e.g., exponential backoff) to handle potential request throttling gracefully.
+
 ## Implementation Details
 
 ### Logging
