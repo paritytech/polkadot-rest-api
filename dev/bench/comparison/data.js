@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775577595488,
+  "lastUpdate": 1775822031598,
   "repoUrl": "https://github.com/paritytech/polkadot-rest-api",
   "entries": {
     "Benchmark": [
@@ -150130,6 +150130,1030 @@ window.BENCHMARK_DATA = {
           {
             "name": "transaction_material - Local Avg Latency",
             "value": 335.64,
+            "unit": "ms"
+          },
+          {
+            "name": "transaction_material - Sidecar Avg Latency",
+            "value": 249.04,
+            "unit": "ms"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "47201679+TarikGul@users.noreply.github.com",
+            "name": "Tarik Gul",
+            "username": "TarikGul"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ac7a3e94fefc0e81af3170bc73a806101f8789c0",
+          "message": "chore: Add public instance links to README and docs (#320)",
+          "timestamp": "2026-04-10T07:01:56-04:00",
+          "tree_id": "4e9f4b03cfe6572b193de67c2d2d027abc0a5bb4",
+          "url": "https://github.com/paritytech/polkadot-rest-api/commit/ac7a3e94fefc0e81af3170bc73a806101f8789c0"
+        },
+        "date": 1775822026755,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "accounts_balance_info - Throughput Improvement vs Sidecar",
+            "value": 427,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_balance_info - Avg Latency Improvement vs Sidecar",
+            "value": -109,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_balance_info - P99 Latency Improvement vs Sidecar",
+            "value": -26,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_balance_info - Local Throughput",
+            "value": 153.5,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_balance_info - Sidecar Throughput",
+            "value": 29.08,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_balance_info - Local Avg Latency",
+            "value": 316.98,
+            "unit": "ms"
+          },
+          {
+            "name": "accounts_balance_info - Sidecar Avg Latency",
+            "value": 151.08,
+            "unit": "ms"
+          },
+          {
+            "name": "accounts_convert - Throughput Improvement vs Sidecar",
+            "value": 1928,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_convert - Avg Latency Improvement vs Sidecar",
+            "value": 99,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_convert - P99 Latency Improvement vs Sidecar",
+            "value": -2,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_convert - Local Throughput",
+            "value": 56310.37,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_convert - Sidecar Throughput",
+            "value": 2775.94,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_convert - Local Avg Latency",
+            "value": 0.86,
+            "unit": "ms"
+          },
+          {
+            "name": "accounts_convert - Sidecar Avg Latency",
+            "value": 390.16,
+            "unit": "ms"
+          },
+          {
+            "name": "accounts_staking_info - Throughput Improvement vs Sidecar",
+            "value": 634,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_staking_info - Avg Latency Improvement vs Sidecar",
+            "value": 4,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_staking_info - P99 Latency Improvement vs Sidecar",
+            "value": -15783,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_staking_info - Local Throughput",
+            "value": 116.64,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_staking_info - Sidecar Throughput",
+            "value": 15.89,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_staking_info - Local Avg Latency",
+            "value": 409.47,
+            "unit": "ms"
+          },
+          {
+            "name": "accounts_staking_info - Sidecar Avg Latency",
+            "value": 429.94,
+            "unit": "ms"
+          },
+          {
+            "name": "accounts_staking_payouts - Throughput Improvement vs Sidecar",
+            "value": -22,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_staking_payouts - Avg Latency Improvement vs Sidecar",
+            "value": 98,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_staking_payouts - P99 Latency Improvement vs Sidecar",
+            "value": 98,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_staking_payouts - Local Throughput",
+            "value": 24.94,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_staking_payouts - Sidecar Throughput",
+            "value": 32.16,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_staking_payouts - Local Avg Latency",
+            "value": 1.94,
+            "unit": "ms"
+          },
+          {
+            "name": "accounts_staking_payouts - Sidecar Avg Latency",
+            "value": 126.16,
+            "unit": "ms"
+          },
+          {
+            "name": "accounts_validate - Throughput Improvement vs Sidecar",
+            "value": 2009,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_validate - Avg Latency Improvement vs Sidecar",
+            "value": -102,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_validate - P99 Latency Improvement vs Sidecar",
+            "value": 0,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_validate - Local Throughput",
+            "value": 57646.13,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_validate - Sidecar Throughput",
+            "value": 2732.55,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_validate - Local Avg Latency",
+            "value": 843.74,
+            "unit": "ms"
+          },
+          {
+            "name": "accounts_validate - Sidecar Avg Latency",
+            "value": 416.4,
+            "unit": "ms"
+          },
+          {
+            "name": "accounts_vesting_info - Throughput Improvement vs Sidecar",
+            "value": 679,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_vesting_info - Avg Latency Improvement vs Sidecar",
+            "value": 17,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_vesting_info - P99 Latency Improvement vs Sidecar",
+            "value": -14542,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_vesting_info - Local Throughput",
+            "value": 157,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_vesting_info - Sidecar Throughput",
+            "value": 20.15,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "accounts_vesting_info - Local Avg Latency",
+            "value": 305.15,
+            "unit": "ms"
+          },
+          {
+            "name": "accounts_vesting_info - Sidecar Avg Latency",
+            "value": 370.7,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks - Throughput Improvement vs Sidecar",
+            "value": -65,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks - Avg Latency Improvement vs Sidecar",
+            "value": -162,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks - P99 Latency Improvement vs Sidecar",
+            "value": -47,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks - Local Throughput",
+            "value": 0.93,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks - Sidecar Throughput",
+            "value": 2.71,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks - Local Avg Latency",
+            "value": 3.83,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks - Sidecar Avg Latency",
+            "value": 1.46,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks_extrinsics - Throughput Improvement vs Sidecar",
+            "value": 370,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_extrinsics - Avg Latency Improvement vs Sidecar",
+            "value": 99,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_extrinsics - P99 Latency Improvement vs Sidecar",
+            "value": -15,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_extrinsics - Local Throughput",
+            "value": 21.57,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_extrinsics - Sidecar Throughput",
+            "value": 4.58,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_extrinsics - Local Avg Latency",
+            "value": 2.19,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks_extrinsics - Sidecar Avg Latency",
+            "value": 879.04,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks_head - Throughput Improvement vs Sidecar",
+            "value": 280,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_head - Avg Latency Improvement vs Sidecar",
+            "value": -201,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_head - P99 Latency Improvement vs Sidecar",
+            "value": -13,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_head - Local Throughput",
+            "value": 86.23,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_head - Sidecar Throughput",
+            "value": 22.64,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_head - Local Avg Latency",
+            "value": 554.52,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks_head - Sidecar Avg Latency",
+            "value": 184.03,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks_head_header - Throughput Improvement vs Sidecar",
+            "value": 328,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_head_header - Avg Latency Improvement vs Sidecar",
+            "value": -182,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_head_header - P99 Latency Improvement vs Sidecar",
+            "value": -26,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_head_header - Local Throughput",
+            "value": 157.77,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_head_header - Sidecar Throughput",
+            "value": 36.82,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_head_header - Local Avg Latency",
+            "value": 303.45,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks_head_header - Sidecar Avg Latency",
+            "value": 107.53,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks_header - Throughput Improvement vs Sidecar",
+            "value": 405,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_header - Avg Latency Improvement vs Sidecar",
+            "value": -125,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_header - P99 Latency Improvement vs Sidecar",
+            "value": 22,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_header - Local Throughput",
+            "value": 157.68,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_header - Sidecar Throughput",
+            "value": 31.21,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "blocks_header - Local Avg Latency",
+            "value": 303.66,
+            "unit": "ms"
+          },
+          {
+            "name": "blocks_header - Sidecar Avg Latency",
+            "value": 134.9,
+            "unit": "ms"
+          },
+          {
+            "name": "node_network - Throughput Improvement vs Sidecar",
+            "value": 1188,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_network - Avg Latency Improvement vs Sidecar",
+            "value": 6,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_network - P99 Latency Improvement vs Sidecar",
+            "value": -12,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_network - Local Throughput",
+            "value": 232.41,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_network - Sidecar Throughput",
+            "value": 18.04,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_network - Local Avg Latency",
+            "value": 206.08,
+            "unit": "ms"
+          },
+          {
+            "name": "node_network - Sidecar Avg Latency",
+            "value": 219.94,
+            "unit": "ms"
+          },
+          {
+            "name": "node_transaction_pool - Throughput Improvement vs Sidecar",
+            "value": 1167,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_transaction_pool - Avg Latency Improvement vs Sidecar",
+            "value": 4,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_transaction_pool - P99 Latency Improvement vs Sidecar",
+            "value": 9,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_transaction_pool - Local Throughput",
+            "value": 452.77,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_transaction_pool - Sidecar Throughput",
+            "value": 35.71,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_transaction_pool - Local Avg Latency",
+            "value": 105.91,
+            "unit": "ms"
+          },
+          {
+            "name": "node_transaction_pool - Sidecar Avg Latency",
+            "value": 110.73,
+            "unit": "ms"
+          },
+          {
+            "name": "node_version - Throughput Improvement vs Sidecar",
+            "value": 1299,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_version - Avg Latency Improvement vs Sidecar",
+            "value": 13,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_version - P99 Latency Improvement vs Sidecar",
+            "value": 4,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_version - Local Throughput",
+            "value": 473.34,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_version - Sidecar Throughput",
+            "value": 33.82,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "node_version - Local Avg Latency",
+            "value": 101.28,
+            "unit": "ms"
+          },
+          {
+            "name": "node_version - Sidecar Avg Latency",
+            "value": 117.03,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_errors - Throughput Improvement vs Sidecar",
+            "value": 627,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_errors - Avg Latency Improvement vs Sidecar",
+            "value": -58,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_errors - P99 Latency Improvement vs Sidecar",
+            "value": 51,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_errors - Local Throughput",
+            "value": 236.42,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_errors - Sidecar Throughput",
+            "value": 32.48,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_errors - Local Avg Latency",
+            "value": 202.66,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_errors - Sidecar Avg Latency",
+            "value": 127.97,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_errors_item - Throughput Improvement vs Sidecar",
+            "value": 582,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_errors_item - Avg Latency Improvement vs Sidecar",
+            "value": -68,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_errors_item - P99 Latency Improvement vs Sidecar",
+            "value": 39,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_errors_item - Local Throughput",
+            "value": 232.15,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_errors_item - Sidecar Throughput",
+            "value": 34.01,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_errors_item - Local Avg Latency",
+            "value": 206.37,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_errors_item - Sidecar Avg Latency",
+            "value": 122.8,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_nomination_pools_id - Throughput Improvement vs Sidecar",
+            "value": 258,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_nomination_pools_id - Avg Latency Improvement vs Sidecar",
+            "value": -221,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_nomination_pools_id - P99 Latency Improvement vs Sidecar",
+            "value": 99,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_nomination_pools_id - Local Throughput",
+            "value": 114.62,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_nomination_pools_id - Sidecar Throughput",
+            "value": 32,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_nomination_pools_id - Local Avg Latency",
+            "value": 426.35,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_nomination_pools_id - Sidecar Avg Latency",
+            "value": 132.57,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_nomination_pools_info - Throughput Improvement vs Sidecar",
+            "value": 0,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_nomination_pools_info - Avg Latency Improvement vs Sidecar",
+            "value": 98,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_nomination_pools_info - P99 Latency Improvement vs Sidecar",
+            "value": 99,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_nomination_pools_info - Local Throughput",
+            "value": 32.94,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_nomination_pools_info - Sidecar Throughput",
+            "value": 33.16,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_nomination_pools_info - Local Avg Latency",
+            "value": 1.43,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_nomination_pools_info - Sidecar Avg Latency",
+            "value": 122.36,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_staking_progress - Throughput Improvement vs Sidecar",
+            "value": 187,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_staking_progress - Avg Latency Improvement vs Sidecar",
+            "value": 99,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_staking_progress - P99 Latency Improvement vs Sidecar",
+            "value": 52,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_staking_progress - Local Throughput",
+            "value": 37.55,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_staking_progress - Sidecar Throughput",
+            "value": 13.05,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_staking_progress - Local Avg Latency",
+            "value": 1.26,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_staking_progress - Sidecar Avg Latency",
+            "value": 436.36,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_staking_validators - Throughput Improvement vs Sidecar",
+            "value": 208,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_staking_validators - Avg Latency Improvement vs Sidecar",
+            "value": 99,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_staking_validators - P99 Latency Improvement vs Sidecar",
+            "value": -75,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_staking_validators - Local Throughput",
+            "value": 35.46,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_staking_validators - Sidecar Throughput",
+            "value": 11.5,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_staking_validators - Local Avg Latency",
+            "value": 1.34,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_staking_validators - Sidecar Avg Latency",
+            "value": 379.79,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_storage - Throughput Improvement vs Sidecar",
+            "value": 700,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_storage - Avg Latency Improvement vs Sidecar",
+            "value": -8,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_storage - P99 Latency Improvement vs Sidecar",
+            "value": -11653,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_storage - Local Throughput",
+            "value": 232.86,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_storage - Sidecar Throughput",
+            "value": 29.08,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_storage - Local Avg Latency",
+            "value": 205.71,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_storage - Sidecar Avg Latency",
+            "value": 188.91,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_storage_item - Throughput Improvement vs Sidecar",
+            "value": 381,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_storage_item - Avg Latency Improvement vs Sidecar",
+            "value": -138,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_storage_item - P99 Latency Improvement vs Sidecar",
+            "value": -42,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_storage_item - Local Throughput",
+            "value": 152.9,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_storage_item - Sidecar Throughput",
+            "value": 31.74,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "pallets_storage_item - Local Avg Latency",
+            "value": 317.62,
+            "unit": "ms"
+          },
+          {
+            "name": "pallets_storage_item - Sidecar Avg Latency",
+            "value": 133.14,
+            "unit": "ms"
+          },
+          {
+            "name": "paras - Throughput Improvement vs Sidecar",
+            "value": 264021,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "paras - Avg Latency Improvement vs Sidecar",
+            "value": -286,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "paras - P99 Latency Improvement vs Sidecar",
+            "value": 99,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "paras - Local Throughput",
+            "value": 69411.03,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "paras - Sidecar Throughput",
+            "value": 26.28,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "paras - Local Avg Latency",
+            "value": 679.39,
+            "unit": "ms"
+          },
+          {
+            "name": "paras - Sidecar Avg Latency",
+            "value": 175.6,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - Throughput Improvement vs Sidecar",
+            "value": 762,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "runtime - Avg Latency Improvement vs Sidecar",
+            "value": -38,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "runtime - P99 Latency Improvement vs Sidecar",
+            "value": 36,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "runtime - Local Throughput",
+            "value": 156.07,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "runtime - Sidecar Throughput",
+            "value": 18.09,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "runtime - Local Avg Latency",
+            "value": 306.87,
+            "unit": "ms"
+          },
+          {
+            "name": "runtime - Sidecar Avg Latency",
+            "value": 222.19,
+            "unit": "ms"
+          },
+          {
+            "name": "transaction_material - Throughput Improvement vs Sidecar",
+            "value": 1260,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "transaction_material - Avg Latency Improvement vs Sidecar",
+            "value": 12,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "transaction_material - P99 Latency Improvement vs Sidecar",
+            "value": 39,
+            "unit": "%",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "transaction_material - Local Throughput",
+            "value": 218.86,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "transaction_material - Sidecar Throughput",
+            "value": 16.09,
+            "unit": "req/sec",
+            "extra": "biggerIsBetter"
+          },
+          {
+            "name": "transaction_material - Local Avg Latency",
+            "value": 218.72,
             "unit": "ms"
           },
           {
