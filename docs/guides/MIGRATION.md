@@ -8,6 +8,25 @@ This guide documents breaking changes and differences between [substrate-api-sid
 
 This project is a Rust-based alternative to substrate-api-sidecar, designed to provide improved performance, memory safety, and better resource utilization. While we aim to maintain API compatibility where possible, some breaking changes are necessary for architectural improvements.
 
+## Public Instances
+
+Parity hosts public instances of the Polkadot REST API for the following chains:
+
+| Chain | URL |
+|-------|-----|
+| **Polkadot** | https://polkadot-relay-rest-api.parity.io/v1 |
+| **Kusama** | https://kusama-relay-rest-api.parity.io/v1 |
+| **Westend** | https://westend-relay-rest-api.parity.io/v1 |
+| **Polkadot Asset Hub** | https://polkadot-hub-rest-api.parity.io/v1 |
+| **Kusama Asset Hub** | https://kusama-hub-rest-api.parity.io/v1 |
+| **Westend Asset Hub** | https://westend-hub-rest-api.parity.io/v1 |
+
+Interactive API documentation is available at `/docs` on each instance (e.g., [Polkadot Docs](https://polkadot-relay-rest-api.parity.io/docs)).
+
+**Usage Limits & Production Warning**
+
+These public instances are subject to rate limiting and are not intended for production use. For consistent testing or development, it is highly recommended to implement a retry strategy (e.g., exponential backoff) to handle potential request throttling gracefully.
+
 ---
 
 ## ⚠️ Breaking Changes ⚠️
