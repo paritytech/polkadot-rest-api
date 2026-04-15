@@ -28,11 +28,11 @@ pub use fee::{
 };
 pub use format::{decode_address_to_ss58, hex_with_prefix, lowercase_first_char};
 pub use hash::{HashError, compute_block_hash_from_header_json, parse_block_number_from_json};
-pub use transaction_extensions::{ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce};
 pub use rc_block::{
     AhBlockInfo, RcBlockError, RcClientAtBlock, extract_block_number_from_header,
     find_ah_blocks_in_rc_block, find_ah_blocks_in_rc_block_at,
 };
+pub use transaction_extensions::{ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce};
 
 /// Check if an RPC error indicates the connection was lost and reconnection is in progress.
 ///

@@ -9,9 +9,7 @@
 //! - Converting account addresses to SS58 format
 
 use crate::state::AppState;
-use crate::utils::{
-    self, ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce, EraInfo,
-};
+use crate::utils::{self, ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce, EraInfo};
 use heck::ToLowerCamelCase;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
