@@ -218,12 +218,14 @@ pub async fn parse_rc(
                 transaction: tx_str.to_string(),
             })?;
 
-    let relay_chain_info = state.get_relay_chain_info().await.map_err(|e| {
-        ParseErrorKind::RelayChain {
-            source: e,
-            transaction: tx_str.to_string(),
-        }
-    })?;
+    let relay_chain_info =
+        state
+            .get_relay_chain_info()
+            .await
+            .map_err(|e| ParseErrorKind::RelayChain {
+                source: e,
+                transaction: tx_str.to_string(),
+            })?;
 
     parse_internal(&relay_client, relay_chain_info.ss58_prefix, body).await
 }
@@ -239,25 +241,28 @@ async fn parse_internal(
     }
 
     // Decode hex to bytes
-    let tx_bytes =
-        hex::decode(tx.strip_prefix("0x").unwrap_or(tx)).map_err(|e| ParseErrorKind::ParseFailed {
+    let tx_bytes = hex::decode(tx.strip_prefix("0x").unwrap_or(tx)).map_err(|e| {
+        ParseErrorKind::ParseFailed {
             transaction: tx.to_string(),
             cause: format!("Invalid hex encoding: {}", e),
             stack: format!("Error: Invalid hex encoding: {}\n    at parse", e),
-        })?;
+        }
+    })?;
 
     // Calculate hash
     let hash_bytes = BlakeTwo256::hash(&tx_bytes);
     let hash = format!("0x{}", hex::encode(hash_bytes.as_ref()));
 
     // Get metadata from current block
-    let client_at_block = client.at_current_block().await.map_err(|e| {
-        ParseErrorKind::ParseFailed {
-            transaction: tx.to_string(),
-            cause: format!("Failed to get current block: {}", e),
-            stack: format!("Error: Failed to get current block: {}\n    at parse", e),
-        }
-    })?;
+    let client_at_block =
+        client
+            .at_current_block()
+            .await
+            .map_err(|e| ParseErrorKind::ParseFailed {
+                transaction: tx.to_string(),
+                cause: format!("Failed to get current block: {}", e),
+                stack: format!("Error: Failed to get current block: {}\n    at parse", e),
+            })?;
 
     let metadata = client_at_block.metadata();
     let types = metadata.types();
@@ -330,12 +335,7 @@ fn decode_call_args(
         let arg_bytes = &tx_bytes[arg_range.clone()];
 
         // Decode argument value using scale_value visitor
-        match decode_with_visitor(
-            &mut &arg_bytes[..],
-            *arg.ty(),
-            types,
-            ValueVisitor::new(),
-        ) {
+        match decode_with_visitor(&mut &arg_bytes[..], *arg.ty(), types, ValueVisitor::new()) {
             Ok(value) => {
                 // Transform the scale_value to JSON with SS58 conversion
                 let json_value = transform_scale_value_to_json(&value, ss58_prefix);
@@ -368,7 +368,10 @@ fn transform_scale_value_to_json(value: &scale_value::Value<u32>, ss58_prefix: u
                 scale_value::Composite::Named(fields) => {
                     let mut map = serde_json::Map::new();
                     for (name, val) in fields {
-                        map.insert(name.clone(), transform_scale_value_to_json(val, ss58_prefix));
+                        map.insert(
+                            name.clone(),
+                            transform_scale_value_to_json(val, ss58_prefix),
+                        );
                     }
                     Value::Object(map)
                 }
@@ -404,17 +407,18 @@ fn transform_scale_value_to_json(value: &scale_value::Value<u32>, ss58_prefix: u
                 scale_value::Composite::Named(fields) => {
                     let mut map = serde_json::Map::new();
                     for (name, val) in fields {
-                        map.insert(name.clone(), transform_scale_value_to_json(val, ss58_prefix));
+                        map.insert(
+                            name.clone(),
+                            transform_scale_value_to_json(val, ss58_prefix),
+                        );
                     }
                     Value::Object(map)
                 }
-                scale_value::Composite::Unnamed(vals) => {
-                    Value::Array(
-                        vals.iter()
-                            .map(|v| transform_scale_value_to_json(v, ss58_prefix))
-                            .collect(),
-                    )
-                }
+                scale_value::Composite::Unnamed(vals) => Value::Array(
+                    vals.iter()
+                        .map(|v| transform_scale_value_to_json(v, ss58_prefix))
+                        .collect(),
+                ),
             };
 
             // For named variants like MultiAddress::Id, wrap with variant name in lower camelCase
@@ -444,7 +448,12 @@ fn transform_scale_value_to_json(value: &scale_value::Value<u32>, ss58_prefix: u
 }
 
 /// Result type for signed extrinsic info extraction
-type SignedInfoResult = (Option<SignatureInfo>, Option<String>, Option<String>, EraInfo);
+type SignedInfoResult = (
+    Option<SignatureInfo>,
+    Option<String>,
+    Option<String>,
+    EraInfo,
+);
 
 /// Extract signature info, nonce, tip, and era from signed extrinsic
 fn extract_signed_info(
@@ -457,17 +466,18 @@ fn extract_signed_info(
     let types = metadata.types();
 
     // Get signature payload
-    let sig_payload = extrinsic.signature_payload().ok_or_else(|| {
-        ParseErrorKind::ParseFailed {
+    let sig_payload = extrinsic
+        .signature_payload()
+        .ok_or_else(|| ParseErrorKind::ParseFailed {
             transaction: tx.to_string(),
             cause: "Missing signature payload in signed extrinsic".to_string(),
             stack: "Error: Missing signature payload\n    at parse".to_string(),
-        }
-    })?;
+        })?;
 
     // Decode address
     let addr_bytes = &tx_bytes[sig_payload.address_range()];
-    let signer_ss58 = decode_address_bytes(addr_bytes, sig_payload.address_type(), types, ss58_prefix);
+    let signer_ss58 =
+        decode_address_bytes(addr_bytes, sig_payload.address_type(), types, ss58_prefix);
 
     // Get signature bytes
     let sig_bytes = &tx_bytes[sig_payload.signature_range()];
