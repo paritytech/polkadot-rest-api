@@ -24,66 +24,90 @@ use sp_runtime::traits::Hash as HashT;
 use subxt::{OnlineClient, SubstrateConfig};
 use subxt_metadata::Metadata;
 use thiserror::Error;
+use utoipa::ToSchema;
 
 /// Request body for transaction parsing.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ParseRequest {
     /// Hex-encoded extrinsic with optional 0x prefix.
+    #[schema(example = "0x4902840004316d995f...")]
     pub tx: Option<String>,
 }
 
 /// Response for successful transaction parsing.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ParseResponse {
     /// Whether the extrinsic is signed
+    #[schema(example = true)]
     pub is_signed: bool,
     /// Pallet and method information
     pub method: MethodInfo,
     /// Decoded call arguments
+    #[schema(value_type = Object)]
     pub args: serde_json::Map<String, serde_json::Value>,
     /// Signature information (only present for signed extrinsics)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<SignatureInfo>,
     /// Account nonce (only present for signed extrinsics)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "42")]
     pub nonce: Option<String>,
     /// Tip amount (only present for signed extrinsics)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "0")]
     pub tip: Option<String>,
     /// Era/mortality information
+    #[schema(value_type = Object)]
     pub era: EraInfo,
     /// Blake2-256 hash of the extrinsic
+    #[schema(example = "0x1234567890abcdef...")]
     pub hash: String,
 }
 
 /// Method information (pallet and method name).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MethodInfo {
+    /// Pallet name in lowerCamelCase
+    #[schema(example = "balances")]
     pub pallet: String,
+    /// Method name in lowerCamelCase
+    #[schema(example = "transferAllowDeath")]
     pub method: String,
 }
 
 /// Signature information for signed extrinsics.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SignatureInfo {
+    /// Signer account
     pub signer: SignerId,
+    /// Hex-encoded signature
+    #[schema(example = "0xa24152685f52e4726466e80247d965bb3d349637fc8a1ea6f7cc1451ddec98b5...")]
     pub signature: String,
 }
 
 /// Signer identifier.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SignerId {
+    /// SS58-encoded account address
+    #[schema(example = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY")]
     pub id: String,
 }
 
 /// Error response for transaction parsing failures.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ParseError {
+    /// HTTP status code
+    #[schema(example = 400)]
     pub code: u16,
+    /// Error message
+    #[schema(example = "Failed to parse transaction.")]
     pub error: String,
+    /// The transaction that failed to parse
     pub transaction: String,
+    /// Cause of the error
     pub cause: String,
+    /// Stack trace
     pub stack: String,
 }
 
@@ -162,11 +186,12 @@ impl IntoResponse for ParseErrorKind {
     path = "/v1/transaction/parse",
     tag = "transaction",
     summary = "Parse transaction",
-    description = "Decode a raw transaction and return its components without executing or submitting it.",
-    request_body(content = Object, description = "Transaction with 'tx' field containing hex-encoded extrinsic"),
+    description = "Decode a raw transaction and return its components without executing or submitting it. \
+        Returns the decoded pallet/method, call arguments, signature info, nonce, tip, era, and hash.",
+    request_body(content = ParseRequest, description = "Transaction with 'tx' field containing hex-encoded extrinsic"),
     responses(
-        (status = 200, description = "Parsed transaction", body = Object),
-        (status = 400, description = "Invalid transaction"),
+        (status = 200, description = "Parsed transaction", body = ParseResponse),
+        (status = 400, description = "Invalid transaction", body = ParseError),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -182,11 +207,12 @@ pub async fn parse(
     path = "/v1/rc/transaction/parse",
     tag = "rc",
     summary = "Parse transaction (relay chain)",
-    description = "Decode a raw transaction using relay chain metadata. Only available on parachains.",
-    request_body(content = Object, description = "Transaction with 'tx' field containing hex-encoded extrinsic"),
+    description = "Decode a raw transaction using relay chain metadata. Only available on parachains. \
+        Returns the decoded pallet/method, call arguments, signature info, nonce, tip, era, and hash.",
+    request_body(content = ParseRequest, description = "Transaction with 'tx' field containing hex-encoded extrinsic"),
     responses(
-        (status = 200, description = "Parsed transaction", body = Object),
-        (status = 400, description = "Invalid transaction or relay chain not configured"),
+        (status = 200, description = "Parsed transaction", body = ParseResponse),
+        (status = 400, description = "Invalid transaction or relay chain not configured", body = ParseError),
         (status = 503, description = "Relay chain unavailable"),
         (status = 500, description = "Internal server error")
     )
