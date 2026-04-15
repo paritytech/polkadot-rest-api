@@ -97,6 +97,7 @@ use utoipa::OpenApi;
         crate::handlers::transaction::material::material,
         crate::handlers::transaction::material::material_versioned,
         crate::handlers::transaction::metadata_blob::metadata_blob,
+        crate::handlers::transaction::parse::parse,
         // Coretime
         crate::handlers::coretime::info::coretime_info,
         crate::handlers::coretime::overview::coretime_overview,
@@ -152,6 +153,7 @@ use utoipa::OpenApi;
         crate::handlers::transaction::material::material_rc,
         crate::handlers::transaction::material::material_versioned_rc,
         crate::handlers::transaction::metadata_blob::metadata_blob_rc,
+        crate::handlers::transaction::parse::parse_rc,
     ),
 )]
 pub struct ApiDoc;
