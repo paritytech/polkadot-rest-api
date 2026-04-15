@@ -9,7 +9,9 @@
 //! - Converting account addresses to SS58 format
 
 use crate::state::AppState;
-use crate::utils::{self, EraInfo};
+use crate::utils::{
+    self, ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce, EraInfo,
+};
 use heck::ToLowerCamelCase;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
@@ -21,29 +23,6 @@ use super::super::decode::{GetTypeName, JsonVisitor};
 use super::super::types::{
     ExtrinsicInfo, GetBlockError, MethodInfo, MultiAddress, SignatureInfo, SignerId,
 };
-
-// ================================================================================================
-// Signed Extension Types
-// ================================================================================================
-
-/// CheckNonce signed extension - contains the account nonce
-/// SCALE encoded as a compact u32
-#[derive(parity_scale_codec::Decode)]
-struct CheckNonce(#[codec(compact)] u32);
-
-/// ChargeTransactionPayment signed extension - contains the tip amount
-/// SCALE encoded as a compact u128
-#[derive(parity_scale_codec::Decode)]
-struct ChargeTransactionPayment(#[codec(compact)] u128);
-
-/// ChargeAssetTxPayment signed extension - contains tip and optional asset_id
-/// Used on Asset Hub and other chains that support paying fees in non-native assets
-#[derive(parity_scale_codec::Decode)]
-struct ChargeAssetTxPayment {
-    #[codec(compact)]
-    tip: u128,
-    // asset_id is Option<AssetId> but we don't need it for tip extraction
-}
 
 /// Extract extrinsics from a block using subxt with explicit ss58_prefix
 ///

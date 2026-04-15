@@ -6,17 +6,19 @@
 //! This module provides the `/v1/transaction/parse` endpoint for decoding
 //! raw transactions without executing or submitting them.
 
+use crate::handlers::blocks::decode::args::CallArgsVisitor;
 use crate::state::{AppState, RelayChainError};
-use crate::utils::{self, EraInfo};
+use crate::utils::{
+    self, ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce, EraInfo,
+    decode_address_to_ss58,
+};
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use frame_decode::extrinsics::decode_extrinsic;
-use frame_decode::helpers::decode_with_visitor;
 use heck::ToLowerCamelCase;
 use parity_scale_codec::Decode;
-use scale_value::scale::ValueVisitor;
+use scale_decode::visitor::decode_with_visitor;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sp_core::crypto::{AccountId32, Ss58Codec};
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash as HashT;
 use subxt::{OnlineClient, SubstrateConfig};
@@ -155,21 +157,6 @@ impl IntoResponse for ParseErrorKind {
     }
 }
 
-/// CheckNonce signed extension - contains the account nonce
-#[derive(Decode)]
-struct CheckNonce(#[codec(compact)] u32);
-
-/// ChargeTransactionPayment signed extension - contains the tip amount
-#[derive(Decode)]
-struct ChargeTransactionPayment(#[codec(compact)] u128);
-
-/// ChargeAssetTxPayment signed extension - contains tip and optional asset_id
-#[derive(Decode)]
-struct ChargeAssetTxPayment {
-    #[codec(compact)]
-    tip: u128,
-}
-
 #[utoipa::path(
     post,
     path = "/v1/transaction/parse",
@@ -281,7 +268,7 @@ async fn parse_internal(
     let pallet_name = extrinsic.pallet_name().to_lower_camel_case();
     let method_name = extrinsic.call_name().to_lower_camel_case();
 
-    // Extract call arguments
+    // Extract call arguments using the shared CallArgsVisitor
     let args_map = decode_call_args(&tx_bytes, &extrinsic, &metadata, ss58_prefix, tx)?;
 
     // Extract signature info and era
@@ -315,7 +302,7 @@ async fn parse_internal(
     }))
 }
 
-/// Decode call arguments from extrinsic
+/// Decode call arguments from extrinsic using the shared CallArgsVisitor
 fn decode_call_args(
     tx_bytes: &[u8],
     extrinsic: &frame_decode::extrinsics::Extrinsic<'_, u32>,
@@ -334,11 +321,18 @@ fn decode_call_args(
         let arg_range = arg.range();
         let arg_bytes = &tx_bytes[arg_range.clone()];
 
-        // Decode argument value using scale_value visitor
-        match decode_with_visitor(&mut &arg_bytes[..], *arg.ty(), types, ValueVisitor::new()) {
-            Ok(value) => {
-                // Transform the scale_value to JSON with SS58 conversion
-                let json_value = transform_scale_value_to_json(&value, ss58_prefix);
+        // Use the shared CallArgsVisitor which handles:
+        // - SS58 encoding for AccountId32/MultiAddress/AccountId types
+        // - Preserving arrays for Vec<T> sequences
+        // - Converting byte arrays to hex
+        // - Basic enums as strings, non-basic enums as objects
+        match decode_with_visitor(
+            &mut &arg_bytes[..],
+            *arg.ty(),
+            types,
+            CallArgsVisitor::new(ss58_prefix, types),
+        ) {
+            Ok(json_value) => {
                 args_map.insert(arg_name, json_value);
             }
             Err(e) => {
@@ -357,96 +351,6 @@ fn decode_call_args(
     Ok(args_map)
 }
 
-/// Transform scale_value::Value to serde_json::Value with SS58 address conversion
-#[allow(clippy::only_used_in_recursion)]
-fn transform_scale_value_to_json(value: &scale_value::Value<u32>, ss58_prefix: u16) -> Value {
-    use scale_value::ValueDef;
-
-    match &value.value {
-        ValueDef::Composite(composite) => {
-            match composite {
-                scale_value::Composite::Named(fields) => {
-                    let mut map = serde_json::Map::new();
-                    for (name, val) in fields {
-                        map.insert(
-                            name.clone(),
-                            transform_scale_value_to_json(val, ss58_prefix),
-                        );
-                    }
-                    Value::Object(map)
-                }
-                scale_value::Composite::Unnamed(vals) => {
-                    if vals.len() == 1 {
-                        // Single unnamed field - unwrap it
-                        transform_scale_value_to_json(&vals[0], ss58_prefix)
-                    } else {
-                        // Multiple unnamed fields - array
-                        Value::Array(
-                            vals.iter()
-                                .map(|v| transform_scale_value_to_json(v, ss58_prefix))
-                                .collect(),
-                        )
-                    }
-                }
-            }
-        }
-        ValueDef::Variant(variant) => {
-            let inner = match &variant.values {
-                scale_value::Composite::Named(fields) if fields.is_empty() => {
-                    // Unit variant - just the name as string
-                    return Value::String(variant.name.clone());
-                }
-                scale_value::Composite::Unnamed(vals) if vals.is_empty() => {
-                    // Unit variant
-                    return Value::String(variant.name.clone());
-                }
-                scale_value::Composite::Unnamed(vals) if vals.len() == 1 => {
-                    // Single value variant
-                    transform_scale_value_to_json(&vals[0], ss58_prefix)
-                }
-                scale_value::Composite::Named(fields) => {
-                    let mut map = serde_json::Map::new();
-                    for (name, val) in fields {
-                        map.insert(
-                            name.clone(),
-                            transform_scale_value_to_json(val, ss58_prefix),
-                        );
-                    }
-                    Value::Object(map)
-                }
-                scale_value::Composite::Unnamed(vals) => Value::Array(
-                    vals.iter()
-                        .map(|v| transform_scale_value_to_json(v, ss58_prefix))
-                        .collect(),
-                ),
-            };
-
-            // For named variants like MultiAddress::Id, wrap with variant name in lower camelCase
-            let variant_name = variant.name.to_lower_camel_case();
-            let mut map = serde_json::Map::new();
-            map.insert(variant_name, inner);
-            Value::Object(map)
-        }
-        ValueDef::Primitive(prim) => {
-            use scale_value::Primitive;
-            match prim {
-                Primitive::Bool(b) => Value::Bool(*b),
-                Primitive::Char(c) => Value::String(c.to_string()),
-                Primitive::String(s) => Value::String(s.clone()),
-                Primitive::U128(n) => Value::String(n.to_string()),
-                Primitive::I128(n) => Value::String(n.to_string()),
-                Primitive::U256(n) => Value::String(format!("{:?}", n)),
-                Primitive::I256(n) => Value::String(format!("{:?}", n)),
-            }
-        }
-        ValueDef::BitSequence(bits) => {
-            // Convert to hex
-            let bytes: Vec<u8> = bits.iter().map(|b| if b { 1 } else { 0 }).collect();
-            Value::String(format!("0x{}", hex::encode(bytes)))
-        }
-    }
-}
-
 /// Result type for signed extrinsic info extraction
 type SignedInfoResult = (
     Option<SignatureInfo>,
@@ -459,12 +363,10 @@ type SignedInfoResult = (
 fn extract_signed_info(
     tx_bytes: &[u8],
     extrinsic: &frame_decode::extrinsics::Extrinsic<'_, u32>,
-    metadata: &Metadata,
+    _metadata: &Metadata,
     ss58_prefix: u16,
     tx: &str,
 ) -> Result<SignedInfoResult, ParseErrorKind> {
-    let types = metadata.types();
-
     // Get signature payload
     let sig_payload = extrinsic
         .signature_payload()
@@ -474,10 +376,18 @@ fn extract_signed_info(
             stack: "Error: Missing signature payload\n    at parse".to_string(),
         })?;
 
-    // Decode address
+    // Decode address using existing utility
     let addr_bytes = &tx_bytes[sig_payload.address_range()];
-    let signer_ss58 =
-        decode_address_bytes(addr_bytes, sig_payload.address_type(), types, ss58_prefix);
+    let addr_hex = format!("0x{}", hex::encode(addr_bytes));
+    let signer_ss58 = decode_address_to_ss58(&addr_hex, ss58_prefix).unwrap_or_else(|| {
+        // Fallback: try direct interpretation for MultiAddress::Id variant
+        if addr_bytes.len() >= 33 && addr_bytes[0] == 0x00 {
+            let addr_inner_hex = format!("0x{}", hex::encode(&addr_bytes[1..33]));
+            decode_address_to_ss58(&addr_inner_hex, ss58_prefix).unwrap_or(addr_hex.clone())
+        } else {
+            addr_hex
+        }
+    });
 
     // Get signature bytes
     let sig_bytes = &tx_bytes[sig_payload.signature_range()];
@@ -499,7 +409,7 @@ fn extract_signed_info(
         mortal_era: None,
     });
 
-    // Extract nonce and tip from transaction extensions
+    // Extract nonce and tip from transaction extensions using shared types
     let (nonce, tip) = if let Some(extensions) = extrinsic.transaction_extension_payload() {
         let mut nonce_value = None;
         let mut tip_value = None;
@@ -539,70 +449,6 @@ fn extract_signed_info(
     };
 
     Ok((signature_info, nonce, tip, era_info))
-}
-
-/// Decode address bytes to SS58 string
-fn decode_address_bytes(
-    addr_bytes: &[u8],
-    address_type: &u32,
-    types: &scale_info::PortableRegistry,
-    ss58_prefix: u16,
-) -> String {
-    // Try to decode as scale_value first
-    if let Ok(value) = decode_with_visitor(
-        &mut &addr_bytes[..],
-        *address_type,
-        types,
-        ValueVisitor::new(),
-    ) {
-        // Extract AccountId32 bytes from the value
-        if let Some(account_bytes) = extract_account_id_bytes(&value) {
-            let account_id = AccountId32::from(account_bytes);
-            return account_id.to_ss58check_with_version(ss58_prefix.into());
-        }
-    }
-
-    // Fallback: try direct interpretation
-    if addr_bytes.len() >= 33 && addr_bytes[0] == 0x00 {
-        // MultiAddress::Id variant
-        let mut account_bytes = [0u8; 32];
-        account_bytes.copy_from_slice(&addr_bytes[1..33]);
-        let account_id = AccountId32::from(account_bytes);
-        return account_id.to_ss58check_with_version(ss58_prefix.into());
-    }
-
-    // Last resort: hex representation
-    format!("0x{}", hex::encode(addr_bytes))
-}
-
-/// Extract AccountId32 bytes from a scale_value::Value
-fn extract_account_id_bytes(value: &scale_value::Value<u32>) -> Option<[u8; 32]> {
-    use scale_value::{Composite, ValueDef};
-
-    match &value.value {
-        // MultiAddress::Id(bytes)
-        ValueDef::Variant(variant) if variant.name == "Id" => {
-            if let Composite::Unnamed(vals) = &variant.values
-                && let Some(inner) = vals.first()
-            {
-                return extract_account_id_bytes(inner);
-            }
-        }
-        // AccountId32 as 32 bytes composite
-        ValueDef::Composite(Composite::Unnamed(vals)) if vals.len() == 32 => {
-            let mut bytes = [0u8; 32];
-            for (i, val) in vals.iter().enumerate() {
-                if let ValueDef::Primitive(scale_value::Primitive::U128(n)) = &val.value {
-                    bytes[i] = *n as u8;
-                } else {
-                    return None;
-                }
-            }
-            return Some(bytes);
-        }
-        _ => {}
-    }
-    None
 }
 
 #[cfg(test)]
