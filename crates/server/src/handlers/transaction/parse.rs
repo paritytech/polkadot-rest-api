@@ -429,16 +429,12 @@ fn extract_signed_info(
         signature: signature_hex,
     });
 
-    // Extract era from raw extrinsic bytes
-    let era_info = utils::extract_era_from_extrinsic_bytes(tx_bytes).unwrap_or(EraInfo {
-        immortal_era: Some("0x00".to_string()),
-        mortal_era: None,
-    });
-
-    // Extract nonce and tip from transaction extensions using shared types
-    let (nonce, tip) = if let Some(extensions) = extrinsic.transaction_extension_payload() {
+    // Extract nonce, tip, and era from transaction extensions using shared types
+    let (nonce, tip, era_info) = if let Some(extensions) = extrinsic.transaction_extension_payload()
+    {
         let mut nonce_value = None;
         let mut tip_value = None;
+        let mut era_value = None;
 
         for ext in extensions.iter() {
             let ext_name = ext.name();
@@ -465,13 +461,34 @@ fn extract_signed_info(
                         tip_value = Some("0".to_string());
                     }
                 }
+                "CheckMortality" | "CheckEra" => {
+                    // Decode era from the extension bytes
+                    let mut offset = 0;
+                    if let Some(decoded_era) = utils::decode_era_from_bytes(ext_bytes, &mut offset)
+                    {
+                        era_value = Some(decoded_era);
+                    }
+                }
                 _ => {}
             }
         }
 
-        (nonce_value, tip_value)
+        // Use decoded era, or fallback to extracting from raw bytes, or default to immortal
+        let era = era_value
+            .or_else(|| utils::extract_era_from_extrinsic_bytes(tx_bytes))
+            .unwrap_or(EraInfo {
+                immortal_era: Some("0x00".to_string()),
+                mortal_era: None,
+            });
+
+        (nonce_value, tip_value, era)
     } else {
-        (None, None)
+        // No extensions - try to extract era from raw bytes
+        let era = utils::extract_era_from_extrinsic_bytes(tx_bytes).unwrap_or(EraInfo {
+            immortal_era: Some("0x00".to_string()),
+            mortal_era: None,
+        });
+        (None, None, era)
     };
 
     Ok((signature_info, nonce, tip, era_info))
