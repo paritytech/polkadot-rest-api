@@ -187,7 +187,9 @@ impl IntoResponse for ParseErrorKind {
     tag = "transaction",
     summary = "Parse transaction",
     description = "Decode a raw transaction and return its components without executing or submitting it. \
-        Returns the decoded pallet/method, call arguments, signature info, nonce, tip, era, and hash.",
+        Returns the decoded pallet/method, call arguments, signature info, nonce, tip, era, and hash. \
+        Note: This endpoint uses the chain's current (latest) metadata for decoding. Transactions created \
+        for older runtime versions may fail to decode if the extrinsic format has changed.",
     request_body(content = ParseRequest, description = "Transaction with 'tx' field containing hex-encoded extrinsic"),
     responses(
         (status = 200, description = "Parsed transaction", body = ParseResponse),
@@ -208,7 +210,9 @@ pub async fn parse(
     tag = "rc",
     summary = "Parse transaction (relay chain)",
     description = "Decode a raw transaction using relay chain metadata. Only available on parachains. \
-        Returns the decoded pallet/method, call arguments, signature info, nonce, tip, era, and hash.",
+        Returns the decoded pallet/method, call arguments, signature info, nonce, tip, era, and hash. \
+        Note: This endpoint uses the relay chain's current (latest) metadata for decoding. Transactions \
+        created for older runtime versions may fail to decode if the extrinsic format has changed.",
     request_body(content = ParseRequest, description = "Transaction with 'tx' field containing hex-encoded extrinsic"),
     responses(
         (status = 200, description = "Parsed transaction", body = ParseResponse),
