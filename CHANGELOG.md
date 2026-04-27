@@ -6,6 +6,16 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.1] (2026-04-27)
+
+### Features
+
+- **Transaction parse endpoint**: Added `POST /v1/transaction/parse` and `POST /v1/rc/transaction/parse` endpoints to decode raw transactions without executing or submitting them. Returns the decoded pallet/method, call arguments, signature info, nonce, tip, era, and hash. Note: These endpoints use the chain's current metadata, so transactions from older runtime versions may fail to decode.
+
+### Refactor
+
+- **Shared transaction extension types**: Extracted `CheckNonce`, `ChargeTransactionPayment`, and `ChargeAssetTxPayment` types into a shared `utils/transaction_extensions` module to eliminate duplication between block processing and transaction parsing.
+
 ## [0.1.0] (2026-04-07)
 
 First stable release of `polkadot-rest-api`.
