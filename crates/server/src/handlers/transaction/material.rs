@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::extractors::JsonQuery;
-use crate::state::{AppState, RelayChainError};
+use crate::state::{AppState, RelayChainError, SubstrateLegacyRpc};
 use crate::utils::BlockId;
 use axum::{
     Json,
@@ -11,28 +11,9 @@ use axum::{
     response::IntoResponse,
 };
 use parity_scale_codec::Decode;
-use scale_decode::DecodeAsType;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
-
-// ================================================================================================
-// SCALE Decode Types for Runtime API responses
-// ================================================================================================
-
-/// RuntimeVersion returned by Core.version()
-#[derive(Debug, DecodeAsType)]
-#[allow(dead_code)]
-struct RuntimeVersion {
-    spec_name: String,
-    impl_name: String,
-    authoring_version: u32,
-    spec_version: u32,
-    impl_version: u32,
-    apis: Vec<([u8; 8], u32)>,
-    transaction_version: u32,
-    system_version: u8,
-}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -261,7 +242,7 @@ pub async fn material(
     State(state): State<AppState>,
     JsonQuery(query): JsonQuery<MaterialQuery>,
 ) -> Result<Json<MaterialResponse>, MaterialError> {
-    material_internal(&state.client, &state.rpc_client, query).await
+    material_internal(&state.client, &state.rpc_client, &state.legacy_rpc, query).await
 }
 
 #[utoipa::path(
@@ -293,8 +274,12 @@ pub async fn material_rc(
         .get_relay_chain_rpc_client()
         .await
         .map_err(MaterialError::RelayChain)?;
+    let relay_legacy_rpc = state
+        .get_relay_chain_rpc()
+        .await
+        .map_err(MaterialError::RelayChain)?;
 
-    material_internal(&relay_client, &relay_rpc_client, query).await
+    material_internal(&relay_client, &relay_rpc_client, &relay_legacy_rpc, query).await
 }
 
 /// Parse and validate metadata version from path parameter.
@@ -314,6 +299,36 @@ fn parse_metadata_version(version_str: &str) -> Result<u32, MaterialError> {
         .map_err(|_| MaterialError::InvalidMetadataVersionFormat {
             value: version_str.to_string(),
         })
+}
+
+/// Fetch `spec_name` via the legacy `state_getRuntimeVersion` RPC.
+///
+/// Uses the legacy RPC (rather than the typed `Core::version()` runtime API)
+/// so we tolerate runtimes built against older polkadot-sdk versions: pre-stable2412
+/// runtimes expose the field as `state_version`, while newer ones use `system_version`.
+/// A strict `DecodeAsType` of `Core::version()` fails on the older naming; the legacy
+/// RPC returns a JSON map and we just pluck `specName` out of it.
+async fn fetch_spec_name(
+    legacy_rpc: &SubstrateLegacyRpc,
+    block_hash: subxt::utils::H256,
+) -> Result<String, MaterialError> {
+    let runtime_version = legacy_rpc
+        .state_get_runtime_version(Some(block_hash))
+        .await
+        .map_err(|e| {
+            let cause = e.to_string();
+            MaterialError::FetchFailed {
+                cause: cause.clone(),
+                stack: format!("Error: {}\n    at material (runtime version)", cause),
+            }
+        })?;
+
+    Ok(runtime_version
+        .other
+        .get("specName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string())
 }
 
 #[utoipa::path(
@@ -340,7 +355,14 @@ pub async fn material_versioned(
     Path(metadata_version): Path<String>,
     JsonQuery(query): JsonQuery<MaterialQuery>,
 ) -> Result<Json<MaterialResponse>, MaterialError> {
-    material_versioned_internal(&state.client, &state.rpc_client, metadata_version, query).await
+    material_versioned_internal(
+        &state.client,
+        &state.rpc_client,
+        &state.legacy_rpc,
+        metadata_version,
+        query,
+    )
+    .await
 }
 
 #[utoipa::path(
@@ -374,13 +396,25 @@ pub async fn material_versioned_rc(
         .get_relay_chain_rpc_client()
         .await
         .map_err(MaterialError::RelayChain)?;
+    let relay_legacy_rpc = state
+        .get_relay_chain_rpc()
+        .await
+        .map_err(MaterialError::RelayChain)?;
 
-    material_versioned_internal(&relay_client, &relay_rpc_client, metadata_version, query).await
+    material_versioned_internal(
+        &relay_client,
+        &relay_rpc_client,
+        &relay_legacy_rpc,
+        metadata_version,
+        query,
+    )
+    .await
 }
 
 async fn material_versioned_internal(
     client: &subxt::OnlineClient<subxt::SubstrateConfig>,
     rpc_client: &subxt_rpcs::RpcClient,
+    legacy_rpc: &SubstrateLegacyRpc,
     metadata_version_str: String,
     query: MaterialQuery,
 ) -> Result<Json<MaterialResponse>, MaterialError> {
@@ -449,11 +483,9 @@ async fn material_versioned_internal(
         });
     }
 
-    // Get runtime version for spec_name
-    let version_method =
-        subxt::dynamic::runtime_api_call::<_, RuntimeVersion>("Core", "version", ());
-    let runtime_version = client_at.runtime_apis().call(version_method).await?;
-    let spec_name = runtime_version.spec_name.clone();
+    // Get runtime version via legacy RPC (permissive JSON; tolerates older
+    // runtimes that still expose `state_version` instead of `system_version`).
+    let spec_name = fetch_spec_name(legacy_rpc, client_at.block_hash()).await?;
 
     // Get genesis hash and chain name
     let genesis_hash = format!("{:#x}", client.genesis_hash());
@@ -532,82 +564,54 @@ async fn material_versioned_internal(
 async fn material_internal(
     client: &subxt::OnlineClient<subxt::SubstrateConfig>,
     rpc_client: &subxt_rpcs::RpcClient,
+    legacy_rpc: &SubstrateLegacyRpc,
     query: MaterialQuery,
 ) -> Result<Json<MaterialResponse>, MaterialError> {
     let metadata_format = parse_metadata_params(&query.metadata, query.no_meta)?;
 
     // Resolve block
-    let (block_hash, block_number, spec_version, tx_version, runtime_version) =
-        match &query.at {
-            None => {
-                // Get current finalized block
-                let client_at = client.at_current_block().await.map_err(|e| {
-                    let cause = e.to_string();
-                    MaterialError::FetchFailed {
-                        cause: cause.clone(),
-                        stack: format!("Error: {}\n    at material", cause),
-                    }
-                })?;
-                let hash = format!("{:#x}", client_at.block_hash());
-                let number = client_at.block_number().to_string();
-                let spec_version = client_at.spec_version().to_string();
-                let tx_version = client_at.transaction_version().to_string();
-                let method =
-                    subxt::dynamic::runtime_api_call::<_, RuntimeVersion>("Core", "version", ());
-                let runtime_version = client_at.runtime_apis().call(method).await?;
-
-                (hash, number, spec_version, tx_version, runtime_version)
+    let client_at = match &query.at {
+        None => client.at_current_block().await.map_err(|e| {
+            let cause = e.to_string();
+            MaterialError::FetchFailed {
+                cause: cause.clone(),
+                stack: format!("Error: {}\n    at material", cause),
             }
-            Some(at_str) => {
-                let block_id =
-                    at_str
-                        .parse::<BlockId>()
-                        .map_err(|e| MaterialError::InvalidBlockParam {
+        })?,
+        Some(at_str) => {
+            let block_id =
+                at_str
+                    .parse::<BlockId>()
+                    .map_err(|e| MaterialError::InvalidBlockParam {
+                        cause: e.to_string(),
+                    })?;
+
+            match block_id {
+                BlockId::Hash(hash) => {
+                    client
+                        .at_block(hash)
+                        .await
+                        .map_err(|e| MaterialError::BlockNotFound {
                             cause: e.to_string(),
-                        })?;
-
-                match block_id {
-                    BlockId::Hash(hash) => {
-                        let client_at = client.at_block(hash).await.map_err(|e| {
-                            MaterialError::BlockNotFound {
-                                cause: e.to_string(),
-                            }
-                        })?;
-                        let hash_str = format!("{:#x}", client_at.block_hash());
-                        let number = client_at.block_number().to_string();
-                        let spec_version = client_at.spec_version().to_string();
-                        let tx_version = client_at.transaction_version().to_string();
-                        let method = subxt::dynamic::runtime_api_call::<_, RuntimeVersion>(
-                            "Core",
-                            "version",
-                            (),
-                        );
-                        let runtime_version = client_at.runtime_apis().call(method).await?;
-
-                        (hash_str, number, spec_version, tx_version, runtime_version)
-                    }
-                    BlockId::Number(num) => {
-                        let client_at = client.at_block(num).await.map_err(|e| {
-                            MaterialError::BlockNotFound {
-                                cause: e.to_string(),
-                            }
-                        })?;
-                        let hash_str = format!("{:#x}", client_at.block_hash());
-                        let number = client_at.block_number().to_string();
-                        let spec_version = client_at.spec_version().to_string();
-                        let tx_version = client_at.transaction_version().to_string();
-                        let method = subxt::dynamic::runtime_api_call::<_, RuntimeVersion>(
-                            "Core",
-                            "version",
-                            (),
-                        );
-                        let runtime_version = client_at.runtime_apis().call(method).await?;
-
-                        (hash_str, number, spec_version, tx_version, runtime_version)
-                    }
+                        })?
+                }
+                BlockId::Number(num) => {
+                    client
+                        .at_block(num)
+                        .await
+                        .map_err(|e| MaterialError::BlockNotFound {
+                            cause: e.to_string(),
+                        })?
                 }
             }
-        };
+        }
+    };
+
+    let block_hash_bytes = client_at.block_hash();
+    let block_hash = format!("{:#x}", block_hash_bytes);
+    let block_number = client_at.block_number().to_string();
+    let spec_version = client_at.spec_version().to_string();
+    let tx_version = client_at.transaction_version().to_string();
 
     // Get genesis hash
     let genesis_hash = format!("{:#x}", client.genesis_hash());
@@ -624,8 +628,9 @@ async fn material_internal(
             }
         })?;
 
-    // Extract specName from typed runtime version
-    let spec_name = runtime_version.spec_name.clone();
+    // Get spec_name via legacy RPC (permissive JSON; tolerates older runtimes
+    // that still expose `state_version` instead of `system_version`).
+    let spec_name = fetch_spec_name(legacy_rpc, block_hash_bytes).await?;
 
     // Get metadata if requested
     let metadata = if let Some(format) = metadata_format {
