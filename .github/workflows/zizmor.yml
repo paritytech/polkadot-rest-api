@@ -1,0 +1,12 @@
+name: zizmor
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+permissions: {}
+
+jobs:
+  zizmor:
+    uses: paritytech/ci-actions/.github/workflows/reuseable-zizmor.yaml@main
