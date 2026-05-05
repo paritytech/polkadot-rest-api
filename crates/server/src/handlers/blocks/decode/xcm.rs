@@ -379,7 +379,9 @@ impl<'a> XcmDecoder<'a> {
     }
 
     /// Decode XCM messages from parachain extrinsics.
-    /// Looks for `parachainSystem.setValidationData` and extracts downward/horizontal messages.
+    /// Looks for `parachainSystem.setValidationData` and extracts downward/horizontal
+    /// messages from either the `inbound_messages_data` envelope (system chains) or
+    /// the native `data` argument (plain parachains).
     fn decode_parachain_messages(&self) -> XcmMessages {
         let mut messages = XcmMessages::default();
 
@@ -390,97 +392,173 @@ impl<'a> XcmDecoder<'a> {
                 continue;
             }
 
-            let Some(inbound_data) = extrinsic.args.get("inbound_messages_data") else {
-                continue;
-            };
+            if let Some(inbound) = extrinsic.args.get("inbound_messages_data") {
+                self.collect_inbound_envelope(inbound, &mut messages);
+            } else if let Some(data) = extrinsic.args.get("data") {
+                self.collect_native_inherent(data, &mut messages);
+            }
+        }
 
-            // Extract downward messages
-            if let Some(downward) = inbound_data.get("downwardMessages")
-                && let Some(full_msgs) = downward.get("fullMessages").and_then(|v| v.as_array())
-            {
-                for msg in full_msgs {
-                    let sent_at = msg
+        messages
+    }
+
+    /// System-chain `inbound_messages_data` envelope.
+    fn collect_inbound_envelope(&self, inbound_data: &Value, messages: &mut XcmMessages) {
+        // Extract downward messages
+        if let Some(downward) = inbound_data.get("downwardMessages")
+            && let Some(full_msgs) = downward.get("fullMessages").and_then(|v| v.as_array())
+        {
+            for msg in full_msgs {
+                let sent_at = msg
+                    .get("sentAt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0")
+                    .to_string();
+                let msg_hex = msg
+                    .get("msg")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                if !msg_hex.is_empty() {
+                    messages.downward_messages.push(DownwardMessage {
+                        sent_at,
+                        msg: msg_hex.clone(),
+                        data: decode_xcm_message(&msg_hex),
+                    });
+                }
+            }
+        }
+
+        // Extract horizontal messages
+        if let Some(horizontal) = inbound_data.get("horizontalMessages")
+            && let Some(full_msgs) = horizontal.get("fullMessages").and_then(|v| v.as_array())
+        {
+            for msg in full_msgs {
+                // HRMP fullMessages are tuples: [originParaId, { sentAt, data }]
+                let (origin_para_id, sent_at, msg_data) = if let Some(tuple) = msg.as_array()
+                    && tuple.len() == 2
+                {
+                    let origin = tuple[0].as_str().unwrap_or("0").to_string();
+                    let inner = &tuple[1];
+                    let sent = inner
                         .get("sentAt")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let data = inner
+                        .get("data")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    (origin, sent, data)
+                } else {
+                    // Fallback: object format
+                    let origin = msg
+                        .get("originParaId")
                         .and_then(|v| v.as_str())
                         .unwrap_or("0")
                         .to_string();
-                    let msg_hex = msg
-                        .get("msg")
+                    let sent = msg
+                        .get("sentAt")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let data = msg
+                        .get("data")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    (origin, sent, data)
+                };
+
+                // Apply paraId filter if specified
+                if self
+                    .para_id_filter
+                    .is_some_and(|filter| origin_para_id != filter.to_string())
+                {
+                    continue;
+                }
+
+                if !msg_data.is_empty() {
+                    messages.horizontal_messages.push(HorizontalMessage {
+                        origin_para_id,
+                        destination_para_id: None,
+                        sent_at,
+                        data: decode_xcm_message(&msg_data),
+                    });
+                }
+            }
+        }
+    }
+
+    /// Native `ParachainInherentData` shape used by plain parachains.
+    fn collect_native_inherent(&self, data: &Value, messages: &mut XcmMessages) {
+        if let Some(arr) = data.get("downwardMessages").and_then(|v| v.as_array()) {
+            for msg in arr {
+                let sent_at = msg
+                    .get("sentAt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0")
+                    .to_string();
+                let msg_hex = msg
+                    .get("msg")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                if !msg_hex.is_empty() {
+                    messages.downward_messages.push(DownwardMessage {
+                        sent_at,
+                        msg: msg_hex.clone(),
+                        data: decode_xcm_message(&msg_hex),
+                    });
+                }
+            }
+        }
+
+        // Horizontal: array of [paraId, [ { sentAt, data } ]]
+        if let Some(arr) = data.get("horizontalMessages").and_then(|v| v.as_array()) {
+            for entry in arr {
+                let Some(tuple) = entry.as_array() else {
+                    continue;
+                };
+                if tuple.len() != 2 {
+                    continue;
+                }
+
+                let origin_para_id = tuple[0].as_str().unwrap_or("0").to_string();
+
+                // Apply paraId filter if specified
+                if self
+                    .para_id_filter
+                    .is_some_and(|filter| origin_para_id != filter.to_string())
+                {
+                    continue;
+                }
+                let Some(inner_msgs) = tuple[1].as_array() else {
+                    continue;
+                };
+                for m in inner_msgs {
+                    let sent_at = m
+                        .get("sentAt")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let data_hex = m
+                        .get("data")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
 
-                    if !msg_hex.is_empty() {
-                        messages.downward_messages.push(DownwardMessage {
-                            sent_at,
-                            msg: msg_hex.clone(),
-                            data: decode_xcm_message(&msg_hex),
-                        });
-                    }
-                }
-            }
-
-            // Extract horizontal messages
-            if let Some(horizontal) = inbound_data.get("horizontalMessages")
-                && let Some(full_msgs) = horizontal.get("fullMessages").and_then(|v| v.as_array())
-            {
-                for msg in full_msgs {
-                    // HRMP fullMessages are tuples: [originParaId, { sentAt, data }]
-                    let (origin_para_id, sent_at, msg_data) = if let Some(tuple) = msg.as_array()
-                        && tuple.len() == 2
-                    {
-                        let origin = tuple[0].as_str().unwrap_or("0").to_string();
-                        let inner = &tuple[1];
-                        let sent = inner
-                            .get("sentAt")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string());
-                        let data = inner
-                            .get("data")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        (origin, sent, data)
-                    } else {
-                        // Fallback: object format
-                        let origin = msg
-                            .get("originParaId")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("0")
-                            .to_string();
-                        let sent = msg
-                            .get("sentAt")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string());
-                        let data = msg
-                            .get("data")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        (origin, sent, data)
-                    };
-
-                    // Apply paraId filter if specified
-                    if self
-                        .para_id_filter
-                        .is_some_and(|filter| origin_para_id != filter.to_string())
-                    {
-                        continue;
-                    }
-
-                    if !msg_data.is_empty() {
+                    if !data_hex.is_empty() {
                         messages.horizontal_messages.push(HorizontalMessage {
-                            origin_para_id,
+                            origin_para_id: origin_para_id.clone(),
                             destination_para_id: None,
                             sent_at,
-                            data: decode_xcm_message(&msg_data),
+                            data: decode_xcm_message(&data_hex),
                         });
                     }
                 }
             }
         }
-
-        messages
     }
 }
 
@@ -1091,5 +1169,77 @@ mod tests {
         // Valid V5 discriminant but truncated payload
         let result = decode_xcm_message("0x0504");
         assert!(result.is_string(), "truncated XCM should return raw hex");
+    }
+
+    /// Plain parachains expose inbound XCM in the native `data` argument
+    /// (no `inbound_messages_data` envelope). Regression test for #322.
+    #[test]
+    fn test_parachain_native_inherent_horizontal_message_decoded() {
+        let inner = xcm_v5::Xcm::<()>(vec![xcm_v5::Instruction::ClearOrigin]);
+        let xcm_hex = encode_versioned_xcm(VersionedXcm::V5(inner));
+        let hrmp_msg_hex = format!("0x00{}", xcm_hex.trim_start_matches("0x"));
+
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "data".to_string(),
+            serde_json::json!({
+                "downwardMessages": [
+                    { "sentAt": "12345", "msg": xcm_hex }
+                ],
+                "horizontalMessages": [
+                    ["1000", []],
+                    ["2030", [
+                        { "sentAt": "30812723", "data": hrmp_msg_hex }
+                    ]],
+                ]
+            }),
+        );
+
+        let extrinsics = vec![build_parachain_system_extrinsic(args)];
+        let decoder = XcmDecoder::new(ChainType::Parachain, &extrinsics, None);
+        let result = decoder.decode();
+
+        assert_eq!(result.horizontal_messages.len(), 1);
+        assert_eq!(result.horizontal_messages[0].origin_para_id, "2030");
+        assert_eq!(
+            result.horizontal_messages[0].sent_at.as_deref(),
+            Some("30812723")
+        );
+        assert_eq!(result.downward_messages.len(), 1);
+        assert_eq!(result.downward_messages[0].sent_at, "12345");
+    }
+
+    /// `inbound_messages_data` envelope must take precedence over native `data`.
+    #[test]
+    fn test_inbound_envelope_takes_precedence_over_native_data() {
+        let inner = xcm_v5::Xcm::<()>(vec![xcm_v5::Instruction::ClearOrigin]);
+        let xcm_hex = encode_versioned_xcm(VersionedXcm::V5(inner));
+        let hrmp_msg_hex = format!("0x00{}", xcm_hex.trim_start_matches("0x"));
+        let envelope_msg = serde_json::json!(["3000", { "sentAt": "111", "data": hrmp_msg_hex }]);
+
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "inbound_messages_data".to_string(),
+            serde_json::json!({
+                "downwardMessages": { "fullMessages": [], "hashedMessages": [] },
+                "horizontalMessages": { "fullMessages": [envelope_msg], "hashedMessages": [] }
+            }),
+        );
+        args.insert(
+            "data".to_string(),
+            serde_json::json!({
+                "downwardMessages": [],
+                "horizontalMessages": [
+                    ["9999", [{ "sentAt": "999", "data": "0xdead" }]]
+                ]
+            }),
+        );
+
+        let extrinsics = vec![build_parachain_system_extrinsic(args)];
+        let decoder = XcmDecoder::new(ChainType::AssetHub, &extrinsics, None);
+        let result = decoder.decode();
+
+        assert_eq!(result.horizontal_messages.len(), 1);
+        assert_eq!(result.horizontal_messages[0].origin_para_id, "3000");
     }
 }
