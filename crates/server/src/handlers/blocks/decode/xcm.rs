@@ -1205,8 +1205,31 @@ mod tests {
             result.horizontal_messages[0].sent_at.as_deref(),
             Some("30812723")
         );
+
+        // Verify the horizontal message was actually decoded as V5 XCM
+        let hrmp_data_arr = result.horizontal_messages[0]
+            .data
+            .as_array()
+            .expect("horizontal message data should decode to array");
+        assert_eq!(hrmp_data_arr.len(), 1);
+        assert!(
+            hrmp_data_arr[0].as_object().unwrap().contains_key("v5"),
+            "horizontal message should decode as V5 XCM"
+        );
+
         assert_eq!(result.downward_messages.len(), 1);
         assert_eq!(result.downward_messages[0].sent_at, "12345");
+
+        // Verify the downward message was actually decoded as V5 XCM
+        let dmp_data_arr = result.downward_messages[0]
+            .data
+            .as_array()
+            .expect("downward message data should decode to array");
+        assert_eq!(dmp_data_arr.len(), 1);
+        assert!(
+            dmp_data_arr[0].as_object().unwrap().contains_key("v5"),
+            "downward message should decode as V5 XCM"
+        );
     }
 
     /// `inbound_messages_data` envelope must take precedence over native `data`.
