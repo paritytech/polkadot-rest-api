@@ -6,6 +6,13 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.2] (2026-05-20)
+
+### Fixes
+
+- **Decode XCM messages on plain parachains**: Fixed XCM message decoding to work correctly on plain (non-system) parachains. (#333)
+- **Support both `stateVersion` and `systemVersion` in `/v1/transaction/material`**: The endpoint now accepts both `stateVersion` and `systemVersion` fields, restoring compatibility with runtimes that expose either name. (#330)
+
 ## [0.1.1] (2026-04-28)
 
 ### Features
