@@ -7,7 +7,7 @@ use utoipa::OpenApi;
 #[openapi(
     info(
         title = "Polkadot REST API",
-        version = "0.1.0",
+        version = "0.1.2",
         description = "High-performance Rust REST API for Substrate/Polkadot blockchain data. Drop-in replacement for substrate-api-sidecar.",
         license(name = "GPL-3.0-or-later"),
         contact(url = "https://github.com/paritytech/polkadot-rest-api")
@@ -97,6 +97,7 @@ use utoipa::OpenApi;
         crate::handlers::transaction::material::material,
         crate::handlers::transaction::material::material_versioned,
         crate::handlers::transaction::metadata_blob::metadata_blob,
+        crate::handlers::transaction::parse::parse,
         // Coretime
         crate::handlers::coretime::info::coretime_info,
         crate::handlers::coretime::overview::coretime_overview,
@@ -152,6 +153,7 @@ use utoipa::OpenApi;
         crate::handlers::transaction::material::material_rc,
         crate::handlers::transaction::material::material_versioned_rc,
         crate::handlers::transaction::metadata_blob::metadata_blob_rc,
+        crate::handlers::transaction::parse::parse_rc,
     ),
 )]
 pub struct ApiDoc;

@@ -57,6 +57,13 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
             "/transaction/metadata-blob",
             "post",
             post(transaction::metadata_blob),
+        )
+        .route_registered(
+            registry,
+            API_VERSION,
+            "/transaction/parse",
+            "post",
+            post(transaction::parse),
         );
 
     // Only register /rc/ routes for parachains, not relay chains
@@ -103,6 +110,13 @@ pub fn routes(registry: &RouteRegistry, chain_type: &ChainType) -> Router<AppSta
                 "/rc/transaction/metadata-blob",
                 "post",
                 post(transaction::metadata_blob_rc),
+            )
+            .route_registered(
+                registry,
+                API_VERSION,
+                "/rc/transaction/parse",
+                "post",
+                post(transaction::parse_rc),
             )
     } else {
         router
