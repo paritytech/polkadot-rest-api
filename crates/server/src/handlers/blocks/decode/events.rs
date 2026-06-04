@@ -980,11 +980,8 @@ pub fn try_convert_accountid_to_ss58(value: &JsonValue, ss58_prefix: u16) -> Opt
     {
         let mut bytes = [0u8; 32];
         for (i, val) in arr.iter().enumerate() {
-            if let Some(byte) = val.as_u64() {
-                bytes[i] = byte as u8;
-            } else {
-                return None;
-            }
+            let byte = val.as_u64()?;
+            bytes[i] = byte as u8;
         }
         let account_id = AccountId32::from(bytes);
         let ss58 = account_id.to_ss58check_with_version(ss58_prefix.into());
