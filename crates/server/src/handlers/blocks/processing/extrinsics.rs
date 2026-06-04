@@ -105,7 +105,7 @@ async fn extract_extrinsics_impl(
         for field in extrinsic.iter_call_data_fields() {
             let field_name = field.name();
             // Keep field names as-is (snake_case from SCALE metadata)
-            // Only nested object keys are transformed to camelCase via transform_json_unified
+            // Only nested object keys are transformed to camelCase via ScaleVisitor
             let field_key = field_name.to_string();
 
             // Use the visitor pattern to get type information
