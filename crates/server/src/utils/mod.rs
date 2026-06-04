@@ -9,6 +9,7 @@ pub mod fee;
 pub mod format;
 pub mod hash;
 pub mod rc_block;
+pub mod transaction_extensions;
 
 pub use block::{
     AtBlockError, BlockId, BlockIdParseError, BlockResolveError, ResolveClientAtBlockError,
@@ -31,6 +32,7 @@ pub use rc_block::{
     AhBlockInfo, RcBlockError, RcClientAtBlock, extract_block_number_from_header,
     find_ah_blocks_in_rc_block, find_ah_blocks_in_rc_block_at,
 };
+pub use transaction_extensions::{ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce};
 
 /// Check if an RPC error indicates the connection was lost and reconnection is in progress.
 ///
