@@ -334,7 +334,16 @@ async fn dry_run_internal(
             "Signed",
             subxt::dynamic::Value::from_bytes(sender_bytes),
         )]),
-    )]);
+// `OriginCaller::system(RawOrigin::Signed(account))`: these are enum *variants* and
+// must be encoded as variants. A `named_composite` only encodes into a struct and is
+// rejected against the `OriginCaller` enum ("Cannot encode Tuple into type ...").
+let origin = subxt::dynamic::Value::unnamed_variant(
+    "system",
+    [subxt::dynamic::Value::unnamed_variant(
+        "Signed",
+        [subxt::dynamic::Value::from_bytes(sender_bytes)],
+    )],
+);
 
     // Decode transaction bytes
     let tx_bytes =
