@@ -352,7 +352,25 @@ let origin = subxt::dynamic::Value::unnamed_variant(
             cause: format!("Invalid hex encoding: {}", e),
             stack: format!("Error: Invalid hex encoding: {}\n    at dry_run", e),
         })?;
-    let call = subxt::dynamic::Value::from_bytes(tx_bytes);
+    // `tx` is an already-SCALE-encoded `RuntimeCall`; decode it against that type so it
+    // re-encodes correctly. `Value::from_bytes` would build a tuple-of-bytes that only
+    // encodes into fixed byte arrays (e.g. AccountId32), not into the `RuntimeCall` enum.
+    let call_type_id = dry_run_call_param_type_id(&client_at, "call").ok_or_else(|| {
+        DryRunError::DryRunFailed {
+            transaction: tx.to_string(),
+            cause: "DryRunApi::dry_run_call has no `call` input in metadata".to_string(),
+            stack: "Error: DryRunApi::dry_run_call has no `call` input in metadata\n    at dry_run"
+                .to_string(),
+        }
+    })?;
+    let metadata = client_at.metadata();
+    let call = scale_value::scale::decode_as_type(&mut &tx_bytes[..], call_type_id, metadata.types())
+        .map_err(|e| DryRunError::ParseFailed {
+            transaction: tx.to_string(),
+            cause: format!("Failed to decode call: {}", e),
+            stack: format!("Error: Failed to decode call: {}\n    at dry_run", e),
+        })?
+        .remove_context();
 
     // Newer runtimes added a third `result_xcms_version: u32` parameter to
     // `DryRunApi::dry_run_call`, which controls the XCM version used to encode the
