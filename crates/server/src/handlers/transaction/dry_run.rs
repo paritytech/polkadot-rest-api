@@ -16,6 +16,11 @@ pub struct DryRunRequest {
     pub tx: Option<String>,
     pub sender_address: Option<String>,
     pub at: Option<String>,
+    /// XCM version used to encode the XCM programs returned by `DryRunApi::dry_run_call`.
+    ///
+    /// Only relevant for runtimes whose `dry_run_call` takes a `result_xcms_version`
+    /// parameter. When omitted, the chain's safe XCM version is used.
+    pub xcm_version: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -242,7 +247,7 @@ impl From<subxt::error::RuntimeApiError> for DryRunError {
     tag = "transaction",
     summary = "Dry run transaction",
     description = "Dry run a transaction to check validity without submitting.",
-    request_body(content = Object, description = "Transaction with 'tx', 'senderAddress', and optional 'at' fields"),
+    request_body(content = Object, description = "Transaction with 'tx', 'senderAddress', and optional 'at' and 'xcmVersion' fields"),
     responses(
         (status = 200, description = "Dry run result", body = Object),
         (status = 400, description = "Invalid transaction"),
@@ -263,7 +268,7 @@ pub async fn dry_run(
     tag = "rc",
     summary = "RC dry run transaction",
     description = "Dry run a transaction on the relay chain.",
-    request_body(content = Object, description = "Transaction with 'tx', 'senderAddress', and optional 'at' fields"),
+    request_body(content = Object, description = "Transaction with 'tx', 'senderAddress', and optional 'at' and 'xcmVersion' fields"),
     responses(
         (status = 200, description = "Dry run result", body = Object),
         (status = 400, description = "Invalid transaction"),
@@ -316,20 +321,24 @@ async fn dry_run_internal(
         }
     };
 
-    // Build origin: { System: { Signed: account } }
+    // Decode the sender into raw account bytes for the signed origin.
     let sender_bytes = decode_ss58_address(sender).map_err(|e| DryRunError::ParseFailed {
         transaction: tx.to_string(),
         cause: e.clone(),
         stack: format!("Error: {}\n    at dry_run", e),
     })?;
 
-    let origin = subxt::dynamic::Value::named_composite([(
-        "System",
-        subxt::dynamic::Value::named_composite([(
+    // Build origin: `OriginCaller::system(RawOrigin::Signed(account))`. These are enum
+    // *variants* and must be encoded as variants. A `named_composite` only encodes into a
+    // struct and is rejected against the `OriginCaller` enum ("Cannot encode Tuple into
+    // type ...").
+    let origin = subxt::dynamic::Value::unnamed_variant(
+        "system",
+        [subxt::dynamic::Value::unnamed_variant(
             "Signed",
-            subxt::dynamic::Value::from_bytes(sender_bytes),
-        )]),
-    )]);
+            [subxt::dynamic::Value::from_bytes(sender_bytes)],
+        )],
+    );
 
     // Decode transaction bytes
     let tx_bytes =
@@ -338,17 +347,131 @@ async fn dry_run_internal(
             cause: format!("Invalid hex encoding: {}", e),
             stack: format!("Error: Invalid hex encoding: {}\n    at dry_run", e),
         })?;
-    let call = subxt::dynamic::Value::from_bytes(tx_bytes);
+    // `tx` is an already-SCALE-encoded `RuntimeCall`; decode it against that type so it
+    // re-encodes correctly. `Value::from_bytes` would build a tuple-of-bytes that only
+    // encodes into fixed byte arrays (e.g. AccountId32), not into the `RuntimeCall` enum.
+    let call_type_id = dry_run_call_param_type_id(&client_at, "call").ok_or_else(|| {
+        DryRunError::DryRunFailed {
+            transaction: tx.to_string(),
+            cause: "DryRunApi::dry_run_call has no `call` input in metadata".to_string(),
+            stack: "Error: DryRunApi::dry_run_call has no `call` input in metadata\n    at dry_run"
+                .to_string(),
+        }
+    })?;
+    let metadata = client_at.metadata();
+    let call =
+        scale_value::scale::decode_as_type(&mut &tx_bytes[..], call_type_id, metadata.types())
+            .map_err(|e| DryRunError::ParseFailed {
+                transaction: tx.to_string(),
+                cause: format!("Failed to decode call: {}", e),
+                stack: format!("Error: Failed to decode call: {}\n    at dry_run", e),
+            })?
+            .remove_context();
 
-    // Call DryRunApi.dry_run_call(origin, call)
-    let method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
-        "DryRunApi",
-        "dry_run_call",
-        (origin, call),
-    );
-    let result = client_at.runtime_apis().call(method).await?;
+    // Newer runtimes added a third `result_xcms_version: u32` parameter to
+    // `DryRunApi::dry_run_call`, which controls the XCM version used to encode the
+    // returned XCM programs. Detect it from metadata so we stay compatible with both
+    // the 2-arg (older) and 3-arg (newer) signatures.
+    let result = if dry_run_call_has_xcm_version(&client_at) {
+        let xcm_version = match body.xcm_version {
+            Some(v) => v,
+            None => fetch_safe_xcm_version(&client_at, tx).await?,
+        };
+        let xcm_version = subxt::dynamic::Value::u128(u128::from(xcm_version));
+        let method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
+            "DryRunApi",
+            "dry_run_call",
+            (origin, call, xcm_version),
+        );
+        client_at.runtime_apis().call(method).await?
+    } else {
+        let method = subxt::dynamic::runtime_api_call::<_, scale_value::Value<()>>(
+            "DryRunApi",
+            "dry_run_call",
+            (origin, call),
+        );
+        client_at.runtime_apis().call(method).await?
+    };
 
     parse_result_to_response(result, tx)
+}
+
+/// Returns `true` if the runtime's `DryRunApi::dry_run_call` declares a
+/// `result_xcms_version` input parameter (added in a later Polkadot runtime upgrade).
+fn dry_run_call_has_xcm_version(
+    client_at: &subxt::OnlineClientAtBlock<subxt::SubstrateConfig>,
+) -> bool {
+    client_at
+        .metadata()
+        .runtime_api_trait_by_name("DryRunApi")
+        .and_then(|api| api.method_by_name("dry_run_call"))
+        .is_some_and(|method| {
+            method
+                .inputs()
+                .any(|input| input.name == "result_xcms_version")
+        })
+}
+
+/// Returns the metadata type id of the named `DryRunApi::dry_run_call` input parameter
+/// (e.g. `"call"` resolves to the runtime's `RuntimeCall` type).
+fn dry_run_call_param_type_id(
+    client_at: &subxt::OnlineClientAtBlock<subxt::SubstrateConfig>,
+    param_name: &str,
+) -> Option<u32> {
+    client_at
+        .metadata()
+        .runtime_api_trait_by_name("DryRunApi")
+        .and_then(|api| api.method_by_name("dry_run_call"))
+        .and_then(|method| {
+            method
+                .inputs()
+                .find(|input| input.name == param_name)
+                .map(|input| input.id)
+        })
+}
+
+/// Fetch the chain's safe XCM version from the XCM pallet's `SafeXcmVersion` storage.
+///
+/// Relay chains expose this under `XcmPallet`, while parachains use `PolkadotXcm`.
+/// The value is an `Option<u32>`; an absent or `None` value is treated as a failure
+/// since a concrete version is required to encode the dry-run result.
+async fn fetch_safe_xcm_version(
+    client_at: &subxt::OnlineClientAtBlock<subxt::SubstrateConfig>,
+    tx: &str,
+) -> Result<u32, DryRunError> {
+    let pallet = ["XcmPallet", "PolkadotXcm"]
+        .into_iter()
+        .find(|name| client_at.metadata().pallet_by_name(name).is_some())
+        .ok_or_else(|| DryRunError::DryRunFailed {
+            transaction: tx.to_string(),
+            cause: "No XCM pallet (XcmPallet/PolkadotXcm) found to resolve safe XCM version"
+                .to_string(),
+            stack: "Error: No XCM pallet found to resolve safe XCM version\n    at dry_run"
+                .to_string(),
+        })?;
+
+    // `SafeXcmVersion` is an `OptionQuery` storage value: when set it holds a bare
+    // `u32`, and when unset the key is absent. Decode the bare `u32` (NOT `Option<u32>`,
+    // which would misread the value bytes as an Option tag) and use `try_fetch` so an
+    // absent value surfaces as `None` rather than a decode error.
+    let addr = subxt::dynamic::storage::<(), u32>(pallet, "SafeXcmVersion");
+    let value = client_at
+        .storage()
+        .try_fetch(addr, ())
+        .await
+        .map_err(subxt::Error::from)?
+        .ok_or_else(|| DryRunError::DryRunFailed {
+            transaction: tx.to_string(),
+            cause: format!("{}::SafeXcmVersion is not set on this chain", pallet),
+            stack: format!(
+                "Error: {}::SafeXcmVersion is not set on this chain\n    at dry_run",
+                pallet
+            ),
+        })?;
+
+    value
+        .decode()
+        .map_err(|e| DryRunError::from(subxt::Error::from(e)))
 }
 
 fn validate_sender<'a>(sender: &'a Option<String>, tx: &str) -> Result<&'a str, DryRunError> {
@@ -498,6 +621,17 @@ mod tests {
         let result = decode_ss58_address("5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY");
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 32);
+    }
+
+    #[test]
+    fn test_request_deserializes_xcm_version() {
+        let body: DryRunRequest =
+            serde_json::from_value(json!({ "tx": "0x00", "xcmVersion": 4 })).unwrap();
+        assert_eq!(body.xcm_version, Some(4));
+
+        // Omitted xcmVersion defaults to None (chain's safe XCM version is used).
+        let body: DryRunRequest = serde_json::from_value(json!({ "tx": "0x00" })).unwrap();
+        assert_eq!(body.xcm_version, None);
     }
 
     #[test]
