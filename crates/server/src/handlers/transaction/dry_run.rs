@@ -454,15 +454,15 @@ async fn fetch_safe_xcm_version(
                 .to_string(),
         })?;
 
-    let addr = subxt::dynamic::storage::<(), Option<u32>>(pallet, "SafeXcmVersion");
+     // `SafeXcmVersion` is an `OptionQuery` storage value: when set it holds a bare
+    // `u32`, and when unset the key is absent. Decode the bare `u32` (NOT `Option<u32>`,
+    // which would misread the value bytes as an Option tag) and use `try_fetch` so an
+    // absent value surfaces as `None` rather than a decode error.
+    let addr = subxt::dynamic::storage::<(), u32>(pallet, "SafeXcmVersion");
     let value = client_at
         .storage()
-        .fetch(addr, ())
+        .try_fetch(addr, ())
         .await
-        .map_err(subxt::Error::from)?;
-
-    value
-        .decode()
         .map_err(subxt::Error::from)?
         .ok_or_else(|| DryRunError::DryRunFailed {
             transaction: tx.to_string(),
@@ -471,7 +471,9 @@ async fn fetch_safe_xcm_version(
                 "Error: {}::SafeXcmVersion is not set on this chain\n    at dry_run",
                 pallet
             ),
-        })
+        })?;
+
+    value.decode().map_err(|e| DryRunError::from(subxt::Error::from(e)))
 }
 
 fn validate_sender<'a>(sender: &'a Option<String>, tx: &str) -> Result<&'a str, DryRunError> {
