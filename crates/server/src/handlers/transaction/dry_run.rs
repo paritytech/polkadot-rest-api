@@ -416,6 +416,24 @@ fn dry_run_call_has_xcm_version(
         })
 }
 
+/// Returns the metadata type id of the named `DryRunApi::dry_run_call` input parameter
+/// (e.g. `"call"` resolves to the runtime's `RuntimeCall` type).
+fn dry_run_call_param_type_id(
+    client_at: &subxt::OnlineClientAtBlock<subxt::SubstrateConfig>,
+    param_name: &str,
+) -> Option<u32> {
+    client_at
+        .metadata()
+        .runtime_api_trait_by_name("DryRunApi")
+        .and_then(|api| api.method_by_name("dry_run_call"))
+        .and_then(|method| {
+            method
+                .inputs()
+                .find(|input| input.name == param_name)
+                .map(|input| input.id)
+        })
+}
+
 /// Fetch the chain's safe XCM version from the XCM pallet's `SafeXcmVersion` storage.
 ///
 /// Relay chains expose this under `XcmPallet`, while parachains use `PolkadotXcm`.
