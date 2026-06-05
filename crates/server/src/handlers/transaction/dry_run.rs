@@ -321,29 +321,24 @@ async fn dry_run_internal(
         }
     };
 
-    // Build origin: { System: { Signed: account } }
+    // Decode the sender into raw account bytes for the signed origin.
     let sender_bytes = decode_ss58_address(sender).map_err(|e| DryRunError::ParseFailed {
         transaction: tx.to_string(),
         cause: e.clone(),
         stack: format!("Error: {}\n    at dry_run", e),
     })?;
 
-    let origin = subxt::dynamic::Value::named_composite([(
-        "System",
-        subxt::dynamic::Value::named_composite([(
+    // Build origin: `OriginCaller::system(RawOrigin::Signed(account))`. These are enum
+    // *variants* and must be encoded as variants. A `named_composite` only encodes into a
+    // struct and is rejected against the `OriginCaller` enum ("Cannot encode Tuple into
+    // type ...").
+    let origin = subxt::dynamic::Value::unnamed_variant(
+        "system",
+        [subxt::dynamic::Value::unnamed_variant(
             "Signed",
-            subxt::dynamic::Value::from_bytes(sender_bytes),
-        )]),
-// `OriginCaller::system(RawOrigin::Signed(account))`: these are enum *variants* and
-// must be encoded as variants. A `named_composite` only encodes into a struct and is
-// rejected against the `OriginCaller` enum ("Cannot encode Tuple into type ...").
-let origin = subxt::dynamic::Value::unnamed_variant(
-    "system",
-    [subxt::dynamic::Value::unnamed_variant(
-        "Signed",
-        [subxt::dynamic::Value::from_bytes(sender_bytes)],
-    )],
-);
+            [subxt::dynamic::Value::from_bytes(sender_bytes)],
+        )],
+    );
 
     // Decode transaction bytes
     let tx_bytes =
@@ -364,13 +359,14 @@ let origin = subxt::dynamic::Value::unnamed_variant(
         }
     })?;
     let metadata = client_at.metadata();
-    let call = scale_value::scale::decode_as_type(&mut &tx_bytes[..], call_type_id, metadata.types())
-        .map_err(|e| DryRunError::ParseFailed {
-            transaction: tx.to_string(),
-            cause: format!("Failed to decode call: {}", e),
-            stack: format!("Error: Failed to decode call: {}\n    at dry_run", e),
-        })?
-        .remove_context();
+    let call =
+        scale_value::scale::decode_as_type(&mut &tx_bytes[..], call_type_id, metadata.types())
+            .map_err(|e| DryRunError::ParseFailed {
+                transaction: tx.to_string(),
+                cause: format!("Failed to decode call: {}", e),
+                stack: format!("Error: Failed to decode call: {}\n    at dry_run", e),
+            })?
+            .remove_context();
 
     // Newer runtimes added a third `result_xcms_version: u32` parameter to
     // `DryRunApi::dry_run_call`, which controls the XCM version used to encode the
@@ -454,7 +450,7 @@ async fn fetch_safe_xcm_version(
                 .to_string(),
         })?;
 
-     // `SafeXcmVersion` is an `OptionQuery` storage value: when set it holds a bare
+    // `SafeXcmVersion` is an `OptionQuery` storage value: when set it holds a bare
     // `u32`, and when unset the key is absent. Decode the bare `u32` (NOT `Option<u32>`,
     // which would misread the value bytes as an Option tag) and use `try_fetch` so an
     // absent value surfaces as `None` rather than a decode error.
@@ -473,7 +469,9 @@ async fn fetch_safe_xcm_version(
             ),
         })?;
 
-    value.decode().map_err(|e| DryRunError::from(subxt::Error::from(e)))
+    value
+        .decode()
+        .map_err(|e| DryRunError::from(subxt::Error::from(e)))
 }
 
 fn validate_sender<'a>(sender: &'a Option<String>, tx: &str) -> Result<&'a str, DryRunError> {
