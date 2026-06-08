@@ -6,6 +6,16 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.3] (2026-06-08)
+
+### Fixes
+
+- **`dry-run` runtime API XCM version parameter**: Pass the `result_xcms_version` parameter to `DryRunApi::dry_run_call`, fixing the `/v1/transaction/dry-run` endpoint against runtimes whose `DryRunApi` requires it. (#348)
+
+### CI
+
+- **Static GitHub Actions scanning**: Added a [zizmor](https://github.com/woodruffw/zizmor) static analysis workflow (`zizmor.yml`) to lint GitHub Actions for security issues. (#332)
+
 ## [0.1.2] (2026-05-20)
 
 ### Fixes
