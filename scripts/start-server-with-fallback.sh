@@ -37,33 +37,30 @@ case $CHAIN in
     polkadot)
         RPC_URLS=(
             # "wss://rpc.polkadot.io" NOTE: Do not use parity hosted RPC nodes because of rate limiting
-            "wss://rpc.ibp.network/polkadot"
             "wss://polkadot.dotters.network"
-            "wss://polkadot-rpc.dwellir.com"
+            "wss://polkadot-rpc.n.dwellir.com"
         )
         ;;
     kusama)
         RPC_URLS=(
-            "wss://rpc.ibp.network/kusama"
             "wss://kusama.dotters.network"
-            "wss://kusama-rpc.dwellir.com"
+            "wss://kusama-rpc.n.dwellir.com"
+            "wss://kusama.api.onfinality.io/public-ws"
         )
         ;;
     asset-hub-polkadot)
         RPC_URLS=(
-            "wss://sys.ibp.network/asset-hub-polkadot"
-            "wss://asset-hub-polkadot-rpc.dwellir.com"
             "wss://asset-hub-polkadot.dotters.network"
+            "wss://statemint.api.onfinality.io/public-ws"
         )
-        RELAY_URL="wss://rpc.ibp.network/polkadot"
+        RELAY_URL="wss://polkadot.dotters.network"
         ;;
     asset-hub-kusama)
         RPC_URLS=(
-            "wss://sys.ibp.network/asset-hub-kusama"
             "wss://asset-hub-kusama.dotters.network"
             "wss://asset-hub-kusama-rpc.n.dwellir.com"
         )
-        RELAY_URL="wss://rpc.ibp.network/kusama"
+        RELAY_URL="wss://kusama.dotters.network"
         ;;
     westend)
         RPC_URLS=(
@@ -80,7 +77,6 @@ case $CHAIN in
     coretime-polkadot)
         RPC_URLS=(
             "wss://coretime-polkadot.dotters.network"
-            "wss://sys.ibp.network/coretime-polkadot"
             "wss://coretime-polkadot-rpc.n.dwellir.com"
         )
         ;;

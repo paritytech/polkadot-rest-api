@@ -1,0 +1,36 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+	{
+		"name": "Debug Polkadot REST API",
+		"type": "lldb",
+		"request": "launch",
+		"cargo": {
+			"args": [
+				"build",
+				"-p",
+				"server",
+				"--bin",
+				"polkadot-rest-api"
+			],
+		"filter": {
+		"name": "polkadot-rest-api",
+		"kind": "bin"
+		}
+	},
+	"cwd": "${workspaceFolder}",
+	"env": {
+		"RUST_LOG": "debug",
+		"RUST_BACKTRACE": "1",
+		"API_PORT": "8080",
+        "SAS_SUBSTRATE_URL": "wss://rpc.polkadot.io",
+		// "SAS_SUBSTRATE_URL": "wss://asset-hub-polkadot.dotters.network",
+		// "SAS_RELAY_CHAIN_URL": "wss://rpc.polkadot.io",
+      	// "SAS_SUBSTRATE_MULTI_CHAIN_URL": "[{\"url\":\"wss://rpc.polkadot.io\", \"type\":\"relay\"}]"
+		// "SAS_SUBSTRATE_URL": "[{\"url\":\"wss://asset-hub-polkadot.dotters.network\", \"type\":\"assethub\"}]"
+		// "SAS_SUBSTRATE_MULTI_CHAIN_URL": "[{\"url\":\"wss://rpc.polkadot.io\",\"type\":\"relay\"}, {\"url\":\"wss://asset-hub-polkadot.dotters.network\", \"type\":\"assethub\"}]"
+        // "SAS_SUBSTRATE_MULTI_CHAIN_URL": "[{\"url\":\"wss://asset-hub-polkadot.dotters.network\",\"type\":\"relay\"}]"
+			}
+		}
+	]
+}
