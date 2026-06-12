@@ -3090,9 +3090,9 @@ dependencies = [
 
 [[package]]
 name = "merkleized-metadata"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3e3e3f549d27d2dc054372f320ddf68045a833fab490563ff70d4cf1b9d91ea"
+checksum = "a55738f9a2a91692acbdc68066e4b60d4101a8599a474e039dbd449cf2cff701"
 dependencies = [
  "array-bytes 9.3.0",
  "blake3",

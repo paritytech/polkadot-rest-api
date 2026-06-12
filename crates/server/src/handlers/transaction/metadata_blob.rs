@@ -12,8 +12,8 @@ use crate::utils::BlockId;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use frame_metadata::RuntimeMetadataPrefixed;
 use merkleized_metadata::{
-    ExtraInfo, SignedExtrinsicData, generate_metadata_digest, generate_proof_for_extrinsic,
-    generate_proof_for_extrinsic_parts,
+    ExtraInfo, FrameMetadataPrepared, SignedExtrinsicData, generate_metadata_digest,
+    generate_proof_for_extrinsic, generate_proof_for_extrinsic_parts,
 };
 use parity_scale_codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};
@@ -410,7 +410,23 @@ async fn metadata_blob_internal(
         }
     };
 
-    let metadata_blob = format!("0x{}", hex::encode(proof.encode()));
+    // Assemble the full device blob: proof + extrinsic metadata + extra info.
+    // Offline signers (e.g. Ledger) need the extrinsic metadata and extra info
+    // appended to parse the proof; without them the blob is rejected.
+    let extrinsic_metadata = FrameMetadataPrepared::prepare(&metadata_prefixed.1)
+        .and_then(|prepared| prepared.as_type_information())
+        .map_err(|e| MetadataBlobError::ProofGenerationFailed {
+            cause: format!("Failed to read extrinsic metadata: {}", e),
+        })?
+        .extrinsic_metadata;
+
+    let mut blob = proof.encode();
+    blob.extend(extrinsic_metadata.encode());
+    // ExtraInfo trailer. Field order matches `merkleized_metadata::ExtraInfo`
+    // (it does not derive `Encode`, so the fields are encoded directly).
+    blob.extend((spec_version, &spec_name, base58_prefix, decimals, &token_symbol).encode());
+
+    let metadata_blob = format!("0x{}", hex::encode(blob));
 
     Ok(Json(MetadataBlobResponse {
         at: At {
