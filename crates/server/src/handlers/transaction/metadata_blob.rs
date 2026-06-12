@@ -424,7 +424,16 @@ async fn metadata_blob_internal(
     blob.extend(extrinsic_metadata.encode());
     // ExtraInfo trailer. Field order matches `merkleized_metadata::ExtraInfo`
     // (it does not derive `Encode`, so the fields are encoded directly).
-    blob.extend((spec_version, &spec_name, base58_prefix, decimals, &token_symbol).encode());
+    blob.extend(
+        (
+            spec_version,
+            &spec_name,
+            base58_prefix,
+            decimals,
+            &token_symbol,
+        )
+            .encode(),
+    );
 
     let metadata_blob = format!("0x{}", hex::encode(blob));
 
