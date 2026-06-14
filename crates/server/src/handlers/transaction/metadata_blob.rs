@@ -413,6 +413,13 @@ async fn metadata_blob_internal(
     // Assemble the full device blob: proof + extrinsic metadata + extra info.
     // Offline signers (e.g. Ledger) need the extrinsic metadata and extra info
     // appended to parse the proof; without them the blob is rejected.
+    //
+    // This re-prepares the metadata to read the extrinsic metadata. It is the
+    // third prepare on the same metadata (after generate_metadata_digest and
+    // generate_proof_for_extrinsic_parts), but the crate's public API forces it:
+    // those functions take raw metadata, prepare internally, and do not return
+    // the TypeInformation, and there is no lighter accessor for the extrinsic
+    // metadata alone. Not on a hot path; revisit if the crate exposes reuse.
     let extrinsic_metadata = FrameMetadataPrepared::prepare(&metadata_prefixed.1)
         .and_then(|prepared| prepared.as_type_information())
         .map_err(|e| MetadataBlobError::ProofGenerationFailed {
