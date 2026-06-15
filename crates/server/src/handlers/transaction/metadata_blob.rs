@@ -12,8 +12,8 @@ use crate::utils::BlockId;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use frame_metadata::RuntimeMetadataPrefixed;
 use merkleized_metadata::{
-    ExtraInfo, SignedExtrinsicData, generate_metadata_digest, generate_proof_for_extrinsic,
-    generate_proof_for_extrinsic_parts,
+    ExtraInfo, FrameMetadataPrepared, SignedExtrinsicData, generate_metadata_digest,
+    generate_proof_for_extrinsic, generate_proof_for_extrinsic_parts,
 };
 use parity_scale_codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};
@@ -410,7 +410,34 @@ async fn metadata_blob_internal(
         }
     };
 
-    let metadata_blob = format!("0x{}", hex::encode(proof.encode()));
+    // Assemble the full device blob: proof + extrinsic metadata + extra info.
+    // Offline signers (e.g. Ledger) need the extrinsic metadata and extra info
+    // appended to parse the proof; without them the blob is rejected.
+    //
+    // This re-prepares the metadata to read the extrinsic metadata. It is the
+    // third prepare on the same metadata (after generate_metadata_digest and
+    // generate_proof_for_extrinsic_parts), but the crate's public API forces it:
+    // those functions take raw metadata, prepare internally, and do not return
+    // the TypeInformation, and there is no lighter accessor for the extrinsic
+    // metadata alone. Not on a hot path; revisit if the crate exposes reuse.
+    let extrinsic_metadata = FrameMetadataPrepared::prepare(&metadata_prefixed.1)
+        .and_then(|prepared| prepared.as_type_information())
+        .map_err(|e| MetadataBlobError::ProofGenerationFailed {
+            cause: format!("Failed to read extrinsic metadata: {}", e),
+        })?
+        .extrinsic_metadata;
+
+    let blob = assemble_blob(
+        &proof,
+        &extrinsic_metadata,
+        spec_version,
+        &spec_name,
+        base58_prefix,
+        decimals,
+        &token_symbol,
+    );
+
+    let metadata_blob = format!("0x{}", hex::encode(blob));
 
     Ok(Json(MetadataBlobResponse {
         at: At {
@@ -425,6 +452,38 @@ async fn metadata_blob_internal(
         decimals,
         token_symbol,
     }))
+}
+
+/// Assemble the device blob: proof ++ extrinsic metadata ++ extra info trailer.
+///
+/// Offline signers (e.g. Ledger) need the extrinsic metadata and extra info
+/// appended after the proof to parse the blob; without them it is rejected.
+///
+/// `merkleized_metadata::ExtraInfo` does not derive `Encode`, so its fields are
+/// encoded directly, in the same order they are declared on `ExtraInfo`
+/// (`spec_version`, `spec_name`, `base58_prefix`, `decimals`, `token_symbol`).
+fn assemble_blob(
+    proof: &merkleized_metadata::Proof,
+    extrinsic_metadata: &merkleized_metadata::types::ExtrinsicMetadata,
+    spec_version: u32,
+    spec_name: &str,
+    base58_prefix: u16,
+    decimals: u8,
+    token_symbol: &str,
+) -> Vec<u8> {
+    let mut blob = proof.encode();
+    blob.extend(extrinsic_metadata.encode());
+    blob.extend(
+        (
+            spec_version,
+            spec_name,
+            base58_prefix,
+            decimals,
+            token_symbol,
+        )
+            .encode(),
+    );
+    blob
 }
 
 /// Fetch available metadata versions using typed runtime API
@@ -609,6 +668,65 @@ mod tests {
         assert_eq!(json["base58Prefix"], 0);
         assert_eq!(json["decimals"], 10);
         assert_eq!(json["tokenSymbol"], "DOT");
+    }
+
+    #[test]
+    fn test_assemble_blob_appends_trailer() {
+        use merkleized_metadata::Proof;
+        use merkleized_metadata::types::{ExtrinsicMetadata, TypeRef};
+
+        // Minimal proof and extrinsic metadata; the values are arbitrary, we only
+        // care about the byte layout of the assembled blob.
+        let proof = Proof {
+            leaves: vec![],
+            leaf_indices: vec![],
+            nodes: vec![],
+        };
+        let extrinsic_metadata = ExtrinsicMetadata {
+            version: 4,
+            address_ty: TypeRef::Void,
+            call_ty: TypeRef::Void,
+            signature_ty: TypeRef::Void,
+            signed_extensions: vec![],
+        };
+
+        let spec_version = 1_000_000u32;
+        let spec_name = "polkadot";
+        let base58_prefix = 0u16;
+        let decimals = 10u8;
+        let token_symbol = "DOT";
+
+        let blob = assemble_blob(
+            &proof,
+            &extrinsic_metadata,
+            spec_version,
+            spec_name,
+            base58_prefix,
+            decimals,
+            token_symbol,
+        );
+
+        // Build the expected trailer independently, field by field in ExtraInfo
+        // declaration order. If anyone reorders the fields in assemble_blob, the
+        // bytes diverge from this and the test fails (issue #350 regression guard).
+        let mut trailer = extrinsic_metadata.encode();
+        trailer.extend(spec_version.encode());
+        trailer.extend(spec_name.encode());
+        trailer.extend(base58_prefix.encode());
+        trailer.extend(decimals.encode());
+        trailer.extend(token_symbol.encode());
+
+        // The trailer is exactly the part the old (rejected) blob was missing.
+        assert!(
+            blob.ends_with(&trailer),
+            "blob must end with extrinsic metadata + extra info trailer"
+        );
+        // Full layout: proof bytes followed by the trailer, nothing else.
+        assert_eq!(blob, [proof.encode(), trailer].concat());
+        assert!(
+            blob.len() > proof.encode().len(),
+            "blob must be larger than the bare proof"
+        );
     }
 
     #[test]
