@@ -18,6 +18,12 @@ use serde_json::json;
 use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 
+/// Maximum number of per-asset failures listed in the response `errors` array. The
+/// `partial` flag still reflects whether ANY asset failed; this only bounds how much
+/// detail is returned so a node outage on the "query all assets" path cannot inflate
+/// the response into an unbounded array (issue #342).
+const MAX_REPORTED_ASSET_ERRORS: usize = 100;
+
 // ================================================================================================
 // Main Handler
 // ================================================================================================
@@ -115,8 +121,8 @@ async fn query_asset_balances(
 
     // Query each asset balance in parallel. `errors` holds assets whose per-asset
     // query genuinely failed (issue #342); they are omitted from `assets`.
-    let (assets, errors) =
-        query_assets(client_at_block, account, &assets_to_query, show_empty).await?;
+    let (assets, mut errors) =
+        query_assets(client_at_block, account, &assets_to_query, show_empty).await;
 
     // Strict mode is opt-in: when any asset failed, fail the whole request with a 503
     // instead of returning a partial 200. Default behavior is unchanged.
@@ -124,13 +130,19 @@ async fn query_asset_balances(
         return Err(AccountsError::PartialAssetBalances(errors.len()));
     }
 
+    // `partial` reflects whether ANY asset failed; the per-asset `errors` list is then
+    // capped so a node outage on the "query all assets" path cannot inflate the
+    // response into a huge array (the count behind `partial` is still accurate).
+    let partial = !errors.is_empty();
+    errors.truncate(MAX_REPORTED_ASSET_ERRORS);
+
     Ok(AssetBalancesResponse {
         at: BlockInfo {
             hash: block.hash.clone(),
             height: block.number.to_string(),
         },
         assets,
-        partial: !errors.is_empty(),
+        partial,
         errors,
         rc_block_hash: None,
         rc_block_number: None,

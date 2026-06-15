@@ -319,10 +319,19 @@ pub async fn get_asset_balance(
     decode_asset_balance(&raw_bytes)
 }
 
+/// Client-facing reason for a failed per-asset fetch. Deliberately generic: the
+/// detailed subxt/RPC error (which can embed the upstream node URL/host) is logged
+/// server-side and never reflected to API clients.
+const REASON_FETCH_FAILED: &str = "storage query for this asset failed";
+/// Client-facing reason for present-but-undecodable asset storage.
+const REASON_DECODE_FAILED: &str = "asset balance could not be decoded";
+
 /// Fetch asset balances for multiple assets for an account.
 ///
 /// When `show_empty` is false (default), only returns assets that have non-zero balances.
 /// When `show_empty` is true, returns all requested assets including those with zero balance.
+/// Assets whose per-asset query genuinely failed are returned in
+/// [`AssetBalancesResult::errors`] rather than silently dropped (issue #342).
 ///
 /// This function executes all asset queries **in parallel** for optimal performance.
 /// For 100 assets, this takes ~1 network roundtrip instead of 100 sequential roundtrips.
@@ -331,7 +340,7 @@ pub async fn get_asset_balances(
     account: &AccountId32,
     asset_ids: &[u32],
     show_empty: bool,
-) -> Result<AssetBalancesResult, AssetsStorageError> {
+) -> AssetBalancesResult {
     use futures::future::join_all;
 
     let account_bytes: [u8; 32] = *account.as_ref();
@@ -344,13 +353,12 @@ pub async fn get_asset_balances(
         .map(|&asset_id| {
             let storage_addr = subxt::dynamic::storage::<_, ()>("Assets", "Account");
             async move {
-                // `try_fetch` returns `Ok(None)` when the account holds none of this
-                // asset (a legitimate absence) and `Err` only for a genuine fetch
-                // failure. The old `fetch`-based code could not tell these apart: an
-                // account that does not hold an asset surfaces as
-                // `StorageError::NoValueFound`, the same `Err` arm as a transient RPC
-                // failure, so real failures were dropped exactly like not-held assets
-                // (issue #342).
+                // `try_fetch` surfaces a not-held asset as `Ok(None)` and reserves `Err`
+                // for genuine fetch failures. `fetch` is just `try_fetch` with the final
+                // `None` mapped to `Err(NoValueFound)`, so the old `fetch`-based code
+                // collapsed "account holds none" into the same `Err` arm as a transient
+                // RPC failure and dropped both alike (issue #342). Both apply the entry
+                // default; `Assets::Account` has none, so absence is `Ok(None)`.
                 let outcome = match client_at_block
                     .storage()
                     .try_fetch(storage_addr, (asset_id, account_bytes))
@@ -361,19 +369,24 @@ pub async fn get_asset_balances(
                         // `decode_asset_balance` never returns `Ok(None)`, but treat it
                         // defensively as an absence rather than a fabricated error.
                         Ok(None) => AssetBalanceOutcome::Absent,
-                        // Storage that is present but undecodable is a real error, not a
-                        // zero balance — surface it.
+                        // Present but undecodable storage is a real error, not a zero
+                        // balance. Detail stays in the server log; the client gets a
+                        // generic reason so internals are not reflected in the response.
                         Err(e) => {
-                            tracing::warn!(
+                            tracing::debug!(
                                 "Failed to decode asset balance for asset {asset_id}: {e}"
                             );
-                            AssetBalanceOutcome::Failed(e.to_string())
+                            AssetBalanceOutcome::Failed(REASON_DECODE_FAILED.to_string())
                         }
                     },
                     Ok(None) => AssetBalanceOutcome::Absent,
+                    // The detailed error (which can include the upstream node URL/host)
+                    // stays in the server log; the client gets a generic reason only.
                     Err(e) => {
-                        tracing::warn!("Failed to fetch asset balance for asset {asset_id}: {e:?}");
-                        AssetBalanceOutcome::Failed(e.to_string())
+                        tracing::debug!(
+                            "Failed to fetch asset balance for asset {asset_id}: {e:?}"
+                        );
+                        AssetBalanceOutcome::Failed(REASON_FETCH_FAILED.to_string())
                     }
                 };
                 (asset_id, outcome)
@@ -382,7 +395,21 @@ pub async fn get_asset_balances(
         .collect();
 
     let outcomes = join_all(futures).await;
-    Ok(collect_asset_balances(outcomes, show_empty))
+    let result = collect_asset_balances(outcomes, show_empty);
+
+    // One aggregate warning per request keeps the partial result visible to operators
+    // at the default log level, without emitting one warn line per failed asset — on the
+    // "query all assets" path during a node outage that would be thousands of synchronous
+    // log writes. Per-asset detail is available at `debug` above.
+    if !result.errors.is_empty() {
+        tracing::warn!(
+            "asset-balances: {} of {} per-asset queries failed for {account}; returning a partial result",
+            result.errors.len(),
+            asset_ids.len(),
+        );
+    }
+
+    result
 }
 
 /// Fetch asset approval from Assets::Approvals storage.

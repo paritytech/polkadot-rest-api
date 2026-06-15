@@ -6,8 +6,8 @@
 //! This module provides wrapper functions that delegate to the centralized
 //! `runtime_queries::assets` module for storage queries.
 
+use crate::handlers::accounts::AssetBalance;
 use crate::handlers::accounts::types::AssetBalanceQueryError;
-use crate::handlers::accounts::{AccountsError, AssetBalance};
 use crate::handlers::runtime_queries::assets as assets_queries;
 use sp_core::crypto::AccountId32;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
@@ -34,14 +34,9 @@ pub async fn query_assets(
     account: &AccountId32,
     assets: &[u32],
     show_empty: bool,
-) -> Result<(Vec<AssetBalance>, Vec<AssetBalanceQueryError>), AccountsError> {
-    let result = assets_queries::get_asset_balances(client_at_block, account, assets, show_empty)
-        .await
-        .map_err(|_| {
-            AccountsError::DecodeFailed(parity_scale_codec::Error::from(
-                "Failed to query asset balances",
-            ))
-        })?;
+) -> (Vec<AssetBalance>, Vec<AssetBalanceQueryError>) {
+    let result =
+        assets_queries::get_asset_balances(client_at_block, account, assets, show_empty).await;
 
     let balances = result
         .balances
@@ -63,5 +58,5 @@ pub async fn query_assets(
         })
         .collect();
 
-    Ok((balances, errors))
+    (balances, errors)
 }

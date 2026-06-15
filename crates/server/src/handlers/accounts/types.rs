@@ -77,8 +77,9 @@ pub struct AssetBalancesResponse {
     #[serde(skip_serializing_if = "is_false")]
     pub partial: bool,
 
-    /// The assets whose per-asset query failed, with the reason. Absent (not
-    /// serialized) when empty.
+    /// The assets whose per-asset query failed, with a generic reason. Absent (not
+    /// serialized) when empty, and capped in length — `partial` (not the length of
+    /// this list) is the authoritative "result is incomplete" signal.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<AssetBalanceQueryError>,
 
