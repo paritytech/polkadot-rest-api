@@ -98,7 +98,10 @@ pub struct DecodedAssetBalance {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssetBalanceFetchError {
     pub asset_id: u32,
-    pub reason: String,
+    /// Generic, client-safe reason (one of the `REASON_*` constants). Borrowed because
+    /// the reasons are compile-time constants — avoids a heap allocation per failed
+    /// asset on the "query all assets" outage path.
+    pub reason: &'static str,
 }
 
 /// Result of fetching balances for multiple assets.
@@ -122,7 +125,8 @@ enum AssetBalanceOutcome {
     /// Account holds no entry for this asset — a legitimate absence, not an error.
     Absent,
     /// Fetch or decode failed — a real error we must surface, never a zero balance.
-    Failed(String),
+    /// Carries a generic, client-safe reason (a `REASON_*` constant).
+    Failed(&'static str),
 }
 
 /// Build a zero-balance stub for assets the account does not hold (used when the
@@ -147,7 +151,11 @@ fn collect_asset_balances(
     outcomes: Vec<(u32, AssetBalanceOutcome)>,
     show_empty: bool,
 ) -> AssetBalancesResult {
-    let mut result = AssetBalancesResult::default();
+    let mut result = AssetBalancesResult {
+        // Most outcomes are decoded/zero-stub balances; failures are the exception.
+        balances: Vec::with_capacity(outcomes.len()),
+        errors: Vec::new(),
+    };
     for (asset_id, outcome) in outcomes {
         match outcome {
             AssetBalanceOutcome::Decoded(decoded) => result.balances.push((asset_id, decoded)),
@@ -376,7 +384,7 @@ pub async fn get_asset_balances(
                             tracing::debug!(
                                 "Failed to decode asset balance for asset {asset_id}: {e}"
                             );
-                            AssetBalanceOutcome::Failed(REASON_DECODE_FAILED.to_string())
+                            AssetBalanceOutcome::Failed(REASON_DECODE_FAILED)
                         }
                     },
                     Ok(None) => AssetBalanceOutcome::Absent,
@@ -386,7 +394,7 @@ pub async fn get_asset_balances(
                         tracing::debug!(
                             "Failed to fetch asset balance for asset {asset_id}: {e:?}"
                         );
-                        AssetBalanceOutcome::Failed(REASON_FETCH_FAILED.to_string())
+                        AssetBalanceOutcome::Failed(REASON_FETCH_FAILED)
                     }
                 };
                 (asset_id, outcome)
@@ -558,14 +566,14 @@ mod tests {
 
     #[test]
     fn collect_failed_goes_to_errors_never_balances() {
-        let out = vec![(9u32, AssetBalanceOutcome::Failed("rpc boom".to_string()))];
+        let out = vec![(9u32, AssetBalanceOutcome::Failed("rpc boom"))];
         let result = collect_asset_balances(out, false);
         assert!(result.balances.is_empty());
         assert_eq!(
             result.errors,
             vec![AssetBalanceFetchError {
                 asset_id: 9,
-                reason: "rpc boom".to_string()
+                reason: "rpc boom"
             }]
         );
     }
@@ -574,7 +582,7 @@ mod tests {
     fn collect_failed_is_not_zero_stubbed_even_with_show_empty() {
         // Ghost-zero guard (issue #342): a failed fetch must never become a zero balance,
         // even when the caller asked to include empty balances.
-        let out = vec![(9u32, AssetBalanceOutcome::Failed("rpc boom".to_string()))];
+        let out = vec![(9u32, AssetBalanceOutcome::Failed("rpc boom"))];
         let result = collect_asset_balances(out, true);
         assert!(result.balances.is_empty());
         assert_eq!(result.errors.len(), 1);

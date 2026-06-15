@@ -74,7 +74,7 @@ pub struct AssetBalancesResponse {
     /// True when at least one requested asset could not be fetched/decoded and was
     /// therefore omitted from `assets`. Absent (not serialized) when the result is
     /// complete, so existing clients see no change.
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub partial: bool,
 
     /// The assets whose per-asset query failed, with a generic reason. Absent (not
@@ -100,11 +100,6 @@ pub struct AssetBalanceQueryError {
     pub asset_id: String,
     /// Human-readable failure reason (e.g. the underlying RPC error).
     pub reason: String,
-}
-
-/// serde `skip_serializing_if` helper: skip a `bool` field when it is false.
-fn is_false(value: &bool) -> bool {
-    !*value
 }
 
 /// Block information

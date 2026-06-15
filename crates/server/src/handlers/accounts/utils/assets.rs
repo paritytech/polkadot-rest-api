@@ -54,7 +54,7 @@ pub async fn query_assets(
         .into_iter()
         .map(|e| AssetBalanceQueryError {
             asset_id: e.asset_id.to_string(),
-            reason: e.reason,
+            reason: e.reason.to_string(),
         })
         .collect();
 
