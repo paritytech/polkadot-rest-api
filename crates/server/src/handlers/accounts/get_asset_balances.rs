@@ -31,23 +31,26 @@ use subxt::{OnlineClientAtBlock, SubstrateConfig};
 /// - `useRcBlock` (optional): When true, treat 'at' as relay chain block identifier
 /// - `assets` (optional): List of asset IDs to query (queries all if omitted)
 /// - `showEmpty`  (optional): When true, include assets with zero balance (default: false)
+/// - `strict`     (optional): When true, return 503 if any per-asset query fails instead
+///   of a partial 200 (default: false)
 #[utoipa::path(
     get,
     path = "/v1/accounts/{accountId}/asset-balances",
     tag = "accounts",
     summary = "Account asset balances",
-    description = "Returns asset balances for a given account on Asset Hub chains.",
+    description = "Returns asset balances for a given account on Asset Hub chains. A missing assetId means the account holds none of that asset; when `partial` is true the asset list is incomplete (some per-asset queries failed, see `errors`) and a missing assetId must NOT be treated as a zero balance.",
     params(
         ("accountId" = String, Path, description = "SS58-encoded account address"),
         ("at" = Option<String>, Query, description = "Block hash or number to query at"),
         ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier"),
         ("assets" = Option<String>, Query, description = "Comma-separated list of asset IDs to query"),
-        ("showEmpty" = Option<bool>, Query, description = "When true, include assets with zero balance (default: false)")
+        ("showEmpty" = Option<bool>, Query, description = "When true, include assets with zero balance (default: false)"),
+        ("strict" = Option<bool>, Query, description = "When true, return 503 if any per-asset query fails instead of a partial 200 (default: false)")
     ),
     responses(
-        (status = 200, description = "Account asset balances", body = AssetBalancesResponse),
+        (status = 200, description = "Account asset balances (may be partial; check the `partial` flag)", body = AssetBalancesResponse),
         (status = 400, description = "Invalid parameters"),
-        (status = 503, description = "Service unavailable"),
+        (status = 503, description = "Service unavailable, or strict=true and a per-asset query failed"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -73,12 +76,14 @@ pub async fn get_asset_balances(
 
     let assets = params.assets.as_deref().unwrap_or(&[]);
     let show_empty = params.show_empty;
+    let strict = params.strict;
     let response = query_asset_balances(
         &client_at_block,
         &account,
         &resolved_block,
         assets,
         show_empty,
+        strict,
     )
     .await?;
     Ok(Json(response).into_response())
@@ -90,6 +95,7 @@ async fn query_asset_balances(
     block: &utils::ResolvedBlock,
     asset_ids: &[u32],
     show_empty: bool,
+    strict: bool,
 ) -> Result<AssetBalancesResponse, AccountsError> {
     // Check if Assets pallet is available using centralized function
     if !assets_queries::is_assets_pallet_available(client_at_block) {
@@ -107,8 +113,16 @@ async fn query_asset_balances(
         asset_ids.to_vec()
     };
 
-    // Query each asset balance in parallel
-    let assets = query_assets(client_at_block, account, &assets_to_query, show_empty).await?;
+    // Query each asset balance in parallel. `errors` holds assets whose per-asset
+    // query genuinely failed (issue #342); they are omitted from `assets`.
+    let (assets, errors) =
+        query_assets(client_at_block, account, &assets_to_query, show_empty).await?;
+
+    // Strict mode is opt-in: when any asset failed, fail the whole request with a 503
+    // instead of returning a partial 200. Default behavior is unchanged.
+    if strict && !errors.is_empty() {
+        return Err(AccountsError::PartialAssetBalances(errors.len()));
+    }
 
     Ok(AssetBalancesResponse {
         at: BlockInfo {
@@ -116,6 +130,8 @@ async fn query_asset_balances(
             height: block.number.to_string(),
         },
         assets,
+        partial: !errors.is_empty(),
+        errors,
         rc_block_hash: None,
         rc_block_number: None,
         ah_timestamp: None,
@@ -160,6 +176,7 @@ async fn handle_use_rc_block(
     // Process each AH block
     let assets = params.assets.as_deref().unwrap_or(&[]);
     let show_empty = params.show_empty;
+    let strict = params.strict;
     let mut results = Vec::new();
     for ah_block in ah_blocks {
         let ah_resolved = utils::ResolvedBlock {
@@ -167,9 +184,15 @@ async fn handle_use_rc_block(
             number: ah_block.number,
         };
         let client_at_block = state.client.at_block(ah_resolved.number).await?;
-        let mut response =
-            query_asset_balances(&client_at_block, &account, &ah_resolved, assets, show_empty)
-                .await?;
+        let mut response = query_asset_balances(
+            &client_at_block,
+            &account,
+            &ah_resolved,
+            assets,
+            show_empty,
+            strict,
+        )
+        .await?;
 
         // Add RC block info
         response.rc_block_hash = Some(rc_block_hash.clone());

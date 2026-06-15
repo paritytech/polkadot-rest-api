@@ -6,6 +6,7 @@
 //! This module provides wrapper functions that delegate to the centralized
 //! `runtime_queries::assets` module for storage queries.
 
+use crate::handlers::accounts::types::AssetBalanceQueryError;
 use crate::handlers::accounts::{AccountsError, AssetBalance};
 use crate::handlers::runtime_queries::assets as assets_queries;
 use sp_core::crypto::AccountId32;
@@ -24,14 +25,17 @@ pub async fn query_all_assets_id(
 
 /// Query asset balances for an account.
 ///
-/// Delegates to `runtime_queries::assets::get_asset_balances`.
+/// Delegates to `runtime_queries::assets::get_asset_balances` and returns both the
+/// resolved balances and any per-asset failures. Callers turn a non-empty error list
+/// into a partial-response signal (or a 503 in strict mode) instead of silently
+/// dropping the failed assets — see issue #342.
 pub async fn query_assets(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     assets: &[u32],
     show_empty: bool,
-) -> Result<Vec<AssetBalance>, AccountsError> {
-    let balances = assets_queries::get_asset_balances(client_at_block, account, assets, show_empty)
+) -> Result<(Vec<AssetBalance>, Vec<AssetBalanceQueryError>), AccountsError> {
+    let result = assets_queries::get_asset_balances(client_at_block, account, assets, show_empty)
         .await
         .map_err(|_| {
             AccountsError::DecodeFailed(parity_scale_codec::Error::from(
@@ -39,7 +43,8 @@ pub async fn query_assets(
             ))
         })?;
 
-    Ok(balances
+    let balances = result
+        .balances
         .into_iter()
         .map(|(asset_id, decoded)| AssetBalance {
             asset_id: asset_id.to_string(),
@@ -47,5 +52,16 @@ pub async fn query_assets(
             is_frozen: decoded.is_frozen,
             is_sufficient: decoded.is_sufficient,
         })
-        .collect())
+        .collect();
+
+    let errors = result
+        .errors
+        .into_iter()
+        .map(|e| AssetBalanceQueryError {
+            asset_id: e.asset_id.to_string(),
+            reason: e.reason,
+        })
+        .collect();
+
+    Ok((balances, errors))
 }
