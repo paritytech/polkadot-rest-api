@@ -10,7 +10,7 @@ services:
 
   rest-api:
     container_name: rest-api
-    image: docker.io/parity/polkadot-rest-api:latest
+    image: docker.io/paritytech/polkadot-rest-api:latest
     build: .
     read_only: true
     restart: on-failure

@@ -25,6 +25,7 @@ jobs:
     outputs:
       VERSION: ${{ steps.version.outputs.VERSION }}
       DATE_TAG: ${{ steps.version.outputs.DATE_TAG }}
+      IS_LATEST: ${{ steps.version.outputs.IS_LATEST }}
     steps:
       - name: Define version
         id: version
@@ -39,6 +40,14 @@ jobs:
             echo "VERSION=${REF_SLUG}-${COMMIT_SHA_SHORT}" >> $GITHUB_OUTPUT
           else
             echo "VERSION=${REF_SLUG}" >> $GITHUB_OUTPUT
+          fi
+          # Tag `latest` only for version tag builds (refs/tags/v*), never for
+          # main/branch builds, so `latest` always points at a released version.
+          if [[ "${{ github.ref_type }}" == "tag" && "${REF_NAME}" == v* ]]
+          then
+            echo "IS_LATEST=true" >> $GITHUB_OUTPUT
+          else
+            echo "IS_LATEST=false" >> $GITHUB_OUTPUT
           fi
 
   build_docker:
@@ -107,6 +116,7 @@ jobs:
     env:
       VERSION: ${{ needs.set-variables.outputs.VERSION }}
       DATE_TAG: ${{ needs.set-variables.outputs.DATE_TAG }}
+      IS_LATEST: ${{ needs.set-variables.outputs.IS_LATEST }}
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
@@ -127,7 +137,12 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
+          IMAGE=docker.io/paritytech/polkadot-rest-api
+          TAGS=(-t "${IMAGE}:${VERSION}" -t "${IMAGE}:${DATE_TAG}")
+          # Only tag `latest` on version tag builds (see set-variables job).
+          if [[ "${IS_LATEST}" == "true" ]]; then
+            TAGS+=(-t "${IMAGE}:latest")
+          fi
           docker buildx imagetools create \
-            -t docker.io/paritytech/polkadot-rest-api:${{ env.VERSION }} \
-            -t docker.io/paritytech/polkadot-rest-api:${{ env.DATE_TAG }} \
-            $(printf 'docker.io/paritytech/polkadot-rest-api@sha256:%s ' *)
+            "${TAGS[@]}" \
+            $(printf "${IMAGE}@sha256:%s " *)

@@ -294,7 +294,7 @@ Both projects provide a `Dockerfile` and `docker-compose.yml`. The compose stack
 | **Base image (build)** | `node:18.12.1-alpine` | `rust:1.90.0-slim-bookworm` |
 | **Base image (runtime)** | `node:18.12.1-alpine` | `debian:bookworm-slim` |
 | **Runtime size** | Includes full Node.js runtime + `node_modules` | Static binary (~single executable) + `ca-certificates` |
-| **Docker Hub** | `parity/substrate-api-sidecar` | `parity/polkadot-rest-api` |
+| **Docker Hub** | `parity/substrate-api-sidecar` | `paritytech/polkadot-rest-api` |
 | **Build command** | `yarn build:docker` | `docker build .` |
 | **Run user** | `node` | `nobody` |
 | **Default env vars** | `SAS_EXPRESS_PORT=8080`, `SAS_EXPRESS_BIND_HOST=0.0.0.0` | `SAS_EXPRESS_PORT=8080`, `SAS_EXPRESS_BIND_HOST=0.0.0.0`, `RUST_LOG=info` |
@@ -307,7 +307,7 @@ docker pull docker.io/parity/substrate-api-sidecar:latest
 docker run --rm -it --read-only -p 8080:8080 substrate-api-sidecar
 
 # Polkadot REST API
-docker pull docker.io/parity/polkadot-rest-api:latest
+docker pull docker.io/paritytech/polkadot-rest-api:latest
 docker run --rm -it --read-only -p 8080:8080 polkadot-rest-api
 ```
 
@@ -326,7 +326,7 @@ Both compose files include the same services: `polkadot` node, API server, `loki
 
 ### Migration steps for Docker users
 
-1. **Update image name**: Replace `parity/substrate-api-sidecar` with `parity/polkadot-rest-api`
+1. **Update image name**: Replace `parity/substrate-api-sidecar` with `paritytech/polkadot-rest-api`
 2. **Update service name** (if referenced): `sidecar` → `rest-api` (or your preferred name)
 3. **Remove `SAS_EXPRESS_BIND_HOST`** from environment if set to `0.0.0.0` — this is now the Dockerfile default
 4. **Update health checks**: Change `curl http://localhost:8080/blocks/head` to `curl http://localhost:8080/v1/blocks/head` (note the `/v1` prefix)

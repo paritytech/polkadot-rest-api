@@ -287,16 +287,16 @@ The final image runs as the `nobody` user and includes these defaults:
 
 ```bash
 # Pull the image
-docker pull docker.io/parity/polkadot-rest-api:latest
+docker pull docker.io/paritytech/polkadot-rest-api:latest
 
 # Run with defaults (connects to host node)
 docker run --rm -it --read-only -p 8080:8080 \
   -e SAS_SUBSTRATE_URL=ws://host.docker.internal:9944 \
-  parity/polkadot-rest-api
+  paritytech/polkadot-rest-api
 
 # Run with env file
 docker run --rm -it --read-only --env-file .env.docker -p 8080:8080 \
-  parity/polkadot-rest-api
+  paritytech/polkadot-rest-api
 ```
 
 > **Tip**: Always use `--read-only` for containers in production.
@@ -338,7 +338,7 @@ This starts:
 
 | Change | Details |
 |--------|---------|
-| **Image name** | `parity/substrate-api-sidecar` → `parity/polkadot-rest-api` |
+| **Image name** | `parity/substrate-api-sidecar` → `paritytech/polkadot-rest-api` |
 | **Service name** | `sidecar` → `rest-api` (in docker-compose) |
 | **Base image** | Node.js Alpine → Debian slim (smaller runtime, no Node.js needed) |
 | **Run user** | `node` → `nobody` |
