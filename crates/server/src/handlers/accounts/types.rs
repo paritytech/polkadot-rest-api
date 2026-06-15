@@ -303,6 +303,12 @@ pub enum AccountsError {
     // ---- Asset balance strict-mode error (issue #342) ----
     #[error("Partial result: {0} asset balance(s) could not be fetched")]
     PartialAssetBalances(usize),
+
+    // ---- Asset id enumeration failed (issue #342) ----
+    // Pallet availability is checked before enumeration, so this is a transient
+    // storage/RPC failure, not a client error. Generic message (no internal detail).
+    #[error("failed to enumerate assets on this chain")]
+    AssetIdsQueryFailed,
 }
 
 impl From<StorageError> for AccountsError {
@@ -438,7 +444,8 @@ impl IntoResponse for AccountsError {
             }
             // Strict mode (issue #342): per-asset queries failed (typically transient
             // upstream RPC errors), so report 503 to signal "retry" rather than 500.
-            AccountsError::PartialAssetBalances(_) => {
+            // Asset-id enumeration failure is likewise transient (pallet already checked).
+            AccountsError::PartialAssetBalances(_) | AccountsError::AssetIdsQueryFailed => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),

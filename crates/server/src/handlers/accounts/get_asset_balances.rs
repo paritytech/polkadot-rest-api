@@ -50,7 +50,7 @@ const MAX_REPORTED_ASSET_ERRORS: usize = 100;
         ("at" = Option<String>, Query, description = "Block hash or number to query at"),
         ("useRcBlock" = Option<bool>, Query, description = "Treat 'at' as relay chain block identifier"),
         ("assets" = Option<String>, Query, description = "Comma-separated list of asset IDs to query"),
-        ("showEmpty" = Option<bool>, Query, description = "When true, include assets with zero balance (default: false)"),
+        ("showEmpty" = Option<bool>, Query, description = "When true, include assets with zero balance (default: false). Even with showEmpty, an asset whose query failed is omitted and listed in `errors` (not returned as zero), so this does not guarantee one entry per requested asset under partial failure."),
         ("strict" = Option<bool>, Query, description = "When true, return 503 if any per-asset query fails instead of a partial 200 (default: false)")
     ),
     responses(
@@ -110,10 +110,13 @@ async fn query_asset_balances(
 
     // Determine which assets to query
     let assets_to_query = if asset_ids.is_empty() {
-        // Query all asset IDs using centralized function
+        // Query all asset IDs using centralized function. The pallet was confirmed
+        // available just above, so a failure here is a transient storage/RPC error,
+        // not a missing pallet — surface it as 503 (retryable) rather than a 400 that
+        // tells the client its request was bad. Detail stays in the server log.
         query_all_assets_id(client_at_block).await.map_err(|e| {
             tracing::warn!("Failed to query all asset IDs: {e}");
-            AccountsError::PalletNotAvailable("Assets".to_string())
+            AccountsError::AssetIdsQueryFailed
         })?
     } else {
         asset_ids.to_vec()
