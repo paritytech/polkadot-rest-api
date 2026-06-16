@@ -56,6 +56,9 @@ fn strip_format_param(req: Request) -> Request {
 ///
 /// Returns `Err(Response)` for early returns (no `format=object`, validation failure, non-success, non-JSON).
 /// Returns `Ok((parts, bytes, at_param))` when the response body is ready for RC transformation.
+// The `Err` variant is an axum `Response` (~128B). The no-`format=object` early return is the common
+// middleware path, so boxing the error would add a heap allocation to most requests; allow the lint here.
+#[allow(clippy::result_large_err)]
 async fn process_rc_request(
     req: Request,
     next: Next,

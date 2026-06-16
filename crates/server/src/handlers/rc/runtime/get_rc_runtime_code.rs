@@ -39,7 +39,7 @@ impl From<utils::ResolveClientAtBlockError> for GetRcCodeError {
                 GetRcCodeError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
             }
             utils::ResolveClientAtBlockError::SubxtError(e) => {
-                GetRcCodeError::ClientAtBlockFailed(Box::new(e))
+                GetRcCodeError::ClientAtBlockFailed(e)
             }
         }
     }

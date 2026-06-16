@@ -29,7 +29,7 @@ pub enum PalletError {
     BlockResolveFailed(#[from] crate::utils::BlockResolveError),
 
     #[error("Failed to get client at block")]
-    ClientAtBlockFailed(#[source] subxt::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] Box<subxt::error::OnlineClientAtBlockError>),
 
     #[error("Bad staking block: {0}")]
     BadStakingBlock(String),
@@ -175,7 +175,7 @@ impl From<crate::utils::AtBlockError> for PalletError {
             crate::utils::AtBlockError::BlockNotFound(msg) => {
                 PalletError::BlockResolveFailed(crate::utils::BlockResolveError::NotFound(msg))
             }
-            crate::utils::AtBlockError::Client(e) => PalletError::ClientAtBlockFailed(e),
+            crate::utils::AtBlockError::Client(e) => PalletError::ClientAtBlockFailed(Box::new(e)),
         }
     }
 }

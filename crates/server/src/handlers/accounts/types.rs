@@ -337,7 +337,7 @@ impl From<utils::ResolveClientAtBlockError> for AccountsError {
                 AccountsError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
             }
             utils::ResolveClientAtBlockError::SubxtError(e) => {
-                AccountsError::ClientAtBlockFailed(Box::new(e))
+                AccountsError::ClientAtBlockFailed(e)
             }
         }
     }
