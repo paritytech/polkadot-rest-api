@@ -14,7 +14,7 @@ use scale_decode::{
     Visitor,
     visitor::{
         TypeIdFor, Unexpected,
-        types::{Composite, Sequence, Variant},
+        types::{Composite, Sequence, Tuple, Variant},
     },
 };
 use scale_info::PortableRegistry;
@@ -508,6 +508,21 @@ impl<'r> Visitor for FieldWithTypeExtractor<'r> {
         Ok((None, JsonValue::Array(items)))
     }
 
+    fn visit_tuple<'scale, 'resolver>(
+        self,
+        value: &mut Tuple<'scale, 'resolver, Self::TypeResolver>,
+        _type_id: TypeIdFor<Self>,
+    ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
+        let mut items = Vec::new();
+        while let Some(item_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
+            match item_result {
+                Ok(json_val) => items.push(json_val),
+                Err(e) => tracing::warn!("Failed to decode tuple item: {:?}", e),
+            }
+        }
+        Ok((None, JsonValue::Array(items)))
+    }
+
     fn visit_array<'scale, 'resolver>(
         self,
         value: &mut scale_decode::visitor::types::Array<'scale, 'resolver, Self::TypeResolver>,
@@ -728,6 +743,21 @@ impl<'r> Visitor for ValueExtractor<'r> {
             match item_result {
                 Ok(json_val) => items.push(json_val),
                 Err(e) => tracing::warn!("Failed to decode sequence item: {:?}", e),
+            }
+        }
+        Ok(JsonValue::Array(items))
+    }
+
+    fn visit_tuple<'scale, 'resolver>(
+        self,
+        value: &mut Tuple<'scale, 'resolver, Self::TypeResolver>,
+        _type_id: TypeIdFor<Self>,
+    ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
+        let mut items = Vec::new();
+        while let Some(item_result) = value.decode_item(ValueExtractor::new(self.resolver)) {
+            match item_result {
+                Ok(json_val) => items.push(json_val),
+                Err(e) => tracing::warn!("Failed to decode tuple item: {:?}", e),
             }
         }
         Ok(JsonValue::Array(items))
@@ -989,4 +1019,71 @@ pub fn try_convert_accountid_to_ss58(value: &JsonValue, ss58_prefix: u16) -> Opt
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parity_scale_codec::Encode;
+    use staging_xcm::v5 as xcm_v5;
+
+    /// Register a type in a fresh `PortableRegistry` and return the registry + its type id.
+    fn registry_for<T: scale_info::TypeInfo + 'static>() -> (PortableRegistry, u32) {
+        let mut registry = scale_info::Registry::new();
+        let id = registry.register_type(&scale_info::meta_type::<T>()).id;
+        (registry.into(), id)
+    }
+
+    /// Decode SCALE bytes of `type_id` through `ValueExtractor` (the events value path).
+    fn decode_value(bytes: &[u8], type_id: u32, registry: &PortableRegistry) -> JsonValue {
+        scale_decode::visitor::decode_with_visitor(
+            &mut &bytes[..],
+            type_id,
+            registry,
+            ValueExtractor::new(registry),
+        )
+        .expect("decode should succeed")
+    }
+
+    /// Regression for issue #353: `assetConversion.SwapCreditExecuted.path` is
+    /// `Vec<(staging_xcm::v5::Location, u128)>`. Tuple elements previously fell
+    /// through to `visit_unexpected` and decoded to `null`, dropping the swap route.
+    #[test]
+    fn vec_of_location_amount_tuples_decodes_each_pair() {
+        // Two synthetic (location, amount) entries, matching the path's shape.
+        let path: Vec<(xcm_v5::Location, u128)> = vec![
+            (xcm_v5::Location::here(), 1291u128),
+            (xcm_v5::Location::parent(), 9_894_913u128),
+        ];
+
+        let (registry, type_id) = registry_for::<Vec<(xcm_v5::Location, u128)>>();
+        let decoded = decode_value(&path.encode(), type_id, &registry);
+
+        let entries = decoded.as_array().expect("path decodes to an array");
+        assert_eq!(entries.len(), 2, "Vec length preserved");
+        for (i, entry) in entries.iter().enumerate() {
+            assert!(!entry.is_null(), "entry {i} must not be null (issue #353)");
+            let pair = entry
+                .as_array()
+                .unwrap_or_else(|| panic!("entry {i} is a (location, amount) tuple"));
+            assert_eq!(pair.len(), 2, "tuple has location + amount");
+            assert!(!pair[0].is_null(), "location decoded");
+            assert!(!pair[1].is_null(), "amount decoded");
+        }
+    }
+
+    /// A plain `(u32, u128)` tuple decodes to a two-element array, not `null`.
+    /// Guards that `visit_tuple` emits the tuple's items rather than falling
+    /// through to `visit_unexpected`.
+    #[test]
+    fn tuple_decodes_to_array_not_null() {
+        let (registry, type_id) = registry_for::<(u32, u128)>();
+        let decoded = decode_value(&(7u32, 42u128).encode(), type_id, &registry);
+
+        let pair = decoded
+            .as_array()
+            .expect("tuple decodes to an array, not null");
+        assert_eq!(pair.len(), 2);
+        assert_eq!(pair[0], serde_json::json!(7));
+    }
 }
