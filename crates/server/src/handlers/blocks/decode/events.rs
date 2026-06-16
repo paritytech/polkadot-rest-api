@@ -1050,7 +1050,7 @@ mod tests {
     /// through to `visit_unexpected` and decoded to `null`, dropping the swap route.
     #[test]
     fn vec_of_location_amount_tuples_decodes_each_pair() {
-        // Two (Location, amount) entries, mirroring a real swap path.
+        // Two synthetic (location, amount) entries, matching the path's shape.
         let path: Vec<(xcm_v5::Location, u128)> = vec![
             (xcm_v5::Location::here(), 1291u128),
             (xcm_v5::Location::parent(), 9_894_913u128),
@@ -1072,9 +1072,9 @@ mod tests {
         }
     }
 
-    /// A single-element tuple decodes to a one-element array here; downstream
-    /// `transform_json_unified`/`convert_bytes_to_hex` collapse it. Guards that
-    /// `visit_tuple` itself emits an array rather than nulling out.
+    /// A plain `(u32, u128)` tuple decodes to a two-element array, not `null`.
+    /// Guards that `visit_tuple` emits the tuple's items rather than falling
+    /// through to `visit_unexpected`.
     #[test]
     fn tuple_decodes_to_array_not_null() {
         let (registry, type_id) = registry_for::<(u32, u128)>();
