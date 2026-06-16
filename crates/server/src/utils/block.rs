@@ -185,7 +185,7 @@ pub async fn resolve_client_at_block(
         None => client
             .at_current_block()
             .await
-            .map_err(ResolveClientAtBlockError::SubxtError),
+            .map_err(|e| ResolveClientAtBlockError::SubxtError(Box::new(e))),
         Some(at_str) => {
             let block_id = at_str
                 .parse::<BlockId>()
@@ -208,14 +208,14 @@ pub enum ResolveClientAtBlockError {
     BlockNotFound(String),
 
     #[error("Failed to get client at block: {0}")]
-    SubxtError(OnlineClientAtBlockError),
+    SubxtError(Box<OnlineClientAtBlockError>),
 }
 
 impl From<AtBlockError> for ResolveClientAtBlockError {
     fn from(err: AtBlockError) -> Self {
         match err {
             AtBlockError::BlockNotFound(msg) => ResolveClientAtBlockError::BlockNotFound(msg),
-            AtBlockError::Client(e) => ResolveClientAtBlockError::SubxtError(e),
+            AtBlockError::Client(e) => ResolveClientAtBlockError::SubxtError(Box::new(e)),
         }
     }
 }

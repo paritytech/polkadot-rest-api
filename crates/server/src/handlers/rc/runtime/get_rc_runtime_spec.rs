@@ -83,7 +83,7 @@ impl From<utils::ResolveClientAtBlockError> for GetRcSpecError {
                 GetRcSpecError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
             }
             utils::ResolveClientAtBlockError::SubxtError(e) => {
-                GetRcSpecError::ClientAtBlockFailed(Box::new(e))
+                GetRcSpecError::ClientAtBlockFailed(e)
             }
         }
     }

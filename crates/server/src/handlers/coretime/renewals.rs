@@ -417,7 +417,7 @@ mod tests {
 
     #[test]
     fn test_renewals_sorting_by_core() {
-        let mut renewals = vec![
+        let mut renewals = [
             RenewalInfo {
                 completion: None,
                 core: 3,

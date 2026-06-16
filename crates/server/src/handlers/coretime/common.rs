@@ -140,7 +140,7 @@ pub enum CoretimeError {
     InvalidBlockHash,
 
     #[error("Failed to get client at block")]
-    ClientAtBlockFailed(#[source] subxt::error::OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] Box<subxt::error::OnlineClientAtBlockError>),
 
     // ========================================================================
     // Chain Type Errors
@@ -207,7 +207,9 @@ impl From<crate::utils::AtBlockError> for CoretimeError {
             crate::utils::AtBlockError::BlockNotFound(msg) => {
                 CoretimeError::BlockResolveFailed(crate::utils::BlockResolveError::NotFound(msg))
             }
-            crate::utils::AtBlockError::Client(e) => CoretimeError::ClientAtBlockFailed(e),
+            crate::utils::AtBlockError::Client(e) => {
+                CoretimeError::ClientAtBlockFailed(Box::new(e))
+            }
         }
     }
 }

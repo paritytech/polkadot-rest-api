@@ -36,12 +36,11 @@ async fn setup_client() -> Result<TestClient> {
 
 /// Check if the connected chain is a coretime chain (has Broker pallet)
 async fn is_coretime_chain(client: &TestClient) -> bool {
-    if let Ok((status, json)) = client.get_json("/v1/capabilities").await {
-        if status.is_success() {
-            if let Some(pallets) = json["pallets"].as_array() {
-                return pallets.iter().any(|p| p.as_str() == Some("Broker"));
-            }
-        }
+    if let Ok((status, json)) = client.get_json("/v1/capabilities").await
+        && status.is_success()
+        && let Some(pallets) = json["pallets"].as_array()
+    {
+        return pallets.iter().any(|p| p.as_str() == Some("Broker"));
     }
     false
 }
@@ -947,48 +946,48 @@ async fn test_coretime_renewals_item_structure() -> Result<()> {
     assert!(renewal["task"].is_string(), "'task' should be a string");
 
     // Optional fields (if present should have correct types)
-    if let Some(completion) = renewal.get("completion") {
-        if !completion.is_null() {
-            assert!(
-                completion.is_string(),
-                "'completion' should be a string when present"
-            );
-            let completion_str = completion.as_str().unwrap();
-            assert!(
-                completion_str == "Complete" || completion_str == "Partial",
-                "'completion' should be 'Complete' or 'Partial', got: {}",
-                completion_str
-            );
-        }
+    if let Some(completion) = renewal.get("completion")
+        && !completion.is_null()
+    {
+        assert!(
+            completion.is_string(),
+            "'completion' should be a string when present"
+        );
+        let completion_str = completion.as_str().unwrap();
+        assert!(
+            completion_str == "Complete" || completion_str == "Partial",
+            "'completion' should be 'Complete' or 'Partial', got: {}",
+            completion_str
+        );
     }
 
-    if let Some(mask) = renewal.get("mask") {
-        if !mask.is_null() {
-            assert!(mask.is_string(), "'mask' should be a string when present");
-            let mask_str = mask.as_str().unwrap();
-            assert!(
-                mask_str.starts_with("0x"),
-                "'mask' should be a hex string starting with 0x"
-            );
-            // CoreMask is 80 bits = 10 bytes = 20 hex chars + "0x" prefix
-            assert_eq!(
-                mask_str.len(),
-                22,
-                "'mask' should be 22 characters (0x + 20 hex digits for 10 bytes)"
-            );
-        }
+    if let Some(mask) = renewal.get("mask")
+        && !mask.is_null()
+    {
+        assert!(mask.is_string(), "'mask' should be a string when present");
+        let mask_str = mask.as_str().unwrap();
+        assert!(
+            mask_str.starts_with("0x"),
+            "'mask' should be a hex string starting with 0x"
+        );
+        // CoreMask is 80 bits = 10 bytes = 20 hex chars + "0x" prefix
+        assert_eq!(
+            mask_str.len(),
+            22,
+            "'mask' should be 22 characters (0x + 20 hex digits for 10 bytes)"
+        );
     }
 
-    if let Some(price) = renewal.get("price") {
-        if !price.is_null() {
-            assert!(price.is_string(), "'price' should be a string when present");
-            let price_str = price.as_str().unwrap();
-            assert!(
-                price_str.parse::<u128>().is_ok(),
-                "'price' should be a numeric string, got: {}",
-                price_str
-            );
-        }
+    if let Some(price) = renewal.get("price")
+        && !price.is_null()
+    {
+        assert!(price.is_string(), "'price' should be a string when present");
+        let price_str = price.as_str().unwrap();
+        assert!(
+            price_str.parse::<u128>().is_ok(),
+            "'price' should be a numeric string, got: {}",
+            price_str
+        );
     }
 
     // Validate task is empty, "Pool", "Idle", or a numeric string (task ID)
@@ -1414,36 +1413,36 @@ async fn test_coretime_regions_item_structure() -> Result<()> {
 
     // Optional fields: end, owner, paid
     // If present, check their types
-    if let Some(end) = region.get("end") {
-        if !end.is_null() {
-            assert!(end.is_number(), "'end' should be a number when present");
-        }
+    if let Some(end) = region.get("end")
+        && !end.is_null()
+    {
+        assert!(end.is_number(), "'end' should be a number when present");
     }
 
-    if let Some(owner) = region.get("owner") {
-        if !owner.is_null() {
-            assert!(owner.is_string(), "'owner' should be a string when present");
-            let owner_str = owner.as_str().unwrap();
-            // Owner is an SS58-encoded address (base58 string, typically 47-48 chars)
-            // This matches substrate-api-sidecar behavior which uses .toString() on AccountId
-            assert!(
-                !owner_str.is_empty() && owner_str.chars().all(|c| c.is_alphanumeric()),
-                "'owner' should be a valid SS58 address string, got: {}",
-                owner_str
-            );
-        }
+    if let Some(owner) = region.get("owner")
+        && !owner.is_null()
+    {
+        assert!(owner.is_string(), "'owner' should be a string when present");
+        let owner_str = owner.as_str().unwrap();
+        // Owner is an SS58-encoded address (base58 string, typically 47-48 chars)
+        // This matches substrate-api-sidecar behavior which uses .toString() on AccountId
+        assert!(
+            !owner_str.is_empty() && owner_str.chars().all(|c| c.is_alphanumeric()),
+            "'owner' should be a valid SS58 address string, got: {}",
+            owner_str
+        );
     }
 
-    if let Some(paid) = region.get("paid") {
-        if !paid.is_null() {
-            assert!(paid.is_string(), "'paid' should be a string when present");
-            // paid should be a numeric string
-            let paid_str = paid.as_str().unwrap();
-            assert!(
-                paid_str.parse::<u128>().is_ok(),
-                "'paid' should be a numeric string"
-            );
-        }
+    if let Some(paid) = region.get("paid")
+        && !paid.is_null()
+    {
+        assert!(paid.is_string(), "'paid' should be a string when present");
+        // paid should be a numeric string
+        let paid_str = paid.as_str().unwrap();
+        assert!(
+            paid_str.parse::<u128>().is_ok(),
+            "'paid' should be a numeric string"
+        );
     }
 
     println!(
@@ -1801,40 +1800,40 @@ async fn test_coretime_info_configuration() -> Result<()> {
     assert!(status.is_success());
 
     // Configuration may be present if broker is configured
-    if let Some(config) = json.get("configuration") {
-        if !config.is_null() {
-            assert!(
-                config.get("regionLength").is_some(),
-                "Configuration should have 'regionLength'"
-            );
-            assert!(
-                config.get("interludeLength").is_some(),
-                "Configuration should have 'interludeLength'"
-            );
-            assert!(
-                config.get("leadinLength").is_some(),
-                "Configuration should have 'leadinLength'"
-            );
-            assert!(
-                config.get("relayBlocksPerTimeslice").is_some(),
-                "Configuration should have 'relayBlocksPerTimeslice'"
-            );
+    if let Some(config) = json.get("configuration")
+        && !config.is_null()
+    {
+        assert!(
+            config.get("regionLength").is_some(),
+            "Configuration should have 'regionLength'"
+        );
+        assert!(
+            config.get("interludeLength").is_some(),
+            "Configuration should have 'interludeLength'"
+        );
+        assert!(
+            config.get("leadinLength").is_some(),
+            "Configuration should have 'leadinLength'"
+        );
+        assert!(
+            config.get("relayBlocksPerTimeslice").is_some(),
+            "Configuration should have 'relayBlocksPerTimeslice'"
+        );
 
-            // Verify values are numbers (u32 fields)
-            assert!(
-                config["regionLength"].is_number(),
-                "'regionLength' should be a number"
-            );
-            assert!(
-                config["relayBlocksPerTimeslice"].is_number(),
-                "'relayBlocksPerTimeslice' should be a number"
-            );
+        // Verify values are numbers (u32 fields)
+        assert!(
+            config["regionLength"].is_number(),
+            "'regionLength' should be a number"
+        );
+        assert!(
+            config["relayBlocksPerTimeslice"].is_number(),
+            "'relayBlocksPerTimeslice' should be a number"
+        );
 
-            println!(
-                "ok: Configuration found - regionLength: {}, timeslicePeriod: {}",
-                config["regionLength"], config["relayBlocksPerTimeslice"]
-            );
-        }
+        println!(
+            "ok: Configuration found - regionLength: {}, timeslicePeriod: {}",
+            config["regionLength"], config["relayBlocksPerTimeslice"]
+        );
     }
 
     println!("ok: Coretime info configuration test passed");
@@ -1856,45 +1855,45 @@ async fn test_coretime_info_cores() -> Result<()> {
     assert!(status.is_success());
 
     // Cores section may be present if a sale is active
-    if let Some(cores) = json.get("cores") {
-        if !cores.is_null() {
-            assert!(
-                cores.get("available").is_some(),
-                "Cores should have 'available'"
-            );
-            assert!(cores.get("sold").is_some(), "Cores should have 'sold'");
-            assert!(cores.get("total").is_some(), "Cores should have 'total'");
-            assert!(
-                cores.get("currentCorePrice").is_some(),
-                "Cores should have 'currentCorePrice'"
-            );
+    if let Some(cores) = json.get("cores")
+        && !cores.is_null()
+    {
+        assert!(
+            cores.get("available").is_some(),
+            "Cores should have 'available'"
+        );
+        assert!(cores.get("sold").is_some(), "Cores should have 'sold'");
+        assert!(cores.get("total").is_some(), "Cores should have 'total'");
+        assert!(
+            cores.get("currentCorePrice").is_some(),
+            "Cores should have 'currentCorePrice'"
+        );
 
-            // Verify types - u32 fields are numbers, u128 (Balance) fields are strings
-            assert!(
-                cores["available"].is_number(),
-                "'available' should be a number"
-            );
-            assert!(cores["sold"].is_number(), "'sold' should be a number");
-            assert!(cores["total"].is_number(), "'total' should be a number");
-            assert!(
-                cores["currentCorePrice"].is_string(),
-                "'currentCorePrice' should be a string (u128 Balance)"
-            );
+        // Verify types - u32 fields are numbers, u128 (Balance) fields are strings
+        assert!(
+            cores["available"].is_number(),
+            "'available' should be a number"
+        );
+        assert!(cores["sold"].is_number(), "'sold' should be a number");
+        assert!(cores["total"].is_number(), "'total' should be a number");
+        assert!(
+            cores["currentCorePrice"].is_string(),
+            "'currentCorePrice' should be a string (u128 Balance)"
+        );
 
-            // Verify logical constraints
-            let available = cores["available"].as_u64().unwrap();
-            let sold = cores["sold"].as_u64().unwrap();
-            let total = cores["total"].as_u64().unwrap();
-            assert!(
-                available + sold <= total,
-                "available + sold should be <= total"
-            );
+        // Verify logical constraints
+        let available = cores["available"].as_u64().unwrap();
+        let sold = cores["sold"].as_u64().unwrap();
+        let total = cores["total"].as_u64().unwrap();
+        assert!(
+            available + sold <= total,
+            "available + sold should be <= total"
+        );
 
-            println!(
-                "ok: Cores found - available: {}, sold: {}, total: {}",
-                available, sold, total
-            );
-        }
+        println!(
+            "ok: Cores found - available: {}, sold: {}, total: {}",
+            available, sold, total
+        );
     }
 
     println!("ok: Coretime info cores test passed");
@@ -1916,43 +1915,43 @@ async fn test_coretime_info_phase() -> Result<()> {
     assert!(status.is_success());
 
     // Phase section may be present if broker is configured and sale is active
-    if let Some(phase) = json.get("phase") {
-        if !phase.is_null() {
+    if let Some(phase) = json.get("phase")
+        && !phase.is_null()
+    {
+        assert!(
+            phase.get("currentPhase").is_some(),
+            "Phase should have 'currentPhase'"
+        );
+        assert!(phase.get("config").is_some(), "Phase should have 'config'");
+
+        let current_phase = phase["currentPhase"].as_str().unwrap();
+        assert!(
+            ["renewals", "priceDiscovery", "fixedPrice"].contains(&current_phase),
+            "'currentPhase' should be one of: renewals, priceDiscovery, fixedPrice, got: {}",
+            current_phase
+        );
+
+        // Verify config is an array
+        assert!(phase["config"].is_array(), "'config' should be an array");
+
+        let config_array = phase["config"].as_array().unwrap();
+        if !config_array.is_empty() {
+            let first_phase = &config_array[0];
             assert!(
-                phase.get("currentPhase").is_some(),
-                "Phase should have 'currentPhase'"
+                first_phase.get("phaseName").is_some(),
+                "Phase config should have 'phaseName'"
             );
-            assert!(phase.get("config").is_some(), "Phase should have 'config'");
-
-            let current_phase = phase["currentPhase"].as_str().unwrap();
             assert!(
-                ["renewals", "priceDiscovery", "fixedPrice"].contains(&current_phase),
-                "'currentPhase' should be one of: renewals, priceDiscovery, fixedPrice, got: {}",
-                current_phase
+                first_phase.get("lastRelayBlock").is_some(),
+                "Phase config should have 'lastRelayBlock'"
             );
-
-            // Verify config is an array
-            assert!(phase["config"].is_array(), "'config' should be an array");
-
-            let config_array = phase["config"].as_array().unwrap();
-            if !config_array.is_empty() {
-                let first_phase = &config_array[0];
-                assert!(
-                    first_phase.get("phaseName").is_some(),
-                    "Phase config should have 'phaseName'"
-                );
-                assert!(
-                    first_phase.get("lastRelayBlock").is_some(),
-                    "Phase config should have 'lastRelayBlock'"
-                );
-                assert!(
-                    first_phase.get("lastTimeslice").is_some(),
-                    "Phase config should have 'lastTimeslice'"
-                );
-            }
-
-            println!("ok: Phase found - currentPhase: {}", current_phase);
+            assert!(
+                first_phase.get("lastTimeslice").is_some(),
+                "Phase config should have 'lastTimeslice'"
+            );
         }
+
+        println!("ok: Phase found - currentPhase: {}", current_phase);
     }
 
     println!("ok: Coretime info phase test passed");
@@ -2130,14 +2129,13 @@ async fn test_coretime_info_consistency() -> Result<()> {
 
 /// Check if the connected chain is a relay chain (has Coretime pallet but not Broker)
 async fn is_relay_chain(client: &TestClient) -> bool {
-    if let Ok((status, json)) = client.get_json("/v1/capabilities").await {
-        if status.is_success() {
-            if let Some(pallets) = json["pallets"].as_array() {
-                let has_coretime = pallets.iter().any(|p| p.as_str() == Some("Coretime"));
-                let has_broker = pallets.iter().any(|p| p.as_str() == Some("Broker"));
-                return has_coretime && !has_broker;
-            }
-        }
+    if let Ok((status, json)) = client.get_json("/v1/capabilities").await
+        && status.is_success()
+        && let Some(pallets) = json["pallets"].as_array()
+    {
+        let has_coretime = pallets.iter().any(|p| p.as_str() == Some("Coretime"));
+        let has_broker = pallets.iter().any(|p| p.as_str() == Some("Broker"));
+        return has_coretime && !has_broker;
     }
     false
 }
@@ -2179,33 +2177,33 @@ async fn test_coretime_info_relay_chain_response() -> Result<()> {
 
     if has_relay_fields {
         // If brokerId is present, verify it's a number (u32)
-        if let Some(broker_id) = json.get("brokerId") {
-            if !broker_id.is_null() {
-                assert!(
-                    broker_id.is_number(),
-                    "'brokerId' should be a number when present"
-                );
-            }
+        if let Some(broker_id) = json.get("brokerId")
+            && !broker_id.is_null()
+        {
+            assert!(
+                broker_id.is_number(),
+                "'brokerId' should be a number when present"
+            );
         }
 
         // If storageVersion is present, verify it's a number (u16)
-        if let Some(version) = json.get("storageVersion") {
-            if !version.is_null() {
-                assert!(
-                    version.is_number(),
-                    "'storageVersion' should be a number when present"
-                );
-            }
+        if let Some(version) = json.get("storageVersion")
+            && !version.is_null()
+        {
+            assert!(
+                version.is_number(),
+                "'storageVersion' should be a number when present"
+            );
         }
 
         // If maxHistoricalRevenue is present, verify it's a number (u32)
-        if let Some(revenue) = json.get("maxHistoricalRevenue") {
-            if !revenue.is_null() {
-                assert!(
-                    revenue.is_number(),
-                    "'maxHistoricalRevenue' should be a number when present"
-                );
-            }
+        if let Some(revenue) = json.get("maxHistoricalRevenue")
+            && !revenue.is_null()
+        {
+            assert!(
+                revenue.is_number(),
+                "'maxHistoricalRevenue' should be a number when present"
+            );
         }
     }
 
@@ -2760,7 +2758,7 @@ async fn test_coretime_overview_data_aggregation() -> Result<()> {
 
     // Basic sanity checks
     assert!(
-        cores.len() > 0 || (leases.is_empty() && reservations.is_empty()),
+        !cores.is_empty() || (leases.is_empty() && reservations.is_empty()),
         "If there are leases or reservations, there should be cores in overview"
     );
 
@@ -2824,26 +2822,26 @@ async fn test_coretime_overview_workplan_structure() -> Result<()> {
         );
 
         // If info array is not empty, check its structure
-        if let Some(info_array) = entry["info"].as_array() {
-            if !info_array.is_empty() {
-                let info_item = &info_array[0];
-                assert!(
-                    info_item.get("isPool").is_some(),
-                    "Workplan info should have 'isPool' field"
-                );
-                assert!(
-                    info_item.get("isTask").is_some(),
-                    "Workplan info should have 'isTask' field"
-                );
-                assert!(
-                    info_item.get("mask").is_some(),
-                    "Workplan info should have 'mask' field"
-                );
-                assert!(
-                    info_item.get("task").is_some(),
-                    "Workplan info should have 'task' field"
-                );
-            }
+        if let Some(info_array) = entry["info"].as_array()
+            && !info_array.is_empty()
+        {
+            let info_item = &info_array[0];
+            assert!(
+                info_item.get("isPool").is_some(),
+                "Workplan info should have 'isPool' field"
+            );
+            assert!(
+                info_item.get("isTask").is_some(),
+                "Workplan info should have 'isTask' field"
+            );
+            assert!(
+                info_item.get("mask").is_some(),
+                "Workplan info should have 'mask' field"
+            );
+            assert!(
+                info_item.get("task").is_some(),
+                "Workplan info should have 'task' field"
+            );
         }
 
         println!(

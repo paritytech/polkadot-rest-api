@@ -42,9 +42,7 @@ impl From<utils::ResolveClientAtBlockError> for GetSpecError {
             utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
                 GetSpecError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
             }
-            utils::ResolveClientAtBlockError::SubxtError(e) => {
-                GetSpecError::ClientAtBlockFailed(Box::new(e))
-            }
+            utils::ResolveClientAtBlockError::SubxtError(e) => GetSpecError::ClientAtBlockFailed(e),
         }
     }
 }

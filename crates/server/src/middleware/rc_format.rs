@@ -56,6 +56,9 @@ fn strip_format_param(req: Request) -> Request {
 ///
 /// Returns `Err(Response)` for early returns (no `format=object`, validation failure, non-success, non-JSON).
 /// Returns `Ok((parts, bytes, at_param))` when the response body is ready for RC transformation.
+// The `Err` variant is an axum `Response` (~128B). The no-`format=object` early return is the common
+// middleware path, so boxing the error would add a heap allocation to most requests; allow the lint here.
+#[allow(clippy::result_large_err)]
 async fn process_rc_request(
     req: Request,
     next: Next,
@@ -304,19 +307,19 @@ mod tests {
             Err(_) => return Response::from_parts(parts, Body::from(bytes)),
         };
 
-        if let serde_json::Value::Array(arr) = &value {
-            if arr.is_empty() {
-                let result = serde_json::json!({
-                    "rcBlock": null,
-                    "parachainDataPerBlock": []
-                });
-                if let Ok(new_bytes) = serde_json::to_vec(&result) {
-                    parts.headers.insert(
-                        axum::http::header::CONTENT_LENGTH,
-                        axum::http::HeaderValue::from(new_bytes.len()),
-                    );
-                    return Response::from_parts(parts, Body::from(new_bytes));
-                }
+        if let serde_json::Value::Array(arr) = &value
+            && arr.is_empty()
+        {
+            let result = serde_json::json!({
+                "rcBlock": null,
+                "parachainDataPerBlock": []
+            });
+            if let Ok(new_bytes) = serde_json::to_vec(&result) {
+                parts.headers.insert(
+                    axum::http::header::CONTENT_LENGTH,
+                    axum::http::HeaderValue::from(new_bytes.len()),
+                );
+                return Response::from_parts(parts, Body::from(new_bytes));
             }
         }
 

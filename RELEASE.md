@@ -2,6 +2,19 @@
 
 Steps to prepare a new release of `polkadot-rest-api`.
 
+> **Before you start — check the CI toolchain pin.** CI pins a specific Rust
+> nightly in `.github/workflows/ci.yml` (the `toolchain: nightly-YYYY-MM-DD`
+> lines, currently repeated across all jobs). Check whether it's stale and bump
+> it if needed — but do this in a **separate PR ahead of the release**, never in
+> the release PR itself: a newer nightly can surface new clippy lints that need
+> fixing, and that churn should not block the release. Verify a bump locally with
+> the same checks CI runs:
+>
+> ```bash
+> cargo +nightly-YYYY-MM-DD fmt --all -- --check
+> cargo +nightly-YYYY-MM-DD clippy --workspace --all-features -- -D warnings
+> ```
+
 ## 1. Bump workspace version
 
 Update the `version` field in the root `Cargo.toml`:

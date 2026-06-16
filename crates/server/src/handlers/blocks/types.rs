@@ -277,7 +277,7 @@ impl From<utils::ResolveClientAtBlockError> for GetBlockError {
                 GetBlockError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
             }
             utils::ResolveClientAtBlockError::SubxtError(e) => {
-                GetBlockError::ClientAtBlockFailed(Box::new(e))
+                GetBlockError::ClientAtBlockFailed(e)
             }
         }
     }
@@ -391,7 +391,7 @@ pub enum GetBlockHeaderError {
     RelayChain(#[from] RelayChainError),
 
     #[error("Failed to get client at block: {0}")]
-    ClientAtBlockFailed(#[source] OnlineClientAtBlockError),
+    ClientAtBlockFailed(#[source] Box<OnlineClientAtBlockError>),
 }
 
 impl From<utils::AtBlockError> for GetBlockHeaderError {
@@ -400,7 +400,7 @@ impl From<utils::AtBlockError> for GetBlockHeaderError {
             utils::AtBlockError::BlockNotFound(msg) => {
                 GetBlockHeaderError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
             }
-            utils::AtBlockError::Client(e) => GetBlockHeaderError::ClientAtBlockFailed(e),
+            utils::AtBlockError::Client(e) => GetBlockHeaderError::ClientAtBlockFailed(Box::new(e)),
         }
     }
 }

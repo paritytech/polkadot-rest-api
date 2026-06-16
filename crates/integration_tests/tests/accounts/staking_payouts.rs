@@ -96,24 +96,24 @@ fn should_skip_test(
     }
 
     // For 500 errors, also check the error message for staking-related issues
-    if status == 500 {
-        if let Some(error) = json.as_object().and_then(|o| o.get("error")) {
-            let error_str = error.as_str().unwrap_or("");
-            // Skip if the error indicates staking functionality is not available
-            if error_str.contains("staking")
-                || error_str.contains("Staking")
-                || error_str.contains("pallet")
-                || error_str.contains("not found")
-                || error_str.contains("era")
-            {
-                println!(
-                    "  {} Staking functionality not available (500 error, skipping {} test): {}",
-                    "!".yellow(),
-                    endpoint_type.name(),
-                    error_str
-                );
-                return Ok(true);
-            }
+    if status == 500
+        && let Some(error) = json.as_object().and_then(|o| o.get("error"))
+    {
+        let error_str = error.as_str().unwrap_or("");
+        // Skip if the error indicates staking functionality is not available
+        if error_str.contains("staking")
+            || error_str.contains("Staking")
+            || error_str.contains("pallet")
+            || error_str.contains("not found")
+            || error_str.contains("era")
+        {
+            println!(
+                "  {} Staking functionality not available (500 error, skipping {} test): {}",
+                "!".yellow(),
+                endpoint_type.name(),
+                error_str
+            );
+            return Ok(true);
         }
     }
 

@@ -35,9 +35,7 @@ impl From<utils::ResolveClientAtBlockError> for GetCodeError {
             utils::ResolveClientAtBlockError::BlockNotFound(msg) => {
                 GetCodeError::BlockResolveFailed(utils::BlockResolveError::NotFound(msg))
             }
-            utils::ResolveClientAtBlockError::SubxtError(e) => {
-                GetCodeError::ClientAtBlockFailed(Box::new(e))
-            }
+            utils::ResolveClientAtBlockError::SubxtError(e) => GetCodeError::ClientAtBlockFailed(e),
         }
     }
 }
