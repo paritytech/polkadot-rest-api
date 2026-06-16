@@ -287,7 +287,7 @@ mod tests {
 
     #[test]
     fn test_leases_sorting_by_core() {
-        let mut leases = vec![
+        let mut leases = [
             LeaseWithCore {
                 task: "2002".to_string(),
                 until: 100,
@@ -322,7 +322,7 @@ mod tests {
 
     #[test]
     fn test_leases_sorting_none_cores_last() {
-        let mut leases = vec![
+        let mut leases = [
             LeaseWithCore {
                 task: "2003".to_string(),
                 until: 100,

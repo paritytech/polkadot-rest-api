@@ -87,23 +87,23 @@ fn should_skip_test(
     }
 
     // For 500 errors, also check the error message for staking-related issues
-    if status == 500 {
-        if let Some(error) = json.as_object().and_then(|o| o.get("error")) {
-            let error_str = error.as_str().unwrap_or("");
-            // Skip if the error indicates staking functionality is not available
-            if error_str.contains("staking")
-                || error_str.contains("Staking")
-                || error_str.contains("pallet")
-                || error_str.contains("not found")
-            {
-                println!(
-                    "  {} Staking functionality not available (500 error, skipping {} test): {}",
-                    "!".yellow(),
-                    endpoint_type.name(),
-                    error_str
-                );
-                return Ok(true);
-            }
+    if status == 500
+        && let Some(error) = json.as_object().and_then(|o| o.get("error"))
+    {
+        let error_str = error.as_str().unwrap_or("");
+        // Skip if the error indicates staking functionality is not available
+        if error_str.contains("staking")
+            || error_str.contains("Staking")
+            || error_str.contains("pallet")
+            || error_str.contains("not found")
+        {
+            println!(
+                "  {} Staking functionality not available (500 error, skipping {} test): {}",
+                "!".yellow(),
+                endpoint_type.name(),
+                error_str
+            );
+            return Ok(true);
         }
     }
 
@@ -332,15 +332,15 @@ async fn run_non_stash_account_test(endpoint_type: EndpointType) -> Result<()> {
 
     // Either success (it's a stash) or 400 (not a stash or staking unavailable)
     if status.as_u16() == 400 || status.as_u16() == 500 {
-        if let Some(response_obj) = json.as_object() {
-            if let Some(error) = response_obj.get("error") {
-                let error_msg = error.as_str().unwrap_or("Unknown error");
-                println!(
-                    "  {} Account is not a stash or staking unavailable: {}",
-                    "+".green(),
-                    error_msg
-                );
-            }
+        if let Some(response_obj) = json.as_object()
+            && let Some(error) = response_obj.get("error")
+        {
+            let error_msg = error.as_str().unwrap_or("Unknown error");
+            println!(
+                "  {} Account is not a stash or staking unavailable: {}",
+                "+".green(),
+                error_msg
+            );
         }
     } else {
         assert!(

@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn test_decode_region_record_invalid() {
         // Not enough bytes for a valid RegionRecord
-        let bytes = vec![0x00, 0x01];
+        let bytes = [0x00, 0x01];
         let result = RegionRecord::decode(&mut &bytes[..]);
         assert!(result.is_err());
     }
@@ -370,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_regions_sorting_by_core() {
-        let mut regions = vec![
+        let mut regions = [
             RegionInfo {
                 core: 52,
                 begin: 100,

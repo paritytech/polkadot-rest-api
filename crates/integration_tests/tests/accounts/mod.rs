@@ -200,14 +200,13 @@ impl EndpointType {
 
 /// Check if relay chain is not available and test should be skipped
 pub fn should_skip_rc_test(status: u16, json: &serde_json::Value) -> bool {
-    if status == 400 {
-        if let Some(response_obj) = json.as_object() {
-            if let Some(error) = response_obj.get("error") {
-                let error_str = error.as_str().unwrap_or("");
-                if error_str.contains("Relay chain not available") {
-                    return true;
-                }
-            }
+    if status == 400
+        && let Some(response_obj) = json.as_object()
+        && let Some(error) = response_obj.get("error")
+    {
+        let error_str = error.as_str().unwrap_or("");
+        if error_str.contains("Relay chain not available") {
+            return true;
         }
     }
     false
@@ -215,16 +214,15 @@ pub fn should_skip_rc_test(status: u16, json: &serde_json::Value) -> bool {
 
 /// Check if staking pallet is not available and test should be skipped
 pub fn should_skip_staking_test(status: u16, json: &serde_json::Value) -> bool {
-    if status == 400 || status == 500 {
-        if let Some(response_obj) = json.as_object() {
-            if let Some(error) = response_obj.get("error") {
-                let error_str = error.as_str().unwrap_or("");
-                if error_str.contains("Staking pallet not available")
-                    || error_str.contains("not available on this chain")
-                {
-                    return true;
-                }
-            }
+    if (status == 400 || status == 500)
+        && let Some(response_obj) = json.as_object()
+        && let Some(error) = response_obj.get("error")
+    {
+        let error_str = error.as_str().unwrap_or("");
+        if error_str.contains("Staking pallet not available")
+            || error_str.contains("not available on this chain")
+        {
+            return true;
         }
     }
     false

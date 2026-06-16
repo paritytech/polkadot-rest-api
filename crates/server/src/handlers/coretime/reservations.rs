@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn test_extract_reservation_info_multiple_reservations() {
-        let reservations = vec![
+        let reservations = [
             vec![ScheduleItem {
                 mask: [0xFF; CORE_MASK_SIZE],
                 assignment: CoreAssignment::Task(1000),

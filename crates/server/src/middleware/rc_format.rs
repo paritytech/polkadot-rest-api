@@ -304,19 +304,19 @@ mod tests {
             Err(_) => return Response::from_parts(parts, Body::from(bytes)),
         };
 
-        if let serde_json::Value::Array(arr) = &value {
-            if arr.is_empty() {
-                let result = serde_json::json!({
-                    "rcBlock": null,
-                    "parachainDataPerBlock": []
-                });
-                if let Ok(new_bytes) = serde_json::to_vec(&result) {
-                    parts.headers.insert(
-                        axum::http::header::CONTENT_LENGTH,
-                        axum::http::HeaderValue::from(new_bytes.len()),
-                    );
-                    return Response::from_parts(parts, Body::from(new_bytes));
-                }
+        if let serde_json::Value::Array(arr) = &value
+            && arr.is_empty()
+        {
+            let result = serde_json::json!({
+                "rcBlock": null,
+                "parachainDataPerBlock": []
+            });
+            if let Ok(new_bytes) = serde_json::to_vec(&result) {
+                parts.headers.insert(
+                    axum::http::header::CONTENT_LENGTH,
+                    axum::http::HeaderValue::from(new_bytes.len()),
+                );
+                return Response::from_parts(parts, Body::from(new_bytes));
             }
         }
 
