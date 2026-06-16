@@ -29,7 +29,7 @@ ARG VCS_REF=main
 ARG BUILD_DATE=""
 
 LABEL summary="Polkadot REST API." \
-	name="parity/polkadot-rest-api" \
+	name="paritytech/polkadot-rest-api" \
 	maintainer="devops-team@parity.io" \
 	version="${VERSION}" \
 	description="Polkadot REST API - Rust implementation of Substrate API Sidecar." \
