@@ -407,7 +407,7 @@ mod tests {
             },
         ];
 
-        let workloads = vec![
+        let workloads = [
             WorkloadInfo {
                 core: 0,
                 task: Some(2000),

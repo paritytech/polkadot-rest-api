@@ -126,7 +126,9 @@ mod tests {
         pub at: Option<String>,
     }
 
-    async fn test_handler(JsonQuery(_params): JsonQuery<TestParams>) -> &'static str {
+    async fn test_handler(JsonQuery(params): JsonQuery<TestParams>) -> &'static str {
+        // read the parsed fields so they aren't flagged as dead code
+        let _ = (&params.event_docs, &params.at);
         "ok"
     }
 
