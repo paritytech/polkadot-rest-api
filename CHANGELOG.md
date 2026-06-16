@@ -6,6 +6,19 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.4] (2026-06-16)
+
+### Fixes
+
+- **Decode tuple fields in events**: Fixed decoding of tuple-typed fields in event arguments. (#358)
+- **Surface failed asset-balance queries**: The asset-balance endpoint now reports errors from individual failed asset queries instead of silently dropping them. (#355)
+- **Append extrinsic metadata to the metadata blob**: The transaction metadata blob now includes extrinsic metadata and additional extra info. (#352)
+- **Correct Docker image name and publish `latest` tag**: Fixed the published image name to `paritytech/` and added publishing of the `latest` tag. (#354)
+
+### CI
+
+- **Bump pinned Rust nightly to `nightly-2026-06-16`**: Updated the pinned CI toolchain and fixed the new clippy lints it surfaced (boxed the large `OnlineClientAtBlockError` variant to satisfy `result_large_err`). Added a `RELEASE.md` note to check the nightly pin before releases. (#359)
+
 ## [0.1.3] (2026-06-08)
 
 ### Fixes
