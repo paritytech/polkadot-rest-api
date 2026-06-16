@@ -47,6 +47,12 @@ pub struct AssetBalancesQueryParams {
     /// When true, include assets with zero balance. Defaults to false.
     #[serde(default)]
     pub show_empty: bool,
+
+    /// When true, fail the whole request with a 503 if any per-asset query errors,
+    /// instead of returning a partial 200 response. Opt-in (defaults to false) so the
+    /// default behavior stays non-breaking; see issue #342.
+    #[serde(default)]
+    pub strict: bool,
 }
 
 // ================================================================================================
@@ -54,11 +60,28 @@ pub struct AssetBalancesQueryParams {
 // ================================================================================================
 
 /// Response for GET /accounts/{accountId}/asset-balances
+///
+/// Note (issue #342): a missing `assetId` in `assets` means the account holds none
+/// of that asset — it is NOT equivalent to a zero balance when `partial` is true.
+/// If any per-asset query failed, `partial` is true and the failed assets are listed
+/// in `errors`; treat the asset list as incomplete in that case.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetBalancesResponse {
     pub at: BlockInfo,
     pub assets: Vec<AssetBalance>,
+
+    /// True when at least one requested asset could not be fetched/decoded and was
+    /// therefore omitted from `assets`. Absent (not serialized) when the result is
+    /// complete, so existing clients see no change.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub partial: bool,
+
+    /// The assets whose per-asset query failed, with a generic reason. Absent (not
+    /// serialized) when empty, and capped in length — `partial` (not the length of
+    /// this list) is the authoritative "result is incomplete" signal.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<AssetBalanceQueryError>,
 
     // Only present when useRcBlock=true
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -67,6 +90,16 @@ pub struct AssetBalancesResponse {
     pub rc_block_number: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ah_timestamp: Option<String>,
+}
+
+/// A per-asset failure surfaced in `AssetBalancesResponse::errors` (issue #342).
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetBalanceQueryError {
+    /// Asset ID as string (matches the `assetId` format used elsewhere in the response).
+    pub asset_id: String,
+    /// Human-readable failure reason (e.g. the underlying RPC error).
+    pub reason: String,
 }
 
 /// Block information
@@ -261,6 +294,16 @@ pub enum AccountsError {
     // ---- Generic internal error ----
     #[error("Internal error: {0}")]
     InternalError(String),
+
+    // ---- Asset balance strict-mode error (issue #342) ----
+    #[error("Partial result: {0} asset balance(s) could not be fetched")]
+    PartialAssetBalances(usize),
+
+    // ---- Asset id enumeration failed (issue #342) ----
+    // Pallet availability is checked before enumeration, so this is a transient
+    // storage/RPC failure, not a client error. Generic message (no internal detail).
+    #[error("failed to enumerate assets on this chain")]
+    AssetIdsQueryFailed,
 }
 
 impl From<StorageError> for AccountsError {
@@ -393,6 +436,12 @@ impl IntoResponse for AccountsError {
                 if matches!(inner, RcBlockError::BlockNotFound(_)) =>
             {
                 (StatusCode::BAD_REQUEST, inner.to_string())
+            }
+            // Strict mode (issue #342): per-asset queries failed (typically transient
+            // upstream RPC errors), so report 503 to signal "retry" rather than 500.
+            // Asset-id enumeration failure is likewise transient (pallet already checked).
+            AccountsError::PartialAssetBalances(_) | AccountsError::AssetIdsQueryFailed => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
@@ -1223,6 +1272,68 @@ mod tests {
         let json = r#"{"assets": [1984, 2000]}"#;
         let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.assets, Some(vec![1984, 2000]));
+    }
+
+    // --- strict flag + partial response contract (issue #342) ---
+
+    #[test]
+    fn test_asset_balances_query_strict_defaults_false() {
+        let json = r#"{"at": "100"}"#;
+        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        assert!(!params.strict);
+    }
+
+    #[test]
+    fn test_asset_balances_query_accepts_strict() {
+        let json = r#"{"strict": true}"#;
+        let params: AssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+        assert!(params.strict);
+    }
+
+    #[test]
+    fn test_asset_balances_response_omits_partial_and_errors_when_complete() {
+        let response = AssetBalancesResponse {
+            at: BlockInfo {
+                hash: "0xabc".to_string(),
+                height: "100".to_string(),
+            },
+            assets: vec![],
+            partial: false,
+            errors: vec![],
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+        let json = serde_json::to_value(&response).unwrap();
+        // Complete results look exactly like before: no new keys for existing clients.
+        assert!(json.get("partial").is_none());
+        assert!(json.get("errors").is_none());
+    }
+
+    #[test]
+    fn test_asset_balances_response_includes_partial_and_errors_when_incomplete() {
+        let response = AssetBalancesResponse {
+            at: BlockInfo {
+                hash: "0xabc".to_string(),
+                height: "100".to_string(),
+            },
+            assets: vec![],
+            partial: true,
+            errors: vec![AssetBalanceQueryError {
+                asset_id: "1337".to_string(),
+                reason: "rpc failure".to_string(),
+            }],
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+        };
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["partial"], serde_json::json!(true));
+        assert_eq!(json["errors"][0]["assetId"], serde_json::json!("1337"));
+        assert_eq!(
+            json["errors"][0]["reason"],
+            serde_json::json!("rpc failure")
+        );
     }
 
     #[test]
