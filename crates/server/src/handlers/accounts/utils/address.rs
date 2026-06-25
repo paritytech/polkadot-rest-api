@@ -291,7 +291,10 @@ mod tests {
 
         // The decoded key matches the published public key for this account.
         let expected = "0xe46d5f813e6b106d1f05542a8919ce950dc6a7693d82ed78bd9265e0fca4fc65";
-        assert_eq!(format!("0x{}", hex::encode(<[u8; 32]>::from(from_42))), expected);
+        assert_eq!(
+            format!("0x{}", hex::encode(<[u8; 32]>::from(from_42))),
+            expected
+        );
     }
 
     #[test]
