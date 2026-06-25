@@ -57,9 +57,9 @@ pub async fn get_pool_asset_approvals(
     Path(account_id): Path<String>,
     JsonQuery(params): JsonQuery<PoolAssetApprovalQueryParams>,
 ) -> Result<Response, AccountsError> {
-    let account = validate_and_parse_address(&account_id, state.chain_info.ss58_prefix)?;
+    let account = validate_and_parse_address(&account_id)?;
 
-    let delegate = validate_and_parse_address(&params.delegate, state.chain_info.ss58_prefix)
+    let delegate = validate_and_parse_address(&params.delegate)
         .map_err(|_| AccountsError::InvalidDelegateAddress(params.delegate.clone()))?;
 
     if params.use_rc_block.unwrap_or(false) {

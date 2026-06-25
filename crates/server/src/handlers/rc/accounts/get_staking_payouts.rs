@@ -60,7 +60,7 @@ pub async fn get_staking_payouts(
 ) -> Result<Response, AccountsError> {
     // Get the relay chain ss58_prefix for address validation
     let rc_ss58_prefix = get_relay_chain_ss58_prefix(&state).await?;
-    let account = validate_and_parse_address(&account_id, rc_ss58_prefix)?;
+    let account = validate_and_parse_address(&account_id)?;
 
     // Get the relay chain client and info
     let (rc_client, rc_rpc_client, rc_rpc) = get_relay_chain_access(&state).await?;
