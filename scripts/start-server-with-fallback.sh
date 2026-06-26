@@ -34,50 +34,53 @@ fi
 
 # Define RPC URLs per chain (primary first, then fallbacks)
 case $CHAIN in
+    # NOTE: Parity-hosted RPCs (*.polkadot.io) are rate-limited; keep them last.
     polkadot)
         RPC_URLS=(
-            # "wss://rpc.polkadot.io" NOTE: Do not use parity hosted RPC nodes because of rate limiting
-            "wss://polkadot.dotters.network"
             "wss://polkadot-rpc.n.dwellir.com"
+            "wss://rpc-polkadot.luckyfriday.io"
+            "wss://polkadot.api.onfinality.io/public-ws"
         )
         ;;
     kusama)
         RPC_URLS=(
-            "wss://kusama.dotters.network"
             "wss://kusama-rpc.n.dwellir.com"
             "wss://kusama.api.onfinality.io/public-ws"
         )
         ;;
     asset-hub-polkadot)
         RPC_URLS=(
-            "wss://asset-hub-polkadot.dotters.network"
-            "wss://statemint.api.onfinality.io/public-ws"
+            "wss://asset-hub-polkadot-rpc.n.dwellir.com"
+            "wss://rpc-asset-hub-polkadot.luckyfriday.io"
+            "wss://polkadot-asset-hub-rpc.polkadot.io" # Parity-hosted, rate-limited; last resort
         )
-        RELAY_URL="wss://polkadot.dotters.network"
+        RELAY_URL="wss://polkadot-rpc.n.dwellir.com"
         ;;
     asset-hub-kusama)
         RPC_URLS=(
-            "wss://asset-hub-kusama.dotters.network"
             "wss://asset-hub-kusama-rpc.n.dwellir.com"
+            "wss://rpc-asset-hub-kusama.luckyfriday.io"
         )
-        RELAY_URL="wss://kusama.dotters.network"
+        RELAY_URL="wss://kusama-rpc.n.dwellir.com"
         ;;
     westend)
         RPC_URLS=(
-            "wss://westend-rpc.dwellir.com"
-            "wss://westend-rpc-tn.dwellir.com"
+            "wss://westend-rpc.n.dwellir.com"
+            "wss://westend-rpc.polkadot.io" # Parity-hosted, rate-limited; last resort
         )
         ;;
     coretime-kusama)
         RPC_URLS=(
-            "wss://coretime-kusama.dotters.network"
             "wss://coretime-kusama-rpc.n.dwellir.com"
+            "wss://rpc-coretime-kusama.luckyfriday.io"
+            "wss://coretime-kusama.api.onfinality.io/public-ws"
         )
         ;;
     coretime-polkadot)
         RPC_URLS=(
-            "wss://coretime-polkadot.dotters.network"
             "wss://coretime-polkadot-rpc.n.dwellir.com"
+            "wss://rpc-coretime-polkadot.luckyfriday.io"
+            "wss://coretime-polkadot.api.onfinality.io/public-ws"
         )
         ;;
     *)

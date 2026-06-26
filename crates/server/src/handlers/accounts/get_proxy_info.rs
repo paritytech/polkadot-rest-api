@@ -52,7 +52,7 @@ pub async fn get_proxy_info(
     Path(account_id): Path<String>,
     JsonQuery(params): JsonQuery<ProxyInfoQueryParams>,
 ) -> Result<Response, AccountsError> {
-    let account = validate_and_parse_address(&account_id, state.chain_info.ss58_prefix)?;
+    let account = validate_and_parse_address(&account_id)?;
 
     if params.use_rc_block {
         return handle_use_rc_block(state, account, params).await;

@@ -28,29 +28,17 @@ pub fn get_network_name(prefix: u16) -> Option<String> {
     }
 }
 
-/// Validate and parse account address (supports SS58 and hex formats)
+/// Validate and parse account address (supports SS58 and hex formats).
 ///
-/// For SS58 addresses, validates that the address uses the expected network prefix.
-/// Hex addresses (0x-prefixed) are accepted regardless of prefix.
-pub fn validate_and_parse_address(
-    addr: &str,
-    ss58_prefix: u16,
-) -> Result<AccountId32, AddressValidationError> {
-    use sp_core::crypto::Ss58AddressFormat;
-
-    // Try SS58 format first - decode and validate the prefix matches
-    if let Ok((account, version)) = AccountId32::from_ss58check_with_version(addr) {
-        let expected_format = Ss58AddressFormat::custom(ss58_prefix);
-        if version == expected_format {
-            return Ok(account);
-        }
-        // Address decoded but wrong network prefix
-        return Err(AddressValidationError(format!(
-            "Address '{}' uses SS58 prefix {} but expected prefix {}",
-            addr,
-            u16::from(version),
-            ss58_prefix
-        )));
+/// Validates checksum and length but is **lenient about the SS58 network
+/// prefix**: an account *is* its 32-byte public key, and the SS58 prefix is
+/// display-only metadata (`System.Account` is keyed by the raw bytes). Any
+/// valid prefix — and hex (`0x…`) addresses, which carry no prefix — decode to
+/// the same `AccountId32`.
+pub fn validate_and_parse_address(addr: &str) -> Result<AccountId32, AddressValidationError> {
+    // Try SS58 format first - decode and accept any network prefix.
+    if let Ok((account, _version)) = AccountId32::from_ss58check_with_version(addr) {
+        return Ok(account);
     }
 
     // Try hex format (0x-prefixed, 32 bytes)
@@ -241,58 +229,79 @@ pub fn validate_address(address: &str) -> AddressDetails {
 mod tests {
     use super::*;
 
-    // Common SS58 prefixes for testing
-    const POLKADOT_PREFIX: u16 = 0;
-    const KUSAMA_PREFIX: u16 = 2;
-    const SUBSTRATE_PREFIX: u16 = 42;
-
     #[test]
     fn test_address_validation_hex() {
-        // Alice's address in hex - should work with any prefix
+        // Alice's address in hex - carries no prefix, always accepted.
         let addr = "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d";
-        assert!(validate_and_parse_address(addr, POLKADOT_PREFIX).is_ok());
-        assert!(validate_and_parse_address(addr, KUSAMA_PREFIX).is_ok());
+        assert!(validate_and_parse_address(addr).is_ok());
     }
 
     #[test]
     fn test_address_validation_ss58_polkadot() {
-        // Alice's address in SS58 (Polkadot prefix 0)
+        // Alice's address in SS58 (Polkadot prefix 0) decodes fine.
         let addr = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
-        // Should succeed with correct prefix
-        assert!(validate_and_parse_address(addr, POLKADOT_PREFIX).is_ok());
-        // Should fail with wrong prefix
-        assert!(validate_and_parse_address(addr, KUSAMA_PREFIX).is_err());
+        assert!(validate_and_parse_address(addr).is_ok());
     }
 
     #[test]
     fn test_address_validation_ss58_substrate() {
-        // Alice's address in SS58 (Substrate generic prefix 42)
+        // Alice's address in SS58 (Substrate generic prefix 42) decodes fine;
+        // the prefix is no longer enforced against the chain.
         let addr = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
-        // Should succeed with correct prefix
-        assert!(validate_and_parse_address(addr, SUBSTRATE_PREFIX).is_ok());
-        // Should fail with wrong prefix
-        assert!(validate_and_parse_address(addr, POLKADOT_PREFIX).is_err());
+        assert!(validate_and_parse_address(addr).is_ok());
     }
 
     #[test]
     fn test_address_validation_invalid() {
         let addr = "invalid-address";
-        assert!(validate_and_parse_address(addr, POLKADOT_PREFIX).is_err());
+        assert!(validate_and_parse_address(addr).is_err());
     }
 
     #[test]
     fn test_address_validation_short_hex() {
         let addr = "0x1234"; // Too short
-        assert!(validate_and_parse_address(addr, POLKADOT_PREFIX).is_err());
+        assert!(validate_and_parse_address(addr).is_err());
     }
 
     #[test]
-    fn test_address_validation_wrong_prefix_error_message() {
-        // Polkadot address with Kusama prefix should give informative error
-        let addr = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5";
-        let result = validate_and_parse_address(addr, KUSAMA_PREFIX);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.0.contains("prefix"));
+    fn test_address_validation_cross_prefix_same_account() {
+        // The same 32-byte key encoded under different SS58 prefixes must
+        // decode to the same AccountId32, regardless of the chain's prefix.
+        // (prefix is display-only; System.Account is keyed by the raw bytes.)
+        let polkadot = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5"; // prefix 0
+        let substrate = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"; // prefix 42
+
+        let from_polkadot = validate_and_parse_address(polkadot).unwrap();
+        let from_substrate = validate_and_parse_address(substrate).unwrap();
+        assert_eq!(from_polkadot, from_substrate);
+    }
+
+    #[test]
+    fn test_address_validation_generic_prefix_accepted_on_prefix_0_chain() {
+        // A generic (prefix-42) encoding of a key must be accepted regardless of
+        // the chain's prefix and resolve to the same AccountId32 as its prefix-0
+        // encoding.
+        let prefix_42 = "5HEDGMG7mYqh18Xs4BZpYZ3u7EPWUJ8hPDTJhq3cDZh1ztRW";
+        let prefix_0 = "16AWQgXBdL7ASfYP1pcpght3xrPAAbgqTiBns82xmeiYBEQm";
+
+        let from_42 = validate_and_parse_address(prefix_42)
+            .expect("generic prefix-42 address must be accepted");
+        let from_0 = validate_and_parse_address(prefix_0).unwrap();
+        assert_eq!(from_42, from_0);
+
+        // The decoded key matches the published public key for this account.
+        let expected = "0xe46d5f813e6b106d1f05542a8919ce950dc6a7693d82ed78bd9265e0fca4fc65";
+        assert_eq!(
+            format!("0x{}", hex::encode(<[u8; 32]>::from(from_42))),
+            expected
+        );
+    }
+
+    #[test]
+    fn test_address_validation_bad_checksum_still_rejected() {
+        // Leniency is only about the network prefix. A corrupted checksum
+        // (last char flipped) must still be rejected.
+        let bad = "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp6";
+        assert!(validate_and_parse_address(bad).is_err());
     }
 }
