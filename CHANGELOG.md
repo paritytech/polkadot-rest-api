@@ -6,6 +6,16 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.5] (2026-06-30)
+
+### Fixes
+
+- **Accept any SS58 prefix on account read endpoints**: Account read endpoints now accept addresses encoded with any SS58 prefix instead of rejecting addresses from other networks. (#363)
+
+### CI
+
+- **Remove zizmor workflow**: Removed the `zizmor.yml` GitHub Actions scanning workflow; static analysis scanning has moved to the central security platform. (#364)
+
 ## [0.1.4] (2026-06-16)
 
 ### Fixes
