@@ -22,7 +22,7 @@ Update the `version` field in the root `Cargo.toml`:
 ```toml
 # Cargo.toml
 [workspace.package]
-version = "0.1.0-beta.X"
+version = "0.X.X"
 ```
 
 ## 2. Update `polkadot-rest-api-config` dependency version
@@ -33,7 +33,7 @@ Update the `polkadot-rest-api-config` version in both crates that depend on it:
 - `crates/integration_tests/Cargo.toml`
 
 ```toml
-polkadot-rest-api-config = { path = "../config", version = "0.1.0-beta.X" }
+polkadot-rest-api-config = { path = "../config", version = "0.X.X" }
 ```
 
 Then run `cargo check` to update `Cargo.lock`.
