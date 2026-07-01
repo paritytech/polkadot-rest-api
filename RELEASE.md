@@ -2,13 +2,16 @@
 
 Steps to prepare a new release of `polkadot-rest-api`.
 
-> **Before you start — check the CI toolchain pin.** CI pins a specific Rust
-> nightly in `.github/workflows/ci.yml` (the `toolchain: nightly-YYYY-MM-DD`
-> lines, currently repeated across all jobs). Check whether it's stale and bump
-> it if needed — but do this in a **separate PR ahead of the release**, never in
-> the release PR itself: a newer nightly can surface new clippy lints that need
-> fixing, and that churn should not block the release. Verify a bump locally with
-> the same checks CI runs:
+> **Before you start - is the CI nightly stale?** Compare the pinned nightly to the latest:
+>
+> ```bash
+> grep -n "toolchain: nightly-" .github/workflows/ci.yml   # the date CI pins
+> rustup check                                             # shows latest nightly (doesn't install)
+> ```
+>
+> If the pin is recent, skip to step 1. If it's stale, bump it in its **own PR before the
+> release** (a newer nightly can add clippy lints - keep that churn out of the release PR). Example [PR](https://github.com/paritytech/polkadot-rest-api/pull/359).
+> Verify the bump locally, substituting the pinned date:
 >
 > ```bash
 > cargo +nightly-YYYY-MM-DD fmt --all -- --check
@@ -48,8 +51,8 @@ Add a new entry to `CHANGELOG.md` for the release version, following the existin
 
 Update the hardcoded version in these files:
 
-1. **`crates/server/src/openapi.rs`** — update the `version` in the `#[openapi]` attribute.
-2. **`docs/index.html`** — update the version in three places: `#api-version`, `#version-display`, and `#version-display-gs`.
+1. **`crates/server/src/openapi.rs`**: update the `version` in the `#[openapi]` attribute.
+2. **`docs/index.html`**: update the version in three places: `#api-version`, `#version-display`, and `#version-display-gs`.
 
 ### Regenerate the OpenAPI spec and rebuild
 
@@ -73,33 +76,65 @@ cargo build --release --package polkadot-rest-api
 
 The built `dist/` folder is embedded into the API binary at compile time using `include_dir`, so the documentation is served directly by the API at `/docs/`.
 
-## 5. Create a PR
+## 5. Create the release PR
 
-Commit all changes with the message `chore: release v0.1.0-beta.X` and open a PR against `main`.
-
-After merging, tag the release:
+Commit all changes with the message `chore: release v0.X.X` and open a PR against `main`.
 
 ```bash
-git tag v0.1.0-beta.X
-git push origin v0.1.0-beta.X
+git add -A
+git commit -m "chore: release v0.X.X"
+```
+
+After the PR merges to `main`, tag the release:
+
+```bash
+git checkout main && git pull
+git tag v0.X.X
+git push origin v0.X.X
 ```
 
 ## 6. Publish to crates.io
 
-1. Create an API token at [crates.io](https://crates.io).
-2. Log in:
-   ```bash
-   cargo login
-   ```
-3. Publish `polkadot-rest-api-config` first, then `polkadot-rest-api`. For each package, dry-run before publishing:
-   ```bash
-   cargo publish -p polkadot-rest-api-config --dry-run
-   cargo publish -p polkadot-rest-api-config
+Publish `polkadot-rest-api-config` **first**, then `polkadot-rest-api`. You must be a crate **owner** of both crates (see the [Appendix](#appendix-cratesio-onboarding) for ownership + token setup). Log in, then dry-run each package before publishing:
 
-   cargo publish -p polkadot-rest-api --dry-run
-   cargo publish -p polkadot-rest-api
-   ```
+```bash
+cargo login   # paste the token
+
+cargo publish -p polkadot-rest-api-config --dry-run
+cargo publish -p polkadot-rest-api-config
+
+cargo publish -p polkadot-rest-api --dry-run
+cargo publish -p polkadot-rest-api
+```
 
 ## 7. Publish the Docker image
 
 Create a release on GitHub, selecting the corresponding version tag and including a release summary, then publish the release. The CI will handle Docker image publishing automatically.
+
+Verify the tag appears at https://hub.docker.com/r/paritytech/polkadot-rest-api
+
+## 8. Update the public instances
+
+All public instances of `polkadot-rest-api` need to be updated to latest version, so create an issue in the `devops-cloud-infra` repository (example issue #3886).
+
+## 9. Final check
+
+- crates: [config](https://crates.io/crates/polkadot-rest-api-config) - [main](https://crates.io/crates/polkadot-rest-api)
+- [GitHub release](https://github.com/paritytech/polkadot-rest-api/releases)
+- [Docker tags](https://hub.docker.com/r/paritytech/polkadot-rest-api)
+- All public instances up to date; any external partner waiting on a fix is informed.
+
+## Appendix: crates.io onboarding
+
+`crates.io` identity is your **GitHub username**. To publish you must be an owner of **both** crates.
+
+- Ownership often comes via the `paritytech/core-devs` team; otherwise an existing owner runs `cargo owner --add <github-username>` per crate.
+- A **verified email** is required before accepting invites or publishing:
+  1. Save your email at https://crates.io/settings/profile and click the confirmation link.
+  2. Accept both invites at https://crates.io/me/pending-invites.
+
+**API token (least privilege)** at https://crates.io/settings/tokens:
+
+- Scope: **only `publish-update`** (both crates already exist). Leave `publish-new`, `yank`, `change-owners` unchecked.
+- Restrict to crates matching `polkadot-rest-api*`.
+- Optional ~90-day expiry; give it an identifiable name (e.g. `rest-api-release`).
