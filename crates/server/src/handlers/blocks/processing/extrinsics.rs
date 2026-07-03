@@ -200,9 +200,21 @@ async fn extract_extrinsics_impl(
                 .address_bytes()
                 .ok_or(GetBlockError::MissingAddressBytes)?;
 
-            // Try to extract era from raw extrinsic bytes
-            // Era comes right after address and signature in the SignedExtra/TransactionExtension
-            let era_info = utils::extract_era_from_extrinsic_bytes(extrinsic.bytes());
+            // Try to extract era from the transaction extensions payload. The payload
+            // range is computed by frame-decode, so it is correct regardless of the
+            // compact length prefix that `extrinsic.bytes()` carries (the raw block
+            // body entry is length-prefixed), and it already excludes the extension
+            // version byte for v5 General extrinsics. Era is the first explicit
+            // field of the extensions payload.
+            //
+            // Note: do NOT pass `extrinsic.bytes()` to
+            // `extract_era_from_extrinsic_bytes` here — those bytes include the
+            // compact length prefix, which that parser would misread as the
+            // version byte (see its docs).
+            let era_info = extrinsic.transaction_extensions_bytes().and_then(|ext| {
+                let mut offset = 0;
+                utils::decode_era_from_bytes(ext, &mut offset)
+            });
 
             let signer_hex = format!("0x{}", hex::encode(addr_bytes));
             let signer_ss58 = utils::decode_address_to_ss58(&signer_hex, ss58_prefix)

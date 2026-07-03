@@ -477,9 +477,22 @@ fn extract_signed_info(
             }
         }
 
-        // Use decoded era, or fallback to extracting from raw bytes, or default to immortal
+        // Use decoded era, or fall back to decoding it at the start of the
+        // extensions payload (era is the first explicit extension field), or
+        // default to immortal. The payload range comes from frame-decode, so
+        // it is correct even though `tx_bytes` carries the compact length
+        // prefix (decode_extrinsic requires it), and it already excludes the
+        // extension version byte for v5 General extrinsics.
+        //
+        // Note: do NOT pass `tx_bytes` to `extract_era_from_extrinsic_bytes`
+        // here — those bytes include the compact length prefix, which that
+        // parser would misread as the version byte (see its docs).
         let era = era_value
-            .or_else(|| utils::extract_era_from_extrinsic_bytes(tx_bytes))
+            .or_else(|| {
+                let ext_payload = &tx_bytes[extensions.range()];
+                let mut offset = 0;
+                utils::decode_era_from_bytes(ext_payload, &mut offset)
+            })
             .unwrap_or(EraInfo {
                 immortal_era: Some("0x00".to_string()),
                 mortal_era: None,
@@ -487,11 +500,14 @@ fn extract_signed_info(
 
         (nonce_value, tip_value, era)
     } else {
-        // No extensions - try to extract era from raw bytes
-        let era = utils::extract_era_from_extrinsic_bytes(tx_bytes).unwrap_or(EraInfo {
+        // No extensions payload - there is no era to decode; default to
+        // immortal. (The previous fallback passed the length-prefixed
+        // `tx_bytes` to `extract_era_from_extrinsic_bytes`, which misparsed
+        // the compact length prefix as the version byte.)
+        let era = EraInfo {
             immortal_era: Some("0x00".to_string()),
             mortal_era: None,
-        });
+        };
         (None, None, era)
     };
 
