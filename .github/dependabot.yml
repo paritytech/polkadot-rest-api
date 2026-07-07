@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Keep the SHA-pinned GitHub Actions fresh. Dependabot bumps the pinned
+  # commit hash (and its `# vN` comment) via reviewable PRs, so pinning stays
+  # safe without going stale. See issue #365.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Conventional prefix so PR titles pass the pr-title check (semantic.yml).
+    commit-message:
+      prefix: "ci"
+    # One grouped PR per week instead of one per action.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
