@@ -603,4 +603,39 @@ mod tests {
         assert_eq!(json["error"], "Failed to parse transaction.");
         assert_eq!(json["transaction"], "0x1234");
     }
+
+    /// Call-site regression test: feed a real length-prefixed extrinsic
+    /// through the full parse path and pin the era output.
+    ///
+    /// `tx_bytes` here carry the compact length prefix (as required by
+    /// `decode_extrinsic`), so every byte range used by
+    /// `extract_signed_info` must be prefix-aware. With Asset Hub metadata
+    /// the era resolves via the named `CheckMortality` extension (its range
+    /// comes from frame-decode and is prefix-agnostic); the payload-range
+    /// fallback for metadatas without a named mortality extension is covered
+    /// by the util-layer tests in `utils/extrinsic.rs`.
+    #[tokio::test]
+    async fn test_parse_real_prefixed_extrinsic_decodes_mortal_era() {
+        use crate::test_fixtures::mock_rpc_client_builder;
+        use subxt_rpcs::client::RpcClient;
+
+        let rpc_client = RpcClient::new(mock_rpc_client_builder().build());
+        let client = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client(rpc_client)
+            .await
+            .expect("Failed to create OnlineClient");
+
+        // Real Asset Hub extrinsic (block 17742975, #2), exactly as
+        // chain_getBlock returns it — the compact length prefix 0xbd01 is
+        // still attached. Known era: Mortal(period=32, phase=11).
+        let body = ParseRequest {
+            tx: Some("0xbd01840072284f32719a49037a79da881b91b44bf642395ecba92b241619e21fb1c8a57a01b250abd5b7715a993a111d0db2f6742a8b108fd5a700b5c9e443f9fb14f79938d668ba315e48121b2bd2584b104014e6ede84fe35b77adcc9ff8030de5daef8ab4003e7b0100000000000000".to_string()),
+        };
+        let era = parse_internal(&client, 0, body).await.unwrap().0.era;
+
+        assert_eq!(
+            era.mortal_era,
+            Some(vec!["32".to_string(), "11".to_string()])
+        );
+        assert_eq!(era.immortal_era, None);
+    }
 }
