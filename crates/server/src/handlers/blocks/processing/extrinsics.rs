@@ -200,9 +200,21 @@ async fn extract_extrinsics_impl(
                 .address_bytes()
                 .ok_or(GetBlockError::MissingAddressBytes)?;
 
-            // Try to extract era from raw extrinsic bytes
-            // Era comes right after address and signature in the SignedExtra/TransactionExtension
-            let era_info = utils::extract_era_from_extrinsic_bytes(extrinsic.bytes());
+            // Try to extract era from the transaction extensions payload. The payload
+            // range is computed by frame-decode, so it is correct regardless of the
+            // compact length prefix that `extrinsic.bytes()` carries (the raw block
+            // body entry is length-prefixed), and it already excludes the extension
+            // version byte for v5 General extrinsics. Era is the first explicit
+            // field of the extensions payload.
+            //
+            // Note: do NOT pass `extrinsic.bytes()` to
+            // `extract_era_from_extrinsic_bytes` here — those bytes include the
+            // compact length prefix, which that parser would misread as the
+            // version byte (see its docs).
+            let era_info = extrinsic.transaction_extensions_bytes().and_then(|ext| {
+                let mut offset = 0;
+                utils::decode_era_from_bytes(ext, &mut offset)
+            });
 
             let signer_hex = format!("0x{}", hex::encode(addr_bytes));
             let signer_ss58 = utils::decode_address_to_ss58(&signer_hex, ss58_prefix)
@@ -385,4 +397,110 @@ async fn extract_extrinsics_impl(
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_fixtures::{TEST_BLOCK_NUMBER, TEST_GENESIS_HASH, mock_rpc_client_builder};
+    use serde_json::json;
+    use std::sync::{Arc, Mutex};
+    use subxt_rpcs::client::RpcClient;
+    use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
+
+    /// Real Asset Hub extrinsic (block 17742975, #2), exactly as it appears
+    /// in a `chain_getBlock` response: the block-body entry is
+    /// length-prefixed (compact prefix `0xbd 0x01`). Era: Mortal(32, 11).
+    const REAL_PREFIXED_EXTRINSIC: &str = "0xbd01840072284f32719a49037a79da881b91b44bf642395ecba92b241619e21fb1c8a57a01b250abd5b7715a993a111d0db2f6742a8b108fd5a700b5c9e443f9fb14f79938d668ba315e48121b2bd2584b104014e6ede84fe35b77adcc9ff8030de5daef8ab4003e7b0100000000000000";
+
+    /// `MakeWriter` that appends everything to a shared buffer so a test can
+    /// assert on emitted tracing output.
+    #[derive(Clone, Default)]
+    struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CaptureWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CaptureWriter {
+        type Writer = CaptureWriter;
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    /// Call-site regression test for the length-prefix era bug: process a
+    /// block whose body entry is a real length-prefixed extrinsic and assert
+    /// both the era output and that no era-decode warning is emitted.
+    ///
+    /// The warning assertion is the discriminating part: before #370 this
+    /// call site passed `extrinsic.bytes()` (which include the compact
+    /// length prefix) to `extract_era_from_extrinsic_bytes` for every signed
+    /// extrinsic, which misread the prefix byte as the version byte, walked
+    /// garbage, and logged `Failed to decode Era from bytes at offset 0` —
+    /// the WARN flood reported in #369. Reverting the call site to the
+    /// prefixed-bytes walk turns this test red.
+    #[tokio::test]
+    async fn test_extract_extrinsics_prefixed_body_entry_era_without_warning() {
+        let mock = mock_rpc_client_builder()
+            .method_handler("chain_getBlock", async |_params| {
+                MockJson(json!({
+                    "block": {
+                        "header": {
+                            "number": format!("0x{:x}", TEST_BLOCK_NUMBER),
+                            "parentHash": TEST_GENESIS_HASH,
+                            "stateRoot": TEST_GENESIS_HASH,
+                            "extrinsicsRoot": TEST_GENESIS_HASH,
+                            "digest": { "logs": [] }
+                        },
+                        "extrinsics": [REAL_PREFIXED_EXTRINSIC]
+                    },
+                    "justifications": null
+                }))
+            })
+            .build();
+
+        let rpc_client = RpcClient::new(mock);
+        let client = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client(rpc_client)
+            .await
+            .expect("Failed to create OnlineClient");
+        let at_block = client
+            .at_current_block()
+            .await
+            .expect("Failed at_current_block");
+
+        // Capture WARN-level tracing output while extracting. This relies on
+        // the current-thread tokio runtime of #[tokio::test]: set_default is
+        // thread-local, so it sees everything the extraction emits.
+        let captured = CaptureWriter::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .with_writer(captured.clone())
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let extrinsics = extract_extrinsics_with_client(&at_block, TEST_BLOCK_NUMBER)
+            .await
+            .expect("extraction should succeed");
+
+        assert_eq!(extrinsics.len(), 1);
+        assert_eq!(
+            extrinsics[0].era.mortal_era,
+            Some(vec!["32".to_string(), "11".to_string()])
+        );
+        assert_eq!(extrinsics[0].era.immortal_era, None);
+
+        let logs = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+        assert!(
+            !logs.contains("Failed to decode Era"),
+            "era decode warning emitted while processing a length-prefixed \
+             block-body entry (the #369 WARN flood):\n{logs}"
+        );
+    }
 }

@@ -137,7 +137,21 @@ pub fn decode_era_from_bytes(bytes: &[u8], offset: &mut usize) -> Option<EraInfo
 ///
 /// # Arguments
 ///
-/// * `bytes` - Raw extrinsic bytes from `extrinsic.bytes()` (without length prefix)
+/// * `bytes` - Raw extrinsic bytes **without** the compact length prefix
+///   (i.e. starting at the version byte).
+///
+/// # ⚠️ Length prefix warning
+///
+/// subxt's `ExtrinsicDetails::bytes()` returns the raw block-body entry,
+/// which **includes** the compact length prefix (frame-decode consumes that
+/// prefix as the first step of `decode_extrinsic`). Passing such bytes here
+/// misparses the prefix as the version byte: depending on the encoded
+/// length, the extrinsic is either silently misreported as immortal (prefix
+/// high bit unset) or parsed as garbage, typically failing with
+/// "Invalid period and phase" (prefix high bit set). Prefer decoding era
+/// from the extensions payload range provided by frame-decode/subxt
+/// (`transaction_extensions_bytes()` / `ExtrinsicExtensions::range()`),
+/// which is prefix-agnostic and also correct for v5 General extrinsics.
 ///
 /// # Returns
 ///
@@ -618,5 +632,58 @@ mod tests {
             Some(vec!["64".to_string(), "19".to_string()])
         );
         assert_eq!(offset, 2, "Should consume both era bytes");
+    }
+
+    /// Real Polkadot Asset Hub extrinsic (block 17742975, extrinsic #2),
+    /// as returned by `chain_getBlock`: the entry is length-prefixed
+    /// (`0xbd 0x01` compact prefix), version 0x84 (v4 signed), Sr25519
+    /// signature, era bytes `0xb4 0x00` => Mortal(period=32, phase=11).
+    const REAL_PREFIXED_EXTRINSIC: &str = "bd01840072284f32719a49037a79da881b91b44bf642395ecba92b241619e21fb1c8a57a01b250abd5b7715a993a111d0db2f6742a8b108fd5a700b5c9e443f9fb14f79938d668ba315e48121b2bd2584b104014e6ede84fe35b77adcc9ff8030de5daef8ab4003e7b0100000000000000";
+
+    #[test]
+    fn test_extract_era_real_extrinsic_without_length_prefix() {
+        // Strip the 2-byte compact length prefix: the parser expects bytes
+        // starting at the version byte and then finds Mortal(32, 11).
+        let full = hex::decode(REAL_PREFIXED_EXTRINSIC).unwrap();
+        let body = &full[2..];
+
+        let era = extract_era_from_extrinsic_bytes(body).expect("era should decode");
+        assert_eq!(era.immortal_era, None);
+        assert_eq!(
+            era.mortal_era,
+            Some(vec!["32".to_string(), "11".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_extract_era_misparses_length_prefixed_bytes() {
+        // Regression guard for the bug where subxt `ExtrinsicDetails::bytes()`
+        // (which INCLUDES the compact length prefix) was passed to this
+        // function: the prefix byte 0xbd has the high bit set, so it was
+        // misread as a signed version byte and the walk landed on garbage,
+        // failing Era::decode with "Invalid period and phase". The correct
+        // Mortal(32, 11) must never be produced from the prefixed bytes.
+        let full = hex::decode(REAL_PREFIXED_EXTRINSIC).unwrap();
+
+        let era = extract_era_from_extrinsic_bytes(&full);
+        assert!(
+            era.is_none(),
+            "length-prefixed bytes must not decode to a (corrupt) era, got {era:?}"
+        );
+    }
+
+    #[test]
+    fn test_decode_era_from_extensions_payload_first_bytes() {
+        // The fixed call sites decode era from the extensions payload range
+        // (era is the first explicit extension field). For the real
+        // extrinsic above the payload starts with 0xb4 0x00 => Mortal(32, 11).
+        let payload = [0xb4, 0x00, 0x3e, 0x7b, 0x01];
+        let mut offset = 0;
+        let era = decode_era_from_bytes(&payload, &mut offset).expect("era should decode");
+        assert_eq!(
+            era.mortal_era,
+            Some(vec!["32".to_string(), "11".to_string()])
+        );
+        assert_eq!(offset, 2);
     }
 }
