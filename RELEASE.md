@@ -2,21 +2,38 @@
 
 Steps to prepare a new release of `polkadot-rest-api`.
 
-> **Before you start - is the CI nightly stale?** Compare the pinned nightly to the latest:
->
-> ```bash
-> grep -n "toolchain: nightly-" .github/workflows/ci.yml   # the date CI pins
-> rustup check                                             # shows latest nightly (doesn't install)
-> ```
->
-> If the pin is recent, skip to step 1. If it's stale, bump it in its **own PR before the
-> release** (a newer nightly can add clippy lints - keep that churn out of the release PR). Example [PR](https://github.com/paritytech/polkadot-rest-api/pull/359).
-> Verify the bump locally, substituting the pinned date:
->
-> ```bash
-> cargo +nightly-YYYY-MM-DD fmt --all -- --check
-> cargo +nightly-YYYY-MM-DD clippy --workspace --all-features -- -D warnings
-> ```
+## Before you start
+
+Four pins are maintained by hand — Dependabot doesn't bump them. Check each; if stale, bump it in
+its **own PR before the release**.
+
+**1. CI nightly toolchain** (`ci.yml`) — a newer nightly can add clippy lints.
+```bash
+grep -n "toolchain: nightly-" .github/workflows/ci.yml   # pinned
+rustup check                                             # latest
+```
+If stale, bump the date and verify: `cargo +nightly-YYYY-MM-DD fmt --all -- --check` and `... clippy --workspace --all-features -- -D warnings`. Example: [#359](https://github.com/paritytech/polkadot-rest-api/pull/359).
+
+**2. `dtolnay/rust-toolchain` action** (`ci.yml`, `# master`) — no release tag, so Dependabot skips it.
+```bash
+pinned=$(grep -m1 -oE 'rust-toolchain@[0-9a-f]{40}' .github/workflows/ci.yml | cut -d@ -f2)
+git ls-remote https://github.com/dtolnay/rust-toolchain master | grep -q "$pinned" && echo "UP TO DATE" || echo "BEHIND"
+```
+If `BEHIND`, replace the SHA in **all** `ci.yml` occurrences (keep `# master`).
+
+**3. `ubuntu:22.04` container digest** (`benchmark.yml`) — a container image, not an action.
+```bash
+grep -n "ubuntu:22.04@sha256" .github/workflows/benchmark.yml    # pinned
+docker buildx imagetools inspect ubuntu:22.04 | grep -i digest   # latest (needs Docker)
+```
+If different, update the `@sha256:...` in `benchmark.yml`.
+
+**4. Build Rust version** (`Dockerfile`, `rust:X.Y.Z-...`) — no `docker` Dependabot ecosystem set up.
+```bash
+grep -n "FROM.*rust:" Dockerfile   # pinned build Rust
+rustup check                       # latest stable
+```
+If behind, bump the version in the `Dockerfile` `FROM` line.
 
 ## 1. Bump workspace version
 
