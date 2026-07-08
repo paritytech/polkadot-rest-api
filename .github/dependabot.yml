@@ -1,12 +1,16 @@
 version: 2
 updates:
   # Keep the SHA-pinned GitHub Actions fresh. Dependabot bumps the pinned
-  # commit hash (and its `# vN` comment) via reviewable PRs, so pinning stays
-  # safe without going stale. See issue #365.
+  # commit hash (and its `# vX.Y.Z` comment) via reviewable PRs, so pinning
+  # stays safe without going stale.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    # Wait before adopting a brand-new release — a compromised or broken
+    # version is often yanked within days (zizmor: dependabot-cooldown).
+    cooldown:
+      default-days: 7
     # Conventional prefix so PR titles pass the pr-title check (semantic.yml).
     commit-message:
       prefix: "ci"
