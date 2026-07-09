@@ -9,16 +9,23 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Least privilege: the benchmark job only reads the repo; the publish jobs
+# below elevate to contents:write to push results to the gh-pages branch.
+permissions:
+  contents: read
+
 jobs:
   benchmark:
     name: benchmark
     runs-on: ubuntu-latest
     container:
-      image: ubuntu:22.04
+      image: ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Install dependencies
         run: |
@@ -48,7 +55,7 @@ jobs:
         run: |
           MAX_RETRIES=3
           WAIT_PER_ATTEMPT=60
-          
+
           for attempt in $(seq 1 $MAX_RETRIES); do
             echo "Waiting for server to be ready (attempt $attempt/$MAX_RETRIES)..."
             for i in $(seq 1 $WAIT_PER_ATTEMPT); do
@@ -59,7 +66,7 @@ jobs:
               [ $((i % 15)) -eq 0 ] && echo "  Attempt $i/${WAIT_PER_ATTEMPT}: API not ready yet, retrying in 1s..."
               sleep 1
             done
-            
+
             if [ $attempt -lt $MAX_RETRIES ]; then
               echo "✗ Server not ready after ${WAIT_PER_ATTEMPT}s, retrying..."
               if [ -f server.pid ]; then
@@ -73,7 +80,7 @@ jobs:
               sleep 5
             fi
           done
-          
+
           echo "✗ Server failed to start after $MAX_RETRIES attempts"
           cat server.log
           exit 1
@@ -83,7 +90,7 @@ jobs:
           echo "Running benchmarks..."
           HARDWARE_PROFILE="ci_runner"
           SCENARIO="medium_load"
-          
+
           for benchmark_dir in benchmarks/*/; do
             BENCHMARK_NAME=$(basename "$benchmark_dir")
             # Skip if no lua file (not a benchmark directory)
@@ -108,7 +115,7 @@ jobs:
           pkill -f polkadot-rest-api || true
 
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: benchmark-results
           path: artifacts/
@@ -119,14 +126,16 @@ jobs:
     needs: [benchmark]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # github-action-benchmark pushes comparison data to the gh-pages branch
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
 
       - name: Download local benchmark results
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: benchmark-results
           path: artifacts
@@ -148,7 +157,7 @@ jobs:
           cat artifacts/comparison_results.json
 
       - name: Store comparison result on GitHub Pages
-        uses: benchmark-action/github-action-benchmark@4e0b38bc48375986542b13c0d8976b7b80c60c00
+        uses: benchmark-action/github-action-benchmark@4e0b38bc48375986542b13c0d8976b7b80c60c00 # v1.20.5
         with:
           tool: 'customBiggerIsBetter'
           output-file-path: artifacts/comparison_results.json
@@ -161,14 +170,16 @@ jobs:
     needs: [benchmark]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # github-action-benchmark pushes benchmark data to the gh-pages branch
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
 
       - name: Download benchmark results
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: benchmark-results
           path: artifacts
@@ -179,7 +190,7 @@ jobs:
           cat artifacts/benchmark_results.json
 
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@4e0b38bc48375986542b13c0d8976b7b80c60c00
+        uses: benchmark-action/github-action-benchmark@4e0b38bc48375986542b13c0d8976b7b80c60c00 # v1.20.5
         with:
           tool: 'customSmallerIsBetter'
           output-file-path: artifacts/benchmark_results.json
