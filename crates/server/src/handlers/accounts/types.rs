@@ -4,7 +4,7 @@
 //! Types for account-related handlers.
 
 use super::utils::AddressValidationError;
-use crate::handlers::common::accounts::StakingPayoutsQueryError;
+use crate::handlers::common::accounts::{RawEraPayouts, StakingPayoutsQueryError};
 use crate::state::RelayChainError;
 use crate::utils::{self, RcBlockError};
 use axum::{Json, http::StatusCode, response::IntoResponse};
@@ -938,8 +938,12 @@ pub struct EraPayoutsData {
     /// Total reward points for the era
     pub total_era_reward_points: String,
 
-    /// Total payout for the era
+    /// Total payout for the era (staker-reward pool only)
     pub total_era_payout: String,
+
+    /// Era-wide validator self-stake incentive pot for the era. "0" on non-DAP chains.
+    /// Add to `totalEraPayout` for the full validator era payout (matches `EraPaid.validator_payout`).
+    pub total_era_self_stake_incentive_payout: String,
 
     /// Individual payouts for validators nominated
     pub payouts: Vec<ValidatorPayout>,
@@ -969,6 +973,51 @@ pub struct ValidatorPayout {
 
     /// Nominator's stake behind this validator
     pub nominator_exposure: String,
+
+    /// This validator's total self-stake incentive for the era. "0" on non-DAP chains.
+    /// A validator-only reward: it is populated on every entry (informational for nominators) but
+    /// is only income for the account when `validatorId == accountId`, so do NOT sum it across
+    /// entries. When the queried account is this validator, add it to `nominatorStakingPayout` for
+    /// the validator's true era income.
+    pub validator_self_stake_incentive: String,
+}
+
+/// Maps the transport-agnostic `RawEraPayouts` (from the `common` query layer) into the HTTP
+/// response shape. Lives here — beside the response types it builds — and is shared by both the
+/// standard and RC staking-payouts handlers, keeping the balance-to-string mapping in one place
+/// without the `common` layer having to depend on these response types.
+impl From<&RawEraPayouts> for EraPayouts {
+    fn from(raw: &RawEraPayouts) -> Self {
+        match raw {
+            RawEraPayouts::Payouts(data) => EraPayouts::Payouts(EraPayoutsData {
+                era: data.era.to_string(),
+                total_era_reward_points: data.total_era_reward_points.to_string(),
+                total_era_payout: data.total_era_payout.to_string(),
+                total_era_self_stake_incentive_payout: data
+                    .total_era_self_stake_incentive_payout
+                    .to_string(),
+                payouts: data
+                    .payouts
+                    .iter()
+                    .map(|p| ValidatorPayout {
+                        validator_id: p.validator_id.clone(),
+                        nominator_staking_payout: p.nominator_staking_payout.to_string(),
+                        claimed: p.claimed,
+                        total_validator_reward_points: p.total_validator_reward_points.to_string(),
+                        validator_commission: p.validator_commission.to_string(),
+                        total_validator_exposure: p.total_validator_exposure.to_string(),
+                        nominator_exposure: p.nominator_exposure.to_string(),
+                        validator_self_stake_incentive: p
+                            .validator_self_stake_incentive
+                            .to_string(),
+                    })
+                    .collect(),
+            }),
+            RawEraPayouts::Message { message } => EraPayouts::Message {
+                message: message.clone(),
+            },
+        }
+    }
 }
 
 // ================================================================================================

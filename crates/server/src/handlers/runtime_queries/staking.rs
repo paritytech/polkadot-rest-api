@@ -764,6 +764,134 @@ pub async fn get_era_validator_reward(
     None
 }
 
+/// Era-level inputs for the validator self-stake incentive (`pallet_staking_async` / DAP),
+/// fetched **once per era** and shared across every validator in that era.
+///
+/// The self-stake incentive is a validator-only reward pot that is *separate* from
+/// `ErasValidatorReward` (which holds only the staker-reward pool). A validator's incentive is
+/// `floor(share × budget)` where `share = numerator / denominator`.
+///
+/// `weighted` selects **both** halves of that fraction and they MUST stay in lockstep: the
+/// `denominator` here is read from the storage item matching `weighted`, and the numerator built by
+/// `incentive_numerator` (in the payouts handler) branches on the same flag. Changing one without
+/// the other silently rescales every validator's share.
+#[derive(Debug, Clone, Copy)]
+pub struct EraIncentiveContext {
+    /// Era-wide incentive pot (`ErasValidatorIncentiveBudget[era]`).
+    pub budget: u128,
+    /// Shared share denominator: `ErasSumWeightedPoints[era]` when `weighted`, else
+    /// `ErasSumValidatorIncentiveWeight[era]`.
+    pub denominator: u128,
+    /// Whether the era uses the weighted-points formula (numerator = `weight × validator_points`).
+    pub weighted: bool,
+}
+
+/// Build the per-era incentive context, or `None` when the incentive is not applicable:
+/// on any runtime without `pallet_staking_async` (detected via **metadata only — no RPC**) or on
+/// eras with a zero budget. Callers treat `None` as "no incentive" (fields serialise `0`).
+///
+/// Fetching the era-level inputs here (once) rather than per validator avoids O(validators)
+/// redundant storage round-trips.
+pub async fn get_era_incentive_context(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+) -> Option<EraIncentiveContext> {
+    // Metadata-only gate: on chains without the async-staking pallet the storage item is absent,
+    // so skip all incentive reads without issuing a single RPC.
+    if client_at_block
+        .storage()
+        .entry(("Staking", "ErasValidatorIncentiveBudget"))
+        .is_err()
+    {
+        return None;
+    }
+
+    // Budget and the weighted-points flag are independent reads — fetch them concurrently.
+    let (budget, weighted) = tokio::join!(
+        fetch_era_u128(client_at_block, "ErasValidatorIncentiveBudget", era),
+        uses_weighted_points(client_at_block, era),
+    );
+    if budget == 0 {
+        return None;
+    }
+
+    // Denominator source MUST match the numerator basis chosen by `incentive_numerator`.
+    let denominator = if weighted {
+        fetch_era_u128(client_at_block, "ErasSumWeightedPoints", era).await
+    } else {
+        fetch_era_u128(client_at_block, "ErasSumValidatorIncentiveWeight", era).await
+    };
+
+    Some(EraIncentiveContext {
+        budget,
+        denominator,
+        weighted,
+    })
+}
+
+/// Get a validator's per-era incentive weight from `Staking.ErasValidatorIncentiveWeight`
+/// (double map `(era, validator) -> IncentiveWeight`; `IncentiveWeight = BalanceOf = u128`).
+/// Returns `0` when absent.
+pub async fn get_validator_incentive_weight(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+    validator_bytes: &[u8; 32],
+) -> u128 {
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasValidatorIncentiveWeight");
+
+    if let Ok(value) = client_at_block
+        .storage()
+        .fetch(storage_addr, (era, *validator_bytes))
+        .await
+        && let Ok(weight) = u128::decode(&mut &value.into_bytes()[..])
+    {
+        return weight;
+    }
+
+    0
+}
+
+/// Fetch an era-keyed `u128` staking storage value (`StorageMap<EraIndex, _>`), returning `0` when
+/// the key or item is absent. Private helper shared by the incentive budget/denominator reads;
+/// the storage-item name never leaves this module, so callers cannot pass a mistyped name.
+async fn fetch_era_u128(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    storage_name: &str,
+    era: u32,
+) -> u128 {
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", storage_name);
+
+    if let Ok(value) = client_at_block.storage().fetch(storage_addr, (era,)).await
+        && let Ok(v) = u128::decode(&mut &value.into_bytes()[..])
+    {
+        return v;
+    }
+
+    0
+}
+
+/// Whether an era uses the weighted-points incentive formula.
+///
+/// Mirrors `pallet_staking_async`'s `uses_weighted_points`: reads
+/// `Staking.WeightedPointsFormulaStartEra` (`StorageValue<EraIndex, OptionQuery>`). `None` (unset,
+/// or item absent) means "weighted"; otherwise the era is weighted iff `era >= start` — exactly
+/// the pallet's `map_or(true, |start| era >= start)`.
+async fn uses_weighted_points(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+) -> bool {
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "WeightedPointsFormulaStartEra");
+
+    // Unset / absent / undecodable all collapse to `None` → the pallet's "default weighted" case.
+    client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()
+        .and_then(|value| u32::decode(&mut &value.into_bytes()[..]).ok())
+        .is_none_or(|start| era >= start)
+}
+
 /// Get validator preferences (commission) for an era.
 ///
 /// Returns `Some(commission)` if found, `None` otherwise.
