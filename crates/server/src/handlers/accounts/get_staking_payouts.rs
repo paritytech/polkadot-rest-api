@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::types::{
-    AccountsError, BlockInfo, EraPayouts, EraPayoutsData, StakingPayoutsQueryParams,
-    StakingPayoutsResponse, ValidatorPayout,
+    AccountsError, BlockInfo, EraPayouts, StakingPayoutsQueryParams, StakingPayoutsResponse,
 };
 use super::utils::validate_and_parse_address;
 use crate::consts::get_migration_boundaries;
 use crate::extractors::JsonQuery;
 use crate::handlers::common::accounts::{
-    RawEraPayouts, RawStakingPayouts, StakingPayoutsParams, query_staking_payouts,
+    RawStakingPayouts, StakingPayoutsParams, query_staking_payouts,
 };
 use crate::state::AppState;
 use crate::utils::{self, fetch_block_timestamp, find_ah_blocks_in_rc_block};
@@ -125,33 +124,7 @@ fn format_response(
     rc_block_number: Option<String>,
     ah_timestamp: Option<String>,
 ) -> StakingPayoutsResponse {
-    let eras_payouts = raw
-        .eras_payouts
-        .iter()
-        .map(|era_payout| match era_payout {
-            RawEraPayouts::Payouts(data) => EraPayouts::Payouts(EraPayoutsData {
-                era: data.era.to_string(),
-                total_era_reward_points: data.total_era_reward_points.to_string(),
-                total_era_payout: data.total_era_payout.to_string(),
-                payouts: data
-                    .payouts
-                    .iter()
-                    .map(|p| ValidatorPayout {
-                        validator_id: p.validator_id.clone(),
-                        nominator_staking_payout: p.nominator_staking_payout.to_string(),
-                        claimed: p.claimed,
-                        total_validator_reward_points: p.total_validator_reward_points.to_string(),
-                        validator_commission: p.validator_commission.to_string(),
-                        total_validator_exposure: p.total_validator_exposure.to_string(),
-                        nominator_exposure: p.nominator_exposure.to_string(),
-                    })
-                    .collect(),
-            }),
-            RawEraPayouts::Message { message } => EraPayouts::Message {
-                message: message.clone(),
-            },
-        })
-        .collect();
+    let eras_payouts = raw.eras_payouts.iter().map(EraPayouts::from).collect();
 
     StakingPayoutsResponse {
         at: BlockInfo {

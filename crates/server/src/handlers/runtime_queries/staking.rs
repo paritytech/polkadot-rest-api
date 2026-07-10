@@ -764,6 +764,165 @@ pub async fn get_era_validator_reward(
     None
 }
 
+/// Era-level inputs for the validator self-stake incentive (`pallet_staking_async` / DAP),
+/// fetched **once per era** and shared across every validator in that era.
+///
+/// The self-stake incentive is a validator-only reward pot that is *separate* from
+/// `ErasValidatorReward` (which holds only the staker-reward pool). A validator's incentive is
+/// `floor(share × budget)` where `share = numerator / denominator`.
+///
+/// `weighted` selects **both** halves of that fraction and they MUST stay in lockstep: the
+/// `denominator` here is read from the storage item matching `weighted`, and the numerator built by
+/// `incentive_numerator` (in the payouts handler) branches on the same flag. Changing one without
+/// the other silently rescales every validator's share.
+#[derive(Debug, Clone, Copy)]
+pub struct EraIncentiveContext {
+    /// Era-wide incentive pot (`ErasValidatorIncentiveBudget[era]`).
+    pub budget: u128,
+    /// Shared share denominator: `ErasSumWeightedPoints[era]` when `weighted`, else
+    /// `ErasSumValidatorIncentiveWeight[era]`.
+    pub denominator: u128,
+    /// Whether the era uses the weighted-points formula (numerator = `weight × validator_points`).
+    pub weighted: bool,
+}
+
+/// Build the per-era incentive context, or `None` when the incentive is not applicable:
+/// on any runtime without `pallet_staking_async` (detected via **metadata only — no RPC**) or on
+/// eras with a zero budget. Callers treat `None` as "no incentive" (fields serialise `0`).
+///
+/// Fetching the era-level inputs here (once) rather than per validator avoids O(validators)
+/// redundant storage round-trips.
+pub async fn get_era_incentive_context(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+) -> Option<EraIncentiveContext> {
+    // Metadata-only gate: on chains without the async-staking pallet the storage item is absent,
+    // so skip all incentive reads without issuing a single RPC.
+    if client_at_block
+        .storage()
+        .entry(("Staking", "ErasValidatorIncentiveBudget"))
+        .is_err()
+    {
+        return None;
+    }
+
+    // Budget, the weighted-points flag, and BOTH candidate denominators are independent reads —
+    // fetch them concurrently. We read both sums (not just the flag's pick) so we can reconcile the
+    // flag against what is actually maintained on-chain; see the branch-selection note below.
+    let (budget, flag_weighted, weighted_sum, legacy_sum) = tokio::join!(
+        fetch_era_u128(client_at_block, "ErasValidatorIncentiveBudget", era),
+        uses_weighted_points(client_at_block, era),
+        fetch_era_u128(client_at_block, "ErasSumWeightedPoints", era),
+        fetch_era_u128(client_at_block, "ErasSumValidatorIncentiveWeight", era),
+    );
+    if budget == 0 {
+        return None;
+    }
+
+    // Reconcile the pallet's intent flag against the denominators actually maintained on-chain.
+    let (weighted, denominator) = resolve_incentive_basis(flag_weighted, weighted_sum, legacy_sum)?;
+
+    Some(EraIncentiveContext {
+        budget,
+        denominator,
+        weighted,
+    })
+}
+
+/// Resolve which incentive-share basis (weighted-points vs legacy stake-only) an era actually uses,
+/// returning `(weighted, denominator)` — or `None` when no basis is maintained (caller pays `0`).
+///
+/// The `uses_weighted_points` flag is the pallet's *intent*, but on a chain where
+/// `WeightedPointsFormulaStartEra` is unset the flag defaults to "weighted" for pre-cutoff eras
+/// whose `ErasSumWeightedPoints` denominator was never maintained (see the pallet's own doc:
+/// pre-cutoff eras "may have reward points credited before their ErasSumWeightedPoints denominator
+/// was maintained"). Trusting the flag there divides by an empty sum and pays `0`. So we take the
+/// weighted branch only when the flag says weighted AND its denominator is actually populated;
+/// otherwise we fall back to the legacy stake-only sum, which is what such eras were paid on.
+///
+/// The returned `weighted` bool MUST be the one threaded into `incentive_numerator`, so the
+/// numerator basis and this denominator always agree. Pure — unit-tested below.
+fn resolve_incentive_basis(
+    flag_weighted: bool,
+    weighted_sum: u128,
+    legacy_sum: u128,
+) -> Option<(bool, u128)> {
+    if flag_weighted && weighted_sum != 0 {
+        Some((true, weighted_sum))
+    } else if legacy_sum != 0 {
+        Some((false, legacy_sum))
+    } else {
+        // Neither denominator is populated: no maintained basis for this era → no incentive.
+        None
+    }
+}
+
+/// Get a validator's per-era incentive weight from `Staking.ErasValidatorIncentiveWeight`
+/// (double map `(era, validator) -> IncentiveWeight`; `IncentiveWeight = BalanceOf = u128`).
+/// Returns `0` when absent.
+pub async fn get_validator_incentive_weight(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+    validator_bytes: &[u8; 32],
+) -> u128 {
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "ErasValidatorIncentiveWeight");
+
+    if let Ok(value) = client_at_block
+        .storage()
+        .fetch(storage_addr, (era, *validator_bytes))
+        .await
+        && let Ok(weight) = u128::decode(&mut &value.into_bytes()[..])
+    {
+        return weight;
+    }
+
+    0
+}
+
+/// Fetch an era-keyed `u128` staking storage value (`StorageMap<EraIndex, _>`), returning `0` when
+/// the key or item is absent. Private helper shared by the incentive budget/denominator reads;
+/// the storage-item name never leaves this module, so callers cannot pass a mistyped name.
+async fn fetch_era_u128(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    storage_name: &str,
+    era: u32,
+) -> u128 {
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", storage_name);
+
+    if let Ok(value) = client_at_block.storage().fetch(storage_addr, (era,)).await
+        && let Ok(v) = u128::decode(&mut &value.into_bytes()[..])
+    {
+        return v;
+    }
+
+    0
+}
+
+/// The pallet's *intended* weighted-points flag for an era (before reconciling against which
+/// denominator is actually maintained on-chain — see `get_era_incentive_context`).
+///
+/// Mirrors `pallet_staking_async`'s `uses_weighted_points`: reads
+/// `Staking.WeightedPointsFormulaStartEra` (`StorageValue<EraIndex, OptionQuery>`). `None` (unset,
+/// or item absent) means "weighted"; otherwise the era is weighted iff `era >= start` — exactly
+/// the pallet's `map_or(true, |start| era >= start)`. NOTE: this default can over-report "weighted"
+/// for pre-cutoff eras on chains where the cutoff was never recorded, which is why the caller
+/// cross-checks it against a non-empty `ErasSumWeightedPoints` before trusting it.
+async fn uses_weighted_points(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    era: u32,
+) -> bool {
+    let storage_addr = subxt::dynamic::storage::<_, ()>("Staking", "WeightedPointsFormulaStartEra");
+
+    // Unset / absent / undecodable all collapse to `None` → the pallet's "default weighted" case.
+    client_at_block
+        .storage()
+        .fetch(storage_addr, ())
+        .await
+        .ok()
+        .and_then(|value| u32::decode(&mut &value.into_bytes()[..]).ok())
+        .is_none_or(|start| era >= start)
+}
+
 /// Get validator preferences (commission) for an era.
 ///
 /// Returns `Some(commission)` if found, `None` otherwise.
@@ -1703,4 +1862,41 @@ pub async fn iter_unapplied_slashes(
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_incentive_basis;
+
+    // Flag says weighted and the weighted denominator is populated: take the weighted branch.
+    #[test]
+    fn basis_weighted_when_flag_and_weighted_sum_present() {
+        assert_eq!(resolve_incentive_basis(true, 500, 999), Some((true, 500)));
+    }
+
+    // Flag says legacy: use the legacy sum even if a (stale) weighted sum happens to be non-zero.
+    #[test]
+    fn basis_legacy_when_flag_not_weighted() {
+        assert_eq!(resolve_incentive_basis(false, 500, 999), Some((false, 999)));
+    }
+
+    // THE REGRESSION CASE (live era 2222): `WeightedPointsFormulaStartEra` unset → flag defaults to
+    // weighted, but `ErasSumWeightedPoints` was never maintained (0). Trusting the flag would divide
+    // by 0 and pay nothing; we must fall back to the populated legacy sum instead.
+    #[test]
+    fn basis_falls_back_to_legacy_when_weighted_sum_empty() {
+        assert_eq!(
+            resolve_incentive_basis(true, 0, 8_325_927_145),
+            Some((false, 8_325_927_145)),
+            "flag-weighted but empty weighted sum must fall back to the legacy denominator"
+        );
+    }
+
+    // Flag weighted, weighted sum empty, AND legacy sum also empty: no basis maintained → None,
+    // so the caller reports 0 rather than dividing by zero.
+    #[test]
+    fn basis_none_when_neither_sum_present() {
+        assert_eq!(resolve_incentive_basis(true, 0, 0), None);
+        assert_eq!(resolve_incentive_basis(false, 0, 0), None);
+    }
 }

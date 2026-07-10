@@ -7,6 +7,7 @@ use crate::consts::{get_chain_display_name, get_migration_boundaries, is_bad_sta
 use crate::handlers::runtime_queries::staking;
 use crate::utils::ResolvedBlock;
 use sp_core::crypto::{AccountId32, Ss58Codec};
+use sp_runtime::Perbill;
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
 
@@ -117,8 +118,11 @@ pub struct RawEraPayoutsData {
     pub era: u32,
     /// Total reward points for the era
     pub total_era_reward_points: u32,
-    /// Total payout for the era
+    /// Total payout for the era (staker-reward pool only; `Staking.ErasValidatorReward`)
     pub total_era_payout: u128,
+    /// Era-wide validator self-stake incentive pot (`Staking.ErasValidatorIncentiveBudget`).
+    /// `0` on chains without `pallet_staking_async` (legacy/relay staking).
+    pub total_era_self_stake_incentive_payout: u128,
     /// Individual payouts for validators nominated
     pub payouts: Vec<RawValidatorPayout>,
 }
@@ -140,6 +144,9 @@ pub struct RawValidatorPayout {
     pub total_validator_exposure: u128,
     /// Nominator's stake behind this validator
     pub nominator_exposure: u128,
+    /// This validator's total self-stake incentive for the era (`share × budget`).
+    /// A validator-only reward; `0` on chains without `pallet_staking_async`.
+    pub validator_self_stake_incentive: u128,
 }
 
 // ================================================================================================
@@ -325,6 +332,11 @@ async fn fetch_era_data(
         }
     };
 
+    // Build the era-level self-stake incentive context ONCE (DAP chains only; `None` otherwise).
+    // The metadata gate inside means legacy/relay chains issue no extra RPC, and every validator
+    // in this era shares the same budget/denominator/flag instead of re-reading them per validator.
+    let incentive_ctx = staking::get_era_incentive_context(client_at_block, era).await;
+
     // Get exposure data using targeted approach (current nominations)
     let exposure_data =
         fetch_exposure_data(client_at_block, account, era, &account_bytes, ss58_prefix).await?;
@@ -338,6 +350,7 @@ async fn fetch_era_data(
         &individual_points,
         total_era_reward_points,
         total_era_payout,
+        incentive_ctx.as_ref(),
         unclaimed_only,
     )
     .await?;
@@ -357,6 +370,7 @@ async fn fetch_era_data(
                 &individual_points,
                 total_era_reward_points,
                 total_era_payout,
+                incentive_ctx.as_ref(),
                 unclaimed_only,
             )
             .await?;
@@ -371,6 +385,8 @@ async fn fetch_era_data(
         era,
         total_era_reward_points,
         total_era_payout,
+        // Era-wide incentive pot: the context's budget, or 0 when there is no incentive.
+        total_era_self_stake_incentive_payout: incentive_ctx.map_or(0, |ctx| ctx.budget),
         payouts,
     }))
 }
@@ -392,6 +408,7 @@ async fn build_payouts(
     individual_points: &std::collections::HashMap<[u8; 32], u32>,
     total_era_reward_points: u32,
     total_era_payout: u128,
+    incentive_ctx: Option<&staking::EraIncentiveContext>,
     unclaimed_only: bool,
 ) -> Result<Vec<RawValidatorPayout>, String> {
     let mut payouts = Vec::new();
@@ -434,6 +451,23 @@ async fn build_payouts(
             is_validator,
         );
 
+        // This validator's self-stake incentive for the era (DAP chains; 0 otherwise). Only the
+        // per-validator weight is read here; the era-level budget/denominator/flag come from the
+        // shared context fetched once in `fetch_era_data`.
+        let validator_self_stake_incentive = match incentive_ctx {
+            Some(ctx) => {
+                let weight = staking::get_validator_incentive_weight(
+                    client_at_block,
+                    era,
+                    &validator_bytes_arr,
+                )
+                .await;
+                let numerator = incentive_numerator(ctx.weighted, weight, validator_points);
+                incentive_from_ratio(ctx.budget, numerator, ctx.denominator)
+            }
+            None => 0,
+        };
+
         payouts.push(RawValidatorPayout {
             validator_id: validator_id.clone(),
             nominator_staking_payout: nominator_payout,
@@ -442,6 +476,7 @@ async fn build_payouts(
             validator_commission: commission,
             total_validator_exposure: *total_exposure,
             nominator_exposure: *nominator_exposure,
+            validator_self_stake_incentive,
         });
     }
 
@@ -679,4 +714,105 @@ fn calculate_payout(
     }
 }
 
+// ================================================================================================
+// Self-stake incentive (DAP / pallet_staking_async)
+// ================================================================================================
+
+/// Select the incentive-share numerator for the era's formula (pure).
+///
+/// Mirrors `pallet_staking_async`: weighted-points eras use `weight × validator_points`; legacy
+/// eras use `weight` alone (points are ignored).
+///
+/// INVARIANT: this branch MUST stay in lockstep with the denominator source picked in
+/// `staking::get_era_incentive_context` (both key off the same `weighted` flag). Weighted numerator
+/// ↔ `ErasSumWeightedPoints`; legacy numerator ↔ `ErasSumValidatorIncentiveWeight`.
+fn incentive_numerator(
+    weighted: bool,
+    validator_incentive_weight: u128,
+    validator_points: u32,
+) -> u128 {
+    if weighted {
+        validator_incentive_weight.saturating_mul(validator_points as u128)
+    } else {
+        validator_incentive_weight
+    }
+}
+
+/// Compute a validator's total self-stake incentive as `floor(share × budget)`, where
+/// `share = numerator / denominator` (pure).
+///
+/// Uses `Perbill` to match the pallet's fixed-point rounding (`from_rational` + `mul_floor`, see
+/// `calculate_validator_incentive_for_page`). This is the pre-page total (`share × budget`): the
+/// pallet floors each exposure page independently, so for a multi-page validator the sum actually
+/// minted is up to `(pages − 1)` planck less than this — sub-nano-DOT accounting dust. Returns `0`
+/// on any zero input (a zero denominator is the pallet's storage-inconsistency guard).
+fn incentive_from_ratio(budget: u128, numerator: u128, denominator: u128) -> u128 {
+    if budget == 0 || numerator == 0 || denominator == 0 {
+        return 0;
+    }
+    Perbill::from_rational(numerator, denominator).mul_floor(budget)
+}
+
 // Decoding functions have been moved to runtime_queries::staking module
+
+#[cfg(test)]
+mod tests {
+    use super::{incentive_from_ratio, incentive_numerator};
+
+    // --- numerator selection (pins the weighted vs legacy branch wiring) ---
+
+    // weighted era: numerator = weight × validator_points
+    #[test]
+    fn numerator_weighted_uses_weight_times_points() {
+        assert_eq!(incentive_numerator(true, 2, 3), 6);
+    }
+
+    // legacy era: numerator = weight; validator_points are IGNORED
+    #[test]
+    fn numerator_legacy_ignores_points() {
+        assert_eq!(incentive_numerator(false, 2, 999), 2);
+    }
+
+    // --- ratio → floor(share × budget) ---
+
+    #[test]
+    fn ratio_zero_inputs_are_zero() {
+        assert_eq!(incentive_from_ratio(0, 5, 30), 0); // zero budget
+        assert_eq!(incentive_from_ratio(300, 0, 30), 0); // zero numerator (e.g. zero weight)
+        assert_eq!(incentive_from_ratio(300, 5, 0), 0); // zero denominator (inconsistency guard)
+    }
+
+    // share = 6/12 = 1/2 (exactly representable in ppb); 1/2 of 300 = 150
+    #[test]
+    fn ratio_half_of_budget() {
+        assert_eq!(incentive_from_ratio(300, 6, 12), 150);
+    }
+
+    // whole pot when this validator is the only contributor
+    #[test]
+    fn ratio_full_share_takes_whole_budget() {
+        assert_eq!(incentive_from_ratio(300, 10, 10), 300);
+    }
+
+    // floor rounding matches the pallet: 1/3 of 100 = 33 (not 34)
+    #[test]
+    fn ratio_floors_like_the_pallet() {
+        assert_eq!(incentive_from_ratio(100, 1, 3), 33);
+    }
+
+    // --- end-to-end wiring: numerator selection composed with the ratio ---
+
+    // weighted: weight=2 points=3 → numerator 6, denom 12 → 1/2 → 150
+    #[test]
+    fn weighted_end_to_end() {
+        let numerator = incentive_numerator(true, 2, 3);
+        assert_eq!(incentive_from_ratio(300, numerator, 12), 150);
+    }
+
+    // legacy: weight=1 (points ignored) → numerator 1, denom 2 → 1/2 → 150
+    #[test]
+    fn legacy_end_to_end() {
+        let numerator = incentive_numerator(false, 1, 999);
+        assert_eq!(incentive_from_ratio(300, numerator, 2), 150);
+    }
+}
