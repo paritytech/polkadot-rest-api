@@ -6,6 +6,22 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.6] (2026-07-09)
+
+### Fixes
+
+- **Surface validator self-stake incentive in staking-payouts**: The staking-payouts endpoint now includes the validator self-stake incentive (`ValidatorIncentivePaid`) on `pallet_staking_async` chains, correcting era payout totals that were previously understated. (#380)
+- **Decode era from the extensions payload range**: Fixed era decoding to read from the transaction extensions payload range rather than raw length-prefixed bytes, eliminating a WARN flood on Asset Hub. (#370)
+
+### Docs
+
+- **Add Claude Code skills for chain-data decoding**: Added Claude Code skills documenting chain-data decoding. (#379)
+
+### CI
+
+- **Harden GitHub Actions workflows**: Hardened the GitHub Actions workflow configuration. (#371)
+- **Bump github-actions group**: Bumped the `github-actions` dependency group with 11 updates. (#375)
+
 ## [0.1.5] (2026-06-30)
 
 ### Fixes
