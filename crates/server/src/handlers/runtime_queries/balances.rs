@@ -161,31 +161,65 @@ pub struct DecodedVestingInfo {
 // Storage Query Functions
 // ================================================================================================
 
-/// Get account data from System::Account storage.
+/// Error reading an account's `System::Account` entry.
+#[derive(Debug, thiserror::Error)]
+pub enum AccountDataError {
+    /// The storage fetch failed (transient / retryable).
+    #[error(transparent)]
+    Fetch(#[from] subxt::error::StorageError),
+
+    /// Bytes were fetched but matched no known `AccountInfo` layout.
+    #[error("failed to decode AccountInfo storage value ({0} bytes)")]
+    Decode(usize),
+}
+
+/// Fetch the raw SCALE bytes of an account-keyed map storage entry.
+///
+/// `Ok(Some(bytes))` if present, `Ok(None)` if genuinely absent, `Err` if the fetch failed.
+async fn try_fetch_storage(
+    client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
+    pallet: &str,
+    entry: &str,
+    account: &AccountId32,
+) -> Result<Option<Vec<u8>>, subxt::error::StorageError> {
+    let storage_addr = subxt::dynamic::storage::<_, ()>(pallet, entry);
+    let account_bytes: [u8; 32] = *account.as_ref();
+
+    Ok(client_at_block
+        .storage()
+        .try_fetch(storage_addr, (account_bytes,))
+        .await?
+        .map(|value| value.into_bytes()))
+}
+
+/// Read and decode an account's `System::Account` entry.
+///
+/// `Ok(Some)` if present and decoded, `Ok(None)` if genuinely absent, `Err(Fetch)` on a fetch
+/// failure, `Err(Decode)` if the bytes matched no known layout.
 pub async fn get_account_data(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
-) -> Option<DecodedAccountData> {
-    let storage_addr = subxt::dynamic::storage::<_, ()>("System", "Account");
-    let account_bytes: [u8; 32] = *account.as_ref();
+) -> Result<Option<DecodedAccountData>, AccountDataError> {
+    let Some(raw_bytes) = try_fetch_storage(client_at_block, "System", "Account", account).await?
+    else {
+        return Ok(None);
+    };
 
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, (account_bytes,))
-        .await
-        .ok()?;
-
-    let raw_bytes = value.into_bytes();
-    decode_account_info(&raw_bytes)
+    // Bytes present but undecodable is an error, not an absent account.
+    match decode_account_info(&raw_bytes) {
+        Some(data) => Ok(Some(data)),
+        None => Err(AccountDataError::Decode(raw_bytes.len())),
+    }
 }
 
-/// Get account data, returning default values if account doesn't exist.
+/// Like [`get_account_data`], but returns zeroed balances for a genuinely-absent account.
+/// Fetch and decode errors still propagate — never a fabricated `free: 0`.
 pub async fn get_account_data_or_default(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
-) -> DecodedAccountData {
-    get_account_data(client_at_block, account)
-        .await
+) -> Result<DecodedAccountData, AccountDataError> {
+    Ok(get_account_data(client_at_block, account)
+        .await?
         .unwrap_or(DecodedAccountData {
             nonce: 0,
             free: 0,
@@ -193,74 +227,47 @@ pub async fn get_account_data_or_default(
             misc_frozen: None,
             fee_frozen: None,
             frozen: Some(0),
-        })
+        }))
 }
 
-/// Get balance locks from Balances::Locks storage.
+/// Get balance locks from `Balances::Locks` (empty when absent; `Err` on fetch failure).
 pub async fn get_balance_locks(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
-) -> Vec<DecodedBalanceLock> {
-    let storage_addr = subxt::dynamic::storage::<_, ()>("Balances", "Locks");
-    let account_bytes: [u8; 32] = *account.as_ref();
-
-    let value = match client_at_block
-        .storage()
-        .fetch(storage_addr, (account_bytes,))
-        .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::debug!("Failed to fetch balance locks: {e:?}");
-            return Vec::new();
-        }
+) -> Result<Vec<DecodedBalanceLock>, subxt::error::StorageError> {
+    let Some(raw_bytes) = try_fetch_storage(client_at_block, "Balances", "Locks", account).await?
+    else {
+        return Ok(Vec::new());
     };
 
-    let raw_bytes = value.into_bytes();
-    decode_balance_locks(&raw_bytes).unwrap_or_default()
+    Ok(decode_balance_locks(&raw_bytes).unwrap_or_default())
 }
 
-/// Get proxy definitions from Proxy::Proxies storage.
+/// Get proxy definitions from `Proxy::Proxies` (`None` when absent; `Err` on fetch failure).
 pub async fn get_proxy_definitions(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
     ss58_prefix: u16,
-) -> Option<(Vec<DecodedProxyDefinition>, u128)> {
-    let storage_addr = subxt::dynamic::storage::<_, ()>("Proxy", "Proxies");
-    let account_bytes: [u8; 32] = *account.as_ref();
+) -> Result<Option<(Vec<DecodedProxyDefinition>, u128)>, subxt::error::StorageError> {
+    let Some(raw_bytes) = try_fetch_storage(client_at_block, "Proxy", "Proxies", account).await?
+    else {
+        return Ok(None);
+    };
 
-    let value = client_at_block
-        .storage()
-        .fetch(storage_addr, (account_bytes,))
-        .await
-        .ok()?;
-
-    let raw_bytes = value.into_bytes();
-    decode_proxy_definitions(&raw_bytes, ss58_prefix)
+    Ok(decode_proxy_definitions(&raw_bytes, ss58_prefix))
 }
 
-/// Get vesting schedules from Vesting::Vesting storage.
+/// Get vesting schedules from `Vesting::Vesting` (empty when absent; `Err` on fetch failure).
 pub async fn get_vesting_schedules(
     client_at_block: &OnlineClientAtBlock<SubstrateConfig>,
     account: &AccountId32,
-) -> Vec<DecodedVestingInfo> {
-    let storage_addr = subxt::dynamic::storage::<_, ()>("Vesting", "Vesting");
-    let account_bytes: [u8; 32] = *account.as_ref();
-
-    let value = match client_at_block
-        .storage()
-        .fetch(storage_addr, (account_bytes,))
-        .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::debug!("Failed to fetch vesting schedules: {e:?}");
-            return Vec::new();
-        }
+) -> Result<Vec<DecodedVestingInfo>, subxt::error::StorageError> {
+    let Some(raw_bytes) = try_fetch_storage(client_at_block, "Vesting", "Vesting", account).await?
+    else {
+        return Ok(Vec::new());
     };
 
-    let raw_bytes = value.into_bytes();
-    decode_vesting_schedules(&raw_bytes).unwrap_or_default()
+    Ok(decode_vesting_schedules(&raw_bytes).unwrap_or_default())
 }
 
 // ================================================================================================
@@ -573,5 +580,138 @@ mod tests {
         assert_eq!(build_modern_bytes(0, 0, 0, 0).len(), 80);
         assert_eq!(build_pre_sufficients_bytes(0, 0, 0, 0, 0).len(), 76);
         assert_eq!(build_refcount_bytes(0, 0, 0, 0, 0, 0).len(), 69);
+    }
+}
+
+/// End-to-end tests for `get_account_data_or_default` driven over a mock RPC client.
+///
+/// These guard the false-zero regression: a failed `System::Account` fetch must surface
+/// as an error, while a present or genuinely-absent account must decode correctly.
+#[cfg(test)]
+mod rpc_fetch_tests {
+    use super::*;
+    use crate::test_fixtures::{TEST_BLOCK_NUMBER, mock_rpc_client_builder};
+    use subxt::{OnlineClient, SubstrateConfig};
+    use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
+    use subxt_rpcs::client::{MockRpcClient, RpcClient};
+
+    async fn online_client(mock: MockRpcClient) -> OnlineClient<SubstrateConfig> {
+        let rpc_client = RpcClient::new(mock);
+        OnlineClient::<SubstrateConfig>::from_rpc_client(rpc_client)
+            .await
+            .expect("failed to build OnlineClient over mock")
+    }
+
+    fn test_account() -> AccountId32 {
+        AccountId32::new([1u8; 32])
+    }
+
+    /// Build an 80-byte modern `AccountInfo` payload with the given free balance.
+    fn modern_account_bytes(free: u128) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(80);
+        buf.extend_from_slice(&0u32.to_le_bytes()); // nonce
+        buf.extend_from_slice(&1u32.to_le_bytes()); // consumers
+        buf.extend_from_slice(&1u32.to_le_bytes()); // providers
+        buf.extend_from_slice(&0u32.to_le_bytes()); // sufficients
+        buf.extend_from_slice(&free.to_le_bytes()); // free
+        buf.extend_from_slice(&0u128.to_le_bytes()); // reserved
+        buf.extend_from_slice(&0u128.to_le_bytes()); // frozen
+        buf.extend_from_slice(&0u128.to_le_bytes()); // flags
+        buf
+    }
+
+    #[tokio::test]
+    async fn present_account_returns_real_balance() {
+        let free = 100_000_000u128;
+        let hex = format!("0x{}", hex::encode(modern_account_bytes(free)));
+        let mock = mock_rpc_client_builder()
+            .method_handler("state_getStorage", move |_params| {
+                let hex = hex.clone();
+                async move { MockJson(hex) }
+            })
+            .build();
+
+        let client = online_client(mock).await;
+        let at = client
+            .at_block(TEST_BLOCK_NUMBER)
+            .await
+            .expect("at_block failed");
+
+        let data = get_account_data_or_default(&at, &test_account())
+            .await
+            .expect("a successful fetch must not error");
+        assert_eq!(data.free, free);
+    }
+
+    #[tokio::test]
+    async fn absent_account_yields_zero() {
+        // `null` response => no value at the key => legitimate zero balance.
+        let mock = mock_rpc_client_builder()
+            .method_handler("state_getStorage", async |_params| {
+                MockJson(Option::<String>::None)
+            })
+            .build();
+
+        let client = online_client(mock).await;
+        let at = client
+            .at_block(TEST_BLOCK_NUMBER)
+            .await
+            .expect("at_block failed");
+
+        let data = get_account_data_or_default(&at, &test_account())
+            .await
+            .expect("an absent account is not an error");
+        assert_eq!(data.free, 0);
+    }
+
+    /// Regression guard for the Binance false-zero incident: a transient fetch failure
+    /// must be an error, NOT a fabricated `free: 0`. This fails against the previous
+    /// `.ok()?` implementation (which returned zeroed data) and passes after the fix.
+    #[tokio::test]
+    async fn transient_fetch_error_is_not_false_zero() {
+        let mock = mock_rpc_client_builder()
+            .method_handler("state_getStorage", async |_params| {
+                Err::<MockJson<String>, subxt_rpcs::Error>(subxt_rpcs::Error::Client(Box::new(
+                    std::io::Error::other("simulated transient RPC failure"),
+                )))
+            })
+            .build();
+
+        let client = online_client(mock).await;
+        let at = client
+            .at_block(TEST_BLOCK_NUMBER)
+            .await
+            .expect("at_block failed");
+
+        let result = get_account_data_or_default(&at, &test_account()).await;
+        assert!(
+            result.is_err(),
+            "a failed storage fetch must surface as an error, not free:0"
+        );
+    }
+
+    /// Present-but-undecodable bytes must error, not become `free: 0`.
+    #[tokio::test]
+    async fn undecodable_bytes_are_not_false_zero() {
+        // 10 bytes: matches no known layout.
+        let hex = format!("0x{}", hex::encode([0u8; 10]));
+        let mock = mock_rpc_client_builder()
+            .method_handler("state_getStorage", move |_params| {
+                let hex = hex.clone();
+                async move { MockJson(hex) }
+            })
+            .build();
+
+        let client = online_client(mock).await;
+        let at = client
+            .at_block(TEST_BLOCK_NUMBER)
+            .await
+            .expect("at_block failed");
+
+        let result = get_account_data_or_default(&at, &test_account()).await;
+        assert!(
+            result.is_err(),
+            "present-but-undecodable bytes must surface as an error, not free:0"
+        );
     }
 }

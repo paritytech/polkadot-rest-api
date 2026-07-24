@@ -74,6 +74,19 @@ impl From<subxt::error::StorageError> for BalanceQueryError {
     }
 }
 
+impl From<balances_queries::AccountDataError> for BalanceQueryError {
+    fn from(err: balances_queries::AccountDataError) -> Self {
+        use balances_queries::AccountDataError;
+        match err {
+            // Fetch failure stays retryable (503); decode failure does not (500).
+            AccountDataError::Fetch(e) => BalanceQueryError::StorageQueryFailed(Box::new(e)),
+            AccountDataError::Decode(_) => BalanceQueryError::DecodeFailed(
+                "unrecognized System::Account storage layout".into(),
+            ),
+        }
+    }
+}
+
 // ================================================================================================
 // Main Query Function
 // ================================================================================================
@@ -121,6 +134,10 @@ pub async fn query_balance_info(
         balances_queries::get_account_data_or_default(client_at_block, account),
         balances_queries::get_balance_locks(client_at_block, account)
     );
+
+    // Propagate fetch/decode errors instead of serving false-zero or empty data.
+    let account_data = account_data?;
+    let locks = locks?;
 
     // Calculate transferable balance using the dynamically fetched ED
     let transferable = calculate_transferable(existential_deposit, &account_data);

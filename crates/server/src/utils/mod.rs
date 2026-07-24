@@ -49,6 +49,34 @@ pub fn is_backend_disconnected_error(err: &subxt::error::BackendError) -> bool {
     err.is_disconnected_will_reconnect()
 }
 
+/// Whether a `BackendError` is transient (retryable): disconnect, RPC limit, timeout, or
+/// dropped subscription. Anything else is non-retryable.
+pub fn is_transient_backend_error(err: &subxt::error::BackendError) -> bool {
+    use subxt::error::{BackendError, RpcError};
+
+    if err.is_disconnected_will_reconnect() || err.is_rpc_limit_reached() {
+        return true;
+    }
+
+    match err {
+        BackendError::Rpc(RpcError::ClientError(rpc_err)) => is_timeout_error(rpc_err),
+        BackendError::Rpc(RpcError::SubscriptionDropped) => true,
+        _ => false,
+    }
+}
+
+/// Whether a `StorageError` is transient (retryable): a `BackendError`-wrapping variant whose
+/// inner error is itself transient (see [`is_transient_backend_error`]). Used to pick 503 vs 500.
+pub fn is_transient_storage_error(err: &subxt::error::StorageError) -> bool {
+    use subxt::error::StorageError;
+    match err {
+        StorageError::CannotFetchValue(be)
+        | StorageError::CannotIterateValues(be)
+        | StorageError::StreamFailure(be) => is_transient_backend_error(be),
+        _ => false,
+    }
+}
+
 /// Check if an OnlineClientAtBlockError contains a disconnection error.
 ///
 /// The OnlineClientAtBlockError may wrap a BackendError (e.g., in CannotGetBlockHash)
@@ -195,5 +223,29 @@ mod rpc_error_tests {
         let err = make_generic_error();
         let (status, _message) = rpc_error_to_status(&err);
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn test_is_transient_backend_error_disconnect() {
+        let be = subxt::error::BackendError::from(make_disconnected_error());
+        assert!(is_transient_backend_error(&be));
+    }
+
+    #[test]
+    fn test_is_transient_backend_error_timeout() {
+        let be = subxt::error::BackendError::from(make_timeout_error());
+        assert!(is_transient_backend_error(&be));
+    }
+
+    #[test]
+    fn test_is_transient_backend_error_generic_is_not() {
+        let be = subxt::error::BackendError::from(make_generic_error());
+        assert!(!is_transient_backend_error(&be));
+    }
+
+    #[test]
+    fn test_is_transient_backend_error_other_is_not() {
+        let be = subxt::error::BackendError::other("custom backend failure");
+        assert!(!is_transient_backend_error(&be));
     }
 }
