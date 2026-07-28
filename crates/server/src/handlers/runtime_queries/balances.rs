@@ -274,6 +274,21 @@ pub async fn get_vesting_schedules(
 // Decoding Functions
 // ================================================================================================
 
+/// Log storage bytes we fetched but could not decode: byte length plus the first 32 bytes as hex.
+///
+/// Every caller below returns `None` on an unrecognized layout, and for locks, proxies and vesting
+/// that degrades to an empty field with HTTP 200 rather than failing the request. This log line is
+/// therefore the only signal that a runtime upgrade changed a layout we thought we understood.
+fn warn_undecodable(what: &str, raw_bytes: &[u8]) {
+    let len = raw_bytes.len();
+    tracing::warn!(
+        "Failed to decode {} ({} bytes): 0x{}",
+        what,
+        len,
+        hex::encode(&raw_bytes[..len.min(32)])
+    );
+}
+
 fn decode_account_info(raw_bytes: &[u8]) -> Option<DecodedAccountData> {
     let len = raw_bytes.len();
 
@@ -340,16 +355,15 @@ fn decode_account_info(raw_bytes: &[u8]) -> Option<DecodedAccountData> {
     // SCALE Decode will happily consume a prefix of a larger buffer, which would silently
     // return wrong data for future runtime layouts with a different size. If we encounter
     // an unknown size, log it and return None so the caller can handle it gracefully.
-    tracing::warn!(
-        "Failed to decode AccountInfo ({} bytes): 0x{}",
-        len,
-        hex::encode(&raw_bytes[..len.min(32)])
-    );
+    warn_undecodable("AccountInfo", raw_bytes);
     None
 }
 
 fn decode_balance_locks(raw_bytes: &[u8]) -> Option<Vec<DecodedBalanceLock>> {
-    let locks = Vec::<BalanceLock>::decode(&mut &raw_bytes[..]).ok()?;
+    let Ok(locks) = Vec::<BalanceLock>::decode(&mut &raw_bytes[..]) else {
+        warn_undecodable("Balances::Locks", raw_bytes);
+        return None;
+    };
 
     Some(
         locks
@@ -374,8 +388,10 @@ fn decode_proxy_definitions(
 
     // Proxy storage is (Vec<ProxyDefinition>, deposit)
     // Try decoding the tuple
-    let (proxies, deposit): (Vec<ProxyDefinition>, u128) =
-        Decode::decode(&mut &raw_bytes[..]).ok()?;
+    let Ok((proxies, deposit)) = <(Vec<ProxyDefinition>, u128)>::decode(&mut &raw_bytes[..]) else {
+        warn_undecodable("Proxy::Proxies", raw_bytes);
+        return None;
+    };
 
     let decoded_proxies = proxies
         .into_iter()
@@ -423,6 +439,10 @@ fn decode_vesting_schedules(raw_bytes: &[u8]) -> Option<Vec<DecodedVestingInfo>>
         );
     }
 
+    // Both layouts exhausted. Reaching here means the bytes are neither a `Vec<VestingInfo>` nor
+    // an `Option<Vec<VestingInfo>>` — a legitimately empty schedule list decodes as an empty `Vec`
+    // in the first attempt, so this is a real layout mismatch, not "no vesting".
+    warn_undecodable("Vesting::Vesting", raw_bytes);
     None
 }
 
