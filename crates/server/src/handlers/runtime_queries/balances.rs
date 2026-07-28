@@ -665,7 +665,11 @@ mod rpc_fetch_tests {
 
     #[tokio::test]
     async fn absent_account_yields_zero() {
-        // `null` response => no value at the key => legitimate zero balance.
+        // `null` response => subxt substitutes the metadata default for `System::Account`
+        // (`try_fetch` ends in `.or_else(|| self.default_value())`), so this decodes a zeroed
+        // AccountInfo => legitimate zero balance. The `Ok(None)` fallback in
+        // `get_account_data_or_default` is a safety net for metadata without a default and is
+        // not reachable through this path.
         let mock = mock_rpc_client_builder()
             .method_handler("state_getStorage", async |_params| {
                 MockJson(Option::<String>::None)
