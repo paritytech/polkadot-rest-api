@@ -49,20 +49,39 @@ pub fn is_backend_disconnected_error(err: &subxt::error::BackendError) -> bool {
     err.is_disconnected_will_reconnect()
 }
 
-/// Whether a `BackendError` is transient (retryable): disconnect, RPC limit, timeout, or
-/// dropped subscription. Anything else is non-retryable.
+/// Whether a `BackendError` is transient (retryable), i.e. an upstream failure to reach the node
+/// rather than a fault of ours.
+///
+/// Every `BackendError` is a failed conversation with the node, so the default here is "retryable"
+/// (503). Only two classes are excluded, because a retry cannot change the outcome:
+///
+/// - [`subxt_rpcs::Error::User`] — the node *answered*, with a JSON-RPC error (e.g. `-32000 State
+///   already discarded` when `at=` points inside pruned state). A definitive response, not a blip.
+/// - serialization / deserialization / SCALE-decode / insecure-URL — our own request and response
+///   handling, or configuration, not the connection.
+///
+/// Everything else is retryable: `DisconnectedWillReconnect`, `LimitReached`,
+/// `SubscriptionDropped`, request timeouts and any other transport or IO failure, plus
+/// backend-level conditions such as "no available backend" (`BackendError::Other`).
+///
+/// Note this deliberately does not consult [`is_timeout_error`]: timeouts arrive as
+/// `subxt_rpcs::Error::Client`, which is not in the definitive set, so that function's
+/// Display-substring match is not load-bearing for HTTP status selection.
 pub fn is_transient_backend_error(err: &subxt::error::BackendError) -> bool {
     use subxt::error::{BackendError, RpcError};
 
-    if err.is_disconnected_will_reconnect() || err.is_rpc_limit_reached() {
-        return true;
-    }
+    let definitive = matches!(
+        err,
+        BackendError::Rpc(RpcError::ClientError(
+            subxt_rpcs::Error::User(_)
+                | subxt_rpcs::Error::Serialization(_)
+                | subxt_rpcs::Error::Deserialization(_)
+                | subxt_rpcs::Error::Decode(_)
+                | subxt_rpcs::Error::InsecureUrl(_),
+        ))
+    );
 
-    match err {
-        BackendError::Rpc(RpcError::ClientError(rpc_err)) => is_timeout_error(rpc_err),
-        BackendError::Rpc(RpcError::SubscriptionDropped) => true,
-        _ => false,
-    }
+    !definitive
 }
 
 /// Whether a `StorageError` is transient (retryable): a `BackendError`-wrapping variant whose
@@ -166,6 +185,15 @@ mod rpc_error_tests {
         subxt_rpcs::Error::Client(Box::new(std::io::Error::other("Some other error")))
     }
 
+    /// Helper to create a node-returned JSON-RPC error (what a pruned-state query looks like)
+    fn make_user_error() -> subxt_rpcs::Error {
+        subxt_rpcs::Error::User(subxt_rpcs::UserError {
+            code: -32000,
+            message: "State already discarded for hash".to_string(),
+            data: None,
+        })
+    }
+
     #[test]
     fn test_is_disconnected_error_true() {
         let err = make_disconnected_error();
@@ -237,15 +265,53 @@ mod rpc_error_tests {
         assert!(is_transient_backend_error(&be));
     }
 
+    /// A transport error whose `Display` is not "Request timeout" (connection reset, TLS failure,
+    /// closed socket) is still an upstream blip, so it must be retryable.
     #[test]
-    fn test_is_transient_backend_error_generic_is_not() {
+    fn test_is_transient_backend_error_generic_client_error() {
         let be = subxt::error::BackendError::from(make_generic_error());
+        assert!(is_transient_backend_error(&be));
+    }
+
+    /// Backend-level conditions (e.g. "no available backend") are upstream availability failures.
+    #[test]
+    fn test_is_transient_backend_error_other() {
+        let be = subxt::error::BackendError::other("custom backend failure");
+        assert!(is_transient_backend_error(&be));
+    }
+
+    /// The node answered with a JSON-RPC error: definitive, so not retryable.
+    #[test]
+    fn test_is_transient_backend_error_user_error_is_not() {
+        let be = subxt::error::BackendError::from(make_user_error());
         assert!(!is_transient_backend_error(&be));
     }
 
+    /// A response we could not SCALE-decode is our problem, not a connection problem.
     #[test]
-    fn test_is_transient_backend_error_other_is_not() {
-        let be = subxt::error::BackendError::other("custom backend failure");
+    fn test_is_transient_backend_error_decode_is_not() {
+        let be = subxt::error::BackendError::from(subxt_rpcs::Error::Decode(
+            "bad response bytes".into(),
+        ));
         assert!(!is_transient_backend_error(&be));
+    }
+
+    /// Storage fetch failures inherit the backend classification.
+    #[test]
+    fn test_is_transient_storage_error_follows_backend() {
+        let transient = subxt::error::StorageError::CannotFetchValue(
+            subxt::error::BackendError::from(make_generic_error()),
+        );
+        assert!(is_transient_storage_error(&transient));
+
+        let definitive = subxt::error::StorageError::CannotFetchValue(
+            subxt::error::BackendError::from(make_user_error()),
+        );
+        assert!(!is_transient_storage_error(&definitive));
+
+        // Not a backend-carrying variant at all.
+        assert!(!is_transient_storage_error(
+            &subxt::error::StorageError::NoValueFound
+        ));
     }
 }

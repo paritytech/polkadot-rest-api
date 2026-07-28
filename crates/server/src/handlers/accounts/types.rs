@@ -1484,15 +1484,19 @@ mod status_response_tests {
             .expect("failed to build OnlineClient over mock")
     }
 
-    /// A transient `System::Account` fetch failure maps to HTTP 503.
-    #[tokio::test]
-    async fn transient_storage_failure_maps_to_503() {
+    /// Run `query_balance_info` against a node that fails every `System::Account` read with the
+    /// error `make_err` produces, and return the HTTP status that error maps to.
+    ///
+    /// Takes a factory rather than a value because `subxt_rpcs::Error` is not `Clone` and the mock
+    /// handler may be called more than once.
+    async fn balance_info_status_for<F>(make_err: F) -> StatusCode
+    where
+        F: Fn() -> subxt_rpcs::Error + Clone + Send + Sync + 'static,
+    {
         let mock = mock_rpc_client_builder()
-            .method_handler("state_getStorage", async |_params| {
-                Err::<MockJson<String>, subxt_rpcs::Error>(subxt_rpcs::Error::Client(Box::new(
-                    // "Request timeout" is what `is_timeout_error` keys on → classified transient.
-                    std::io::Error::new(std::io::ErrorKind::TimedOut, "Request timeout"),
-                )))
+            .method_handler("state_getStorage", move |_params| {
+                let make_err = make_err.clone();
+                async move { Err::<MockJson<String>, subxt_rpcs::Error>(make_err()) }
             })
             .build();
 
@@ -1507,11 +1511,52 @@ mod status_response_tests {
         };
         let account = AccountId32::new([1u8; 32]);
 
-        let err = query_balance_info(&at, "polkadot", &account, &block, None)
+        let query_err = query_balance_info(&at, "polkadot", &account, &block, None)
             .await
-            .expect_err("a timed-out storage fetch must be an error, not free:0");
+            .expect_err("a failed storage fetch must be an error, not free:0");
 
-        let response = AccountsError::from(err).into_response();
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        AccountsError::from(query_err).into_response().status()
+    }
+
+    /// A timed-out `System::Account` fetch maps to HTTP 503.
+    #[tokio::test]
+    async fn transient_storage_failure_maps_to_503() {
+        let status = balance_info_status_for(|| {
+            subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "Request timeout",
+            )))
+        })
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    /// A transport failure whose `Display` is not "Request timeout" — a connection reset, a TLS
+    /// failure, a closed socket — is still an upstream blip and must map to 503, not 500.
+    #[tokio::test]
+    async fn non_timeout_transport_failure_maps_to_503() {
+        let status = balance_info_status_for(|| {
+            subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
+                std::io::ErrorKind::ConnectionReset,
+                "connection reset by peer",
+            )))
+        })
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    /// The node answering with a JSON-RPC error (e.g. `at=` inside pruned state) is definitive,
+    /// not retryable, so it must not be advertised as 503.
+    #[tokio::test]
+    async fn node_json_rpc_error_does_not_map_to_503() {
+        let status = balance_info_status_for(|| {
+            subxt_rpcs::Error::User(subxt_rpcs::UserError {
+                code: -32000,
+                message: "State already discarded for hash".to_string(),
+                data: None,
+            })
+        })
+        .await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     }
 }
