@@ -4,7 +4,10 @@
 //! Types for account-related handlers.
 
 use super::utils::AddressValidationError;
-use crate::handlers::common::accounts::{RawEraPayouts, StakingPayoutsQueryError};
+use crate::handlers::common::accounts::{
+    BalanceQueryError, ProxyQueryError, RawEraPayouts, StakingPayoutsQueryError, StakingQueryError,
+    VestingQueryError,
+};
 use crate::state::RelayChainError;
 use crate::utils::{self, RcBlockError};
 use axum::{Json, http::StatusCode, response::IntoResponse};
@@ -393,8 +396,49 @@ impl From<StakingPayoutsQueryError> for AccountsError {
     }
 }
 
+/// Shared 503 body (no internal detail leaked).
+const SERVICE_UNAVAILABLE_MSG: &str = "Service temporarily unavailable";
+
+/// Extract the inner [`StorageError`] from any account sub-query's `StorageQueryFailed` variant.
+fn storage_query_error(err: &AccountsError) -> Option<&StorageError> {
+    match err {
+        AccountsError::StorageQueryFailed(e) => Some(e),
+        AccountsError::BalanceQueryFailed(inner) => match inner.as_ref() {
+            BalanceQueryError::StorageQueryFailed(e) => Some(e),
+            _ => None,
+        },
+        AccountsError::ProxyQueryFailed(inner) => match inner.as_ref() {
+            ProxyQueryError::StorageQueryFailed(e) => Some(e),
+            _ => None,
+        },
+        AccountsError::VestingQueryFailed(inner) => match inner.as_ref() {
+            VestingQueryError::StorageQueryFailed(e) => Some(e),
+            _ => None,
+        },
+        AccountsError::StakingQueryFailed(inner) => match inner.as_ref() {
+            StakingQueryError::StorageQueryFailed(e) => Some(e),
+            _ => None,
+        },
+        AccountsError::StakingPayoutsQueryFailed(inner) => match inner.as_ref() {
+            StakingPayoutsQueryError::StorageQueryFailed(e) => Some(e),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 impl IntoResponse for AccountsError {
     fn into_response(self) -> axum::response::Response {
+        // Transient storage failures (any sub-query) are retryable: 503, not 500.
+        if let Some(storage_err) = storage_query_error(&self)
+            && utils::is_transient_storage_error(storage_err)
+        {
+            return error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                SERVICE_UNAVAILABLE_MSG.to_string(),
+            );
+        }
+
         let (status, message) = match &self {
             AccountsError::InvalidBlockParam(_)
             | AccountsError::InvalidAddress(_)
@@ -426,7 +470,7 @@ impl IntoResponse for AccountsError {
                 if utils::is_online_client_at_block_disconnected(err) {
                     (
                         StatusCode::SERVICE_UNAVAILABLE,
-                        "Service temporarily unavailable".to_string(),
+                        SERVICE_UNAVAILABLE_MSG.to_string(),
                     )
                 } else {
                     (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
@@ -443,6 +487,7 @@ impl IntoResponse for AccountsError {
             AccountsError::PartialAssetBalances(_) | AccountsError::AssetIdsQueryFailed => {
                 (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
             }
+            // Transient storage failures are handled by the early return above.
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
         error_response(status, message)
@@ -1417,5 +1462,92 @@ mod tests {
         let _: AccountConvertQueryParams = serde_json::from_str(json).unwrap();
         let _: AccountValidateQueryParams = serde_json::from_str(json).unwrap();
         let _: ForeignAssetBalancesQueryParams = serde_json::from_str(json).unwrap();
+    }
+}
+
+/// Status-mapping tests over the mock-RPC harness.
+#[cfg(test)]
+mod status_response_tests {
+    use super::*;
+    use crate::handlers::common::accounts::query_balance_info;
+    use crate::test_fixtures::{TEST_BLOCK_NUMBER, mock_rpc_client_builder, online_client};
+    use crate::utils::ResolvedBlock;
+    use sp_core::crypto::AccountId32;
+    use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
+
+    /// Run `query_balance_info` against a node that fails every `System::Account` read with the
+    /// error `make_err` produces, and return the HTTP status that error maps to.
+    ///
+    /// Takes a factory rather than a value because `subxt_rpcs::Error` is not `Clone` and the mock
+    /// handler may be called more than once.
+    async fn balance_info_status_for<F>(make_err: F) -> StatusCode
+    where
+        F: Fn() -> subxt_rpcs::Error + Clone + Send + Sync + 'static,
+    {
+        let mock = mock_rpc_client_builder()
+            .method_handler("state_getStorage", move |_params| {
+                let make_err = make_err.clone();
+                async move { Err::<MockJson<String>, subxt_rpcs::Error>(make_err()) }
+            })
+            .build();
+
+        let client = online_client(mock).await;
+        let at = client
+            .at_block(TEST_BLOCK_NUMBER)
+            .await
+            .expect("at_block failed");
+        let block = ResolvedBlock {
+            hash: format!("0x{}", "0".repeat(64)),
+            number: TEST_BLOCK_NUMBER,
+        };
+        let account = AccountId32::new([1u8; 32]);
+
+        let query_err = query_balance_info(&at, "polkadot", &account, &block, None)
+            .await
+            .expect_err("a failed storage fetch must be an error, not free:0");
+
+        AccountsError::from(query_err).into_response().status()
+    }
+
+    /// A timed-out `System::Account` fetch maps to HTTP 503.
+    #[tokio::test]
+    async fn transient_storage_failure_maps_to_503() {
+        let status = balance_info_status_for(|| {
+            subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "Request timeout",
+            )))
+        })
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    /// A transport failure whose `Display` is not "Request timeout" — a connection reset, a TLS
+    /// failure, a closed socket — is still an upstream blip and must map to 503, not 500.
+    #[tokio::test]
+    async fn non_timeout_transport_failure_maps_to_503() {
+        let status = balance_info_status_for(|| {
+            subxt_rpcs::Error::Client(Box::new(std::io::Error::new(
+                std::io::ErrorKind::ConnectionReset,
+                "connection reset by peer",
+            )))
+        })
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    /// The node answering with a JSON-RPC error (e.g. `at=` inside pruned state) is definitive,
+    /// not retryable, so it must not be advertised as 503.
+    #[tokio::test]
+    async fn node_json_rpc_error_does_not_map_to_503() {
+        let status = balance_info_status_for(|| {
+            subxt_rpcs::Error::User(subxt_rpcs::UserError {
+                code: -32000,
+                message: "State already discarded for hash".to_string(),
+                data: None,
+            })
+        })
+        .await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

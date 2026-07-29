@@ -120,7 +120,7 @@ pub async fn query_proxy_info(
 
     // Use centralized query function
     let (delegated_accounts, deposit_held) = if let Some((proxies, deposit)) =
-        balances_queries::get_proxy_definitions(client_at_block, account, ss58_prefix).await
+        balances_queries::get_proxy_definitions(client_at_block, account, ss58_prefix).await?
     {
         let definitions = proxies
             .into_iter()

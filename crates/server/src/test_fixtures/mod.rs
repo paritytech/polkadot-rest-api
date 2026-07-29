@@ -10,6 +10,7 @@
 use parity_scale_codec::{Compact, Encode};
 use serde_json::{json, value::RawValue};
 use std::sync::Arc;
+use subxt::{OnlineClient, SubstrateConfig};
 use subxt_rpcs::client::mock_rpc_client::{Json as MockJson, MockRpcClientBuilder};
 use subxt_rpcs::client::{MockRpcClient, RpcClient};
 
@@ -164,6 +165,17 @@ pub fn create_mock_rpc_client() -> MockRpcClient {
 /// Create an RpcClient from the mock.
 pub fn create_rpc_client() -> Arc<RpcClient> {
     Arc::new(RpcClient::new(create_mock_rpc_client()))
+}
+
+/// Build an `OnlineClient` over a mock RPC client, panicking if initialization fails.
+///
+/// Pair with [`mock_rpc_client_builder`], which already answers the handshake calls
+/// (`rpc_methods`, genesis hash, `Core_version`, `Metadata_metadata`) this needs.
+pub async fn online_client(mock: MockRpcClient) -> OnlineClient<SubstrateConfig> {
+    let rpc_client = RpcClient::new(mock);
+    OnlineClient::<SubstrateConfig>::from_rpc_client(rpc_client)
+        .await
+        .expect("failed to build OnlineClient over mock")
 }
 
 #[cfg(test)]

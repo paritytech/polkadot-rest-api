@@ -99,7 +99,8 @@ pub async fn query_vesting_info(
     }
 
     // Use centralized query function
-    let vesting_schedules = balances_queries::get_vesting_schedules(client_at_block, account).await;
+    let vesting_schedules =
+        balances_queries::get_vesting_schedules(client_at_block, account).await?;
 
     // Convert to decoded schedules
     let schedules: Vec<DecodedVestingSchedule> = vesting_schedules

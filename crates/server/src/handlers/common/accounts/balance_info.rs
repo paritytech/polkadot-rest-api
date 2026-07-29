@@ -58,6 +58,14 @@ pub enum BalanceQueryError {
     #[error("Failed to decode storage value: {0}")]
     DecodeFailed(#[from] parity_scale_codec::Error),
 
+    /// `System::Account` bytes matched no layout we understand. Separate from [`Self::DecodeFailed`]
+    /// because that wraps `parity_scale_codec::Error`, which only converts from `&'static str` —
+    /// a `format!`-built string carrying the byte count cannot go through it.
+    #[error(
+        "Failed to decode storage value: unrecognized System::Account storage layout ({0} bytes)"
+    )]
+    AccountLayoutUnknown(usize),
+
     #[error("Failed to fetch ExistentialDeposit constant from runtime")]
     ExistentialDepositFetchFailed,
 }
@@ -71,6 +79,17 @@ impl From<subxt::error::OnlineClientAtBlockError> for BalanceQueryError {
 impl From<subxt::error::StorageError> for BalanceQueryError {
     fn from(err: subxt::error::StorageError) -> Self {
         BalanceQueryError::StorageQueryFailed(Box::new(err))
+    }
+}
+
+impl From<balances_queries::AccountDataError> for BalanceQueryError {
+    fn from(err: balances_queries::AccountDataError) -> Self {
+        use balances_queries::AccountDataError;
+        match err {
+            // Fetch failure stays retryable (503); decode failure does not (500).
+            AccountDataError::Fetch(e) => BalanceQueryError::StorageQueryFailed(Box::new(e)),
+            AccountDataError::Decode(len) => BalanceQueryError::AccountLayoutUnknown(len),
+        }
     }
 }
 
@@ -121,6 +140,10 @@ pub async fn query_balance_info(
         balances_queries::get_account_data_or_default(client_at_block, account),
         balances_queries::get_balance_locks(client_at_block, account)
     );
+
+    // Propagate fetch/decode errors instead of serving false-zero or empty data.
+    let account_data = account_data?;
+    let locks = locks?;
 
     // Calculate transferable balance using the dynamically fetched ED
     let transferable = calculate_transferable(existential_deposit, &account_data);
@@ -314,4 +337,32 @@ pub fn format_locks(
             reasons: lock.reasons.clone(),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The byte count in `AccountDataError::Decode` must survive the conversion and reach the
+    /// rendered message — carrying it is the whole point of a dedicated variant.
+    #[test]
+    fn account_layout_error_carries_the_byte_count() {
+        let err = BalanceQueryError::from(balances_queries::AccountDataError::Decode(10));
+
+        assert!(matches!(err, BalanceQueryError::AccountLayoutUnknown(10)));
+        assert_eq!(
+            err.to_string(),
+            "Failed to decode storage value: unrecognized System::Account storage layout (10 bytes)"
+        );
+    }
+
+    /// A fetch failure must keep taking the retryable path, not the new decode variant.
+    #[test]
+    fn fetch_error_stays_a_storage_query_failure() {
+        let err = BalanceQueryError::from(balances_queries::AccountDataError::Fetch(
+            subxt::error::StorageError::NoValueFound,
+        ));
+
+        assert!(matches!(err, BalanceQueryError::StorageQueryFailed(_)));
+    }
 }
