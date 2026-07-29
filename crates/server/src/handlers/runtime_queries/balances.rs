@@ -610,17 +610,8 @@ mod tests {
 #[cfg(test)]
 mod rpc_fetch_tests {
     use super::*;
-    use crate::test_fixtures::{TEST_BLOCK_NUMBER, mock_rpc_client_builder};
-    use subxt::{OnlineClient, SubstrateConfig};
+    use crate::test_fixtures::{TEST_BLOCK_NUMBER, mock_rpc_client_builder, online_client};
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
-    use subxt_rpcs::client::{MockRpcClient, RpcClient};
-
-    async fn online_client(mock: MockRpcClient) -> OnlineClient<SubstrateConfig> {
-        let rpc_client = RpcClient::new(mock);
-        OnlineClient::<SubstrateConfig>::from_rpc_client(rpc_client)
-            .await
-            .expect("failed to build OnlineClient over mock")
-    }
 
     fn test_account() -> AccountId32 {
         AccountId32::new([1u8; 32])

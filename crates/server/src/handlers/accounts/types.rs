@@ -1470,19 +1470,10 @@ mod tests {
 mod status_response_tests {
     use super::*;
     use crate::handlers::common::accounts::query_balance_info;
-    use crate::test_fixtures::{TEST_BLOCK_NUMBER, mock_rpc_client_builder};
+    use crate::test_fixtures::{TEST_BLOCK_NUMBER, mock_rpc_client_builder, online_client};
     use crate::utils::ResolvedBlock;
     use sp_core::crypto::AccountId32;
-    use subxt::{OnlineClient, SubstrateConfig};
     use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
-    use subxt_rpcs::client::{MockRpcClient, RpcClient};
-
-    async fn online_client(mock: MockRpcClient) -> OnlineClient<SubstrateConfig> {
-        let rpc_client = RpcClient::new(mock);
-        OnlineClient::<SubstrateConfig>::from_rpc_client(rpc_client)
-            .await
-            .expect("failed to build OnlineClient over mock")
-    }
 
     /// Run `query_balance_info` against a node that fails every `System::Account` read with the
     /// error `make_err` produces, and return the HTTP status that error maps to.
