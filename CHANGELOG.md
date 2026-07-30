@@ -6,6 +6,44 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.0] (2026-07-30)
+
+### Breaking
+
+- **Account balance, locks, proxy and vesting reads return `Result`**: `get_account_data`,
+  `get_account_data_or_default`, `get_balance_locks`, `get_proxy_definitions`,
+  `get_vesting_schedules` (`handlers::runtime_queries::balances`) previously discarded fetch failures,
+  making "could not reach the node" indistinguishable from "this account has nothing". Adds public
+  `AccountDataError` and `BalanceQueryError::AccountLayoutUnknown(usize)`; library consumers must
+  handle the new `Result`s. (#386)
+- **Those reads answer `503`, not `200`, on upstream failure**: a fabricated `free: 0` (or empty
+  `locks`, no proxies, no vesting) from a failed read is now `503 Service temporarily unavailable`,
+  safe to retry. An unrecognised storage layout gives `500`; a node JSON-RPC error (e.g. `State
+  already discarded` for a pruned `at=`) stays `500`, since a retry cannot change it. (#386)
+
+### Fixes
+
+- **Surface transient storage failures instead of returning `free: 0`**: two
+  `/accounts/{id}/balance-info` requests at the same block could previously disagree. Fetch and decode
+  failures are now distinguished, an unrecognised layout is logged with byte length and hex prefix, and
+  new public `utils::is_transient_backend_error` / `utils::is_transient_storage_error` classify a
+  failure as retryable (`503`) or definitive (`500`). (#386)
+
+### Known limitations
+
+- **The same false-default pattern remains outside those four reads**: on a transient failure
+  `/accounts/{id}/staking-info` still returns `200` with fabricated `rewardDestination: "Staked"`,
+  `nominations: []`, `numSlashingSpans: 0`; `/accounts/{id}/staking-payouts`, `/pallets/*`, nomination
+  pools and foreign assets likewise. There, absence of a `503` does not yet mean the data is real.
+  Tracked in #387, targeted for `0.3.0`.
+
+### Other
+
+- **subxt `0.50.0-beta.4` → `0.50.2`**: `subxt`, `subxt-rpcs`, `subxt-metadata` off the pre-release
+  onto stable; same minor line, no API break, no source changes. subxt#2197's `VerifySignature` →
+  `VerifyMultiSignature` rename affects only subxt's typed extension registry, unused here (extensions
+  decode via own SCALE structs in `utils/transaction_extensions.rs`). (#390, closes #385)
+
 ## [0.1.6] (2026-07-09)
 
 ### Fixes
