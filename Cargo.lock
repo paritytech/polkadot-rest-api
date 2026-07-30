@@ -705,6 +705,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
 
 [[package]]
+name = "base32"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "022dfe9eb35f19ebbcb51e0b40a5ab759f46ad60cadf7297e0bd085afb50e076"
+
+[[package]]
 name = "base58"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -739,7 +745,7 @@ version = "2.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90dbd31c98227229239363921e60fcf5e558e43ec69094d46fc4996f08d1d5bc"
 dependencies = [
- "bitcoin_hashes 0.14.1",
+ "bitcoin_hashes",
  "rand",
  "rand_core",
  "serde",
@@ -759,16 +765,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1930a4dabfebb8d7d9992db18ebe3ae2876f0a305fab206fd168df931ede293b"
 dependencies = [
  "bitcoin-internals",
- "hex-conservative 0.1.2",
-]
-
-[[package]]
-name = "bitcoin_hashes"
-version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26ec84b80c482df901772e931a9a681e26a1b9ee2302edeff23cb30328745c8b"
-dependencies = [
- "hex-conservative 0.2.2",
+ "hex-conservative",
 ]
 
 [[package]]
@@ -1704,6 +1701,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fastbloom"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef975e30683b2d965054bb0a836f8973857c4ebf6acf274fe46617cd285060d8"
+dependencies = [
+ "foldhash 0.2.0",
+ "libm",
+ "portable-atomic",
+ "siphasher",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2181,7 +2190,6 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash 0.1.5",
- "serde",
 ]
 
 [[package]]
@@ -2220,15 +2228,6 @@ name = "hex-conservative"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "212ab92002354b4819390025006c897e8140934349e8635c9b077f47b4dcbd20"
-
-[[package]]
-name = "hex-conservative"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fda06d18ac606267c40c04e41b9947729bf8b9efe74bd4e82b61a5f26a510b9f"
-dependencies = [
- "arrayvec 0.7.6",
-]
 
 [[package]]
 name = "hex-literal"
@@ -2992,11 +2991,11 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.12.5"
+version = "0.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "234cf4f4a04dc1f57e24b96cc0cd600cf2af460d4161ac5ecdd0af8e1f3b2a38"
+checksum = "7f66e8d5d03f609abc3a39e6f08e4164ebf1447a732906d39eb9b99b7919ef39"
 dependencies = [
- "hashbrown 0.15.5",
+ "hashbrown 0.16.1",
 ]
 
 [[package]]
@@ -3340,7 +3339,7 @@ version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e69bf016dc406eff7d53a7d3f7cf1c2e72c82b9088aac1118591e36dd2cd3e9"
 dependencies = [
- "bitcoin_hashes 0.13.0",
+ "bitcoin_hashes",
  "rand",
  "rand_core",
  "serde",
@@ -3712,6 +3711,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "portable-atomic"
+version = "1.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d20d5497ef88037a52ff98267d066e7f11fcc5e99bbfbd58a42336193aacec3"
+
+[[package]]
 name = "potential_utf"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3893,7 +3898,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.114",
@@ -4823,13 +4828,14 @@ dependencies = [
 
 [[package]]
 name = "smoldot"
-version = "0.20.0"
+version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "724ab10d6485cccb4bab080ce436c0b361295274aec7847d7ba84ab1a79a5132"
+checksum = "62249f74ab813afadd8f96a3d91aa9a6c74e9231183eb0e2066a4262aafb233d"
 dependencies = [
  "arrayvec 0.7.6",
  "async-lock",
  "atomic-take",
+ "base32",
  "base64",
  "bip39",
  "blake2-rfc",
@@ -4840,10 +4846,11 @@ dependencies = [
  "ed25519-zebra",
  "either",
  "event-listener",
+ "fastbloom",
  "fnv",
  "futures-lite",
  "futures-util",
- "hashbrown 0.15.5",
+ "hashbrown 0.16.1",
  "hex",
  "hmac 0.12.1",
  "itertools 0.14.0",
@@ -4877,9 +4884,9 @@ dependencies = [
 
 [[package]]
 name = "smoldot-light"
-version = "0.18.0"
+version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8b4d4971f06f2471f4e57a662dbe8047fa0cc020957764a6211f3fad371f7bd"
+checksum = "f5ae693a7dec686bb80f97a78e42bf96aec196776dba8b2ab11b16445c7268f1"
 dependencies = [
  "async-channel",
  "async-lock",
@@ -4893,7 +4900,7 @@ dependencies = [
  "futures-channel",
  "futures-lite",
  "futures-util",
- "hashbrown 0.15.5",
+ "hashbrown 0.16.1",
  "hex",
  "itertools 0.14.0",
  "log",
@@ -5955,9 +5962,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "subxt"
-version = "0.50.0-beta.4"
+version = "0.50.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a37fd57a76d9f573655badda71a27719dce9d0d04150965b233a318499be079"
+checksum = "440b28070d3bba98d637791bc7ebbe362f5beb9e749204c16caaf344fef260ba"
 dependencies = [
  "async-trait",
  "derive-where",
@@ -5996,9 +6003,9 @@ dependencies = [
 
 [[package]]
 name = "subxt-codegen"
-version = "0.50.0-beta.4"
+version = "0.50.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d8257b05ce26a98c7881180e8cba4037b86c87712de3f06338029294c0e29cb"
+checksum = "8dc8a165f929034fd00e9bfa86b63e5d7c26b635e526fa9cadb01389eab92029"
 dependencies = [
  "heck",
  "parity-scale-codec",
@@ -6013,9 +6020,9 @@ dependencies = [
 
 [[package]]
 name = "subxt-lightclient"
-version = "0.50.0-rc1"
+version = "0.50.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31df1d6e74607991ac39d551321378b7e66c0e7e70a9009037070018ed711f36"
+checksum = "0c4556eeef22af52ed4a77e4b665003f2e63264336d351376ef44bcab2a3bc1e"
 dependencies = [
  "futures",
  "futures-util",
@@ -6030,9 +6037,9 @@ dependencies = [
 
 [[package]]
 name = "subxt-macro"
-version = "0.50.0-beta.4"
+version = "0.50.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14dd7eec92028e588610084c0391dc31de337e7ea7dc3d2ffb58bfe4d18cf382"
+checksum = "5132bb78596d4957bf3039b9c54f5f88cefefd64ab61f0e71592526e14ef7f13"
 dependencies = [
  "darling",
  "parity-scale-codec",
@@ -6047,9 +6054,9 @@ dependencies = [
 
 [[package]]
 name = "subxt-metadata"
-version = "0.50.0-beta.4"
+version = "0.50.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b401f2849254ae314eae19f192db848178bf6fbb0bd7b45a820e346a70907ab"
+checksum = "a1e48c34696956f995df947adeb77061cb413377fb412487c41e7c2089112d5b"
 dependencies = [
  "frame-decode",
  "frame-metadata 23.0.1",
@@ -6064,9 +6071,9 @@ dependencies = [
 
 [[package]]
 name = "subxt-rpcs"
-version = "0.50.0-beta.4"
+version = "0.50.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fcc9bf3b2a34577474602039af4b164fdd5c646463cb2d12aa93c057531b54a"
+checksum = "c239a933407ae77306be8b6db72db1594c3295ba39781a0668c340e3d909160f"
 dependencies = [
  "derive-where",
  "finito",
@@ -6089,9 +6096,9 @@ dependencies = [
 
 [[package]]
 name = "subxt-utils-accountid32"
-version = "0.50.0-rc1"
+version = "0.50.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfc11d33f35f777d13dea3c233698787becf14bae92a9d6bb4cef9efddcd6006"
+checksum = "7d43f74707b4c7b7e1e40bf362aebaf42630211a8bcac46a94318284f305debd"
 dependencies = [
  "base58",
  "blake2",
@@ -6105,9 +6112,9 @@ dependencies = [
 
 [[package]]
 name = "subxt-utils-fetchmetadata"
-version = "0.50.0-rc1"
+version = "0.50.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c408a82c1f94cacb838621e3373813f021d7dacebcf60b17febe77f2c12f4e5"
+checksum = "2d58c4d891f3f8bd56acae29706b8bcde969ebb7421c447a8dff0117128416cb"
 dependencies = [
  "hex",
  "parity-scale-codec",

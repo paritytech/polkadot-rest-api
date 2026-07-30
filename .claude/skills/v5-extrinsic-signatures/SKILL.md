@@ -31,8 +31,8 @@ The on-chain identifier the extension matches against changed:
 
 | subxt version | identifier matched |
 |---|---|
-| `< 0.50.1` (the beta.4 in `crates/server/Cargo.toml`) | `"VerifySignature"` |
-| `0.50.1+` | `"VerifyMultiSignature"` (rename, subxt#2197) |
+| `< 0.50.1` | `"VerifySignature"` |
+| `0.50.1+` (the `0.50.2` in `crates/server/Cargo.toml`) | `"VerifyMultiSignature"` (rename, subxt#2197) |
 
 The Rust type is unchanged — you keep writing `find::<VerifySignature<_>>()` on both sides of the bump. What changed is the extension **name in chain metadata** that the lookup matches: `< 0.50.1` only finds runtimes calling it `VerifySignature`; `0.50.1+` only finds runtimes calling it `VerifyMultiSignature`. A `find` name mismatch silently returns `None`.
 
