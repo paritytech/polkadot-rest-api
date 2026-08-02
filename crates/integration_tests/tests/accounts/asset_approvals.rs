@@ -281,9 +281,10 @@ async fn test_asset_approvals_missing_required_params() -> Result<()> {
         .and_then(|o| o.get("error"))
         .and_then(|e| e.as_str())
         .expect("Response should have an 'error' string field");
+    // Serde stops at the first missing field, so only `assetId` is named here.
     assert!(
-        error_both.contains("assetId") && error_both.contains("delegate"),
-        "Error should mention both missing fields, got: {}",
+        error_both.contains("assetId"),
+        "Error should name the first missing field, got: {}",
         error_both
     );
     println!(

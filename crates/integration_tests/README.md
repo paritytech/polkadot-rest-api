@@ -29,6 +29,21 @@ Regression tests using pre-recorded fixtures. These ensure API responses remain 
 - Tests specific historical blocks (e.g., block 1,000,000)
 - Ignores time-varying fields (timestamps, etc.)
 
+### 4. Accounts Tests (`tests/accounts/`)
+
+Endpoint-by-endpoint tests for `/accounts/*` and `/rc/accounts/*`, one submodule per endpoint.
+Runs against Asset Hub Polkadot.
+
+- Response structure, filters, hex and SS58 addresses, `useRcBlock`
+- Error handling for invalid addresses and missing required query parameters
+- A few tests compare against Sidecar fixtures in `tests/fixtures/asset-hub-polkadot/`
+
+### Suites not yet run in CI
+
+`capabilities`, `chain_config`, `coretime`, `relay_chain_connection` and `use_rc_block` exist as
+test targets but are not wired into `ci.yml`. Each needs its own chain or server setup before it
+can be gated on.
+
 ## Running Tests
 
 ### Prerequisites
@@ -52,6 +67,7 @@ cargo run --release --bin polkadot-rest-api
 cargo test --package integration_tests --test historical
 cargo test --package integration_tests --test latest
 cargo test --package integration_tests --test basic
+cargo test --package integration_tests --test accounts   # Asset Hub Polkadot
 
 # Run a specific chain's tests
 cargo test --package integration_tests --test historical test_historical_polkadot
