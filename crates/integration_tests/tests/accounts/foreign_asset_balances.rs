@@ -171,7 +171,7 @@ async fn test_foreign_asset_balances_with_filter() -> Result<()> {
     // The default test account holds no foreign assets, which made this test vacuous.
     let account_id = test_accounts::ASSET_HUB_FOREIGN_ASSET_HOLDER;
     let block_number = 10260000;
-    // Request spells it `chain_id`; the response returns `chainId`. Not a typo, see #391.
+    // Request spells it `chain_id`; the response returns `chainId`. Not a typo, see #392.
     let multi_location =
         r#"{"parents":"2","interior":{"X1":[{"GlobalConsensus":{"Ethereum":{"chain_id":"1"}}}]}}"#;
     let endpoint = format!(

@@ -42,7 +42,7 @@ Runs against Asset Hub Polkadot.
 
 `capabilities`, `chain_config`, `coretime`, `relay_chain_connection` and `use_rc_block` exist as
 test targets but are not wired into `ci.yml`. Each needs its own chain or server setup before it
-can be gated on.
+can be gated on. Tracked in [#394](https://github.com/paritytech/polkadot-rest-api/issues/394).
 
 ## Running Tests
 
