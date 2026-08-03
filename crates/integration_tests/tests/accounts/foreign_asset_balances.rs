@@ -168,12 +168,15 @@ async fn test_foreign_asset_balances_at_specific_block() -> Result<()> {
 async fn test_foreign_asset_balances_with_filter() -> Result<()> {
     let local_client = get_client().await?;
 
-    let account_id = test_accounts::ASSET_HUB_ACCOUNT;
+    // The default test account holds no foreign assets, which made this test vacuous.
+    let account_id = test_accounts::ASSET_HUB_FOREIGN_ASSET_HOLDER;
+    let block_number = 10260000;
+    // Request spells it `chain_id`; the response returns `chainId`. Not a typo, see #392.
     let multi_location =
-        r#"{"parents":"2","interior":{"X1":{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}}}}"#;
+        r#"{"parents":"2","interior":{"X1":[{"GlobalConsensus":{"Ethereum":{"chain_id":"1"}}}]}}"#;
     let endpoint = format!(
-        "/accounts/{}/foreign-asset-balances?foreignAssets[]={}",
-        account_id, multi_location
+        "/accounts/{}/foreign-asset-balances?at={}&foreignAssets[]={}",
+        account_id, block_number, multi_location
     );
 
     println!(
@@ -209,6 +212,11 @@ async fn test_foreign_asset_balances_with_filter() -> Result<()> {
         "  {} Response contains {} foreign asset(s) after filtering",
         "✓".green(),
         foreign_assets.len()
+    );
+
+    assert!(
+        !foreign_assets.is_empty(),
+        "Filter returned no foreign assets, so nothing below is actually verified"
     );
 
     for asset in foreign_assets {

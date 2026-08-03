@@ -240,6 +240,13 @@ jobs:
           TEST_DELAY_MS: 2000
         timeout-minutes: 15
 
+      - name: Run accounts integration tests (Asset Hub Polkadot)
+        run: cargo test --package integration_tests --test accounts
+        env:
+          API_URL: http://localhost:8080
+          RUST_LOG: info
+        timeout-minutes: 10
+
       - name: Stop Asset Hub Polkadot server
         if: always()
         run: |

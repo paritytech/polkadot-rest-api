@@ -72,6 +72,10 @@ pub mod test_accounts {
     /// Asset Hub Polkadot address with known assets
     pub const ASSET_HUB_ACCOUNT: &str = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
 
+    /// Hydration's sovereign account on Asset Hub Polkadot; holds Ethereum-backed foreign assets
+    pub const ASSET_HUB_FOREIGN_ASSET_HOLDER: &str =
+        "13cKp89Uh2yWgTG28JA1QEvPUMjEPKejqkjHKf9zqLiFKjH6";
+
     // =============================================================================================
     // Special Purpose Addresses
     // =============================================================================================

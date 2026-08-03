@@ -117,8 +117,10 @@ async fn test_asset_balances_comparison() -> Result<()> {
 
     let account_id = test_accounts::ASSET_HUB_ACCOUNT;
     let block_number = 10260000;
+    // The Sidecar fixture includes zero balances; this endpoint hides them unless
+    // `showEmpty=true`. See docs/guides/MIGRATION.md.
     let endpoint = format!(
-        "/accounts/{}/asset-balances?at={}",
+        "/accounts/{}/asset-balances?at={}&showEmpty=true",
         account_id, block_number
     );
 
