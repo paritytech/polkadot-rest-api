@@ -6,6 +6,15 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased
+
+### Fixes
+
+- **Accept API-emitted XCM locations in `foreignAssets[]`**: grouped numbers (`"1,000"`),
+  `0x`-prefixed byte arrays, and camelCase keys (`chainId`, `blockNumber`, `blockHash`) now
+  round-trip through `/accounts/{id}/foreign-asset-balances`. Snake-case and ungrouped forms
+  still work. (#392)
+
 ## [0.2.0] (2026-07-30)
 
 ### Breaking
