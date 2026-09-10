@@ -6,6 +6,31 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.1] (2026-09-10)
+
+### Fixes
+
+- **Decode v4 extrinsics against transaction extension version 0**: on a chain exposing more than one
+  transaction extension version (Asset Hub Polkadot spec 2005000 exposes `[0, 1]`), a v4 extrinsic carries
+  no extension version byte and is defined to use version 0, but subxt's metadata answered with the highest
+  version present. Era bytes landed on the wrong extensions and decoding failed with `VariantNotFound`, so
+  those extrinsics were silently skipped: `/v1/blocks/20487777` returned 2 extrinsics of 4. A new
+  `V4CompatMetadata` (`utils/extrinsic_decode.rs`) forces version 0 for v4 and passes v5 through unchanged;
+  block bodies now come from `chain_getBlock`, and a skipped extrinsic logs at error level with its index
+  and bytes instead of a warning. `transaction/parse.rs` had the same bug and now shares the path. The
+  shim can go once we bump to a subxt release carrying paritytech/subxt#1998. (#406, closes #405)
+
+### CI
+
+- **Run the accounts integration suite in CI**: `/accounts/*` had no CI coverage at all, and 4 of the
+  suite's 136 tests failed against Asset Hub Polkadot on test-side problems: an outdated XCM location, two
+  assertions on a field serde never reaches, and a fixture missing from the repo. All 4 are fixed and the
+  suite now runs in the Asset Hub Polkadot job. The other 5 test targets are still never run, tracked in
+  #394. (#395, closes #391)
+- **Bump GitHub Actions**: `docker/login-action` 4.4.0 to 4.5.2, `docker/setup-buildx-action` 4.2.0 to
+  4.3.0, and the `github-actions` group with 2 further updates. (#396, #398, #399)
+- **Bump docs dependencies**: `fast-uri` 3.1.4 to 3.1.5 and `browserslist` 4.28.1 to 4.28.9. (#397, #402)
+
 ## [0.2.0] (2026-07-30)
 
 ### Breaking
