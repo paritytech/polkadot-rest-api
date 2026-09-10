@@ -23,7 +23,5 @@ pub use events::{
     extract_pays_fee_from_event_data, extract_weight_from_event_data, fetch_block_events,
     fetch_block_events_with_client, fetch_block_events_with_prefix,
 };
-pub use extrinsics::{
-    extract_extrinsics, extract_extrinsics_with_client, extract_extrinsics_with_prefix,
-};
+pub use extrinsics::{extract_extrinsics, extract_extrinsics_with_prefix};
 pub use fees::extract_fee_info_for_extrinsic;

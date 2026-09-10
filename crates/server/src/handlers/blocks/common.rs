@@ -471,6 +471,8 @@ pub struct BlockBuildContext<'a> {
     pub state: &'a AppState,
     /// OnlineClient for Subxt 0.50 APIs (finalized head, canonical hash, fee queries)
     pub client: &'a Arc<OnlineClient<SubstrateConfig>>,
+    /// Legacy RPC methods for the *same* chain as `client`, used to fetch raw block bodies
+    pub legacy_rpc: &'a crate::state::SubstrateLegacyRpc,
     /// SS58 prefix for address encoding
     pub ss58_prefix: u16,
     /// Chain type for XCM decoding
@@ -502,7 +504,12 @@ pub async fn build_block_response_generic(
 
     let (author_id, extrinsics_result, events_result, finalized_result, canonical_hash_result) = tokio::join!(
         extract_author_with_prefix(client_at_block, &logs, ctx.ss58_prefix, block_number),
-        extract_extrinsics_with_prefix(ctx.ss58_prefix, client_at_block, block_number),
+        extract_extrinsics_with_prefix(
+            ctx.ss58_prefix,
+            ctx.legacy_rpc,
+            client_at_block,
+            block_number,
+        ),
         fetch_block_events_with_prefix(ctx.ss58_prefix, client_at_block, block_number),
         async {
             if include_finalized {

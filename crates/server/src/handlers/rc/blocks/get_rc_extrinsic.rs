@@ -65,6 +65,7 @@ pub async fn get_rc_extrinsic(
         .map_err(|_| GetBlockError::InvalidExtrinsicIndex(path_params.extrinsic_index.clone()))?;
 
     let relay_client = state.get_relay_chain_client().await?;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
     let relay_chain_info = state.get_relay_chain_info().await?;
 
     let ss58_prefix = relay_chain_info.ss58_prefix;
@@ -81,7 +82,7 @@ pub async fn get_rc_extrinsic(
         .map_err(GetBlockError::BlockHeaderFailed)?;
 
     let (extrinsics_result, events_result) = tokio::join!(
-        extract_extrinsics_with_prefix(ss58_prefix, &client_at_block, block_number),
+        extract_extrinsics_with_prefix(ss58_prefix, &relay_rpc, &client_at_block, block_number),
         fetch_block_events_with_prefix(ss58_prefix, &client_at_block, block_number),
     );
 

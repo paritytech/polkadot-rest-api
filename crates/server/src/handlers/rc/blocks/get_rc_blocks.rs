@@ -163,6 +163,7 @@ async fn build_rc_block_response(
     is_finalized: bool,
 ) -> Result<BlockResponse, GetBlockError> {
     let ss58_prefix = relay_chain_info.ss58_prefix;
+    let relay_rpc = state.get_relay_chain_rpc().await?;
 
     let header = client_at_block
         .block_header()
@@ -179,7 +180,7 @@ async fn build_rc_block_response(
         extract_author_with_prefix(client_at_block, &logs, ss58_prefix, block_number).await;
 
     let (extrinsics_result, events_result) = tokio::join!(
-        extract_extrinsics_with_prefix(ss58_prefix, client_at_block, block_number),
+        extract_extrinsics_with_prefix(ss58_prefix, &relay_rpc, client_at_block, block_number),
         fetch_block_events_with_prefix(ss58_prefix, client_at_block, block_number),
     );
 

@@ -13,7 +13,6 @@ use crate::utils::{
     decode_address_to_ss58,
 };
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
-use frame_decode::extrinsics::decode_extrinsic;
 use heck::ToLowerCamelCase;
 use parity_scale_codec::Decode;
 use scale_decode::visitor::decode_with_visitor;
@@ -282,15 +281,16 @@ async fn parse_internal(
             })?;
 
     let metadata = client_at_block.metadata();
-    let types = metadata.types();
 
-    // Decode extrinsic using frame_decode
-    // Note: &*metadata dereferences Arc<Metadata> to &Metadata which implements ExtrinsicTypeInfo
-    let extrinsic = decode_extrinsic(&mut &tx_bytes[..], &*metadata, types).map_err(|e| {
+    // Decode via `utils::decode_extrinsic_info` rather than calling `frame_decode`
+    // against the metadata directly: the metadata's own `ExtrinsicTypeInfo` decodes
+    // V4 transactions against the newest transaction extension version rather than
+    // version 0. See `crate::utils::extrinsic_decode`.
+    let extrinsic = utils::decode_extrinsic_info(&tx_bytes, &metadata).map_err(|e| {
         ParseErrorKind::ParseFailed {
             transaction: tx.to_string(),
-            cause: format!("Failed to decode extrinsic: {:?}", e),
-            stack: format!("Error: Failed to decode extrinsic: {:?}\n    at parse", e),
+            cause: format!("Failed to decode extrinsic: {}", e),
+            stack: format!("Error: Failed to decode extrinsic: {}\n    at parse", e),
         }
     })?;
 
