@@ -148,9 +148,10 @@ async fn try_fallback_foreign_asset_account(
 /// Uses `staging_xcm::v4::Location` for JSON deserialization (which has full
 /// serde support), then SCALE-encodes and decodes into our typed Location struct.
 ///
-/// Accepts both numeric (`"parents": 2`) and string-encoded (`"parents": "2"`)
-/// number values to be compatible with Sidecar's query format where numbers
-/// are represented as strings.
+/// Accepts both the form this API emits and the older Sidecar-style query form:
+/// string-encoded numbers (`"parents": "2"`), grouped numbers (`"Parachain": "1,000"`),
+/// `0x`-prefixed hex byte arrays, and camelCase keys (`chainId`, `blockNumber`,
+/// `blockHash`). Plain numbers and snake_case keys keep working.
 pub fn parse_foreign_asset_locations(
     json_strings: &[String],
 ) -> Result<Vec<Location>, AccountsError> {
@@ -162,8 +163,7 @@ pub fn parse_foreign_asset_locations(
         let mut json_value: serde_json::Value = serde_json::from_str(json_str)
             .map_err(|e| AccountsError::InvalidForeignAsset(format!("Invalid JSON: {}", e)))?;
 
-        // Coerce string-encoded numbers to actual numbers so staging_xcm can
-        // deserialize them (it expects u8/u32/u64/u128, not strings).
+        // Normalize API/Sidecar JSON so staging_xcm can deserialize it.
         coerce_string_numbers(&mut json_value);
 
         // Deserialize into staging_xcm Location (which has Deserialize)
@@ -183,17 +183,28 @@ pub fn parse_foreign_asset_locations(
     Ok(locations)
 }
 
-/// Recursively convert string-encoded numbers to JSON numbers.
+/// Recursively normalize location JSON so `staging_xcm` can deserialize it.
 ///
-/// Sidecar formats all numbers as strings (e.g., `"parents": "2"`,
-/// `"Parachain": "1000"`), but `staging_xcm`'s serde `Deserialize` expects
-/// actual JSON numbers. This coerces any string that parses as a `u128`
-/// into a `Number`. Hex strings ("0x...") and other non-numeric strings
-/// are left unchanged.
+/// Output `Serialize` matches Sidecar: numbers as strings (sometimes grouped with
+/// commas), byte arrays as `0x` hex, and a few camelCase keys. `staging_xcm`
+/// wants JSON numbers, `[u8; N]` arrays, and snake_case field names.
 fn coerce_string_numbers(value: &mut serde_json::Value) {
+    const KEY_ALIASES: &[(&str, &str)] = &[
+        ("chainId", "chain_id"),
+        ("blockNumber", "block_number"),
+        ("blockHash", "block_hash"),
+    ];
+
     match value {
         serde_json::Value::String(s) => {
-            if let Ok(n) = s.parse::<u128>() {
+            if let Some(bytes) = decode_0x_hex(s) {
+                *value = serde_json::Value::Array(
+                    bytes.into_iter().map(|b| serde_json::json!(b)).collect(),
+                );
+                return;
+            }
+            let stripped: String = s.chars().filter(|c| *c != ',').collect();
+            if let Ok(n) = stripped.parse::<u128>() {
                 *value = serde_json::json!(n);
             }
         }
@@ -203,10 +214,130 @@ fn coerce_string_numbers(value: &mut serde_json::Value) {
             }
         }
         serde_json::Value::Object(map) => {
+            for &(from, to) in KEY_ALIASES {
+                if let Some(v) = map.remove(from) {
+                    if !map.contains_key(to) {
+                        map.insert(to.to_string(), v);
+                    }
+                }
+            }
             for val in map.values_mut() {
                 coerce_string_numbers(val);
             }
         }
         _ => {}
+    }
+}
+
+/// Decode a `0x`-prefixed hex string into bytes. Odd length or invalid hex
+/// is left for serde to reject.
+fn decode_0x_hex(s: &str) -> Option<Vec<u8>> {
+    let hex_str = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X"))?;
+    if hex_str.is_empty() || hex_str.len() % 2 != 0 {
+        return None;
+    }
+    hex::decode(hex_str).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::handlers::common::xcm_types::{Junction, Junctions, NetworkId};
+
+    fn parse_one(json: &str) -> Location {
+        let mut locations =
+            parse_foreign_asset_locations(&[json.to_string()]).expect("location should parse");
+        assert_eq!(locations.len(), 1);
+        locations.pop().unwrap()
+    }
+
+    fn account_key20(hex_body: &str) -> [u8; 20] {
+        let bytes = hex::decode(hex_body).unwrap();
+        let mut key = [0u8; 20];
+        key.copy_from_slice(&bytes);
+        key
+    }
+
+    #[test]
+    fn parse_accepts_grouped_parachain_id() {
+        let loc = parse_one(r#"{"parents":"1","interior":{"X1":[{"Parachain":"1,000"}]}}"#);
+        assert_eq!(
+            loc,
+            Location {
+                parents: 1,
+                interior: Junctions::X1([Junction::Parachain(1000)]),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_accepts_emitted_ethereum_account_key20() {
+        let json = r#"{"parents":"2","interior":{"X2":[{"GlobalConsensus":{"Ethereum":{"chainId":"1"}}},{"AccountKey20":{"key":"0x9d39a5de30e57443bff2a8307a4256c8797a3497","network":null}}]}}"#;
+        let loc = parse_one(json);
+        assert_eq!(
+            loc,
+            Location {
+                parents: 2,
+                interior: Junctions::X2([
+                    Junction::GlobalConsensus(NetworkId::Ethereum { chain_id: 1 }),
+                    Junction::AccountKey20 {
+                        network: None,
+                        key: account_key20("9d39a5de30e57443bff2a8307a4256c8797a3497"),
+                    },
+                ]),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_round_trips_serialized_location() {
+        let original = Location {
+            parents: 2,
+            interior: Junctions::X2([
+                Junction::GlobalConsensus(NetworkId::Ethereum { chain_id: 1 }),
+                Junction::AccountKey20 {
+                    network: None,
+                    key: account_key20("9d39a5de30e57443bff2a8307a4256c8797a3497"),
+                },
+            ]),
+        };
+        let json = serde_json::to_string(&original).expect("serialize location");
+        assert_eq!(parse_one(&json), original);
+    }
+
+    #[test]
+    fn parse_still_accepts_snake_case_and_plain_numbers() {
+        let loc = parse_one(
+            r#"{"parents":"2","interior":{"X1":[{"GlobalConsensus":{"Ethereum":{"chain_id":"1"}}}]}}"#,
+        );
+        assert_eq!(
+            loc,
+            Location {
+                parents: 2,
+                interior: Junctions::X1([Junction::GlobalConsensus(NetworkId::Ethereum {
+                    chain_id: 1
+                })]),
+            }
+        );
+
+        let loc = parse_one(r#"{"parents":1,"interior":{"X1":[{"Parachain":1000}]}}"#);
+        assert_eq!(
+            loc,
+            Location {
+                parents: 1,
+                interior: Junctions::X1([Junction::Parachain(1000)]),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_rejects_invalid_json() {
+        let err = parse_foreign_asset_locations(&["not-valid-json".to_string()]).unwrap_err();
+        match err {
+            AccountsError::InvalidForeignAsset(msg) => {
+                assert!(msg.contains("Invalid JSON"), "unexpected error: {msg}");
+            }
+            other => panic!("expected InvalidForeignAsset, got {other:?}"),
+        }
     }
 }
