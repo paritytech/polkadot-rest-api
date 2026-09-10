@@ -268,7 +268,7 @@ pub async fn get_rc_blocks_head(
 
     let (author_id, extrinsics_result, events_result) = tokio::join!(
         extract_author_with_prefix(&client_at_block, &logs, ss58_prefix, block_number),
-        extract_extrinsics_with_prefix(ss58_prefix, &client_at_block, block_number),
+        extract_extrinsics_with_prefix(ss58_prefix, &relay_rpc, &client_at_block, block_number),
         fetch_block_events_with_prefix(ss58_prefix, &client_at_block, block_number),
     );
 

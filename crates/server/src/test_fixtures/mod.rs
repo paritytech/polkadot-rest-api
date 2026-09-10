@@ -18,6 +18,18 @@ use subxt_rpcs::client::{MockRpcClient, RpcClient};
 /// This is fetched via `state_getMetadata` RPC call and saved as a fixture.
 pub const ASSET_HUB_METADATA: &[u8] = include_bytes!("asset_hub_polkadot_metadata.scale");
 
+/// Raw SCALE-encoded **V16** metadata from Asset Hub Polkadot at spec version
+/// 2005000 (block 20487777), fetched via `Metadata_metadata_at_version(16)`.
+///
+/// This runtime is the first to expose more than one transaction extension version
+/// (`[0, 1]`), which is what makes it the fixture for the V4 decoding regression in
+/// [`crate::utils::extrinsic_decode`]. Prefer [`ASSET_HUB_METADATA`] for tests that
+/// don't care about that.
+pub const ASSET_HUB_METADATA_V16: &[u8] = include_bytes!("asset_hub_polkadot_metadata_v16.scale");
+
+/// Spec version of [`ASSET_HUB_METADATA_V16`].
+pub const TEST_SPEC_VERSION_V16: u32 = 2_005_000;
+
 /// Default test block hash used in mocks.
 pub const TEST_BLOCK_HASH: &str =
     "0x1234567890123456789012345678901234567890123456789012345678901234";
@@ -38,6 +50,10 @@ pub const TEST_TRANSACTION_VERSION: u32 = 15;
 /// Encode a Core_version response that subxt expects.
 /// This is decoded as SpecVersionHeader in subxt.
 fn encode_core_version_response() -> Vec<u8> {
+    encode_core_version_response_for(TEST_SPEC_VERSION)
+}
+
+fn encode_core_version_response_for(spec_version: u32) -> Vec<u8> {
     // SpecVersionHeader structure:
     // - spec_name: String
     // - impl_name: String
@@ -62,7 +78,7 @@ fn encode_core_version_response() -> Vec<u8> {
     1u32.encode_to(&mut encoded);
 
     // spec_version
-    TEST_SPEC_VERSION.encode_to(&mut encoded);
+    spec_version.encode_to(&mut encoded);
 
     // impl_version
     0u32.encode_to(&mut encoded);
@@ -79,15 +95,23 @@ fn encode_core_version_response() -> Vec<u8> {
 /// Encode metadata response for Metadata_metadata runtime call.
 /// The response is: (Compact<u32>, RuntimeMetadataPrefixed)
 /// where the Compact is the length of the metadata bytes.
-fn encode_metadata_response() -> Vec<u8> {
+fn encode_metadata_response(metadata: &[u8]) -> Vec<u8> {
     let mut encoded = Vec::new();
 
     // Compact length prefix
-    Compact(ASSET_HUB_METADATA.len() as u32).encode_to(&mut encoded);
+    Compact(metadata.len() as u32).encode_to(&mut encoded);
 
     // The actual metadata bytes
-    encoded.extend_from_slice(ASSET_HUB_METADATA);
+    encoded.extend_from_slice(metadata);
 
+    encoded
+}
+
+/// Encode a `Metadata_metadata_at_version` response, which subxt decodes as
+/// `Option<(Compact<u32>, RuntimeMetadataPrefixed)>`.
+fn encode_metadata_at_version_response(metadata: &[u8]) -> Vec<u8> {
+    let mut encoded = vec![0x01]; // Option::Some
+    encoded.extend_from_slice(&encode_metadata_response(metadata));
     encoded
 }
 
@@ -99,8 +123,34 @@ fn encode_metadata_response() -> Vec<u8> {
 ///
 /// You can add additional handlers to the returned builder before calling .build()
 pub fn mock_rpc_client_builder() -> MockRpcClientBuilder {
-    let core_version_response = encode_core_version_response();
-    let metadata_response = encode_metadata_response();
+    mock_rpc_client_builder_with_metadata(ASSET_HUB_METADATA, TEST_SPEC_VERSION, None)
+}
+
+/// Like [`mock_rpc_client_builder`], but serving [`ASSET_HUB_METADATA_V16`] through the
+/// modern (versioned) metadata runtime API, so that subxt builds V16 metadata with its
+/// two transaction extension versions.
+pub fn mock_rpc_client_builder_v16() -> MockRpcClientBuilder {
+    mock_rpc_client_builder_with_metadata(ASSET_HUB_METADATA_V16, TEST_SPEC_VERSION_V16, Some(16))
+}
+
+/// Build a mock RPC client serving the given metadata.
+///
+/// `metadata_version` selects how subxt gets it: `None` answers
+/// `Metadata_metadata_versions` with an empty list so subxt falls back to the legacy
+/// `Metadata_metadata` call, while `Some(v)` advertises version `v` and serves the
+/// metadata through `Metadata_metadata_at_version`.
+pub fn mock_rpc_client_builder_with_metadata(
+    metadata: &'static [u8],
+    spec_version: u32,
+    metadata_version: Option<u32>,
+) -> MockRpcClientBuilder {
+    let core_version_response = encode_core_version_response_for(spec_version);
+    let metadata_response = encode_metadata_response(metadata);
+    let metadata_at_version_response = encode_metadata_at_version_response(metadata);
+    let advertised_versions = metadata_version
+        .map(|v| vec![v])
+        .unwrap_or_default()
+        .encode();
 
     MockRpcClient::builder()
         // Required for OnlineClient initialization
@@ -131,6 +181,8 @@ pub fn mock_rpc_client_builder() -> MockRpcClientBuilder {
         .method_handler("state_call", move |params: Option<Box<RawValue>>| {
             let core_version = core_version_response.clone();
             let metadata = metadata_response.clone();
+            let metadata_at_version = metadata_at_version_response.clone();
+            let versions = advertised_versions.clone();
 
             async move {
                 // params is [method_name, data, block_hash] as JSON array
@@ -142,10 +194,12 @@ pub fn mock_rpc_client_builder() -> MockRpcClientBuilder {
                 match method.as_str() {
                     "Core_version" => MockJson(format!("0x{}", hex::encode(&core_version))),
                     "Metadata_metadata_versions" => {
-                        // Return empty to trigger fallback to Metadata_metadata
-                        // This simplifies the mock since we don't need to handle
-                        // the versioned metadata API
-                        MockJson(format!("0x{}", hex::encode(Compact(0u32).encode())))
+                        // An empty list makes subxt fall back to Metadata_metadata,
+                        // which is what the default fixture wants.
+                        MockJson(format!("0x{}", hex::encode(&versions)))
+                    }
+                    "Metadata_metadata_at_version" => {
+                        MockJson(format!("0x{}", hex::encode(&metadata_at_version)))
                     }
                     "Metadata_metadata" => MockJson(format!("0x{}", hex::encode(&metadata))),
                     _ => {
@@ -190,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_metadata_response_encoding() {
-        let encoded = encode_metadata_response();
+        let encoded = encode_metadata_response(ASSET_HUB_METADATA);
         // Should be larger than raw metadata due to length prefix
         assert!(encoded.len() > ASSET_HUB_METADATA.len());
     }

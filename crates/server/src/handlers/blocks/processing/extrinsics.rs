@@ -8,8 +8,11 @@
 //! - Extracting signatures, nonces, tips, and era information
 //! - Converting account addresses to SS58 format
 
-use crate::state::AppState;
-use crate::utils::{self, ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce, EraInfo};
+use crate::state::{AppState, SubstrateLegacyRpc};
+use crate::utils::{
+    self, ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce, DecodedExtrinsic, EraInfo,
+    fetch_block_body,
+};
 use heck::ToLowerCamelCase;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
@@ -22,43 +25,41 @@ use super::super::types::{
     ExtrinsicInfo, GetBlockError, MethodInfo, MultiAddress, SignatureInfo, SignerId,
 };
 
-/// Extract extrinsics from a block using subxt with explicit ss58_prefix
+/// Extract extrinsics from a block with an explicit ss58_prefix
 ///
 /// This version allows specifying the ss58_prefix explicitly, useful for
 /// processing blocks from different chains (e.g., relay chain blocks).
+///
+/// `legacy_rpc` must talk to the same chain as `client_at_block`; it is used to
+/// fetch the raw block body.
 pub async fn extract_extrinsics_with_prefix(
     ss58_prefix: u16,
+    legacy_rpc: &SubstrateLegacyRpc,
     client_at_block: &BlockClient,
     block_number: u64,
 ) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
-    extract_extrinsics_impl(ss58_prefix, client_at_block, block_number).await
+    extract_extrinsics_impl(ss58_prefix, legacy_rpc, client_at_block, block_number).await
 }
 
-/// Extract extrinsics from a block using the client_at_block only
-///
-/// This version is useful when you don't have access to AppState.
-/// It uses ss58_prefix 0 (Polkadot) as default.
-pub async fn extract_extrinsics_with_client(
-    client_at_block: &BlockClient,
-    block_number: u64,
-) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
-    // Use default Polkadot prefix - callers should use extract_extrinsics_with_prefix
-    // if they need a specific prefix
-    extract_extrinsics_impl(0, client_at_block, block_number).await
-}
-
-/// Extract extrinsics from a block using subxt
+/// Extract extrinsics from a block
 pub async fn extract_extrinsics(
     state: &AppState,
     client_at_block: &BlockClient,
     block_number: u64,
 ) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
-    extract_extrinsics_impl(state.chain_info.ss58_prefix, client_at_block, block_number).await
+    extract_extrinsics_impl(
+        state.chain_info.ss58_prefix,
+        &state.legacy_rpc,
+        client_at_block,
+        block_number,
+    )
+    .await
 }
 
 /// Internal implementation for extracting extrinsics
 async fn extract_extrinsics_impl(
     ss58_prefix: u16,
+    legacy_rpc: &SubstrateLegacyRpc,
     client_at_block: &BlockClient,
     block_number: u64,
 ) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
@@ -66,8 +67,12 @@ async fn extract_extrinsics_impl(
     let metadata = client_at_block.metadata();
     let resolver = metadata.types();
 
-    let extrinsics = match client_at_block.extrinsics().fetch().await {
-        Ok(exts) => exts,
+    // We decode the block body ourselves via `DecodedExtrinsic` rather than using
+    // `client_at_block.extrinsics()`, because subxt decodes V4 extrinsics against
+    // the newest transaction extension version the runtime exposes instead of
+    // version 0. See `crate::utils::extrinsic_decode` for the full story.
+    let body = match fetch_block_body(legacy_rpc, client_at_block.block_hash()).await {
+        Ok(body) => body,
         Err(e) => {
             // This could indicate RPC issues or network problems
             tracing::warn!(
@@ -79,21 +84,35 @@ async fn extract_extrinsics_impl(
         }
     };
 
-    let mut result = Vec::with_capacity(16);
+    let mut result = Vec::with_capacity(body.len());
 
-    for extrinsic_result in extrinsics.iter() {
-        // In new subxt, iter() returns Results since decoding can fail
-        let extrinsic = match extrinsic_result {
-            Ok(ext) => ext,
+    for (extrinsic_index, extrinsic_bytes) in body.into_iter().enumerate() {
+        let info = match utils::decode_extrinsic_info(&extrinsic_bytes, &metadata) {
+            Ok(info) => info,
             Err(e) => {
-                tracing::warn!(
-                    "Failed to decode extrinsic in block {}: {:?}. Skipping.",
+                // Skipping leaves a hole in the block response, so make it loud and
+                // log enough of the bytes to reproduce the failure offline. Inherents
+                // can be tens of kilobytes, so cap what we print.
+                const MAX_LOGGED_BYTES: usize = 1024;
+                let logged = &extrinsic_bytes[..extrinsic_bytes.len().min(MAX_LOGGED_BYTES)];
+                tracing::error!(
                     block_number,
-                    e
+                    extrinsic_index,
+                    len = extrinsic_bytes.len(),
+                    raw = %format!(
+                        "0x{}{}",
+                        hex::encode(logged),
+                        if logged.len() < extrinsic_bytes.len() { "…" } else { "" }
+                    ),
+                    error = %e,
+                    "Failed to decode extrinsic; it will be missing from the block response"
                 );
                 continue;
             }
         };
+
+        let extrinsic =
+            DecodedExtrinsic::new(extrinsic_index, extrinsic_bytes, info, metadata.clone());
 
         // Extract pallet and method name from the call, converting to lowerCamelCase
         let pallet_name = extrinsic.pallet_name().to_lower_camel_case();
@@ -402,16 +421,137 @@ async fn extract_extrinsics_impl(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_fixtures::{TEST_BLOCK_NUMBER, TEST_GENESIS_HASH, mock_rpc_client_builder};
+    use crate::test_fixtures::{
+        TEST_BLOCK_NUMBER, TEST_GENESIS_HASH, mock_rpc_client_builder, mock_rpc_client_builder_v16,
+    };
     use serde_json::json;
     use std::sync::{Arc, Mutex};
-    use subxt_rpcs::client::RpcClient;
-    use subxt_rpcs::client::mock_rpc_client::Json as MockJson;
+    use subxt_rpcs::client::mock_rpc_client::{Json as MockJson, MockRpcClientBuilder};
+    use subxt_rpcs::client::{MockRpcClient, RpcClient};
+    use subxt_rpcs::methods::legacy::LegacyRpcMethods;
 
     /// Real Asset Hub extrinsic (block 17742975, #2), exactly as it appears
     /// in a `chain_getBlock` response: the block-body entry is
     /// length-prefixed (compact prefix `0xbd 0x01`). Era: Mortal(32, 11).
     const REAL_PREFIXED_EXTRINSIC: &str = "0xbd01840072284f32719a49037a79da881b91b44bf642395ecba92b241619e21fb1c8a57a01b250abd5b7715a993a111d0db2f6742a8b108fd5a700b5c9e443f9fb14f79938d668ba315e48121b2bd2584b104014e6ede84fe35b77adcc9ff8030de5daef8ab4003e7b0100000000000000";
+
+    /// Polkadot Asset Hub block 20487777, extrinsic #1: a V5 `Bare`
+    /// `Timestamp.set` inherent, as it appears in `chain_getBlock`.
+    const AH_20487777_V5_TIMESTAMP_SET: &str = "0x280503000b80e44f8ba001";
+
+    /// Polkadot Asset Hub block 20487777, extrinsic #2: a V4 **signed**
+    /// `Balances.transfer_allow_death`.
+    ///
+    /// This is one of the two extrinsics reported missing in #405. Its era byte
+    /// (`0x79`) is what subxt misread as a variant index of a version-1-only
+    /// transaction extension, producing `VariantNotFound(121)`.
+    const AH_20487777_V4_TRANSFER_ALLOW_DEATH: &str = "0x59028400bf2f813dcbe2d0f9cb7b9dc61e46b2bcae7b6783adf184516229c891bc5359f500e8c8525ab31ec292d3762a583a93f2ca5f7b451185dd2c5a491e80e1fabf05235f83656132074cb9e6be03d7b25a40bd70af0861edfe7961ccb7d8894d0729007925152b025a620200000a00007a3584265306b5f6a6bd158f57e490c0f32d1135301b2fc89d7d8f76362af69007008824bf68";
+
+    /// Polkadot Asset Hub block 20487777, extrinsic #3: a V4 **signed**
+    /// `Balances.transfer_keep_alive`. The second extrinsic reported missing in
+    /// #405; its era byte (`0x58`) produced `VariantNotFound(88)`.
+    const AH_20487777_V4_TRANSFER_KEEP_ALIVE: &str = "0x55028400dc0c5e6f6c8265265f0bb9bbfa5c46a2471c05152066ed925e450361ad229913003132c42127d205558668f484efeafe4edcc8b49197e1f3f408774c411abc541d167c4f365bc62462bc2a46ca5db6284bf55bb48713171f15903e55cf7c415d01580529130000000a03001d46ccb04c50f93bde3457fd8e1dcee7da4ae2b8719f6d1df89f25afd75557c90f00506d96f51401";
+
+    /// Answer `chain_getBlock` with a body containing exactly `extrinsics`.
+    fn with_block_body(
+        builder: MockRpcClientBuilder,
+        extrinsics: Vec<&'static str>,
+    ) -> MockRpcClient {
+        builder
+            .method_handler("chain_getBlock", move |_params| {
+                let extrinsics = extrinsics.clone();
+                async move {
+                    MockJson(json!({
+                        "block": {
+                            "header": {
+                                "number": format!("0x{:x}", TEST_BLOCK_NUMBER),
+                                "parentHash": TEST_GENESIS_HASH,
+                                "stateRoot": TEST_GENESIS_HASH,
+                                "extrinsicsRoot": TEST_GENESIS_HASH,
+                                "digest": { "logs": [] }
+                            },
+                            "extrinsics": extrinsics
+                        },
+                        "justifications": null
+                    }))
+                }
+            })
+            .build()
+    }
+
+    /// Extract the extrinsics of the mocked block over the given mock client.
+    async fn extract_from_mock(mock: MockRpcClient) -> Vec<ExtrinsicInfo> {
+        let rpc_client = RpcClient::new(mock);
+        let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
+        let client = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client(rpc_client)
+            .await
+            .expect("Failed to create OnlineClient");
+        let at_block = client
+            .at_current_block()
+            .await
+            .expect("Failed at_current_block");
+
+        extract_extrinsics_with_prefix(0, &legacy_rpc, &at_block, TEST_BLOCK_NUMBER)
+            .await
+            .expect("extraction should succeed")
+    }
+
+    /// Regression test for #405: on a runtime exposing transaction extension
+    /// versions `[0, 1]`, V4 signed extrinsics must still be decoded (against
+    /// version 0) and returned rather than dropped from the block response.
+    ///
+    /// Before the fix, subxt decoded these two V4 extrinsics against version 1 —
+    /// which prepends `UnitTransactionExtension` and `VerifyMultiSignature` — read
+    /// the era bytes as enum variant indexes, failed with `VariantNotFound(121)`
+    /// and `VariantNotFound(88)`, and this function skipped both. The block came
+    /// back with 1 of 3 extrinsics.
+    #[tokio::test]
+    async fn test_v4_signed_extrinsics_survive_multiple_extension_versions() {
+        let mock = with_block_body(
+            mock_rpc_client_builder_v16(),
+            vec![
+                AH_20487777_V5_TIMESTAMP_SET,
+                AH_20487777_V4_TRANSFER_ALLOW_DEATH,
+                AH_20487777_V4_TRANSFER_KEEP_ALIVE,
+            ],
+        );
+
+        let extrinsics = extract_from_mock(mock).await;
+
+        let methods: Vec<(&str, &str)> = extrinsics
+            .iter()
+            .map(|e| (e.method.pallet.as_str(), e.method.method.as_str()))
+            .collect();
+        assert_eq!(
+            methods,
+            vec![
+                ("timestamp", "set"),
+                ("balances", "transferAllowDeath"),
+                ("balances", "transferKeepAlive"),
+            ],
+            "V4 signed extrinsics were dropped from the block response"
+        );
+
+        // The inherent is unsigned; the two V4 transfers are signed and must carry
+        // their signer, nonce, tip and era.
+        assert!(extrinsics[0].signature.is_none());
+        for extrinsic in &extrinsics[1..] {
+            let signature = extrinsic
+                .signature
+                .as_ref()
+                .expect("V4 signed extrinsic should have a signature");
+            assert!(
+                signature.signer.id.starts_with('1'),
+                "expected an SS58 signer"
+            );
+            assert!(extrinsic.nonce.is_some(), "nonce should be decoded");
+            assert!(extrinsic.tip.is_some(), "tip should be decoded");
+            assert!(
+                extrinsic.era.mortal_era.is_some(),
+                "era should be decoded as mortal"
+            );
+        }
+    }
 
     /// `MakeWriter` that appends everything to a shared buffer so a test can
     /// assert on emitted tracing output.
@@ -448,32 +588,7 @@ mod tests {
     /// prefixed-bytes walk turns this test red.
     #[tokio::test]
     async fn test_extract_extrinsics_prefixed_body_entry_era_without_warning() {
-        let mock = mock_rpc_client_builder()
-            .method_handler("chain_getBlock", async |_params| {
-                MockJson(json!({
-                    "block": {
-                        "header": {
-                            "number": format!("0x{:x}", TEST_BLOCK_NUMBER),
-                            "parentHash": TEST_GENESIS_HASH,
-                            "stateRoot": TEST_GENESIS_HASH,
-                            "extrinsicsRoot": TEST_GENESIS_HASH,
-                            "digest": { "logs": [] }
-                        },
-                        "extrinsics": [REAL_PREFIXED_EXTRINSIC]
-                    },
-                    "justifications": null
-                }))
-            })
-            .build();
-
-        let rpc_client = RpcClient::new(mock);
-        let client = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client(rpc_client)
-            .await
-            .expect("Failed to create OnlineClient");
-        let at_block = client
-            .at_current_block()
-            .await
-            .expect("Failed at_current_block");
+        let mock = with_block_body(mock_rpc_client_builder(), vec![REAL_PREFIXED_EXTRINSIC]);
 
         // Capture WARN-level tracing output while extracting. This relies on
         // the current-thread tokio runtime of #[tokio::test]: set_default is
@@ -485,9 +600,7 @@ mod tests {
             .finish();
         let _guard = tracing::subscriber::set_default(subscriber);
 
-        let extrinsics = extract_extrinsics_with_client(&at_block, TEST_BLOCK_NUMBER)
-            .await
-            .expect("extraction should succeed");
+        let extrinsics = extract_from_mock(mock).await;
 
         assert_eq!(extrinsics.len(), 1);
         assert_eq!(
