@@ -90,9 +90,7 @@ async fn extract_extrinsics_impl(
         let info = match utils::decode_extrinsic_info(&extrinsic_bytes, &metadata) {
             Ok(info) => info,
             Err(e) => {
-                // Skipping leaves a hole in the block response, so make it loud and
-                // log enough of the bytes to reproduce the failure offline. Inherents
-                // can be tens of kilobytes, so cap what we print.
+                // Inherents can be tens of kilobytes, so cap what we print.
                 const MAX_LOGGED_BYTES: usize = 1024;
                 let logged = &extrinsic_bytes[..extrinsic_bytes.len().min(MAX_LOGGED_BYTES)];
                 tracing::error!(
@@ -105,8 +103,13 @@ async fn extract_extrinsics_impl(
                         if logged.len() < extrinsic_bytes.len() { "…" } else { "" }
                     ),
                     error = %e,
-                    "Failed to decode extrinsic; it will be missing from the block response"
+                    "Failed to decode extrinsic; reporting it as undecodable"
                 );
+                result.push(ExtrinsicInfo::undecodable(
+                    extrinsic_index,
+                    &extrinsic_bytes,
+                    e.to_string(),
+                ));
                 continue;
             }
         };
@@ -396,10 +399,10 @@ async fn extract_extrinsics_impl(
         let pays_fee = if is_signed { None } else { Some(false) };
 
         result.push(ExtrinsicInfo {
-            method: MethodInfo {
+            method: Some(MethodInfo {
                 pallet: pallet_name,
                 method: method_name,
-            },
+            }),
             signature: signature_info,
             nonce,
             args: args_map,
@@ -412,6 +415,7 @@ async fn extract_extrinsics_impl(
             pays_fee,
             docs: None, // Will be populated if extrinsicDocs=true
             raw_hex,
+            decode_error: None,
         });
     }
 
@@ -526,7 +530,10 @@ mod tests {
 
         let methods: Vec<(&str, &str)> = extrinsics
             .iter()
-            .map(|e| (e.method.pallet.as_str(), e.method.method.as_str()))
+            .map(|e| {
+                let method = e.method.as_ref().expect("decoded extrinsic has a method");
+                (method.pallet.as_str(), method.method.as_str())
+            })
             .collect();
         assert_eq!(
             methods,
@@ -643,7 +650,10 @@ mod tests {
         );
         let methods: Vec<(&str, &str)> = extrinsics[1..]
             .iter()
-            .map(|e| (e.method.pallet.as_str(), e.method.method.as_str()))
+            .map(|e| {
+                let method = e.method.as_ref().expect("decoded extrinsic has a method");
+                (method.pallet.as_str(), method.method.as_str())
+            })
             .collect();
         assert_eq!(
             methods,
@@ -653,6 +663,43 @@ mod tests {
             ],
             "entries after the undecodable one sit at the wrong block index"
         );
+    }
+
+    #[tokio::test]
+    async fn test_undecodable_extrinsic_reports_index_reason_and_bytes() {
+        let mock = with_block_body(
+            mock_rpc_client_builder_v16(),
+            vec![UNDECODABLE_UNKNOWN_PALLET, AH_20487777_V5_TIMESTAMP_SET],
+        );
+
+        let extrinsics = extract_from_mock(mock).await;
+
+        let failure = extrinsics[0]
+            .decode_error
+            .as_ref()
+            .expect("the undecodable entry should carry decodeError");
+        assert_eq!(failure.index, "0");
+        assert_eq!(failure.raw_hex, UNDECODABLE_UNKNOWN_PALLET);
+        assert!(!failure.reason.is_empty());
+        assert!(extrinsics[0].method.is_none());
+        assert!(extrinsics[1].decode_error.is_none());
+    }
+
+    /// Without a readable signature it must not be treated as an inherent.
+    #[tokio::test]
+    async fn test_undecodable_extrinsic_does_not_claim_it_pays_no_fee() {
+        let mock = with_block_body(
+            mock_rpc_client_builder_v16(),
+            vec![UNDECODABLE_UNKNOWN_PALLET, AH_20487777_V5_TIMESTAMP_SET],
+        );
+        let mut extrinsics = extract_from_mock(mock).await;
+
+        let (_on_initialize, mut per_extrinsic_events, _on_finalize, outcomes) =
+            categorize_events(Vec::new(), extrinsics.len());
+        associate_events_with_extrinsics(&mut extrinsics, &mut per_extrinsic_events, &outcomes);
+
+        assert_eq!(extrinsics[0].pays_fee, None);
+        assert_eq!(extrinsics[1].pays_fee, Some(false));
     }
 
     /// Events are bucketed by `ApplyExtrinsic(index)` but attached by array
@@ -690,7 +737,12 @@ mod tests {
         let assert_carries = |method: &str, block_index: u32, success: bool| {
             let extrinsic = extrinsics
                 .iter()
-                .find(|extrinsic| extrinsic.method.method == method)
+                .find(|extrinsic| {
+                    extrinsic
+                        .method
+                        .as_ref()
+                        .is_some_and(|decoded| decoded.method == method)
+                })
                 .unwrap_or_else(|| panic!("{method} is missing from the block"));
             assert_eq!(
                 extrinsic.events.first().map(|event| event.data.as_slice()),

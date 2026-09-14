@@ -289,7 +289,11 @@ impl<'a> XcmDecoder<'a> {
         let mut messages = XcmMessages::default();
 
         for extrinsic in self.extrinsics {
-            if extrinsic.method.pallet != "paraInherent" || extrinsic.method.method != "enter" {
+            if !extrinsic
+                .method
+                .as_ref()
+                .is_some_and(|method| method.pallet == "paraInherent" && method.method == "enter")
+            {
                 continue;
             }
 
@@ -386,9 +390,9 @@ impl<'a> XcmDecoder<'a> {
         let mut messages = XcmMessages::default();
 
         for extrinsic in self.extrinsics {
-            if extrinsic.method.pallet != "parachainSystem"
-                || extrinsic.method.method != "setValidationData"
-            {
+            if !extrinsic.method.as_ref().is_some_and(|method| {
+                method.pallet == "parachainSystem" && method.method == "setValidationData"
+            }) {
                 continue;
             }
 
@@ -879,10 +883,10 @@ mod tests {
         use crate::utils::EraInfo;
 
         ExtrinsicInfo {
-            method: MethodInfo {
+            method: Some(MethodInfo {
                 pallet: "parachainSystem".to_string(),
                 method: "setValidationData".to_string(),
-            },
+            }),
             signature: None,
             nonce: None,
             args,
@@ -898,6 +902,7 @@ mod tests {
             pays_fee: None,
             docs: None,
             raw_hex: String::new(),
+            decode_error: None,
         }
     }
 

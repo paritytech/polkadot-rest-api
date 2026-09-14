@@ -320,8 +320,11 @@ pub fn add_docs_to_events(events: &mut [Event], metadata: &subxt::Metadata) {
 
 /// Add documentation to a single extrinsic if extrinsicDocs is enabled
 pub fn add_docs_to_extrinsic(extrinsic: &mut ExtrinsicInfo, metadata: &subxt::Metadata) {
-    let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
-    let method_name = extrinsic.method.method.to_snake_case();
+    let Some(method) = &extrinsic.method else {
+        return;
+    };
+    let pallet_name = method.pallet.to_upper_camel_case();
+    let method_name = method.method.to_snake_case();
     extrinsic.docs =
         Docs::for_call_subxt(metadata, &pallet_name, &method_name).map(|d| d.to_string());
 }
@@ -341,7 +344,8 @@ pub fn associate_events_with_extrinsics(
                 extrinsic.events = std::mem::take(events);
             }
             extrinsic.success = outcome.success;
-            if extrinsic.signature.is_some() {
+            // An undecodable entry has no signature to read, so only the events know.
+            if extrinsic.signature.is_some() || extrinsic.decode_error.is_some() {
                 if outcome.pays_fee.is_some() {
                     extrinsic.pays_fee = outcome.pays_fee;
                 }
@@ -462,7 +466,7 @@ use super::processing::{
     categorize_events, extract_extrinsics_with_prefix, extract_fee_info_for_extrinsic,
     fetch_block_events_with_prefix,
 };
-use super::types::{BlockBuildParams, BlockResponse};
+use super::types::{BlockBuildParams, BlockResponse, has_decode_errors};
 use polkadot_rest_api_config::ChainType;
 
 /// Context for building a block response.
@@ -668,6 +672,7 @@ pub async fn build_block_response_generic(
         author_id,
         logs,
         on_initialize,
+        partial: has_decode_errors(&extrinsics_with_events),
         extrinsics: extrinsics_with_events,
         on_finalize,
         finalized,

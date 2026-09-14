@@ -12,7 +12,9 @@ use crate::handlers::blocks::processing::{
     categorize_events, extract_extrinsics_with_prefix, extract_fee_info_for_extrinsic,
     fetch_block_events_with_prefix,
 };
-use crate::handlers::blocks::types::{BlockQueryParams, BlockResponse, GetBlockError};
+use crate::handlers::blocks::types::{
+    BlockQueryParams, BlockResponse, GetBlockError, has_decode_errors,
+};
 use crate::state::AppState;
 use axum::{
     Json,
@@ -63,7 +65,7 @@ pub struct RcBlocksRangeQueryParams {
     path = "/v1/rc/blocks",
     tag = "rc",
     summary = "RC get blocks by range",
-    description = "Returns relay chain blocks within a specified range (max 500 blocks).",
+    description = "Returns relay chain blocks within a specified range (max 500 blocks). An entry that could not be decoded is still returned at its own index, with `decodeError` set and no `method` or `args`, and the response carries `partial: true`; its `events`, `success` and `paysFee` are still correct.",
     params(
         ("range" = Option<String>, Query, description = "Block range (e.g., '100-200')"),
         ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
@@ -273,6 +275,7 @@ async fn build_rc_block_response(
         author_id,
         logs,
         on_initialize,
+        partial: has_decode_errors(&extrinsics_with_events),
         extrinsics: extrinsics_with_events,
         on_finalize,
         finalized: Some(is_finalized),

@@ -16,7 +16,7 @@ use crate::handlers::blocks::processing::{
     categorize_events, extract_extrinsics_with_prefix, extract_fee_info_for_extrinsic,
     fetch_block_events_with_prefix,
 };
-use crate::handlers::blocks::types::{BlockResponse, GetBlockError};
+use crate::handlers::blocks::types::{BlockResponse, GetBlockError, has_decode_errors};
 use crate::state::{AppState, RelayChainError};
 use axum::{
     Json,
@@ -181,7 +181,7 @@ impl IntoResponse for GetRcBlockHeadError {
     path = "/v1/rc/blocks/head",
     tag = "rc",
     summary = "RC get head block",
-    description = "Returns the latest block on the relay chain.",
+    description = "Returns the latest block on the relay chain. An entry that could not be decoded is still returned at its own index, with `decodeError` set and no `method` or `args`, and the response carries `partial: true`; its `events`, `success` and `paysFee` are still correct.",
     params(
         ("finalized" = Option<bool>, Query, description = "When true returns finalized head (default: true)"),
         ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
@@ -359,6 +359,7 @@ pub async fn get_rc_blocks_head(
         author_id,
         logs,
         on_initialize,
+        partial: has_decode_errors(&extrinsics_with_events),
         extrinsics: extrinsics_with_events,
         on_finalize,
         finalized,
@@ -435,11 +436,12 @@ mod tests {
                 value: json!(["0x42414245", "0x0301000000"]),
             }],
             on_initialize: OnInitialize { events: vec![] },
+            partial: false,
             extrinsics: vec![ExtrinsicInfo {
-                method: MethodInfo {
+                method: Some(MethodInfo {
                     pallet: "timestamp".to_string(),
                     method: "set".to_string(),
-                },
+                }),
                 signature: None,
                 nonce: None,
                 args: serde_json::Map::from_iter(vec![("now".to_string(), json!("1737935148003"))]),
@@ -455,6 +457,7 @@ mod tests {
                 pays_fee: None,
                 docs: None,
                 raw_hex: "0x".to_string(),
+                decode_error: None,
             }],
             on_finalize: OnFinalize { events: vec![] },
             finalized: Some(true),

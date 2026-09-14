@@ -25,7 +25,7 @@ use super::decode::XcmDecoder;
 use super::processing::{
     categorize_events, extract_extrinsics, extract_fee_info_for_extrinsic, fetch_block_events,
 };
-use super::types::{BlockResponse, GetBlockError};
+use super::types::{BlockResponse, GetBlockError, has_decode_errors};
 
 // ================================================================================================
 // Query Parameters
@@ -101,7 +101,7 @@ impl Default for BlockHeadQueryParams {
     path = "/v1/blocks/head",
     tag = "blocks",
     summary = "Get latest block",
-    description = "Returns the latest finalized or canonical block with full extrinsic and event details.",
+    description = "Returns the latest finalized or canonical block with full extrinsic and event details. An entry that could not be decoded is still returned at its own index, with `decodeError` set and no `method` or `args`, and the response carries `partial: true`; its `events`, `success` and `paysFee` are still correct.",
     params(
         ("finalized" = Option<bool>, Query, description = "When true (default), returns finalized head. When false, returns canonical head."),
         ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
@@ -361,6 +361,7 @@ async fn build_head_block_response(
         author_id,
         logs,
         on_initialize,
+        partial: has_decode_errors(&extrinsics_with_events),
         extrinsics: extrinsics_with_events,
         on_finalize,
         finalized,
