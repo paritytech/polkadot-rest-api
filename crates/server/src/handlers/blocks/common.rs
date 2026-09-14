@@ -581,23 +581,11 @@ pub async fn build_block_response_generic(
         categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
-    for (i, outcome) in extrinsic_outcomes.iter().enumerate() {
-        if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            if let Some(events) = per_extrinsic_events.get_mut(i) {
-                extrinsic.events = std::mem::take(events);
-            }
-            extrinsic.success = outcome.success;
-            if extrinsic.signature.is_some() {
-                // For signed extrinsics, use the value from the event's DispatchInfo
-                if outcome.pays_fee.is_some() {
-                    extrinsic.pays_fee = outcome.pays_fee;
-                }
-            } else {
-                // Unsigned extrinsics never pay fees
-                extrinsic.pays_fee = Some(false);
-            }
-        }
-    }
+    associate_events_with_extrinsics(
+        &mut extrinsics_with_events,
+        &mut per_extrinsic_events,
+        &extrinsic_outcomes,
+    );
 
     if !params.no_fees {
         let fee_indices: Vec<usize> = extrinsics_with_events
@@ -651,10 +639,7 @@ pub async fn build_block_response_generic(
 
         if params.extrinsic_docs {
             for extrinsic in extrinsics_with_events.iter_mut() {
-                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
-                let method_name = extrinsic.method.method.to_snake_case();
-                extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
-                    .map(|d| d.to_string());
+                add_docs_to_extrinsic(extrinsic, &metadata);
             }
         }
 
