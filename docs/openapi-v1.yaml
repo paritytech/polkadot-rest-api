@@ -6722,8 +6722,9 @@ components:
             Present only when this body entry could not be decoded. `events`, `success` and
             `paysFee` are still taken from the block's events, which the chain keys by index,
             so they are correct; `method`, `args`, `signature`, `nonce`, `tip` and `era` are
-            not available. `success` is false if the block carried no outcome event for the
-            index.
+            not available, and `era` serialises as an empty object rather than carrying
+            `immortalEra` or `mortalEra`. `success` is false if the block carried no outcome
+            event for the index.
         signature:
           $ref: '#/components/schemas/Signature'
         nonce:

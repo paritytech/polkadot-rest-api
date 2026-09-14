@@ -39,7 +39,7 @@ pub struct BlocksRangeQueryParams {
     path = "/v1/blocks",
     tag = "blocks",
     summary = "Get blocks by range",
-    description = "Returns a collection of blocks given a numeric range. Range is inclusive and limited to 500 blocks. An entry that could not be decoded is still returned at its own index, with `decodeError` set and no `method` or `args`, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
+    description = "Returns a collection of blocks given a numeric range. Range is inclusive and limited to 500 blocks. An entry that could not be decoded is still returned at its own index, with `decodeError` set, no `method` or `args`, and `era` as an empty object, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
     params(
         ("range" = Option<String>, Query, description = "Block range in format 'start-end' (e.g. '100-200')"),
         ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),

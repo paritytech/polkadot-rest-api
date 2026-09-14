@@ -181,7 +181,7 @@ impl IntoResponse for GetRcBlockHeadError {
     path = "/v1/rc/blocks/head",
     tag = "rc",
     summary = "RC get head block",
-    description = "Returns the latest block on the relay chain. An entry that could not be decoded is still returned at its own index, with `decodeError` set and no `method` or `args`, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
+    description = "Returns the latest block on the relay chain. An entry that could not be decoded is still returned at its own index, with `decodeError` set, no `method` or `args`, and `era` as an empty object, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
     params(
         ("finalized" = Option<bool>, Query, description = "When true returns finalized head (default: true)"),
         ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),

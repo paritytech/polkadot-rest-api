@@ -101,7 +101,7 @@ impl Default for BlockHeadQueryParams {
     path = "/v1/blocks/head",
     tag = "blocks",
     summary = "Get latest block",
-    description = "Returns the latest finalized or canonical block with full extrinsic and event details. An entry that could not be decoded is still returned at its own index, with `decodeError` set and no `method` or `args`, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
+    description = "Returns the latest finalized or canonical block with full extrinsic and event details. An entry that could not be decoded is still returned at its own index, with `decodeError` set, no `method` or `args`, and `era` as an empty object, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
     params(
         ("finalized" = Option<bool>, Query, description = "When true (default), returns finalized head. When false, returns canonical head."),
         ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),

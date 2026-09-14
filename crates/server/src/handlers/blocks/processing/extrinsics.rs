@@ -83,12 +83,14 @@ async fn extract_extrinsics_impl(
                 "node has no body for block {block_number}"
             )));
         }
+        // 503 only when a retry can change the answer, matching the rule 0.2.0 set
+        // for the balance reads. A pruned node answers `Ok(None)` for good.
+        Err(e) if utils::is_transient_rpc_error(&e) => {
+            tracing::error!(block_number, error = %e, "Failed to fetch the block body");
+            return Err(GetBlockError::ServiceUnavailable(e.to_string()));
+        }
         Err(e) => {
-            tracing::error!(
-                block_number,
-                error = %e,
-                "Failed to fetch the block body"
-            );
+            tracing::error!(block_number, error = %e, "Failed to fetch the block body");
             return Err(GetBlockError::ExtrinsicsFetchFailed(e.to_string()));
         }
     };
@@ -433,6 +435,8 @@ async fn extract_extrinsics_impl(
 
 #[cfg(test)]
 mod tests {
+    use axum::response::IntoResponse;
+
     use super::super::super::common::associate_events_with_extrinsics;
     use super::super::super::types::{EventPhase, ParsedEvent};
     use super::super::categorize_events;
@@ -808,6 +812,26 @@ mod tests {
         assert!(
             matches!(result, Err(GetBlockError::ExtrinsicsFetchFailed(_))),
             "a missing body came back as a successful empty block"
+        );
+    }
+
+    /// A retry against the same node cannot produce a pruned body, so this stays a
+    /// definitive failure rather than a 503.
+    #[tokio::test]
+    async fn test_missing_body_is_definitive_not_retryable() {
+        let mock = mock_rpc_client_builder_v16()
+            .method_handler("chain_getBlock", |_params| async move {
+                MockJson(serde_json::Value::Null)
+            })
+            .build();
+
+        let error = try_extract_from_mock(mock)
+            .await
+            .expect_err("a missing body should fail");
+
+        assert_eq!(
+            error.into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
         );
     }
 
