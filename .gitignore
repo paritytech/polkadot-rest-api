@@ -18,3 +18,7 @@ results/
 
 # Prometheus runtime data (created when running locally)
 data/
+
+# Server runtime artifacts (scripts/start-server-with-fallback.sh, CI)
+*server.log
+*.pid

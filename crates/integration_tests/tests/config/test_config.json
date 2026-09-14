@@ -1545,16 +1545,17 @@
         "description": "Test pallets balances dispatchables with useRcBlock=true&format=object at RC block 10,293,194"
       },
       {
-        "endpoint": "/v1/pallets/balances/dispatchables/transfer_allow_death",
+        "endpoint": "/v1/pallets/balances/dispatchables/transfer",
         "block_height": null,
         "account_id": null,
         "query_params": {
           "at": "10293194",
           "useRcBlock": "true",
-          "format": "object"
+          "format": "object",
+          "metadata": "true"
         },
-        "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_transfer_allow_death_use_rc_block_format_rc_10293194.json",
-        "description": "Test pallets balances dispatchables transfer_allow_death with useRcBlock=true&format=object at RC block 10,293,194"
+        "fixture_path": "asset-hub-polkadot/pallets_balances_dispatchables_transfer_use_rc_block_format_rc_10293194.json",
+        "description": "Test pallets balances dispatchables transfer with useRcBlock=true&format=object at RC block 10,293,194"
       },
       {
         "endpoint": "/v1/pallets/staking/validators",

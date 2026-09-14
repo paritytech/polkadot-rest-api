@@ -365,7 +365,10 @@ pub async fn get_pallet_dispatchable_item(
         .dispatchables
         .iter()
         .find(|d| d.name.to_lowercase() == dispatchable_id_snake.to_lowercase())
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.clone()))?;
+        .ok_or_else(|| PalletError::DispatchableNotFound {
+            item: dispatchable_id.clone(),
+            block: resolved.number.to_string(),
+        })?;
 
     let at = AtResponse {
         hash: resolved.hash.clone(),
@@ -438,18 +441,12 @@ async fn handle_use_rc_block(
             .into_response());
     }
 
-    let current_client = state.client.at_current_block().await?;
-    let current_metadata = current_client.metadata();
-
     let mut responses = Vec::new();
     for ah_block in &ah_blocks {
-        // Get client at the AH block for timestamp and historical pallet lookup
         let client_at_block = state.client.at_block(ah_block.number).await?;
         let historic_metadata = client_at_block.metadata();
 
-        let pallet_identity = find_pallet_identity(&historic_metadata, &pallet_id)?;
-
-        let pallet_info = extract_pallet_dispatchables(&current_metadata, &pallet_identity.name)?;
+        let pallet_info = extract_pallet_dispatchables(&historic_metadata, &pallet_id)?;
 
         let at = AtResponse {
             hash: ah_block.hash.clone(),
@@ -472,8 +469,8 @@ async fn handle_use_rc_block(
 
         responses.push(PalletsDispatchablesResponse {
             at,
-            pallet: to_lower_first(&pallet_identity.name),
-            pallet_index: pallet_identity.index.to_string(),
+            pallet: to_lower_first(&pallet_info.name),
+            pallet_index: pallet_info.index.to_string(),
             items,
             rc_block_hash: Some(rc_resolved_block.hash.clone()),
             rc_block_number: Some(rc_resolved_block.number.to_string()),
@@ -527,24 +524,21 @@ async fn handle_dispatchable_item_use_rc_block(
 
     let dispatchable_id_snake = camel_to_snake(&dispatchable_id);
 
-    let current_client = state.client.at_current_block().await?;
-    let current_metadata = current_client.metadata();
-
     let mut responses = Vec::new();
     for ah_block in &ah_blocks {
-        // Get client at the AH block for timestamp and historical pallet lookup
         let client_at_block = state.client.at_block(ah_block.number).await?;
         let historic_metadata = client_at_block.metadata();
 
-        let pallet_identity = find_pallet_identity(&historic_metadata, &pallet_id)?;
-
-        let pallet_info = extract_pallet_dispatchables(&current_metadata, &pallet_identity.name)?;
+        let pallet_info = extract_pallet_dispatchables(&historic_metadata, &pallet_id)?;
 
         let dispatchable = pallet_info
             .dispatchables
             .iter()
             .find(|d| d.name.to_lowercase() == dispatchable_id_snake.to_lowercase())
-            .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.clone()))?;
+            .ok_or_else(|| PalletError::DispatchableNotFound {
+                item: dispatchable_id.clone(),
+                block: ah_block.number.to_string(),
+            })?;
 
         let at = AtResponse {
             hash: ah_block.hash.clone(),
@@ -561,8 +555,8 @@ async fn handle_dispatchable_item_use_rc_block(
 
         responses.push(PalletDispatchableItemResponse {
             at,
-            pallet: to_lower_first(&pallet_identity.name),
-            pallet_index: pallet_identity.index.to_string(),
+            pallet: to_lower_first(&pallet_info.name),
+            pallet_index: pallet_info.index.to_string(),
             dispatchable_item: snake_to_camel(&dispatchable.name),
             metadata: metadata_field,
             rc_block_hash: Some(rc_resolved_block.hash.clone()),
@@ -927,7 +921,10 @@ pub async fn rc_pallet_dispatchable_item(
         .dispatchables
         .iter()
         .find(|d| d.name.to_lowercase() == dispatchable_id_snake.to_lowercase())
-        .ok_or_else(|| PalletError::DispatchableNotFound(dispatchable_id.clone()))?;
+        .ok_or_else(|| PalletError::DispatchableNotFound {
+            item: dispatchable_id.clone(),
+            block: resolved.number.to_string(),
+        })?;
 
     let at = AtResponse {
         hash: resolved.hash.clone(),
