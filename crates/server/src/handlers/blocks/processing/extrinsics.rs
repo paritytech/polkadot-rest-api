@@ -72,15 +72,24 @@ async fn extract_extrinsics_impl(
     // the newest transaction extension version the runtime exposes instead of
     // version 0. See `crate::utils::extrinsic_decode` for the full story.
     let body = match fetch_block_body(legacy_rpc, client_at_block.block_hash()).await {
-        Ok(body) => body,
-        Err(e) => {
-            // This could indicate RPC issues or network problems
-            tracing::warn!(
-                "Failed to fetch extrinsics for block {}: {:?}. Returning empty extrinsics.",
+        Ok(Some(body)) => body,
+        Ok(None) => {
+            tracing::error!(
                 block_number,
-                e
+                block_hash = %format!("{:?}", client_at_block.block_hash()),
+                "Node has no body for this block"
             );
-            return Ok(Vec::new());
+            return Err(GetBlockError::ExtrinsicsFetchFailed(format!(
+                "node has no body for block {block_number}"
+            )));
+        }
+        Err(e) => {
+            tracing::error!(
+                block_number,
+                error = %e,
+                "Failed to fetch the block body"
+            );
+            return Err(GetBlockError::ExtrinsicsFetchFailed(e.to_string()));
         }
     };
 
@@ -489,6 +498,23 @@ mod tests {
             .build()
     }
 
+    /// Extract over the given mock client, keeping the error.
+    async fn try_extract_from_mock(
+        mock: MockRpcClient,
+    ) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
+        let rpc_client = RpcClient::new(mock);
+        let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
+        let client = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client(rpc_client)
+            .await
+            .expect("Failed to create OnlineClient");
+        let at_block = client
+            .at_current_block()
+            .await
+            .expect("Failed at_current_block");
+
+        extract_extrinsics_with_prefix(0, &legacy_rpc, &at_block, TEST_BLOCK_NUMBER).await
+    }
+
     /// Extract the extrinsics of the mocked block over the given mock client.
     async fn extract_from_mock(mock: MockRpcClient) -> Vec<ExtrinsicInfo> {
         let rpc_client = RpcClient::new(mock);
@@ -762,5 +788,34 @@ mod tests {
             3,
             "the undecodable entry was dropped instead of keeping its slot"
         );
+    }
+
+    /// A pruned node answers `null` here.
+    #[tokio::test]
+    async fn test_missing_block_body_is_an_error_not_an_empty_block() {
+        let mock = mock_rpc_client_builder_v16()
+            .method_handler("chain_getBlock", |_params| async move {
+                MockJson(serde_json::Value::Null)
+            })
+            .build();
+
+        let result = try_extract_from_mock(mock).await;
+
+        assert!(
+            matches!(result, Err(GetBlockError::ExtrinsicsFetchFailed(_))),
+            "a missing body came back as a successful empty block"
+        );
+    }
+
+    /// Genesis has a body, it is just empty.
+    #[tokio::test]
+    async fn test_empty_body_is_still_a_valid_block() {
+        let mock = with_block_body(mock_rpc_client_builder_v16(), vec![]);
+
+        let extrinsics = try_extract_from_mock(mock)
+            .await
+            .expect("an empty body is a valid block");
+
+        assert!(extrinsics.is_empty());
     }
 }

@@ -321,6 +321,8 @@ impl<'a> CallDataField<'a> {
 /// Fetch the raw block body: one entry per extrinsic, each still carrying the
 /// compact length prefix that [`DecodedExtrinsic::decode`] expects.
 ///
+/// `None` is a body the node does not have, not a block without extrinsics.
+///
 /// We fetch the body ourselves rather than going through `subxt`'s
 /// `extrinsics().fetch()` because that hands back already-decoded extrinsics and
 /// keeps the raw bytes private, leaving no way to re-decode the ones it rejects.
@@ -328,17 +330,19 @@ impl<'a> CallDataField<'a> {
 pub async fn fetch_block_body(
     legacy_rpc: &crate::state::SubstrateLegacyRpc,
     block_hash: subxt::utils::H256,
-) -> Result<Vec<Vec<u8>>, subxt_rpcs::Error> {
+) -> Result<Option<Vec<Vec<u8>>>, subxt_rpcs::Error> {
     let Some(details) = legacy_rpc.chain_get_block(Some(block_hash)).await? else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
 
-    Ok(details
-        .block
-        .extrinsics
-        .into_iter()
-        .map(|bytes| bytes.0)
-        .collect())
+    Ok(Some(
+        details
+            .block
+            .extrinsics
+            .into_iter()
+            .map(|bytes| bytes.0)
+            .collect(),
+    ))
 }
 
 #[cfg(test)]
