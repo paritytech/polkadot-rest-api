@@ -420,6 +420,9 @@ async fn extract_extrinsics_impl(
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::common::associate_events_with_extrinsics;
+    use super::super::super::types::{EventPhase, ParsedEvent};
+    use super::super::categorize_events;
     use super::*;
     use crate::test_fixtures::{
         TEST_BLOCK_NUMBER, TEST_GENESIS_HASH, mock_rpc_client_builder, mock_rpc_client_builder_v16,
@@ -451,6 +454,9 @@ mod tests {
     /// `Balances.transfer_keep_alive`. The second extrinsic reported missing in
     /// #405; its era byte (`0x58`) produced `VariantNotFound(88)`.
     const AH_20487777_V4_TRANSFER_KEEP_ALIVE: &str = "0x55028400dc0c5e6f6c8265265f0bb9bbfa5c46a2471c05152066ed925e450361ad229913003132c42127d205558668f484efeafe4edcc8b49197e1f3f408774c411abc541d167c4f365bc62462bc2a46ca5db6284bf55bb48713171f15903e55cf7c415d01580529130000000a03001d46ccb04c50f93bde3457fd8e1dcee7da4ae2b8719f6d1df89f25afd75557c90f00506d96f51401";
+
+    /// Pallet index 200, which no runtime exposes.
+    const UNDECODABLE_UNKNOWN_PALLET: &str = "0x1004c80100000000";
 
     /// Answer `chain_getBlock` with a body containing exactly `extrinsics`.
     fn with_block_body(
@@ -614,6 +620,95 @@ mod tests {
             !logs.contains("Failed to decode Era"),
             "era decode warning emitted while processing a length-prefixed \
              block-body entry (the #369 WARN flood):\n{logs}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_undecodable_extrinsic_keeps_its_position() {
+        let mock = with_block_body(
+            mock_rpc_client_builder_v16(),
+            vec![
+                UNDECODABLE_UNKNOWN_PALLET,
+                AH_20487777_V4_TRANSFER_ALLOW_DEATH,
+                AH_20487777_V4_TRANSFER_KEEP_ALIVE,
+            ],
+        );
+
+        let extrinsics = extract_from_mock(mock).await;
+
+        assert_eq!(
+            extrinsics.len(),
+            3,
+            "the undecodable entry was dropped instead of keeping its slot"
+        );
+        let methods: Vec<(&str, &str)> = extrinsics[1..]
+            .iter()
+            .map(|e| (e.method.pallet.as_str(), e.method.method.as_str()))
+            .collect();
+        assert_eq!(
+            methods,
+            vec![
+                ("balances", "transferAllowDeath"),
+                ("balances", "transferKeepAlive"),
+            ],
+            "entries after the undecodable one sit at the wrong block index"
+        );
+    }
+
+    /// Events are bucketed by `ApplyExtrinsic(index)` but attached by array
+    /// position, so a dropped entry shifts them onto the wrong extrinsic.
+    #[tokio::test]
+    async fn test_events_follow_the_block_index_past_an_undecodable_entry() {
+        let mock = with_block_body(
+            mock_rpc_client_builder_v16(),
+            vec![
+                UNDECODABLE_UNKNOWN_PALLET,
+                AH_20487777_V4_TRANSFER_ALLOW_DEATH,
+                AH_20487777_V4_TRANSFER_KEEP_ALIVE,
+            ],
+        );
+        let mut extrinsics = extract_from_mock(mock).await;
+
+        let parsed_events: Vec<ParsedEvent> = (0..3u32)
+            .map(|index| ParsedEvent {
+                phase: EventPhase::ApplyExtrinsic(index),
+                pallet_name: "system".to_string(),
+                event_name: if index == 1 {
+                    "ExtrinsicFailed".to_string()
+                } else {
+                    "ExtrinsicSuccess".to_string()
+                },
+                event_data: vec![json!(format!("for block index {index}"))],
+            })
+            .collect();
+
+        let (_on_initialize, mut per_extrinsic_events, _on_finalize, outcomes) =
+            categorize_events(parsed_events, extrinsics.len());
+        associate_events_with_extrinsics(&mut extrinsics, &mut per_extrinsic_events, &outcomes);
+
+        // By name, not position: the shift makes position and bucket agree.
+        let assert_carries = |method: &str, block_index: u32, success: bool| {
+            let extrinsic = extrinsics
+                .iter()
+                .find(|extrinsic| extrinsic.method.method == method)
+                .unwrap_or_else(|| panic!("{method} is missing from the block"));
+            assert_eq!(
+                extrinsic.events.first().map(|event| event.data.as_slice()),
+                Some([json!(format!("for block index {block_index}"))].as_slice()),
+                "{method} is block index {block_index} but received another extrinsic's events"
+            );
+            assert_eq!(
+                extrinsic.success, success,
+                "{method} is block index {block_index} but received another extrinsic's success flag"
+            );
+        };
+
+        assert_carries("transferAllowDeath", 1, false);
+        assert_carries("transferKeepAlive", 2, true);
+        assert_eq!(
+            extrinsics.len(),
+            3,
+            "the undecodable entry was dropped instead of keeping its slot"
         );
     }
 }
