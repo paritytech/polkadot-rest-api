@@ -438,9 +438,6 @@ async fn handle_use_rc_block(
             .into_response());
     }
 
-    let current_client = state.client.at_current_block().await?;
-    let current_metadata = current_client.metadata();
-
     let mut responses = Vec::new();
     for ah_block in &ah_blocks {
         // Get client at the AH block for timestamp and historical pallet lookup
@@ -449,7 +446,7 @@ async fn handle_use_rc_block(
 
         let pallet_identity = find_pallet_identity(&historic_metadata, &pallet_id)?;
 
-        let pallet_info = extract_pallet_dispatchables(&current_metadata, &pallet_identity.name)?;
+        let pallet_info = extract_pallet_dispatchables(&historic_metadata, &pallet_identity.name)?;
 
         let at = AtResponse {
             hash: ah_block.hash.clone(),
@@ -527,9 +524,6 @@ async fn handle_dispatchable_item_use_rc_block(
 
     let dispatchable_id_snake = camel_to_snake(&dispatchable_id);
 
-    let current_client = state.client.at_current_block().await?;
-    let current_metadata = current_client.metadata();
-
     let mut responses = Vec::new();
     for ah_block in &ah_blocks {
         // Get client at the AH block for timestamp and historical pallet lookup
@@ -538,7 +532,7 @@ async fn handle_dispatchable_item_use_rc_block(
 
         let pallet_identity = find_pallet_identity(&historic_metadata, &pallet_id)?;
 
-        let pallet_info = extract_pallet_dispatchables(&current_metadata, &pallet_identity.name)?;
+        let pallet_info = extract_pallet_dispatchables(&historic_metadata, &pallet_identity.name)?;
 
         let dispatchable = pallet_info
             .dispatchables
