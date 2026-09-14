@@ -73,18 +73,17 @@ async fn extract_extrinsics_impl(
     // version 0. See `crate::utils::extrinsic_decode` for the full story.
     let body = match fetch_block_body(legacy_rpc, client_at_block.block_hash()).await {
         Ok(Some(body)) => body,
+        // 503: a pruned node says this for anything outside its window.
         Ok(None) => {
             tracing::error!(
                 block_number,
                 block_hash = %format!("{:?}", client_at_block.block_hash()),
                 "Node has no body for this block"
             );
-            return Err(GetBlockError::ExtrinsicsFetchFailed(format!(
+            return Err(GetBlockError::ServiceUnavailable(format!(
                 "node has no body for block {block_number}"
             )));
         }
-        // 503 only when a retry can change the answer, matching the rule 0.2.0 set
-        // for the balance reads. A pruned node answers `Ok(None)` for good.
         Err(e) if utils::is_transient_rpc_error(&e) => {
             tracing::error!(block_number, error = %e, "Failed to fetch the block body");
             return Err(GetBlockError::ServiceUnavailable(e.to_string()));
@@ -810,15 +809,13 @@ mod tests {
         let result = try_extract_from_mock(mock).await;
 
         assert!(
-            matches!(result, Err(GetBlockError::ExtrinsicsFetchFailed(_))),
+            result.is_err(),
             "a missing body came back as a successful empty block"
         );
     }
 
-    /// A retry against the same node cannot produce a pruned body, so this stays a
-    /// definitive failure rather than a 503.
     #[tokio::test]
-    async fn test_missing_body_is_definitive_not_retryable() {
+    async fn test_missing_body_is_service_unavailable() {
         let mock = mock_rpc_client_builder_v16()
             .method_handler("chain_getBlock", |_params| async move {
                 MockJson(serde_json::Value::Null)
@@ -831,7 +828,7 @@ mod tests {
 
         assert_eq!(
             error.into_response().status(),
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
         );
     }
 
