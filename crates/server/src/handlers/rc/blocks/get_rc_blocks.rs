@@ -65,7 +65,7 @@ pub struct RcBlocksRangeQueryParams {
     path = "/v1/rc/blocks",
     tag = "rc",
     summary = "RC get blocks by range",
-    description = "Returns relay chain blocks within a specified range (max 500 blocks). An entry that could not be decoded is still returned at its own index, with `decodeError` set and no `method` or `args`, and the response carries `partial: true`; its `events`, `success` and `paysFee` are still correct.",
+    description = "Returns relay chain blocks within a specified range (max 500 blocks). An entry that could not be decoded is still returned at its own index, with `decodeError` set and no `method` or `args`, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
     params(
         ("range" = Option<String>, Query, description = "Block range (e.g., '100-200')"),
         ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),

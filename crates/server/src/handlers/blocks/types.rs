@@ -609,6 +609,7 @@ pub struct SignatureInfo {
 /// Extrinsic information matching sidecar format
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ExtrinsicInfo {
     /// Absent when the call could not be decoded.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -664,7 +665,6 @@ impl ExtrinsicInfo {
     /// Events and outcome stay empty here; they are filled in later from the
     /// block's events, which are keyed by this same index.
     pub fn undecodable(index: usize, bytes: &[u8], reason: String) -> Self {
-        let raw_hex = hex_with_prefix(bytes);
         Self {
             method: None,
             signature: None,
@@ -681,11 +681,12 @@ impl ExtrinsicInfo {
             success: false,
             pays_fee: None,
             docs: None,
-            raw_hex: raw_hex.clone(),
+            // This field feeds `payment_queryInfo`; undecodable bytes must not reach it.
+            raw_hex: String::new(),
             decode_error: Some(ExtrinsicDecodeError {
                 index: index.to_string(),
                 reason,
-                raw_hex,
+                raw_hex: hex_with_prefix(bytes),
             }),
         }
     }
@@ -721,6 +722,7 @@ pub struct ExtrinsicIndexResponse {
 /// Basic block information
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct BlockResponse {
     pub number: String,
     pub hash: String,

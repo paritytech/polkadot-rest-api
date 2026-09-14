@@ -28,7 +28,7 @@ use super::types::{BlockQueryParams, BlockResponse, GetBlockError};
     path = "/v1/blocks/{blockId}",
     tag = "blocks",
     summary = "Get block by ID",
-    description = "Returns block information for a given block identifier (hash or number), including extrinsics, events, and fees. An entry that could not be decoded is still returned at its own index, with `decodeError` set and no `method` or `args`, and the response carries `partial: true`; its `events`, `success` and `paysFee` are still correct.",
+    description = "Returns block information for a given block identifier (hash or number), including extrinsics, events, and fees. An entry that could not be decoded is still returned at its own index, with `decodeError` set and no `method` or `args`, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
         ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),

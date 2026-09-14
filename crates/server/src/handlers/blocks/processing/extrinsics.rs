@@ -708,6 +708,10 @@ mod tests {
         assert_eq!(failure.raw_hex, UNDECODABLE_UNKNOWN_PALLET);
         assert!(!failure.reason.is_empty());
         assert!(extrinsics[0].method.is_none());
+        assert!(
+            extrinsics[0].raw_hex.is_empty(),
+            "undecodable bytes must not sit in the field the fee query reads"
+        );
         assert!(extrinsics[1].decode_error.is_none());
     }
 
