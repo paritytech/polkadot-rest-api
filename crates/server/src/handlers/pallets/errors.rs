@@ -493,13 +493,19 @@ fn extract_error_item_from_metadata(
 
     let error_variants = pallet
         .error_variants()
-        .ok_or_else(|| PalletError::ErrorItemNotFound(error_id.to_string()))?;
+        .ok_or_else(|| PalletError::ErrorItemNotFound {
+            item: error_id.to_string(),
+            block: at.height.clone(),
+        })?;
 
     let error_id_lower = error_id.to_lowercase();
     let error_variant = error_variants
         .iter()
         .find(|v| v.name.to_lowercase() == error_id_lower)
-        .ok_or_else(|| PalletError::ErrorItemNotFound(error_id.to_string()))?;
+        .ok_or_else(|| PalletError::ErrorItemNotFound {
+            item: error_id.to_string(),
+            block: at.height.clone(),
+        })?;
 
     let error_name = error_variant.name.clone();
 

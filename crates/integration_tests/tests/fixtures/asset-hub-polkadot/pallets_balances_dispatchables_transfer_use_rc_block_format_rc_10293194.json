@@ -7,6 +7,63 @@
         "height": "1276963"
       },
       "dispatchableItem": "transfer",
+      "metadata": {
+        "args": [
+          {
+            "name": "dest",
+            "type": "MultiAddress",
+            "typeName": "<Lookup as StaticLookup>::Source"
+          },
+          {
+            "name": "value",
+            "type": "Compact<u128>",
+            "typeName": "Balance"
+          }
+        ],
+        "docs": [
+          "Transfer some liquid free balance to another account.",
+          "",
+          "`transfer` will set the `FreeBalance` of the sender and receiver.",
+          "If the sender's account is below the existential deposit as a result",
+          "of the transfer, the account will be reaped.",
+          "",
+          "The dispatch origin for this call must be `Signed` by the transactor.",
+          "",
+          "# <weight>",
+          "- Dependent on arguments but not critical, given proper implementations for input config",
+          "  types. See related functions below.",
+          "- It contains a limited number of reads and writes internally and no complex",
+          "  computation.",
+          "",
+          "Related functions:",
+          "",
+          "  - `ensure_can_withdraw` is always called internally but has a bounded complexity.",
+          "  - Transferring balances to accounts that did not exist before will cause",
+          "    `T::OnNewAccount::on_new_account` to be called.",
+          "  - Removing enough funds from an account will trigger `T::DustRemoval::on_unbalanced`.",
+          "  - `transfer_keep_alive` works the same way as `transfer`, but has an additional check",
+          "    that the transfer will not kill the origin account.",
+          "---------------------------------",
+          "- Origin account is already in memory, so no DB operations for them.",
+          "# </weight>"
+        ],
+        "fields": [
+          {
+            "docs": [],
+            "name": "dest",
+            "type": "154",
+            "typeName": "<T::Lookup as StaticLookup>::Source"
+          },
+          {
+            "docs": [],
+            "name": "value",
+            "type": "46",
+            "typeName": "T::Balance"
+          }
+        ],
+        "index": "0",
+        "name": "transfer"
+      },
       "pallet": "balances",
       "palletIndex": "10",
       "rcBlockHash": "0xb3776c31cdcec764c7b9d508b14c813c512226abeef4f55ca4e743426bd40c94",

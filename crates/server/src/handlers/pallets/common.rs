@@ -127,19 +127,23 @@ pub enum PalletError {
     MetadataDecodeFailed(String),
 
     #[error(
-        "Could not find dispatchable item (\"{0}\") in metadata. dispatchable item names are expected to be in camel case, e.g. 'transfer'"
+        "Could not find dispatchable item (\"{item}\") in the metadata at block {block}. dispatchable item names are expected to be in camel case, e.g. 'transfer'"
     )]
-    DispatchableNotFound(String),
+    DispatchableNotFound { item: String, block: String },
 
     #[error(
-        "Could not find error item (\"{0}\") in metadata. Error item names are expected to be in PascalCase, e.g. 'InsufficientBalance'"
+        "Could not find error item (\"{item}\") in the metadata at block {block}. Error item names are expected to be in PascalCase, e.g. 'InsufficientBalance'"
     )]
-    ErrorItemNotFound(String),
+    ErrorItemNotFound { item: String, block: String },
 
     #[error(
-        "Could not find storage item (\"{item}\") in pallet \"{pallet}\". Storage item names are expected to be in camelCase, e.g. 'account'"
+        "Could not find storage item (\"{item}\") in pallet \"{pallet}\" at block {block}. Storage item names are expected to be in camelCase, e.g. 'account'"
     )]
-    StorageItemNotFound { pallet: String, item: String },
+    StorageItemNotFound {
+        pallet: String,
+        item: String,
+        block: String,
+    },
 
     #[error("Unsupported metadata version")]
     UnsupportedMetadataVersion,
@@ -269,8 +273,8 @@ impl IntoResponse for PalletError {
             }
             PalletError::ConstantNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::ConstantItemNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
-            PalletError::DispatchableNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            PalletError::ErrorItemNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::DispatchableNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
+            PalletError::ErrorItemNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::StorageItemNotFound { .. } => (StatusCode::NOT_FOUND, self.to_string()),
             PalletError::UnsupportedMetadataVersion => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())

@@ -925,6 +925,7 @@ async fn build_storage_item_response(
             return Err(PalletError::StorageItemNotFound {
                 pallet: pallet_id.to_string(),
                 item: storage_item_id.to_string(),
+                block: resolved_block.number.to_string(),
             });
         }
     };
@@ -935,6 +936,7 @@ async fn build_storage_item_response(
         .ok_or_else(|| PalletError::StorageItemNotFound {
             pallet: pallet_id.to_string(),
             item: storage_item_id.to_string(),
+            block: resolved_block.number.to_string(),
         })?;
 
     let original_pallet_name = get_original_pallet_name_subxt(metadata, pallet_id)?;
