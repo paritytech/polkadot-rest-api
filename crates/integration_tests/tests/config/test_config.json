@@ -1666,6 +1666,22 @@
         },
         "fixture_path": "asset-hub-polkadot/pallets_timestamp_storage_now_10260000.json",
         "description": "Test Timestamp/Now storage item (Plain u64) at Asset Hub Polkadot block 10,260,000"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 20598556,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/blocks_20598556.json",
+        "description": "Poll hook events at Asset Hub Polkadot block 20,598,556 are not dropped"
+      },
+      {
+        "endpoint": "/v1/blocks/{blockId}",
+        "block_height": 20135079,
+        "account_id": null,
+        "query_params": {},
+        "fixture_path": "asset-hub-polkadot/blocks_20135079.json",
+        "description": "Multi block migration events at Asset Hub Polkadot block 20,135,079 are not dropped"
       }
     ],
     "asset-hub-kusama": [
