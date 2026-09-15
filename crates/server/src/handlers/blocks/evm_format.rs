@@ -29,7 +29,11 @@ pub fn apply_evm_format(extrinsics: &mut [ExtrinsicInfo], metadata: &subxt::Meta
     }
 
     for extrinsic in extrinsics.iter_mut() {
-        if extrinsic.method.pallet.to_lowercase() == "revive" {
+        if extrinsic
+            .method
+            .as_ref()
+            .is_some_and(|method| method.pallet.eq_ignore_ascii_case("revive"))
+        {
             for event in extrinsic.events.iter_mut() {
                 if event.method.pallet.to_lowercase() == "revive" {
                     event.data = event.data.iter().map(convert_data_to_evm_address).collect();

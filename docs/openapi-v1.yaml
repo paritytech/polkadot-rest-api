@@ -5900,10 +5900,19 @@ components:
           $ref: '#/components/schemas/BlockInitialize'
         extrinsics:
           type: array
-          description: Array of extrinsics (inherents and transactions) within the
-            block.
+          description: >-
+            Array of extrinsics (inherents and transactions) within the block. One entry per
+            block body item, at its own block index, including any entry that could not be
+            decoded. See `partial`.
           items:
             $ref: '#/components/schemas/Extrinsic'
+        partial:
+          type: boolean
+          description: >-
+            Present and true when an entry could not be decoded. Such an entry is still
+            returned at its own index, with `decodeError` set and no `method` or `args`; its
+            `events`, `success` and `paysFee` are still correct. Omitted when the whole block
+            decoded, so a complete block is unchanged.
         onFinalize:
           $ref: '#/components/schemas/BlockFinalize'
         finalized:
@@ -6701,7 +6710,21 @@ components:
       type: object
       properties:
         method:
-          $ref: '#/components/schemas/ExtrinsicMethod'
+          allOf:
+            - $ref: '#/components/schemas/ExtrinsicMethod'
+          description: >-
+            Absent when `decodeError` is present, since the call was not decoded and there is
+            no pallet or method to report.
+        decodeError:
+          allOf:
+            - $ref: '#/components/schemas/ExtrinsicDecodeError'
+          description: >-
+            Present only when this body entry could not be decoded. `events`, `success` and
+            `paysFee` are still taken from the block's events, which the chain keys by index,
+            so they are correct; `method`, `args`, `signature`, `nonce`, `tip` and `era` are
+            not available, and `era` serialises as an empty object rather than carrying
+            `immortalEra` or `mortalEra`. `success` is false if the block carried no outcome
+            event for the index.
         signature:
           $ref: '#/components/schemas/Signature'
         nonce:
@@ -6742,6 +6765,23 @@ components:
             Block authors could insert the extrinsic as an inherent in the block
             and not pay a fee. Always check that `paysFee` is `true` and that the
             extrinsic is signed when reconciling old blocks.
+    ExtrinsicDecodeError:
+      type: object
+      description: >-
+        Why a block body entry could not be decoded. The entry keeps its slot in `extrinsics`,
+        so the entries after it stay at their own block index.
+      properties:
+        index:
+          type: string
+          description: Index of the entry within the block body.
+          format: unsignedInteger
+        reason:
+          type: string
+          description: The decode failure, as reported by the decoder.
+        rawHex:
+          type: string
+          description: The raw SCALE bytes of the body entry, so the failure can be reproduced.
+          format: hex
     ExtrinsicIndex:
       type: object
       properties:

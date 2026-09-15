@@ -40,7 +40,7 @@ use super::types::{
     path = "/v1/blocks/{blockId}/extrinsics/{extrinsicIndex}",
     tag = "blocks",
     summary = "Get extrinsic by index",
-    description = "Returns a specific extrinsic from a block by its index within the block.",
+    description = "Returns a specific extrinsic from a block by its index within the block. If that entry could not be decoded it is still returned, with `decodeError` set, no `method` or `args`, and `era` as an empty object; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
         ("extrinsicIndex" = String, Path, description = "Index of the extrinsic within the block"),

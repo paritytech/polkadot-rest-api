@@ -72,15 +72,25 @@ async fn extract_extrinsics_impl(
     // the newest transaction extension version the runtime exposes instead of
     // version 0. See `crate::utils::extrinsic_decode` for the full story.
     let body = match fetch_block_body(legacy_rpc, client_at_block.block_hash()).await {
-        Ok(body) => body,
-        Err(e) => {
-            // This could indicate RPC issues or network problems
-            tracing::warn!(
-                "Failed to fetch extrinsics for block {}: {:?}. Returning empty extrinsics.",
+        Ok(Some(body)) => body,
+        // 503: a pruned node says this for anything outside its window.
+        Ok(None) => {
+            tracing::error!(
                 block_number,
-                e
+                block_hash = %format!("{:?}", client_at_block.block_hash()),
+                "Node has no body for this block"
             );
-            return Ok(Vec::new());
+            return Err(GetBlockError::ServiceUnavailable(format!(
+                "node has no body for block {block_number}"
+            )));
+        }
+        Err(e) if utils::is_transient_rpc_error(&e) => {
+            tracing::error!(block_number, error = %e, "Failed to fetch the block body");
+            return Err(GetBlockError::ServiceUnavailable(e.to_string()));
+        }
+        Err(e) => {
+            tracing::error!(block_number, error = %e, "Failed to fetch the block body");
+            return Err(GetBlockError::ExtrinsicsFetchFailed(e.to_string()));
         }
     };
 
@@ -90,9 +100,7 @@ async fn extract_extrinsics_impl(
         let info = match utils::decode_extrinsic_info(&extrinsic_bytes, &metadata) {
             Ok(info) => info,
             Err(e) => {
-                // Skipping leaves a hole in the block response, so make it loud and
-                // log enough of the bytes to reproduce the failure offline. Inherents
-                // can be tens of kilobytes, so cap what we print.
+                // Inherents can be tens of kilobytes, so cap what we print.
                 const MAX_LOGGED_BYTES: usize = 1024;
                 let logged = &extrinsic_bytes[..extrinsic_bytes.len().min(MAX_LOGGED_BYTES)];
                 tracing::error!(
@@ -105,8 +113,13 @@ async fn extract_extrinsics_impl(
                         if logged.len() < extrinsic_bytes.len() { "…" } else { "" }
                     ),
                     error = %e,
-                    "Failed to decode extrinsic; it will be missing from the block response"
+                    "Failed to decode extrinsic; reporting it as undecodable"
                 );
+                result.push(ExtrinsicInfo::undecodable(
+                    extrinsic_index,
+                    &extrinsic_bytes,
+                    e.to_string(),
+                ));
                 continue;
             }
         };
@@ -396,10 +409,10 @@ async fn extract_extrinsics_impl(
         let pays_fee = if is_signed { None } else { Some(false) };
 
         result.push(ExtrinsicInfo {
-            method: MethodInfo {
+            method: Some(MethodInfo {
                 pallet: pallet_name,
                 method: method_name,
-            },
+            }),
             signature: signature_info,
             nonce,
             args: args_map,
@@ -412,6 +425,7 @@ async fn extract_extrinsics_impl(
             pays_fee,
             docs: None, // Will be populated if extrinsicDocs=true
             raw_hex,
+            decode_error: None,
         });
     }
 
@@ -420,6 +434,11 @@ async fn extract_extrinsics_impl(
 
 #[cfg(test)]
 mod tests {
+    use axum::response::IntoResponse;
+
+    use super::super::super::common::associate_events_with_extrinsics;
+    use super::super::super::types::{EventPhase, ParsedEvent};
+    use super::super::categorize_events;
     use super::*;
     use crate::test_fixtures::{
         TEST_BLOCK_NUMBER, TEST_GENESIS_HASH, mock_rpc_client_builder, mock_rpc_client_builder_v16,
@@ -452,6 +471,9 @@ mod tests {
     /// #405; its era byte (`0x58`) produced `VariantNotFound(88)`.
     const AH_20487777_V4_TRANSFER_KEEP_ALIVE: &str = "0x55028400dc0c5e6f6c8265265f0bb9bbfa5c46a2471c05152066ed925e450361ad229913003132c42127d205558668f484efeafe4edcc8b49197e1f3f408774c411abc541d167c4f365bc62462bc2a46ca5db6284bf55bb48713171f15903e55cf7c415d01580529130000000a03001d46ccb04c50f93bde3457fd8e1dcee7da4ae2b8719f6d1df89f25afd75557c90f00506d96f51401";
 
+    /// Pallet index 200, which no runtime exposes.
+    const UNDECODABLE_UNKNOWN_PALLET: &str = "0x1004c80100000000";
+
     /// Answer `chain_getBlock` with a body containing exactly `extrinsics`.
     fn with_block_body(
         builder: MockRpcClientBuilder,
@@ -477,6 +499,23 @@ mod tests {
                 }
             })
             .build()
+    }
+
+    /// Extract over the given mock client, keeping the error.
+    async fn try_extract_from_mock(
+        mock: MockRpcClient,
+    ) -> Result<Vec<ExtrinsicInfo>, GetBlockError> {
+        let rpc_client = RpcClient::new(mock);
+        let legacy_rpc = LegacyRpcMethods::new(rpc_client.clone());
+        let client = subxt::OnlineClient::<subxt::SubstrateConfig>::from_rpc_client(rpc_client)
+            .await
+            .expect("Failed to create OnlineClient");
+        let at_block = client
+            .at_current_block()
+            .await
+            .expect("Failed at_current_block");
+
+        extract_extrinsics_with_prefix(0, &legacy_rpc, &at_block, TEST_BLOCK_NUMBER).await
     }
 
     /// Extract the extrinsics of the mocked block over the given mock client.
@@ -520,7 +559,10 @@ mod tests {
 
         let methods: Vec<(&str, &str)> = extrinsics
             .iter()
-            .map(|e| (e.method.pallet.as_str(), e.method.method.as_str()))
+            .map(|e| {
+                let method = e.method.as_ref().expect("decoded extrinsic has a method");
+                (method.pallet.as_str(), method.method.as_str())
+            })
             .collect();
         assert_eq!(
             methods,
@@ -615,5 +657,190 @@ mod tests {
             "era decode warning emitted while processing a length-prefixed \
              block-body entry (the #369 WARN flood):\n{logs}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_undecodable_extrinsic_keeps_its_position() {
+        let mock = with_block_body(
+            mock_rpc_client_builder_v16(),
+            vec![
+                UNDECODABLE_UNKNOWN_PALLET,
+                AH_20487777_V4_TRANSFER_ALLOW_DEATH,
+                AH_20487777_V4_TRANSFER_KEEP_ALIVE,
+            ],
+        );
+
+        let extrinsics = extract_from_mock(mock).await;
+
+        assert_eq!(
+            extrinsics.len(),
+            3,
+            "the undecodable entry was dropped instead of keeping its slot"
+        );
+        let methods: Vec<(&str, &str)> = extrinsics[1..]
+            .iter()
+            .map(|e| {
+                let method = e.method.as_ref().expect("decoded extrinsic has a method");
+                (method.pallet.as_str(), method.method.as_str())
+            })
+            .collect();
+        assert_eq!(
+            methods,
+            vec![
+                ("balances", "transferAllowDeath"),
+                ("balances", "transferKeepAlive"),
+            ],
+            "entries after the undecodable one sit at the wrong block index"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_undecodable_extrinsic_reports_index_reason_and_bytes() {
+        let mock = with_block_body(
+            mock_rpc_client_builder_v16(),
+            vec![UNDECODABLE_UNKNOWN_PALLET, AH_20487777_V5_TIMESTAMP_SET],
+        );
+
+        let extrinsics = extract_from_mock(mock).await;
+
+        let failure = extrinsics[0]
+            .decode_error
+            .as_ref()
+            .expect("the undecodable entry should carry decodeError");
+        assert_eq!(failure.index, "0");
+        assert_eq!(failure.raw_hex, UNDECODABLE_UNKNOWN_PALLET);
+        assert!(!failure.reason.is_empty());
+        assert!(extrinsics[0].method.is_none());
+        assert!(
+            extrinsics[0].raw_hex.is_empty(),
+            "undecodable bytes must not sit in the field the fee query reads"
+        );
+        assert!(extrinsics[1].decode_error.is_none());
+    }
+
+    /// Without a readable signature it must not be treated as an inherent.
+    #[tokio::test]
+    async fn test_undecodable_extrinsic_does_not_claim_it_pays_no_fee() {
+        let mock = with_block_body(
+            mock_rpc_client_builder_v16(),
+            vec![UNDECODABLE_UNKNOWN_PALLET, AH_20487777_V5_TIMESTAMP_SET],
+        );
+        let mut extrinsics = extract_from_mock(mock).await;
+
+        let (_on_initialize, mut per_extrinsic_events, _on_finalize, outcomes) =
+            categorize_events(Vec::new(), extrinsics.len());
+        associate_events_with_extrinsics(&mut extrinsics, &mut per_extrinsic_events, &outcomes);
+
+        assert_eq!(extrinsics[0].pays_fee, None);
+        assert_eq!(extrinsics[1].pays_fee, Some(false));
+    }
+
+    /// Events are bucketed by `ApplyExtrinsic(index)` but attached by array
+    /// position, so a dropped entry shifts them onto the wrong extrinsic.
+    #[tokio::test]
+    async fn test_events_follow_the_block_index_past_an_undecodable_entry() {
+        let mock = with_block_body(
+            mock_rpc_client_builder_v16(),
+            vec![
+                UNDECODABLE_UNKNOWN_PALLET,
+                AH_20487777_V4_TRANSFER_ALLOW_DEATH,
+                AH_20487777_V4_TRANSFER_KEEP_ALIVE,
+            ],
+        );
+        let mut extrinsics = extract_from_mock(mock).await;
+
+        let parsed_events: Vec<ParsedEvent> = (0..3u32)
+            .map(|index| ParsedEvent {
+                phase: EventPhase::ApplyExtrinsic(index),
+                pallet_name: "system".to_string(),
+                event_name: if index == 1 {
+                    "ExtrinsicFailed".to_string()
+                } else {
+                    "ExtrinsicSuccess".to_string()
+                },
+                event_data: vec![json!(format!("for block index {index}"))],
+            })
+            .collect();
+
+        let (_on_initialize, mut per_extrinsic_events, _on_finalize, outcomes) =
+            categorize_events(parsed_events, extrinsics.len());
+        associate_events_with_extrinsics(&mut extrinsics, &mut per_extrinsic_events, &outcomes);
+
+        // By name, not position: the shift makes position and bucket agree.
+        let assert_carries = |method: &str, block_index: u32, success: bool| {
+            let extrinsic = extrinsics
+                .iter()
+                .find(|extrinsic| {
+                    extrinsic
+                        .method
+                        .as_ref()
+                        .is_some_and(|decoded| decoded.method == method)
+                })
+                .unwrap_or_else(|| panic!("{method} is missing from the block"));
+            assert_eq!(
+                extrinsic.events.first().map(|event| event.data.as_slice()),
+                Some([json!(format!("for block index {block_index}"))].as_slice()),
+                "{method} is block index {block_index} but received another extrinsic's events"
+            );
+            assert_eq!(
+                extrinsic.success, success,
+                "{method} is block index {block_index} but received another extrinsic's success flag"
+            );
+        };
+
+        assert_carries("transferAllowDeath", 1, false);
+        assert_carries("transferKeepAlive", 2, true);
+        assert_eq!(
+            extrinsics.len(),
+            3,
+            "the undecodable entry was dropped instead of keeping its slot"
+        );
+    }
+
+    /// A pruned node answers `null` here.
+    #[tokio::test]
+    async fn test_missing_block_body_is_an_error_not_an_empty_block() {
+        let mock = mock_rpc_client_builder_v16()
+            .method_handler("chain_getBlock", |_params| async move {
+                MockJson(serde_json::Value::Null)
+            })
+            .build();
+
+        let result = try_extract_from_mock(mock).await;
+
+        assert!(
+            result.is_err(),
+            "a missing body came back as a successful empty block"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_missing_body_is_service_unavailable() {
+        let mock = mock_rpc_client_builder_v16()
+            .method_handler("chain_getBlock", |_params| async move {
+                MockJson(serde_json::Value::Null)
+            })
+            .build();
+
+        let error = try_extract_from_mock(mock)
+            .await
+            .expect_err("a missing body should fail");
+
+        assert_eq!(
+            error.into_response().status(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    /// Genesis has a body, it is just empty.
+    #[tokio::test]
+    async fn test_empty_body_is_still_a_valid_block() {
+        let mock = with_block_body(mock_rpc_client_builder_v16(), vec![]);
+
+        let extrinsics = try_extract_from_mock(mock)
+            .await
+            .expect("an empty body is a valid block");
+
+        assert!(extrinsics.is_empty());
     }
 }

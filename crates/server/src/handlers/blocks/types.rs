@@ -7,11 +7,12 @@
 //! request parameters, response structures, and internal types.
 
 use crate::state::RelayChainError;
-use crate::utils::{self, EraInfo, RcBlockError};
+use crate::utils::{self, EraInfo, RcBlockError, hex_with_prefix};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use heck::ToLowerCamelCase;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use subxt::error::{OnlineClientAtBlockError, StorageError};
 use thiserror::Error;
 
@@ -608,8 +609,11 @@ pub struct SignatureInfo {
 /// Extrinsic information matching sidecar format
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ExtrinsicInfo {
-    pub method: MethodInfo,
+    /// Absent when the call could not be decoded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<MethodInfo>,
     /// Signature information - null for unsigned extrinsics (inherents)
     pub signature: Option<SignatureInfo>,
     /// Nonce - shown as null when extraction fails (matching sidecar behavior)
@@ -637,6 +641,55 @@ pub struct ExtrinsicInfo {
     /// Raw extrinsic bytes as hex (used internally for fee queries, not serialized)
     #[serde(skip)]
     pub raw_hex: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decode_error: Option<ExtrinsicDecodeError>,
+}
+
+/// Why a block body entry could not be decoded.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtrinsicDecodeError {
+    /// A string, matching how indexes render elsewhere.
+    pub index: String,
+    pub reason: String,
+    pub raw_hex: String,
+}
+
+pub fn has_decode_errors(extrinsics: &[ExtrinsicInfo]) -> bool {
+    extrinsics
+        .iter()
+        .any(|extrinsic| extrinsic.decode_error.is_some())
+}
+
+impl ExtrinsicInfo {
+    /// Events and outcome stay empty here; they are filled in later from the
+    /// block's events, which are keyed by this same index.
+    pub fn undecodable(index: usize, bytes: &[u8], reason: String) -> Self {
+        Self {
+            method: None,
+            signature: None,
+            nonce: None,
+            args: serde_json::Map::new(),
+            tip: None,
+            hash: hex_with_prefix(BlakeTwo256::hash(bytes).as_ref()),
+            info: serde_json::Map::new(),
+            era: EraInfo {
+                immortal_era: None,
+                mortal_era: None,
+            },
+            events: Vec::new(),
+            success: false,
+            pays_fee: None,
+            docs: None,
+            // This field feeds `payment_queryInfo`; undecodable bytes must not reach it.
+            raw_hex: String::new(),
+            decode_error: Some(ExtrinsicDecodeError {
+                index: index.to_string(),
+                reason,
+                raw_hex: hex_with_prefix(bytes),
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -669,6 +722,7 @@ pub struct ExtrinsicIndexResponse {
 /// Basic block information
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct BlockResponse {
     pub number: String,
     pub hash: String,
@@ -681,6 +735,9 @@ pub struct BlockResponse {
     pub on_initialize: OnInitialize,
     pub extrinsics: Vec<ExtrinsicInfo>,
     pub on_finalize: OnFinalize,
+    /// Omitted when the block decoded cleanly, so existing clients see no change.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub partial: bool,
     /// Whether this block has been finalized (omitted when finalizedKey=false)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finalized: Option<bool>,
@@ -791,6 +848,85 @@ pub struct ExtrinsicOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_undecodable_extrinsic_omits_method_and_carries_decode_error() {
+        let json = serde_json::to_value(ExtrinsicInfo::undecodable(
+            2,
+            &[0x10, 0x04, 0xc8],
+            "unknown pallet".to_string(),
+        ))
+        .unwrap();
+
+        assert!(json.get("method").is_none());
+        assert_eq!(
+            json["decodeError"],
+            json!({ "index": "2", "reason": "unknown pallet", "rawHex": "0x1004c8" })
+        );
+        assert_eq!(json["args"], json!({}));
+        assert_eq!(json["era"], json!({}));
+    }
+
+    #[test]
+    fn test_block_response_omits_partial_when_every_extrinsic_decoded() {
+        let mut response = BlockResponse {
+            number: "1".to_string(),
+            hash: "0xabc".to_string(),
+            parent_hash: "0xdef".to_string(),
+            state_root: "0x00".to_string(),
+            extrinsics_root: "0x00".to_string(),
+            author_id: None,
+            logs: vec![],
+            on_initialize: OnInitialize { events: vec![] },
+            partial: false,
+            extrinsics: vec![],
+            on_finalize: OnFinalize { events: vec![] },
+            finalized: None,
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+            decoded_xcm_msgs: None,
+        };
+
+        let json = serde_json::to_value(&response).unwrap();
+        assert!(json.get("partial").is_none());
+
+        response.partial = true;
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["partial"], json!(true));
+    }
+
+    #[test]
+    fn test_has_decode_errors_only_when_one_failed() {
+        let decoded = || ExtrinsicInfo {
+            method: Some(MethodInfo {
+                pallet: "timestamp".to_string(),
+                method: "set".to_string(),
+            }),
+            signature: None,
+            nonce: None,
+            args: serde_json::Map::new(),
+            tip: None,
+            hash: "0x00".to_string(),
+            info: serde_json::Map::new(),
+            era: EraInfo {
+                immortal_era: None,
+                mortal_era: None,
+            },
+            events: vec![],
+            success: true,
+            pays_fee: None,
+            docs: None,
+            raw_hex: String::new(),
+            decode_error: None,
+        };
+
+        assert!(!has_decode_errors(&[decoded(), decoded()]));
+        assert!(has_decode_errors(&[
+            decoded(),
+            ExtrinsicInfo::undecodable(1, &[0x04], "boom".to_string()),
+        ]));
+    }
 
     // --- deny_unknown_fields tests ---
 

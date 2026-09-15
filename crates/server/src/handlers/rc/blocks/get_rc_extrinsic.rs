@@ -39,7 +39,7 @@ use axum::{
     path = "/v1/rc/blocks/{blockId}/extrinsics/{extrinsicIndex}",
     tag = "rc",
     summary = "RC get extrinsic by index",
-    description = "Returns a specific extrinsic from a relay chain block by its index.",
+    description = "Returns a specific extrinsic from a relay chain block by its index. If that entry could not be decoded it is still returned, with `decodeError` set, no `method` or `args`, and `era` as an empty object; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
         ("extrinsicIndex" = String, Path, description = "Index of the extrinsic in the block"),

@@ -157,7 +157,7 @@ impl IntoResponse for GetRcBlockError {
     path = "/v1/rc/blocks/{blockId}",
     tag = "rc",
     summary = "RC get block by ID",
-    description = "Returns relay chain block information for a given block identifier.",
+    description = "Returns relay chain block information for a given block identifier. An entry that could not be decoded is still returned at its own index, with `decodeError` set, no `method` or `args`, and `era` as an empty object, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
         ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
@@ -248,11 +248,12 @@ mod tests {
                 ]),
             }],
             on_initialize: OnInitialize { events: vec![] },
+            partial: false,
             extrinsics: vec![ExtrinsicInfo {
-                method: MethodInfo {
+                method: Some(MethodInfo {
                     pallet: "timestamp".to_string(),
                     method: "set".to_string(),
-                },
+                }),
                 signature: None,
                 nonce: None,
                 args: serde_json::Map::from_iter(vec![("now".to_string(), json!("1769534712000"))]),
@@ -269,6 +270,7 @@ mod tests {
                 pays_fee: None,
                 docs: None,
                 raw_hex: "0x".to_string(),
+                decode_error: None,
             }],
             on_finalize: OnFinalize { events: vec![] },
             finalized: Some(true),

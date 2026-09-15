@@ -3,16 +3,18 @@
 
 use crate::extractors::JsonQuery;
 use crate::handlers::blocks::common::{
-    BlockClient, add_docs_to_events, convert_digest_items_to_logs, extract_author_with_prefix,
+    BlockClient, add_docs_to_events, add_docs_to_extrinsic, associate_events_with_extrinsics,
+    convert_digest_items_to_logs, extract_author_with_prefix,
     get_canonical_hash_at_number_with_rpc, get_finalized_block_number_with_rpc, parse_range,
 };
 use crate::handlers::blocks::decode::XcmDecoder;
-use crate::handlers::blocks::docs::Docs;
 use crate::handlers::blocks::processing::{
     categorize_events, extract_extrinsics_with_prefix, extract_fee_info_for_extrinsic,
     fetch_block_events_with_prefix,
 };
-use crate::handlers::blocks::types::{BlockQueryParams, BlockResponse, GetBlockError};
+use crate::handlers::blocks::types::{
+    BlockQueryParams, BlockResponse, GetBlockError, has_decode_errors,
+};
 use crate::state::AppState;
 use axum::{
     Json,
@@ -20,7 +22,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use futures::stream::{self, StreamExt, TryStreamExt};
-use heck::{ToSnakeCase, ToUpperCamelCase};
 use serde::Deserialize;
 use std::sync::Arc;
 use subxt::{OnlineClient, SubstrateConfig};
@@ -64,7 +65,7 @@ pub struct RcBlocksRangeQueryParams {
     path = "/v1/rc/blocks",
     tag = "rc",
     summary = "RC get blocks by range",
-    description = "Returns relay chain blocks within a specified range (max 500 blocks).",
+    description = "Returns relay chain blocks within a specified range (max 500 blocks). An entry that could not be decoded is still returned at its own index, with `decodeError` set, no `method` or `args`, and `era` as an empty object, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
     params(
         ("range" = Option<String>, Query, description = "Block range (e.g., '100-200')"),
         ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
@@ -191,17 +192,11 @@ async fn build_rc_block_response(
         categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
-    for (i, outcome) in extrinsic_outcomes.iter().enumerate() {
-        if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            if let Some(events) = per_extrinsic_events.get_mut(i) {
-                extrinsic.events = std::mem::take(events);
-            }
-            extrinsic.success = outcome.success;
-            if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
-                extrinsic.pays_fee = outcome.pays_fee;
-            }
-        }
-    }
+    associate_events_with_extrinsics(
+        &mut extrinsics_with_events,
+        &mut per_extrinsic_events,
+        &extrinsic_outcomes,
+    );
 
     if !params.no_fees {
         let fee_indices: Vec<usize> = extrinsics_with_events
@@ -255,10 +250,7 @@ async fn build_rc_block_response(
 
         if params.extrinsic_docs {
             for extrinsic in extrinsics_with_events.iter_mut() {
-                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
-                let method_name = extrinsic.method.method.to_snake_case();
-                extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
-                    .map(|d| d.to_string());
+                add_docs_to_extrinsic(extrinsic, &metadata);
             }
         }
     }
@@ -283,6 +275,7 @@ async fn build_rc_block_response(
         author_id,
         logs,
         on_initialize,
+        partial: has_decode_errors(&extrinsics_with_events),
         extrinsics: extrinsics_with_events,
         on_finalize,
         finalized: Some(is_finalized),

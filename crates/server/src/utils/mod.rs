@@ -75,18 +75,23 @@ pub fn is_backend_disconnected_error(err: &subxt::error::BackendError) -> bool {
 pub fn is_transient_backend_error(err: &subxt::error::BackendError) -> bool {
     use subxt::error::{BackendError, RpcError};
 
-    let definitive = matches!(
-        err,
-        BackendError::Rpc(RpcError::ClientError(
-            subxt_rpcs::Error::User(_)
-                | subxt_rpcs::Error::Serialization(_)
-                | subxt_rpcs::Error::Deserialization(_)
-                | subxt_rpcs::Error::Decode(_)
-                | subxt_rpcs::Error::InsecureUrl(_),
-        ))
-    );
+    match err {
+        BackendError::Rpc(RpcError::ClientError(inner)) => is_transient_rpc_error(inner),
+        _ => true,
+    }
+}
 
-    !definitive
+/// Whether a `subxt_rpcs::Error` is transient (retryable). Same definitive set as
+/// [`is_transient_backend_error`], for call sites that hold the RPC error directly.
+pub fn is_transient_rpc_error(err: &subxt_rpcs::Error) -> bool {
+    !matches!(
+        err,
+        subxt_rpcs::Error::User(_)
+            | subxt_rpcs::Error::Serialization(_)
+            | subxt_rpcs::Error::Deserialization(_)
+            | subxt_rpcs::Error::Decode(_)
+            | subxt_rpcs::Error::InsecureUrl(_)
+    )
 }
 
 /// Whether a `StorageError` is transient (retryable): a `BackendError`-wrapping variant whose

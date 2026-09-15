@@ -13,18 +13,19 @@ use axum::{
     extract::State,
     response::{IntoResponse, Response},
 };
-use heck::{ToSnakeCase, ToUpperCamelCase};
 use polkadot_rest_api_config::ChainType;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::common::{add_docs_to_events, convert_digest_items_to_logs, extract_author};
+use super::common::{
+    add_docs_to_events, add_docs_to_extrinsic, associate_events_with_extrinsics,
+    convert_digest_items_to_logs, extract_author,
+};
 use super::decode::XcmDecoder;
-use super::docs::Docs;
 use super::processing::{
     categorize_events, extract_extrinsics, extract_fee_info_for_extrinsic, fetch_block_events,
 };
-use super::types::{BlockResponse, GetBlockError};
+use super::types::{BlockResponse, GetBlockError, has_decode_errors};
 
 // ================================================================================================
 // Query Parameters
@@ -100,7 +101,7 @@ impl Default for BlockHeadQueryParams {
     path = "/v1/blocks/head",
     tag = "blocks",
     summary = "Get latest block",
-    description = "Returns the latest finalized or canonical block with full extrinsic and event details.",
+    description = "Returns the latest finalized or canonical block with full extrinsic and event details. An entry that could not be decoded is still returned at its own index, with `decodeError` set, no `method` or `args`, and `era` as an empty object, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
     params(
         ("finalized" = Option<bool>, Query, description = "When true (default), returns finalized head. When false, returns canonical head."),
         ("eventDocs" = Option<bool>, Query, description = "Include documentation for events"),
@@ -271,17 +272,11 @@ async fn build_head_block_response(
         categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
-    for (i, outcome) in extrinsic_outcomes.iter().enumerate() {
-        if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            if let Some(events) = per_extrinsic_events.get_mut(i) {
-                extrinsic.events = std::mem::take(events);
-            }
-            extrinsic.success = outcome.success;
-            if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
-                extrinsic.pays_fee = outcome.pays_fee;
-            }
-        }
-    }
+    associate_events_with_extrinsics(
+        &mut extrinsics_with_events,
+        &mut per_extrinsic_events,
+        &extrinsic_outcomes,
+    );
 
     // Populate fee info for signed extrinsics that pay fees (unless noFees=true)
     if !params.no_fees {
@@ -336,10 +331,7 @@ async fn build_head_block_response(
 
         if params.extrinsic_docs {
             for extrinsic in extrinsics_with_events.iter_mut() {
-                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
-                let method_name = extrinsic.method.method.to_snake_case();
-                extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
-                    .map(|d| d.to_string());
+                add_docs_to_extrinsic(extrinsic, &metadata);
             }
         }
 
@@ -369,6 +361,7 @@ async fn build_head_block_response(
         author_id,
         logs,
         on_initialize,
+        partial: has_decode_errors(&extrinsics_with_events),
         extrinsics: extrinsics_with_events,
         on_finalize,
         finalized,

@@ -8,15 +8,15 @@
 
 use crate::extractors::JsonQuery;
 use crate::handlers::blocks::common::{
-    add_docs_to_events, convert_digest_items_to_logs, extract_author_with_prefix,
+    add_docs_to_events, add_docs_to_extrinsic, associate_events_with_extrinsics,
+    convert_digest_items_to_logs, extract_author_with_prefix,
 };
 use crate::handlers::blocks::decode::XcmDecoder;
-use crate::handlers::blocks::docs::Docs;
 use crate::handlers::blocks::processing::{
     categorize_events, extract_extrinsics_with_prefix, extract_fee_info_for_extrinsic,
     fetch_block_events_with_prefix,
 };
-use crate::handlers::blocks::types::{BlockResponse, GetBlockError};
+use crate::handlers::blocks::types::{BlockResponse, GetBlockError, has_decode_errors};
 use crate::state::{AppState, RelayChainError};
 use axum::{
     Json,
@@ -24,7 +24,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use heck::{ToSnakeCase, ToUpperCamelCase};
 use polkadot_rest_api_config::ChainType;
 use serde::Deserialize;
 use serde_json::json;
@@ -182,7 +181,7 @@ impl IntoResponse for GetRcBlockHeadError {
     path = "/v1/rc/blocks/head",
     tag = "rc",
     summary = "RC get head block",
-    description = "Returns the latest block on the relay chain.",
+    description = "Returns the latest block on the relay chain. An entry that could not be decoded is still returned at its own index, with `decodeError` set, no `method` or `args`, and `era` as an empty object, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
     params(
         ("finalized" = Option<bool>, Query, description = "When true returns finalized head (default: true)"),
         ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
@@ -281,17 +280,11 @@ pub async fn get_rc_blocks_head(
         categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
-    for (i, outcome) in extrinsic_outcomes.iter().enumerate() {
-        if let Some(extrinsic) = extrinsics_with_events.get_mut(i) {
-            if let Some(events) = per_extrinsic_events.get_mut(i) {
-                extrinsic.events = std::mem::take(events);
-            }
-            extrinsic.success = outcome.success;
-            if extrinsic.signature.is_some() && outcome.pays_fee.is_some() {
-                extrinsic.pays_fee = outcome.pays_fee;
-            }
-        }
-    }
+    associate_events_with_extrinsics(
+        &mut extrinsics_with_events,
+        &mut per_extrinsic_events,
+        &extrinsic_outcomes,
+    );
 
     if !params.no_fees {
         let fee_indices: Vec<usize> = extrinsics_with_events
@@ -345,10 +338,7 @@ pub async fn get_rc_blocks_head(
 
         if params.extrinsic_docs {
             for extrinsic in extrinsics_with_events.iter_mut() {
-                let pallet_name = extrinsic.method.pallet.to_upper_camel_case();
-                let method_name = extrinsic.method.method.to_snake_case();
-                extrinsic.docs = Docs::for_call_subxt(&metadata, &pallet_name, &method_name)
-                    .map(|d| d.to_string());
+                add_docs_to_extrinsic(extrinsic, &metadata);
             }
         }
     }
@@ -369,6 +359,7 @@ pub async fn get_rc_blocks_head(
         author_id,
         logs,
         on_initialize,
+        partial: has_decode_errors(&extrinsics_with_events),
         extrinsics: extrinsics_with_events,
         on_finalize,
         finalized,
@@ -445,11 +436,12 @@ mod tests {
                 value: json!(["0x42414245", "0x0301000000"]),
             }],
             on_initialize: OnInitialize { events: vec![] },
+            partial: false,
             extrinsics: vec![ExtrinsicInfo {
-                method: MethodInfo {
+                method: Some(MethodInfo {
                     pallet: "timestamp".to_string(),
                     method: "set".to_string(),
-                },
+                }),
                 signature: None,
                 nonce: None,
                 args: serde_json::Map::from_iter(vec![("now".to_string(), json!("1737935148003"))]),
@@ -465,6 +457,7 @@ mod tests {
                 pays_fee: None,
                 docs: None,
                 raw_hex: "0x".to_string(),
+                decode_error: None,
             }],
             on_finalize: OnFinalize { events: vec![] },
             finalized: Some(true),
