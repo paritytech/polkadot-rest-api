@@ -163,6 +163,32 @@ The following endpoints now return historical data when using the `?at=` query p
   - `/v1/pallets/pool-assets/{assetId}/asset-info`
   - `/v1/pallets/foreign-assets`
 
+### Events emitted after the last extrinsic: the new `afterExtrinsics` field
+
+`/v1/blocks/{blockId}` gains a top-level `afterExtrinsics` object, between `extrinsics` and
+`onFinalize`.
+It holds events the chain emits after the last extrinsic and before `on_finalize`. Sidecar drops
+these events, so the two APIs disagree on the affected blocks.
+
+FRAME runs the poll hook and the multi-block migrator while `System::ExecutionPhase` is still
+`ApplyExtrinsic(n)`, where `n` is the extrinsic count. The index is therefore one past the last
+extrinsic, and both APIs previously treated it as bad data. Sidecar still does
+(`BlocksService.ts`, sidecar issues 1767 and 1541); this API now keeps the events instead.
+
+The field is named for the window rather than for the poll hook because migrations dominate it by
+volume: on Westend Asset Hub block 12736939 the chain emitted 1,011 events and both APIs reported
+2, discarding 1,007 `balances.TransferOnHold` plus the `multiBlockMigrations` completions. Treat
+`afterExtrinsics` as "events belonging to no extrinsic", and expect balance movements and account
+creation in it, not just `staking` and `multiBlockElection`.
+
+The field is omitted when there are no such events, so a block without them serializes exactly as
+before and stays byte-for-byte compatible with Sidecar.
+
+**Known limitation.** When a block contains a non-inherent extrinsic, FRAME runs the same window
+at that extrinsic instead, so these events carry a valid extrinsic index and are attributed to it.
+Nothing in the event phase distinguishes them, so they cannot be separated without re-executing
+the block. `afterExtrinsics` recovers only the events whose index is past the end.
+
 ---
 
 ## Endpoints not available in Polkadot REST API

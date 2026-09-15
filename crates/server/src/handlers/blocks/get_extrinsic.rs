@@ -19,7 +19,8 @@ use serde_json::json;
 
 use super::common::{add_docs_to_events, add_docs_to_extrinsic, associate_events_with_extrinsics};
 use super::processing::{
-    categorize_events, extract_extrinsics, extract_fee_info_for_extrinsic, fetch_block_events,
+    CategorizedEvents, categorize_events, extract_extrinsics, extract_fee_info_for_extrinsic,
+    fetch_block_events,
 };
 use super::types::{
     BlockIdentifiers, ExtrinsicIndexResponse, ExtrinsicPathParams, ExtrinsicQueryParams,
@@ -177,8 +178,11 @@ async fn build_extrinsic_response(
         return Err(GetBlockError::ExtrinsicIndexNotFound);
     }
 
-    let (_on_initialize, mut per_extrinsic_events, _on_finalize, extrinsic_outcomes) =
-        categorize_events(block_events, extrinsics.len());
+    let CategorizedEvents {
+        per_extrinsic: mut per_extrinsic_events,
+        outcomes: extrinsic_outcomes,
+        ..
+    } = categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
     associate_events_with_extrinsics(

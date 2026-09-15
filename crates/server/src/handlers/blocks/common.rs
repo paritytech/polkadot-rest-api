@@ -463,8 +463,8 @@ pub async fn get_canonical_hash_at_number_with_rpc(
 
 use super::decode::XcmDecoder;
 use super::processing::{
-    categorize_events, extract_extrinsics_with_prefix, extract_fee_info_for_extrinsic,
-    fetch_block_events_with_prefix,
+    CategorizedEvents, categorize_events, extract_extrinsics_with_prefix,
+    extract_fee_info_for_extrinsic, fetch_block_events_with_prefix,
 };
 use super::types::{BlockBuildParams, BlockResponse, has_decode_errors};
 use polkadot_rest_api_config::ChainType;
@@ -581,8 +581,13 @@ pub async fn build_block_response_generic(
         None
     };
 
-    let (on_initialize, mut per_extrinsic_events, on_finalize, extrinsic_outcomes) =
-        categorize_events(block_events, extrinsics.len());
+    let CategorizedEvents {
+        mut on_initialize,
+        per_extrinsic: mut per_extrinsic_events,
+        mut after_extrinsics,
+        mut on_finalize,
+        outcomes: extrinsic_outcomes,
+    } = categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
     associate_events_with_extrinsics(
@@ -627,13 +632,12 @@ pub async fn build_block_response_generic(
         }
     }
 
-    let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
-
     if params.event_docs || params.extrinsic_docs || params.use_evm_format {
         let metadata = client_at_block.metadata();
 
         if params.event_docs {
             add_docs_to_events(&mut on_initialize.events, &metadata);
+            add_docs_to_events(&mut after_extrinsics.events, &metadata);
             add_docs_to_events(&mut on_finalize.events, &metadata);
 
             for extrinsic in extrinsics_with_events.iter_mut() {
@@ -674,6 +678,7 @@ pub async fn build_block_response_generic(
         on_initialize,
         partial: has_decode_errors(&extrinsics_with_events),
         extrinsics: extrinsics_with_events,
+        after_extrinsics: (!after_extrinsics.events.is_empty()).then_some(after_extrinsics),
         on_finalize,
         finalized,
         decoded_xcm_msgs,

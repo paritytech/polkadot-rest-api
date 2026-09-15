@@ -22,8 +22,8 @@ use super::super::decode::{
     try_convert_accountid_to_ss58,
 };
 use super::super::types::{
-    ActualWeight, Event, EventPhase, ExtrinsicOutcome, GetBlockError, MethodInfo, OnFinalize,
-    OnInitialize, ParsedEvent,
+    ActualWeight, AfterExtrinsics, Event, EventPhase, ExtrinsicOutcome, GetBlockError, MethodInfo,
+    OnFinalize, OnInitialize, ParsedEvent,
 };
 use super::super::utils::extract_number_as_string;
 
@@ -303,28 +303,23 @@ async fn fetch_block_events_impl(
     Ok(parsed_events)
 }
 
-/// Categorize parsed events into onInitialize, per-extrinsic, and onFinalize arrays
-/// Also extracts extrinsic outcomes (success, paysFee) from System.ExtrinsicSuccess/ExtrinsicFailed events
+pub struct CategorizedEvents {
+    pub on_initialize: OnInitialize,
+    pub per_extrinsic: Vec<Vec<Event>>,
+    pub after_extrinsics: AfterExtrinsics,
+    pub on_finalize: OnFinalize,
+    pub outcomes: Vec<ExtrinsicOutcome>,
+}
+
 pub fn categorize_events(
     parsed_events: Vec<ParsedEvent>,
     num_extrinsics: usize,
-) -> (
-    OnInitialize,
-    Vec<Vec<Event>>,
-    OnFinalize,
-    Vec<ExtrinsicOutcome>,
-) {
+) -> CategorizedEvents {
     let mut on_initialize_events = Vec::new();
+    let mut after_extrinsics_events = Vec::new();
     let mut on_finalize_events = Vec::new();
-    // Create event vectors for each extrinsic with pre-allocated capacity
-    let avg_events_per_ext = parsed_events
-        .len()
-        .checked_div(num_extrinsics)
-        .unwrap_or(4)
-        .max(4);
-    let mut per_extrinsic_events: Vec<Vec<Event>> = (0..num_extrinsics)
-        .map(|_| Vec::with_capacity(avg_events_per_ext))
-        .collect();
+    let mut per_extrinsic_events: Vec<Vec<Event>> =
+        (0..num_extrinsics).map(|_| Vec::new()).collect();
     // Create default outcomes for each extrinsic (success=false, pays_fee=None)
     let mut extrinsic_outcomes: Vec<ExtrinsicOutcome> =
         vec![ExtrinsicOutcome::default(); num_extrinsics];
@@ -399,14 +394,21 @@ pub fn categorize_events(
                 on_initialize_events.push(event);
             }
             EventPhase::ApplyExtrinsic(index) => {
-                if let Some(extrinsic_events) = per_extrinsic_events.get_mut(index as usize) {
-                    extrinsic_events.push(event);
-                } else {
-                    tracing::warn!(
-                        "Event has ApplyExtrinsic phase with index {} but only {} extrinsics exist",
-                        index,
-                        num_extrinsics
-                    );
+                match per_extrinsic_events.get_mut(index as usize) {
+                    Some(extrinsic_events) => extrinsic_events.push(event),
+                    None => {
+                        // FRAME leaves the phase at the extrinsic count while it runs
+                        // the poll hook and the migrator, so one past the last is
+                        // expected.
+                        if index as usize > num_extrinsics {
+                            tracing::warn!(
+                                "Event has ApplyExtrinsic phase with index {} but only {} extrinsics exist",
+                                index,
+                                num_extrinsics
+                            );
+                        }
+                        after_extrinsics_events.push(event);
+                    }
                 }
             }
             EventPhase::Finalization => {
@@ -415,14 +417,201 @@ pub fn categorize_events(
         }
     }
 
-    (
-        OnInitialize {
+    CategorizedEvents {
+        on_initialize: OnInitialize {
             events: on_initialize_events,
         },
-        per_extrinsic_events,
-        OnFinalize {
+        per_extrinsic: per_extrinsic_events,
+        after_extrinsics: AfterExtrinsics {
+            events: after_extrinsics_events,
+        },
+        on_finalize: OnFinalize {
             events: on_finalize_events,
         },
-        extrinsic_outcomes,
-    )
+        outcomes: extrinsic_outcomes,
+    }
+}
+
+// ================================================================================================
+// Tests
+// ================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn event(phase: EventPhase, pallet: &str, name: &str) -> ParsedEvent {
+        ParsedEvent {
+            phase,
+            pallet_name: pallet.to_string(),
+            event_name: name.to_string(),
+            event_data: vec![],
+        }
+    }
+
+    /// `System.ExtrinsicSuccess` carries a single `DispatchInfo` argument.
+    fn extrinsic_success(index: u32, pays_fee: &str) -> ParsedEvent {
+        ParsedEvent {
+            phase: EventPhase::ApplyExtrinsic(index),
+            pallet_name: "system".to_string(),
+            event_name: "ExtrinsicSuccess".to_string(),
+            event_data: vec![json!({
+                "weight": { "refTime": "153233000", "proofSize": "0" },
+                "class": "Mandatory",
+                "paysFee": pays_fee,
+            })],
+        }
+    }
+
+    fn total_events(categorized: &CategorizedEvents) -> usize {
+        categorized.on_initialize.events.len()
+            + categorized
+                .per_extrinsic
+                .iter()
+                .map(Vec::len)
+                .sum::<usize>()
+            + categorized.after_extrinsics.events.len()
+            + categorized.on_finalize.events.len()
+    }
+
+    fn method_names(events: &[Event]) -> Vec<&str> {
+        events.iter().map(|e| e.method.method.as_str()).collect()
+    }
+
+    /// Polkadot Asset Hub block 20598556.
+    #[test]
+    fn no_event_is_dropped() {
+        let parsed = vec![
+            extrinsic_success(0, "Yes"),
+            extrinsic_success(1, "Yes"),
+            event(
+                EventPhase::ApplyExtrinsic(2),
+                "multiBlockElection",
+                "PhaseTransitioned",
+            ),
+            event(
+                EventPhase::ApplyExtrinsic(2),
+                "staking",
+                "PagedElectionProceeded",
+            ),
+        ];
+        let count = parsed.len();
+
+        let categorized = categorize_events(parsed, 2);
+
+        assert_eq!(
+            total_events(&categorized),
+            count,
+            "every event the chain emitted must appear in some bucket"
+        );
+        assert_eq!(
+            method_names(&categorized.after_extrinsics.events),
+            ["PhaseTransitioned", "PagedElectionProceeded"]
+        );
+    }
+
+    /// Westend Asset Hub block 12736939, where the migrator moved balances.
+    #[test]
+    fn no_event_is_dropped_for_migration_events() {
+        let parsed = vec![
+            extrinsic_success(0, "Yes"),
+            extrinsic_success(1, "Yes"),
+            event(EventPhase::ApplyExtrinsic(2), "balances", "TransferOnHold"),
+            event(
+                EventPhase::ApplyExtrinsic(2),
+                "multiBlockMigrations",
+                "MigrationAdvanced",
+            ),
+        ];
+        let count = parsed.len();
+
+        let categorized = categorize_events(parsed, 2);
+
+        assert_eq!(
+            total_events(&categorized),
+            count,
+            "migration events must not be dropped either"
+        );
+        assert_eq!(
+            method_names(&categorized.after_extrinsics.events),
+            ["TransferOnHold", "MigrationAdvanced"]
+        );
+    }
+
+    /// An unexplained index still beats losing the event.
+    #[test]
+    fn an_index_beyond_the_poll_phase_is_kept() {
+        let parsed = vec![
+            extrinsic_success(0, "Yes"),
+            event(EventPhase::ApplyExtrinsic(9), "balances", "Transfer"),
+        ];
+
+        let categorized = categorize_events(parsed, 1);
+
+        assert_eq!(total_events(&categorized), 2);
+        assert_eq!(
+            method_names(&categorized.after_extrinsics.events),
+            ["Transfer"]
+        );
+    }
+
+    #[test]
+    fn after_extrinsics_is_empty_for_an_ordinary_block() {
+        let parsed = vec![extrinsic_success(0, "Yes"), extrinsic_success(1, "Yes")];
+
+        let categorized = categorize_events(parsed, 2);
+
+        assert!(categorized.after_extrinsics.events.is_empty());
+    }
+
+    #[test]
+    fn initialization_and_finalization_still_split() {
+        let parsed = vec![
+            event(EventPhase::Initialization, "system", "CodeUpdated"),
+            extrinsic_success(0, "Yes"),
+            event(EventPhase::Finalization, "dap", "StagingDrained"),
+        ];
+
+        let categorized = categorize_events(parsed, 1);
+
+        assert_eq!(
+            method_names(&categorized.on_initialize.events),
+            ["CodeUpdated"]
+        );
+        assert_eq!(
+            method_names(&categorized.on_finalize.events),
+            ["StagingDrained"]
+        );
+    }
+
+    #[test]
+    fn per_extrinsic_events_still_land_on_their_extrinsic() {
+        let parsed = vec![
+            extrinsic_success(0, "Yes"),
+            event(EventPhase::ApplyExtrinsic(1), "balances", "Transfer"),
+            extrinsic_success(1, "Yes"),
+        ];
+
+        let per_extrinsic = categorize_events(parsed, 2).per_extrinsic;
+
+        assert_eq!(method_names(&per_extrinsic[0]), ["ExtrinsicSuccess"]);
+        assert_eq!(
+            method_names(&per_extrinsic[1]),
+            ["Transfer", "ExtrinsicSuccess"]
+        );
+    }
+
+    #[test]
+    fn extrinsic_outcomes_still_read_from_system_events() {
+        let parsed = vec![extrinsic_success(0, "Yes"), extrinsic_success(1, "No")];
+
+        let outcomes = categorize_events(parsed, 2).outcomes;
+
+        assert!(outcomes[0].success);
+        assert_eq!(outcomes[0].pays_fee, Some(true));
+        assert_eq!(outcomes[0].class.as_deref(), Some("Mandatory"));
+        assert!(outcomes[1].success);
+        assert_eq!(outcomes[1].pays_fee, Some(false));
+    }
 }

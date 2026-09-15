@@ -9,8 +9,8 @@ use crate::handlers::blocks::common::{
 };
 use crate::handlers::blocks::decode::XcmDecoder;
 use crate::handlers::blocks::processing::{
-    categorize_events, extract_extrinsics_with_prefix, extract_fee_info_for_extrinsic,
-    fetch_block_events_with_prefix,
+    CategorizedEvents, categorize_events, extract_extrinsics_with_prefix,
+    extract_fee_info_for_extrinsic, fetch_block_events_with_prefix,
 };
 use crate::handlers::blocks::types::{
     BlockQueryParams, BlockResponse, GetBlockError, has_decode_errors,
@@ -65,7 +65,7 @@ pub struct RcBlocksRangeQueryParams {
     path = "/v1/rc/blocks",
     tag = "rc",
     summary = "RC get blocks by range",
-    description = "Returns relay chain blocks within a specified range (max 500 blocks). An entry that could not be decoded is still returned at its own index, with `decodeError` set, no `method` or `args`, and `era` as an empty object, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
+    description = "Returns relay chain blocks within a specified range (max 500 blocks). An entry that could not be decoded is still returned at its own index, with `decodeError` set, no `method` or `args`, and `era` as an empty object, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index. Events emitted after the last extrinsic, by the FRAME poll hook or a multi block migration, are returned in a separate `afterExtrinsics` object, omitted when the block has none.",
     params(
         ("range" = Option<String>, Query, description = "Block range (e.g., '100-200')"),
         ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
@@ -188,8 +188,13 @@ async fn build_rc_block_response(
     let extrinsics = extrinsics_result?;
     let block_events = events_result?;
 
-    let (on_initialize, mut per_extrinsic_events, on_finalize, extrinsic_outcomes) =
-        categorize_events(block_events, extrinsics.len());
+    let CategorizedEvents {
+        mut on_initialize,
+        per_extrinsic: mut per_extrinsic_events,
+        mut after_extrinsics,
+        mut on_finalize,
+        outcomes: extrinsic_outcomes,
+    } = categorize_events(block_events, extrinsics.len());
 
     let mut extrinsics_with_events = extrinsics;
     associate_events_with_extrinsics(
@@ -234,13 +239,12 @@ async fn build_rc_block_response(
         }
     }
 
-    let (mut on_initialize, mut on_finalize) = (on_initialize, on_finalize);
-
     if params.event_docs || params.extrinsic_docs {
         let metadata = client_at_block.metadata();
 
         if params.event_docs {
             add_docs_to_events(&mut on_initialize.events, &metadata);
+            add_docs_to_events(&mut after_extrinsics.events, &metadata);
             add_docs_to_events(&mut on_finalize.events, &metadata);
 
             for extrinsic in extrinsics_with_events.iter_mut() {
@@ -277,6 +281,7 @@ async fn build_rc_block_response(
         on_initialize,
         partial: has_decode_errors(&extrinsics_with_events),
         extrinsics: extrinsics_with_events,
+        after_extrinsics: (!after_extrinsics.events.is_empty()).then_some(after_extrinsics),
         on_finalize,
         finalized: Some(is_finalized),
         decoded_xcm_msgs,

@@ -157,7 +157,7 @@ impl IntoResponse for GetRcBlockError {
     path = "/v1/rc/blocks/{blockId}",
     tag = "rc",
     summary = "RC get block by ID",
-    description = "Returns relay chain block information for a given block identifier. An entry that could not be decoded is still returned at its own index, with `decodeError` set, no `method` or `args`, and `era` as an empty object, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index.",
+    description = "Returns relay chain block information for a given block identifier. An entry that could not be decoded is still returned at its own index, with `decodeError` set, no `method` or `args`, and `era` as an empty object, and the response carries `partial: true`; its `events`, `success` and `paysFee` come from the block's events, and `success` is false when the block carried no outcome event for that index. Events emitted after the last extrinsic, by the FRAME poll hook or a multi block migration, are returned in a separate `afterExtrinsics` object, omitted when the block has none.",
     params(
         ("blockId" = String, Path, description = "Block height number or block hash"),
         ("eventDocs" = Option<bool>, Query, description = "Include event documentation"),
@@ -272,6 +272,7 @@ mod tests {
                 raw_hex: "0x".to_string(),
                 decode_error: None,
             }],
+            after_extrinsics: None,
             on_finalize: OnFinalize { events: vec![] },
             finalized: Some(true),
             decoded_xcm_msgs: None,
