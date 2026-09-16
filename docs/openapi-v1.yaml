@@ -5906,6 +5906,8 @@ components:
             decoded. See `partial`.
           items:
             $ref: '#/components/schemas/Extrinsic'
+        afterExtrinsics:
+          $ref: '#/components/schemas/BlockAfterExtrinsics'
         partial:
           type: boolean
           description: >-
@@ -5983,6 +5985,16 @@ components:
       type: array
       items: 
         $ref: '#/components/schemas/Block'
+    BlockAfterExtrinsics:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/SanitizedEvent'
+      description: Object with an array of `SanitizedEvent`s emitted after the last
+        extrinsic, by the FRAME poll hook or a multi block migration, with the `method`
+        and `data` for each. Omitted when the block has none.
     BlockFinalize:
       type: object
       properties:

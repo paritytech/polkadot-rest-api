@@ -577,19 +577,20 @@ pub struct Event {
     pub docs: Option<String>,
 }
 
-/// Events that occurred during block initialization
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct OnInitialize {
+pub struct BlockEvents {
     pub events: Vec<Event>,
 }
 
+/// Events that occurred during block initialization
+pub type OnInitialize = BlockEvents;
+
+/// Events belonging to no extrinsic, from the poll hook or a multi block migration
+pub type AfterExtrinsics = BlockEvents;
+
 /// Events that occurred during block finalization
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OnFinalize {
-    pub events: Vec<Event>,
-}
+pub type OnFinalize = BlockEvents;
 
 /// Signer ID wrapper matching sidecar format
 #[derive(Debug, Serialize)]
@@ -734,6 +735,9 @@ pub struct BlockResponse {
     pub logs: Vec<DigestLog>,
     pub on_initialize: OnInitialize,
     pub extrinsics: Vec<ExtrinsicInfo>,
+    /// Multi block migrations dominate this by volume, not the poll hook
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after_extrinsics: Option<AfterExtrinsics>,
     pub on_finalize: OnFinalize,
     /// Omitted when the block decoded cleanly, so existing clients see no change.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -880,6 +884,7 @@ mod tests {
             on_initialize: OnInitialize { events: vec![] },
             partial: false,
             extrinsics: vec![],
+            after_extrinsics: None,
             on_finalize: OnFinalize { events: vec![] },
             finalized: None,
             rc_block_hash: None,
@@ -929,6 +934,65 @@ mod tests {
     }
 
     // --- deny_unknown_fields tests ---
+
+    // --- afterExtrinsics serialization tests ---
+
+    fn block_response_with(after_extrinsics: Option<AfterExtrinsics>) -> BlockResponse {
+        BlockResponse {
+            number: "20598556".to_string(),
+            hash: "0x93f2".to_string(),
+            parent_hash: "0x6748".to_string(),
+            state_root: "0x9fdc".to_string(),
+            extrinsics_root: "0x1400".to_string(),
+            author_id: None,
+            logs: vec![],
+            on_initialize: OnInitialize { events: vec![] },
+            partial: false,
+            extrinsics: vec![],
+            after_extrinsics,
+            on_finalize: OnFinalize { events: vec![] },
+            finalized: Some(true),
+            rc_block_hash: None,
+            rc_block_number: None,
+            ah_timestamp: None,
+            decoded_xcm_msgs: None,
+        }
+    }
+
+    fn poll_event() -> Event {
+        Event {
+            method: MethodInfo {
+                pallet: "staking".to_string(),
+                method: "PagedElectionProceeded".to_string(),
+            },
+            data: vec![],
+            docs: None,
+        }
+    }
+
+    #[test]
+    fn after_extrinsics_absent_when_empty() {
+        let json = serde_json::to_string(&block_response_with(None)).unwrap();
+
+        assert!(
+            !json.contains("afterExtrinsics"),
+            "a block with no post extrinsic events must serialize exactly as before"
+        );
+    }
+
+    #[test]
+    fn after_extrinsics_sits_between_extrinsics_and_on_finalize() {
+        let after_extrinsics = AfterExtrinsics {
+            events: vec![poll_event()],
+        };
+        let json = serde_json::to_string(&block_response_with(Some(after_extrinsics))).unwrap();
+
+        let extrinsics = json.find("\"extrinsics\"").unwrap();
+        let after_extrinsics = json.find("\"afterExtrinsics\"").unwrap();
+        let on_finalize = json.find("\"onFinalize\"").unwrap();
+        assert!(extrinsics < after_extrinsics && after_extrinsics < on_finalize);
+        assert!(json.contains("PagedElectionProceeded"));
+    }
 
     #[test]
     fn test_block_query_params_rejects_unknown_fields() {

@@ -438,7 +438,7 @@ mod tests {
 
     use super::super::super::common::associate_events_with_extrinsics;
     use super::super::super::types::{EventPhase, ParsedEvent};
-    use super::super::categorize_events;
+    use super::super::{CategorizedEvents, categorize_events};
     use super::*;
     use crate::test_fixtures::{
         TEST_BLOCK_NUMBER, TEST_GENESIS_HASH, mock_rpc_client_builder, mock_rpc_client_builder_v16,
@@ -727,8 +727,11 @@ mod tests {
         );
         let mut extrinsics = extract_from_mock(mock).await;
 
-        let (_on_initialize, mut per_extrinsic_events, _on_finalize, outcomes) =
-            categorize_events(Vec::new(), extrinsics.len());
+        let CategorizedEvents {
+            per_extrinsic: mut per_extrinsic_events,
+            outcomes,
+            ..
+        } = categorize_events(Vec::new(), extrinsics.len());
         associate_events_with_extrinsics(&mut extrinsics, &mut per_extrinsic_events, &outcomes);
 
         assert_eq!(extrinsics[0].pays_fee, None);
@@ -762,8 +765,11 @@ mod tests {
             })
             .collect();
 
-        let (_on_initialize, mut per_extrinsic_events, _on_finalize, outcomes) =
-            categorize_events(parsed_events, extrinsics.len());
+        let CategorizedEvents {
+            per_extrinsic: mut per_extrinsic_events,
+            outcomes,
+            ..
+        } = categorize_events(parsed_events, extrinsics.len());
         associate_events_with_extrinsics(&mut extrinsics, &mut per_extrinsic_events, &outcomes);
 
         // By name, not position: the shift makes position and bucket agree.
