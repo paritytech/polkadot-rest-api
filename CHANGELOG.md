@@ -6,6 +6,55 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.0] (2026-09-17)
+
+### Breaking
+
+- **`ExtrinsicInfo::method` is now `Option<MethodInfo>`**: a body entry that could not be decoded has no
+  pallet or method to report, so the field is absent rather than invented. `ExtrinsicInfo` and
+  `BlockResponse` are also now `#[non_exhaustive]`, so library consumers can no longer build them with a
+  struct literal or match them exhaustively. (#413)
+- **`categorize_events` returns a `CategorizedEvents` struct** instead of a four element tuple, to carry
+  the new `afterExtrinsics` bucket alongside the existing ones. (#414)
+
+  Over HTTP this release is additive. Every existing key keeps its meaning, and both new fields are
+  omitted on blocks that do not need them, so a block that decoded cleanly and emitted no events past its
+  last extrinsic serialises exactly as it did in `0.2.1`. The only consumers affected are those using the
+  crate as a library, and strict schemas that reject unknown fields.
+
+### Fixes
+
+- **Stop dropping undecodable extrinsics**: a skipped entry did not just go missing. Event buckets are
+  sized on the returned extrinsic count but filled from the chain's `ApplyExtrinsic(index)`, so the array
+  closed up and every later extrinsic inherited the previous one's `events`, `success`, `paysFee` and fee,
+  while `/blocks/{id}/extrinsics/{index}` returned the wrong one. An entry now keeps its slot and carries a
+  new `decodeError` with its index, reason and raw bytes, and the response carries `partial: true`. A block
+  body the node does not have now errors instead of returning an empty list. (#413)
+- **Keep events emitted after the last extrinsic**: FRAME runs the poll hook and the multi block migrator
+  while the phase is still `ApplyExtrinsic(n)`, with `n` the extrinsic count, so those events carry an index
+  one past the last extrinsic and were being discarded behind a `200`. They are now returned in a new top
+  level `afterExtrinsics` object, omitted when a block has none. `docs/guides/MIGRATION.md` records the
+  divergence from Sidecar, which still drops them. (#414)
+- **Read `useRcBlock` dispatchables from the block's own metadata** rather than the current runtime's, so
+  type ids in the response match the block being queried. (#411)
+- **Accept API emitted locations in the `foreignAssets[]` filter**: grouped numbers (`"1,000"`), `0x`
+  prefixed byte arrays and camelCase keys (`chainId`, `blockNumber`, `blockHash`) now round trip through
+  `/accounts/{id}/foreign-asset-balances`. Snake case and plain numbers still work. (#403)
+
+### Other
+
+- **Update subxt to 0.51.0** and frame-decode to 0.18.1, and drop the local `V4CompatMetadata` workaround.
+  subxt 0.51.0 carries the upstream fix ([paritytech/subxt#2277](https://github.com/paritytech/subxt/pull/2277)),
+  so v4 extrinsics resolve to transaction extension version 0 without our help. Responses are unchanged. (#415)
+- CI: bump `actions/deploy-pages`, `fast-uri` and `postcss-selector-parser`. (#404, #401, #400)
+
+### Known limitations
+
+- **A v5 General extrinsic is still reported as unsigned.** Its signature lives in the
+  `VerifyMultiSignature` transaction extension rather than a signature field, so `signature` is `null` and
+  `paysFee` is `false` even when the block's own `TransactionFeePaid` event shows a fee was paid. These are
+  rare today but will grow.
+
 ## [0.2.1] (2026-09-10)
 
 ### Fixes
