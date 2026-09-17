@@ -22,8 +22,7 @@ pub use extrinsic::{
     EraInfo, decode_era_from_bytes, extract_era_from_extrinsic_bytes, parse_era_info,
 };
 pub use extrinsic_decode::{
-    DecodeExtrinsicError, DecodedExtrinsic, V4CompatMetadata, decode_extrinsic_info,
-    fetch_block_body,
+    DecodeExtrinsicError, DecodedExtrinsic, decode_extrinsic_info, fetch_block_body,
 };
 pub use fee::{
     FeeCalcError, FeeDetails, FeeServiceError, QueryFeeDetailsCache, RuntimeDispatchInfoRaw,

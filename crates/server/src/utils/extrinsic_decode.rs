@@ -1,92 +1,28 @@
 // Copyright (C) 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Extrinsic decoding that is correct for V4 extrinsics on runtimes exposing
-//! more than one transaction extension version.
+//! Extrinsic decoding that keeps the bytes alongside what was decoded.
 //!
 //! # Why this module exists
 //!
-//! A V4 extrinsic carries no transaction extension version byte: it is *defined*
-//! to use version 0 of the runtime's transaction extensions. Only V5 `General`
-//! extrinsics carry an explicit version byte.
+//! `subxt` decodes a block body for us, but keeps the raw bytes of each entry
+//! private and hands back an error for any entry it cannot decode. That leaves no
+//! way to report an undecodable extrinsic at its own index, or to log the bytes
+//! that failed. So we fetch the block body ourselves and drive `frame_decode`
+//! directly, and [`DecodedExtrinsic`] mirrors the slice of
+//! `subxt::extrinsics::Extrinsic` that the block handlers use.
 //!
-//! `frame_decode` models this by passing `None` as the extension version when it
-//! decodes a V4 extrinsic, and asks the [`ExtrinsicTypeInfo`] implementation what
-//! to do with it. `subxt_metadata::Metadata`'s implementation answers with
-//! [`transaction_extension_version_to_use_for_decoding()`], which returns the
-//! *highest* version in the metadata (see `paritytech/subxt#1998`).
-//!
-//! That was harmless while chains only ever exposed version 0. Polkadot Asset Hub
-//! spec 2005000 exposes versions `[0, 1]`, where version 1 prepends extensions such
-//! as `UnitTransactionExtension` and `VerifyMultiSignature`. Decoding a V4
-//! extrinsic against version 1 reads the first bytes of the era as enum variant
-//! indexes, and decoding fails with `VariantNotFound(..)`. subxt then yields an
-//! error for that extrinsic and the block response loses it entirely.
-//!
-//! [`V4CompatMetadata`] wraps the metadata and answers `None` with version 0, which
-//! is what the extrinsic format requires. V5 extrinsics are unaffected: they pass
-//! their own version through and it is used verbatim.
-//!
-//! [`transaction_extension_version_to_use_for_decoding()`]:
-//!     subxt_metadata::ExtrinsicMetadata::transaction_extension_version_to_use_for_decoding
+//! This module used to also correct subxt's choice of transaction extension
+//! version for V4 extrinsics. That is fixed upstream as of subxt 0.51.0, so the
+//! wrapper is gone and `decode_extrinsic_info` uses the metadata directly. See
+//! `paritytech/subxt#2277`.
 
 use frame_decode::extrinsics::{
-    ExtrinsicCallInfo, ExtrinsicDecodeError, ExtrinsicExtensionInfo, ExtrinsicExtensions,
-    ExtrinsicInfoError, ExtrinsicOwned, ExtrinsicSignatureInfo, ExtrinsicTypeInfo,
-    decode_extrinsic,
+    ExtrinsicDecodeError, ExtrinsicExtensions, ExtrinsicOwned, decode_extrinsic,
 };
 use scale_info::PortableRegistry;
 use subxt::Metadata;
 use subxt_metadata::ArcMetadata;
-
-/// Wraps [`Metadata`] so that extrinsics carrying no transaction extension version
-/// (that is, V4 extrinsics) are decoded against extension version 0 rather than
-/// against the highest version the metadata happens to expose.
-///
-/// Every other part of [`ExtrinsicTypeInfo`] is delegated unchanged.
-pub struct V4CompatMetadata<'a>(pub &'a Metadata);
-
-impl ExtrinsicTypeInfo for V4CompatMetadata<'_> {
-    type TypeId = u32;
-
-    fn extrinsic_call_info_by_index(
-        &self,
-        pallet_index: u8,
-        call_index: u8,
-    ) -> Result<ExtrinsicCallInfo<'_, Self::TypeId>, ExtrinsicInfoError<'_>> {
-        self.0
-            .extrinsic_call_info_by_index(pallet_index, call_index)
-    }
-
-    fn extrinsic_call_info_by_name(
-        &self,
-        pallet_name: &str,
-        call_name: &str,
-    ) -> Result<ExtrinsicCallInfo<'_, Self::TypeId>, ExtrinsicInfoError<'_>> {
-        self.0.extrinsic_call_info_by_name(pallet_name, call_name)
-    }
-
-    fn extrinsic_signature_info(
-        &self,
-    ) -> Result<ExtrinsicSignatureInfo<Self::TypeId>, ExtrinsicInfoError<'_>> {
-        self.0.extrinsic_signature_info()
-    }
-
-    fn extrinsic_extension_info(
-        &self,
-        extension_version: Option<u8>,
-    ) -> Result<ExtrinsicExtensionInfo<'_, Self::TypeId>, ExtrinsicInfoError<'_>> {
-        // The only change: a V4 extrinsic (`None`) always uses extension version 0.
-        self.0
-            .extrinsic_extension_info(Some(extension_version.unwrap_or(0)))
-    }
-
-    fn extrinsic_extension_version_info(
-        &self,
-    ) -> Result<impl Iterator<Item = u8>, ExtrinsicInfoError<'_>> {
-        self.0.extrinsic_extension_version_info()
-    }
-}
 
 /// Something went wrong decoding a block body entry.
 #[derive(Debug, thiserror::Error)]
@@ -109,9 +45,8 @@ pub fn decode_extrinsic_info(
     bytes: &[u8],
     metadata: &Metadata,
 ) -> Result<ExtrinsicOwned<u32>, DecodeExtrinsicError> {
-    let compat = V4CompatMetadata(metadata);
     let cursor = &mut &bytes[..];
-    let info = decode_extrinsic(cursor, &compat, metadata.types())?.into_owned();
+    let info = decode_extrinsic(cursor, metadata, metadata.types())?.into_owned();
 
     // Leftover bytes mean we misread the extrinsic even though every individual
     // part decoded, so treat it as a failure like subxt does.
@@ -127,9 +62,8 @@ pub fn decode_extrinsic_info(
 /// A decoded extrinsic plus the bytes it was decoded from.
 ///
 /// This mirrors the parts of `subxt::extrinsics::Extrinsic` that the block handlers
-/// use. We can't use subxt's type directly because its decoding goes through
-/// `Metadata`'s [`ExtrinsicTypeInfo`] implementation, which is what [`V4CompatMetadata`]
-/// exists to correct.
+/// use. We can't use subxt's type directly because it keeps the raw bytes of each
+/// block body entry private, so there is no way to re-read an entry it rejected.
 pub struct DecodedExtrinsic {
     /// The block body entry, including its compact length prefix. All ranges in
     /// `info` are relative to these bytes.
@@ -349,7 +283,7 @@ pub async fn fetch_block_body(
 mod tests {
     use super::*;
     use crate::test_fixtures::ASSET_HUB_METADATA_V16;
-    use frame_decode::extrinsics::ExtrinsicType;
+    use frame_decode::extrinsics::{ExtrinsicType, ExtrinsicTypeInfo};
     use parity_scale_codec::Decode;
 
     /// Polkadot Asset Hub block 20487777, extrinsic #2: a V4 signed
@@ -402,31 +336,27 @@ mod tests {
         assert_eq!(&v1_names[1], "VerifyMultiSignature");
     }
 
-    /// Pins the upstream behaviour we work around: `subxt_metadata::Metadata`
-    /// answers "which extension version for a V4 extrinsic?" with the highest
-    /// version in the metadata, and decoding then fails.
+    /// Guards the upstream fix we now rely on instead of our own wrapper.
     ///
-    /// See `paritytech/subxt#1998`. When that is fixed upstream and we bump to
-    /// the release carrying the fix, this test starts failing, which is the signal
-    /// that [`V4CompatMetadata`] can be removed.
+    /// `subxt_metadata::Metadata` answers "which extension version for a V4
+    /// extrinsic?" with version 0 as of subxt 0.51.0. If a future bump regresses
+    /// that, this fails here rather than silently dropping extrinsics from block
+    /// responses again. See `paritytech/subxt#2277`.
     #[test]
-    fn subxt_metadata_still_picks_the_newest_version_for_v4() {
+    fn subxt_metadata_uses_version_0_for_v4() {
         let metadata = metadata();
 
         assert_eq!(
             metadata
                 .extrinsic()
                 .transaction_extension_version_to_use_for_decoding(),
-            1,
+            0,
         );
 
         for hex_str in [V4_TRANSFER_ALLOW_DEATH, V4_TRANSFER_KEEP_ALIVE] {
             let raw = bytes(hex_str);
-            let result = decode_extrinsic(&mut &raw[..], &metadata, metadata.types());
-            assert!(
-                result.is_err(),
-                "expected the unfixed path to fail; if this now succeeds, subxt#1998 is fixed"
-            );
+            decode_extrinsic(&mut &raw[..], &metadata, metadata.types())
+                .expect("subxt should decode a v4 extrinsic against extension version 0");
         }
     }
 
