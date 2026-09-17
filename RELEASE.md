@@ -124,22 +124,71 @@ cargo publish -p polkadot-rest-api --dry-run
 cargo publish -p polkadot-rest-api
 ```
 
-## 7. Publish the Docker image
+Run these strictly in order. `polkadot-rest-api` depends on `polkadot-rest-api-config` by version, so
+its dry run fails with `failed to select a version for the requirement polkadot-rest-api-config`
+until the config crate is actually on the index. That failure is expected if you jump ahead, not a
+problem with the package.
 
-Create a release on GitHub, selecting the corresponding version tag and including a release summary, then publish the release. The CI will handle Docker image publishing automatically.
+## 7. Publish the GitHub release
 
-Verify the tag appears at https://hub.docker.com/r/paritytech/polkadot-rest-api
+The Docker image is already built by this point. `Build and Deploy` (`deploy.yml`) triggers on the
+`v*` tag push from step 5, not on the GitHub release, and publishes three tags:
 
-## 8. Update the public instances
+| tag | example | who uses it |
+| --- | --- | --- |
+| `vX.Y.Z` | `v0.3.0` | humans, and anyone pinning a release |
+| `latest` | | only ever points at a released version |
+| `YYYYMMDD-HHMMSS-<sha8>` | `20260917-161956-e6f087bb` | **Kargo**, see step 8 |
 
-All public instances of `polkadot-rest-api` need to be updated to latest version, so create an issue in the `devops-cloud-infra` repository (example issue #3886).
+Check all three appear at https://hub.docker.com/r/paritytech/polkadot-rest-api before continuing. If
+they are missing, the tag push did not run the workflow and step 8 has nothing to deploy.
+
+Then create the release on GitHub against the version tag, with a summary taken from the changelog
+entry. This is release notes only; nothing is triggered by it.
+
+## 8. Promote to the public instances
+
+Deployment is driven by [Kargo](https://kargo.teleport.parity.io/), not by a change in
+`devops-cloud-infra`. The image tag is written by a Kargo promotion, so there is no version pinned in
+that repo to raise a PR or an issue against. Access is via Teleport with GitHub SSO; promote rights
+come from a GitHub group named after the app, so if the UI will not let you promote, that is what to
+request (example: `paritytech/devops-cloud-infra#4218`).
+
+The Kargo project is `polkadot-rest-api-kargo`. Its Warehouse polls Docker Hub every 5 minutes and
+only matches the `YYYYMMDD-HHMMSS-<sha8>` tag from step 7. The `vX.Y.Z` tag is invisible to it, so
+identify your freight by the date stamped tag.
+
+Promote **westend first, then production**, and note the pairing is per chain rather than per
+environment:
+
+```
+westend-hub-rest-api     ->  kusama-hub-rest-api,    polkadot-hub-rest-api
+westend-relay-rest-api   ->  kusama-relay-rest-api,  polkadot-relay-rest-api
+```
+
+The westend stages take freight directly from the Warehouse. The kusama and polkadot stages cannot:
+they only accept freight that has already passed the matching westend stage, so `polkadot-relay`
+sources from `westend-relay`, never from `westend-hub`. Promoting only one westend stage leaves half
+the production instances behind on the old version.
+
+Then verify, rather than assuming the promotion landed:
+
+```bash
+for h in polkadot-hub kusama-hub westend-hub polkadot-relay kusama-relay westend-relay; do
+  printf "%-16s %s\n" "$h" "$(curl -s https://$h-rest-api.parity.io/v1/version)"
+done
+```
+
+All six should report the version you just released. A `Bad Gateway` usually means that pod is still
+restarting; retry before treating it as a failure.
 
 ## 9. Final check
 
 - crates: [config](https://crates.io/crates/polkadot-rest-api-config) - [main](https://crates.io/crates/polkadot-rest-api)
 - [GitHub release](https://github.com/paritytech/polkadot-rest-api/releases)
 - [Docker tags](https://hub.docker.com/r/paritytech/polkadot-rest-api)
-- All public instances up to date; any external partner waiting on a fix is informed.
+- All six public instances report the new version (see the loop in step 8); any external partner
+  waiting on a fix is informed.
 
 ## Appendix: crates.io onboarding
 
