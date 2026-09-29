@@ -106,9 +106,22 @@ After the PR merges to `main`, tag the release:
 
 ```bash
 git checkout main && git pull
-git tag v0.X.X
+git tag -s v0.X.X -m "Release v0.X.X"
 git push origin v0.X.X
 ```
+
+Use `-s`. Every release up to `v0.2.1` shipped a signed annotated tag and downstreams rely on it to
+build trusted binaries, but this step used to read `git tag v0.X.X`, which creates a lightweight tag
+with no tag object and therefore nothing to sign. `v0.3.0` went out that way (see #418). Check it
+before pushing:
+
+```bash
+git cat-file -t v0.X.X    # must print "tag", not "commit"
+git tag -v v0.X.X         # must verify
+```
+
+A signature on the commit is not the same thing. A squash merge is signed by GitHub's own web-flow
+key, which says nothing about who cut the release.
 
 ## 6. Publish to crates.io
 
