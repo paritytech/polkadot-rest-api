@@ -205,6 +205,42 @@ fn xcmp_format_concatenated_versioned_xcm() -> u8 {
 
 /// Decode a hex-encoded XCM message into a JSON value.
 /// Returns the decoded XCM instructions if successful, or the raw hex string if decoding fails.
+/// The XCM messages in a candidate's `upward_messages`, stopping at the UMP separator.
+///
+/// Since elastic scaling, a candidate's upward message list is the XCM it sent, then
+/// `UMP_SEPARATOR` (an empty message), then UMP signals:
+///
+/// ```text
+/// [ ..XCM.., [], UMPSignal::SelectCore(..), UMPSignal::<..>(..) ]
+/// ```
+///
+/// The signals are well formed SCALE but are not XCM and never decode as it, so
+/// putting them through the XCM decoder produced raw hex that a caller could not tell
+/// apart from an XCM message that genuinely failed to decode (issue #298). Everything
+/// from the separator onwards is dropped, so a raw hex `data` in the response now means
+/// exactly one thing: XCM we could not decode.
+///
+/// A list with no separator is all XCM, which is what pre signal runtimes emit.
+fn upward_xcm_messages(upward_msgs: &[Value]) -> impl Iterator<Item = &str> {
+    upward_msgs
+        .iter()
+        .take_while(|msg| !is_ump_separator(msg))
+        .filter_map(|msg| msg.as_str())
+        .filter(|msg_data| !msg_data.is_empty())
+}
+
+/// Whether this entry is the UMP separator, an empty message.
+///
+/// An empty `Vec<u8>` reaches us as either an empty JSON array or an empty hex string,
+/// depending on how the candidate commitments were decoded.
+fn is_ump_separator(msg: &Value) -> bool {
+    match msg {
+        Value::Array(items) => items.is_empty(),
+        Value::String(s) => s.is_empty() || s == "0x",
+        _ => false,
+    }
+}
+
 fn decode_xcm_message(hex_str: &str) -> Value {
     let hex_clean = hex_str.strip_prefix("0x").unwrap_or(hex_str);
     let Ok(bytes) = hex::decode(hex_clean) else {
@@ -342,16 +378,13 @@ impl<'a> XcmDecoder<'a> {
                             });
                         }
                     } else if let Some(upward_msgs) = upward_value.as_array() {
-                        // Array of hex strings
-                        for msg in upward_msgs {
-                            if let Some(msg_data) = msg.as_str()
-                                && !msg_data.is_empty()
-                            {
-                                messages.upward_messages.push(UpwardMessage {
-                                    origin_para_id: para_id.to_string(),
-                                    data: decode_xcm_message(msg_data),
-                                });
-                            }
+                        // Only the part before the UMP separator is XCM; see
+                        // `upward_xcm_messages`.
+                        for msg_data in upward_xcm_messages(upward_msgs) {
+                            messages.upward_messages.push(UpwardMessage {
+                                origin_para_id: para_id.to_string(),
+                                data: decode_xcm_message(msg_data),
+                            });
                         }
                     }
                 }
@@ -573,6 +606,58 @@ mod tests {
     use staging_xcm::VersionedXcm;
     use staging_xcm::v4 as xcm_v4;
     use staging_xcm::v5 as xcm_v5;
+
+    /// Real shape from Polkadot relay block 33216511, para 1000: the separator sits at
+    /// index 0 and everything after it is UMP signals, so there is no XCM to report.
+    /// Before #298 these came back as raw hex, indistinguishable from XCM that failed
+    /// to decode.
+    #[test]
+    fn ump_signals_after_the_separator_are_not_xcm() {
+        let msgs = vec![
+            serde_json::json!([]),
+            serde_json::json!("0x000002"),
+            serde_json::json!(
+                "0x0198002408011220fd385036f1f23ea5568dbb15e59b98bcbed9cc27280cb8a2d29ffd385036f1f2"
+            ),
+        ];
+        let kept: Vec<&str> = upward_xcm_messages(&msgs).collect();
+        assert!(kept.is_empty(), "nothing before the separator: {kept:?}");
+    }
+
+    /// XCM before the separator is kept, signals after it are not.
+    #[test]
+    fn xcm_before_the_separator_is_kept() {
+        let msgs = vec![
+            serde_json::json!("0x0400"),
+            serde_json::json!("0x0401"),
+            serde_json::json!([]),
+            serde_json::json!("0x000002"),
+        ];
+        let kept: Vec<&str> = upward_xcm_messages(&msgs).collect();
+        assert_eq!(kept, vec!["0x0400", "0x0401"]);
+    }
+
+    /// A list with no separator is all XCM, which is what pre signal runtimes emit.
+    #[test]
+    fn a_list_without_a_separator_is_all_xcm() {
+        let msgs = vec![serde_json::json!("0x0400"), serde_json::json!("0x0401")];
+        let kept: Vec<&str> = upward_xcm_messages(&msgs).collect();
+        assert_eq!(kept, vec!["0x0400", "0x0401"]);
+    }
+
+    /// The separator can also arrive as an empty hex string rather than an empty array.
+    #[test]
+    fn separator_as_empty_hex_string_also_splits() {
+        for sep in [serde_json::json!("0x"), serde_json::json!("")] {
+            let msgs = vec![
+                serde_json::json!("0x0400"),
+                sep.clone(),
+                serde_json::json!("0x000002"),
+            ];
+            let kept: Vec<&str> = upward_xcm_messages(&msgs).collect();
+            assert_eq!(kept, vec!["0x0400"], "separator {sep:?} should split");
+        }
+    }
 
     /// Helper: SCALE-encode a VersionedXcm and return it as a "0x"-prefixed hex string.
     fn encode_versioned_xcm(msg: VersionedXcm<()>) -> String {
