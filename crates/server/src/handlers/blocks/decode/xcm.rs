@@ -203,8 +203,6 @@ fn xcmp_format_concatenated_versioned_xcm() -> u8 {
     XcmpMessageFormat::ConcatenatedVersionedXcm.encode()[0]
 }
 
-/// Decode a hex-encoded XCM message into a JSON value.
-/// Returns the decoded XCM instructions if successful, or the raw hex string if decoding fails.
 /// The XCM messages in a candidate's `upward_messages`, stopping at the UMP separator.
 ///
 /// Since elastic scaling, a candidate's upward message list is the XCM it sent, then
@@ -233,6 +231,11 @@ fn upward_xcm_messages(upward_msgs: &[Value]) -> impl Iterator<Item = &str> {
 ///
 /// An empty `Vec<u8>` reaches us as either an empty JSON array or an empty hex string,
 /// depending on how the candidate commitments were decoded.
+///
+/// `Value::Null` is deliberately not a separator. Null means we failed to read that
+/// entry, not that the runtime marked a boundary, and treating it as one would truncate
+/// the list and silently drop every XCM message after it. Anything that is not a string
+/// is skipped by the caller instead, so the rest of the list is still read.
 fn is_ump_separator(msg: &Value) -> bool {
     match msg {
         Value::Array(items) => items.is_empty(),
@@ -241,6 +244,8 @@ fn is_ump_separator(msg: &Value) -> bool {
     }
 }
 
+/// Decode a hex-encoded XCM message into a JSON value.
+/// Returns the decoded XCM instructions if successful, or the raw hex string if decoding fails.
 fn decode_xcm_message(hex_str: &str) -> Value {
     let hex_clean = hex_str.strip_prefix("0x").unwrap_or(hex_str);
     let Ok(bytes) = hex::decode(hex_clean) else {
@@ -643,6 +648,26 @@ mod tests {
         let msgs = vec![serde_json::json!("0x0400"), serde_json::json!("0x0401")];
         let kept: Vec<&str> = upward_xcm_messages(&msgs).collect();
         assert_eq!(kept, vec!["0x0400", "0x0401"]);
+    }
+
+    /// A null entry is skipped but does not truncate the list. Null means we failed to
+    /// read that entry, not that the runtime marked a boundary, so treating it as a
+    /// separator would silently drop every XCM message after it.
+    #[test]
+    fn a_null_entry_is_skipped_but_does_not_truncate() {
+        let msgs = vec![
+            serde_json::json!("0x0400"),
+            serde_json::Value::Null,
+            serde_json::json!("0x0401"),
+            serde_json::json!([]),
+            serde_json::json!("0x000002"),
+        ];
+        let kept: Vec<&str> = upward_xcm_messages(&msgs).collect();
+        assert_eq!(
+            kept,
+            vec!["0x0400", "0x0401"],
+            "the message after the null must survive"
+        );
     }
 
     /// The separator can also arrive as an empty hex string rather than an empty array.
