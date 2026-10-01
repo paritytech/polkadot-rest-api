@@ -6,6 +6,43 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.1] (2026-10-01)
+
+### Fixes
+
+- **Stop decoding UMP signals as XCM**: since elastic scaling, a candidate's upward message list is
+  the XCM it sent, then `UMP_SEPARATOR` (an empty message), then UMP signals. Every entry was being
+  decoded as `VersionedXcm`, so the signals came back from
+  `/blocks/{id}?decodedXcmMsgs=true` as raw hex, indistinguishable from an XCM message that genuinely
+  failed to decode. They are not corrupt XCM: a 3 byte `SelectCore(CoreSelector, ClaimQueueOffset)`
+  and a 40 byte variant carrying a libp2p PeerId, emitted by every parachain including Asset Hub. On
+  one recent relay block 46 of 46 upward messages were signals and none were XCM. The list is now read
+  only up to the separator, so a raw hex `data` means exactly one thing: XCM that could not be decoded.
+  (#420, closes #298)
+
+  **Wire visible.** `decodedXcmMsgs.upwardMessages` no longer carries those entries, so a block whose
+  only upward messages were signals now reports none instead of a list of raw hex. Real XCM ahead of
+  the separator is untouched. No public Rust API changed, hence a patch rather than a minor.
+
+### Other
+
+- **Correct the deploy and publish steps in `RELEASE.md`**: step 8 described opening an issue in
+  `devops-cloud-infra`, but deployment moved to Kargo and no version is pinned in that repo, so neither
+  an issue nor a PR moves anything; it now describes the promotion, including that the Warehouse only
+  matches the date stamped image tag and that production stages source per chain from the matching
+  westend stage. Step 7 credited the GitHub release with publishing the Docker image, which the `v*`
+  tag push does. Step 5 now uses `git tag -s`: it previously read `git tag v0.X.X`, which creates a
+  lightweight tag with nothing to sign, and `v0.3.0` went out unsigned as a result (#418). (#417)
+- CI: bump `github-action-benchmark` to v1.22.2, `setup-buildx-action` to v4.4.0, `build-push-action`
+  to v7.4.0 and `dtolnay/rust-toolchain` to current master. (#419)
+
+### Known limitations
+
+- **The `v0.3.0` tag is unsigned** and needs re-cutting as a signed annotated tag; tracked in #418.
+- **A v5 General extrinsic is still reported as unsigned.** Its signature lives in the
+  `VerifyMultiSignature` transaction extension rather than a signature field, so `signature` is `null`
+  and `paysFee` is `false` even when the block's own `TransactionFeePaid` event shows a fee was paid.
+
 ## [0.3.0] (2026-09-17)
 
 ### Breaking
