@@ -342,6 +342,7 @@ async fn fetch_era_data(
     // `targeted_exposure_is_complete_for_era`.
     let nominations = staking::get_nominations(client_at_block, account, ss58_prefix).await;
     let targeted_is_complete = targeted_exposure_is_complete_for_era(nominations.as_ref(), era);
+    let account_ss58 = account.to_ss58check_with_version(ss58_prefix.into());
 
     let exposure_data = fetch_exposure_data(
         client_at_block,
@@ -367,12 +368,33 @@ async fn fetch_era_data(
     )
     .await?;
 
+    // Validating and nominating are mutually exclusive, so an account that appears as a
+    // validator in this era's own exposure cannot also sit in another validator's
+    // nominator list for it. That proves the targeted result complete from era data
+    // rather than from current state, and keeps validators on the fast path.
+    let was_validator_in_era = exposure_data
+        .iter()
+        .any(|(validator_id, _, _)| validator_id == &account_ss58);
+
     // Fall back to the bulk exposure scan when the targeted result cannot be trusted:
-    // either it found nothing, or the account re-nominated after `era` so the validators
-    // we queried are not the ones it was actually exposed to then.
-    if payouts.is_empty() || !targeted_is_complete {
+    // it found nothing, or the account re-nominated during or after `era` so the
+    // validators we queried are not the ones it was actually exposed to then.
+    if payouts.is_empty() || !(targeted_is_complete || was_validator_in_era) {
         let bulk_exposure =
             fetch_exposure_data_bulk(client_at_block, &account_bytes, era, ss58_prefix).await;
+
+        // Union, not replace. The bulk scan is not guaranteed to be a superset: its
+        // storage iteration stops silently on the first error, and it picks paged versus
+        // clipped exposure globally where the targeted path decides per validator. Before
+        // this gate existed the scan only ran against an empty result so replacing was
+        // safe; now that it runs alongside a non-empty one, replacing could drop entries.
+        let mut merged = exposure_data.clone();
+        for entry in bulk_exposure {
+            if !merged.iter().any(|(v, _, _)| v == &entry.0) {
+                merged.push(entry);
+            }
+        }
+        let bulk_exposure = merged;
 
         if !bulk_exposure.is_empty() {
             payouts = build_payouts(
@@ -508,9 +530,16 @@ async fn build_payouts(
 /// the current nomination was submitted in.
 ///
 /// ```text
-/// submitted_in <= era   nominations predate the era, targeted set is the right one
-/// submitted_in >  era   re-nominated since, the era's validators may not be in it
+/// submitted_in <  era   nominations predate the era, targeted set is the right one
+/// submitted_in >= era   re-nominated during or after it, the era's validators may differ
 /// ```
+///
+/// Strictly less than, not `<=`. `submitted_in` is `CurrentEra` at the time of the
+/// `nominate` call, and an era's exposure comes from an election snapshot taken while
+/// `CurrentEra` was still the previous era, so a nomination submitted *in* era N is not
+/// reflected in era N's exposure. The pallet asserts the same thing in its own try-state
+/// check, which only requires a nomination to appear in the era's exposure
+/// `if nomination.submitted_in < era`.
 ///
 /// Without a nominations record we cannot prove anything, so we report incomplete and
 /// let the caller do the bulk scan. That covers an account that has since stopped
@@ -525,7 +554,7 @@ fn targeted_exposure_is_complete_for_era(
 ) -> bool {
     nominations
         .and_then(|n| n.submitted_in.parse::<u32>().ok())
-        .is_some_and(|submitted_in| submitted_in <= era)
+        .is_some_and(|submitted_in| submitted_in < era)
 }
 
 /// Fetch exposure data for an account in an era using the targeted approach.
@@ -871,16 +900,32 @@ mod completeness_tests {
         }
     }
 
-    /// Nominations submitted before the era were in place for it, so the current
-    /// targets are the set the account was exposed to and the fast path is enough.
+    /// Nominations submitted strictly before the era were in place for it, so the
+    /// current targets are the set the account was exposed to and the fast path is enough.
     #[test]
     fn nominations_predating_the_era_are_complete() {
         assert!(targeted_exposure_is_complete_for_era(
-            Some(&noms("2281")),
+            Some(&noms("2280")),
             2281
         ));
         assert!(targeted_exposure_is_complete_for_era(
             Some(&noms("2200")),
+            2281
+        ));
+    }
+
+    /// A nomination submitted *in* the era is not reflected in that era's exposure: the
+    /// election snapshot for era N is taken while `CurrentEra` is still N-1, and
+    /// `submitted_in` is `CurrentEra` at the time of the call. The pallet's own try-state
+    /// check agrees, requiring presence in the exposure only `if submitted_in < era`.
+    ///
+    /// This boundary matters in practice rather than in theory: the endpoint defaults to
+    /// `active_era - 1`, so an account that re-nominated during the previous era lands
+    /// exactly on it for the default query.
+    #[test]
+    fn nominations_submitted_during_the_era_are_incomplete() {
+        assert!(!targeted_exposure_is_complete_for_era(
+            Some(&noms("2281")),
             2281
         ));
     }
