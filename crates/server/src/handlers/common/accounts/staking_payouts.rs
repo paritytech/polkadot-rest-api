@@ -337,9 +337,21 @@ async fn fetch_era_data(
     // in this era shares the same budget/denominator/flag instead of re-reading them per validator.
     let incentive_ctx = staking::get_era_incentive_context(client_at_block, era).await;
 
-    // Get exposure data using targeted approach (current nominations)
-    let exposure_data =
-        fetch_exposure_data(client_at_block, account, era, &account_bytes, ss58_prefix).await?;
+    // Get exposure data using targeted approach (current nominations). This is only
+    // trustworthy when those nominations were already in place for `era`; see
+    // `targeted_exposure_is_complete_for_era`.
+    let nominations = staking::get_nominations(client_at_block, account, ss58_prefix).await;
+    let targeted_is_complete = targeted_exposure_is_complete_for_era(nominations.as_ref(), era);
+
+    let exposure_data = fetch_exposure_data(
+        client_at_block,
+        account,
+        era,
+        &account_bytes,
+        ss58_prefix,
+        nominations.as_ref(),
+    )
+    .await?;
 
     // Calculate payouts from targeted exposure
     let mut payouts = build_payouts(
@@ -355,9 +367,10 @@ async fn fetch_era_data(
     )
     .await?;
 
-    // If targeted approach yielded no payouts, fall back to bulk exposure scan.
-    // This handles historical eras where the account's nominations may have changed.
-    if payouts.is_empty() {
+    // Fall back to the bulk exposure scan when the targeted result cannot be trusted:
+    // either it found nothing, or the account re-nominated after `era` so the validators
+    // we queried are not the ones it was actually exposed to then.
+    if payouts.is_empty() || !targeted_is_complete {
         let bulk_exposure =
             fetch_exposure_data_bulk(client_at_block, &account_bytes, era, ss58_prefix).await;
 
@@ -487,6 +500,34 @@ async fn build_payouts(
 // Storage Fetching Functions
 // ================================================================================================
 
+/// Whether the targeted lookup can be trusted to be complete for `era`.
+///
+/// The targeted path discovers validators from the account's **current** nominations.
+/// That is only the set it was actually exposed to in `era` if those nominations were
+/// already in place back then, which `Nominations.submitted_in` tells us: it is the era
+/// the current nomination was submitted in.
+///
+/// ```text
+/// submitted_in <= era   nominations predate the era, targeted set is the right one
+/// submitted_in >  era   re-nominated since, the era's validators may not be in it
+/// ```
+///
+/// Without a nominations record we cannot prove anything, so we report incomplete and
+/// let the caller do the bulk scan. That covers an account that has since stopped
+/// nominating entirely, whose current target list is empty but which was exposed in
+/// `era` all the same.
+///
+/// Getting this wrong under-reports rewards silently: the targeted path returns a
+/// non-empty but partial list, and a partial list used to be treated as complete.
+fn targeted_exposure_is_complete_for_era(
+    nominations: Option<&staking::DecodedNominationsInfo>,
+    era: u32,
+) -> bool {
+    nominations
+        .and_then(|n| n.submitted_in.parse::<u32>().ok())
+        .is_some_and(|submitted_in| submitted_in <= era)
+}
+
 /// Fetch exposure data for an account in an era using the targeted approach.
 /// Returns Vec<(validator_id, nominator_exposure, total_exposure)>
 ///
@@ -498,18 +539,19 @@ async fn fetch_exposure_data(
     era: u32,
     account_bytes: &[u8; 32],
     ss58_prefix: u16,
+    nominations: Option<&staking::DecodedNominationsInfo>,
 ) -> Result<Vec<(String, u128, u128)>, String> {
     let mut results = Vec::new();
 
-    // Get the account's nominations to find which validators to query
-    // Note: This uses current nominations which may differ from historical eras
-    let nominations = staking::get_nominations(client_at_block, account, ss58_prefix).await;
+    // Nominations are read once by the caller, which also uses them to decide whether
+    // this targeted result can be trusted; see `targeted_exposure_is_complete_for_era`.
+    // Note these are current nominations, which may differ from historical eras.
     // Also check if account is a validator
     let is_validator = staking::is_validator(client_at_block, account).await;
     // Collect validator addresses to query
     let mut validators_to_query: Vec<AccountId32> = Vec::new();
 
-    if let Some(noms) = &nominations {
+    if let Some(noms) = nominations {
         for target_ss58 in &noms.targets {
             if let Ok(validator_account) = AccountId32::from_ss58check(target_ss58) {
                 validators_to_query.push(validator_account);
@@ -814,5 +856,68 @@ mod tests {
     fn legacy_end_to_end() {
         let numerator = incentive_numerator(false, 1, 999);
         assert_eq!(incentive_from_ratio(300, numerator, 2), 150);
+    }
+}
+
+#[cfg(test)]
+mod completeness_tests {
+    use super::*;
+
+    fn noms(submitted_in: &str) -> staking::DecodedNominationsInfo {
+        staking::DecodedNominationsInfo {
+            targets: vec!["a".to_string()],
+            submitted_in: submitted_in.to_string(),
+            suppressed: false,
+        }
+    }
+
+    /// Nominations submitted before the era were in place for it, so the current
+    /// targets are the set the account was exposed to and the fast path is enough.
+    #[test]
+    fn nominations_predating_the_era_are_complete() {
+        assert!(targeted_exposure_is_complete_for_era(
+            Some(&noms("2281")),
+            2281
+        ));
+        assert!(targeted_exposure_is_complete_for_era(
+            Some(&noms("2200")),
+            2281
+        ));
+    }
+
+    /// Re-nominating after the era means the current targets may not include the
+    /// validators that actually paid out then. This is the reported case: an account
+    /// with `submitted_in` 2283 queried for era 2281 kept 8 of its validators, so the
+    /// targeted path returned a non-empty but partial list and the ninth was dropped.
+    #[test]
+    fn nominations_submitted_after_the_era_are_incomplete() {
+        assert!(!targeted_exposure_is_complete_for_era(
+            Some(&noms("2283")),
+            2281
+        ));
+        assert!(!targeted_exposure_is_complete_for_era(
+            Some(&noms("2282")),
+            2281
+        ));
+    }
+
+    /// No nominations record proves nothing. An account that has since stopped
+    /// nominating has no targets at all today but may well have been exposed then.
+    #[test]
+    fn a_missing_nominations_record_is_not_complete() {
+        assert!(!targeted_exposure_is_complete_for_era(None, 2281));
+    }
+
+    /// An unparseable `submitted_in` must not be read as "complete".
+    #[test]
+    fn an_unparseable_submitted_in_is_not_complete() {
+        assert!(!targeted_exposure_is_complete_for_era(
+            Some(&noms("")),
+            2281
+        ));
+        assert!(!targeted_exposure_is_complete_for_era(
+            Some(&noms("not-a-number")),
+            2281
+        ));
     }
 }
