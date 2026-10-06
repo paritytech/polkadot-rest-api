@@ -42,7 +42,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 polkadot-rest-api-config = { path = "../config", version = "0.3.0" }
 serde_urlencoded = "0.7"
 futures = "0.3"
-jsonrpsee = { version = "0.24.10", features = ["ws-client"] }
+jsonrpsee = { version = "0.26.1", features = ["ws-client"] }
 colored = "2.1"
 
 [dev-dependencies]

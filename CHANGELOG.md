@@ -6,6 +6,13 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixes
+
+- **Update subxt to 0.51.1**: this fixes a potential stall in the RPC connection, which could leave the
+  rest-api unable to reconnect to the RPC servers.
+
 ## [0.3.0] (2026-09-17)
 
 ### Breaking
