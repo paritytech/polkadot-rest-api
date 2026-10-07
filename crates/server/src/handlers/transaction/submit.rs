@@ -233,8 +233,13 @@ async fn submit_internal(
 
     // Identify the transaction before it leaves us, so a submit that never comes back is
     // still attributable. The payload itself is never logged.
+    //
+    // At info, not debug: if the RPC connection stalls, this is the only line that ever
+    // fires, because the outcome below is never reached. A sent line with no matching
+    // outcome is exactly the signature of a stuck transaction, and it has to be visible
+    // at the default level for that to be worth anything.
     let (tx_len, expected_hash) = describe_transaction(tx);
-    tracing::debug!(
+    tracing::info!(
         tx_hash = %expected_hash,
         tx_len,
         "Submitting extrinsic"

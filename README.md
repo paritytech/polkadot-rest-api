@@ -42,11 +42,17 @@ export SAS_LOG_LEVEL="info,subxt_rpcs=debug"
 export SAS_LOG_LEVEL="info,subxt=debug,subxt_rpcs=trace,jsonrpsee=trace"
 ```
 
-Submissions to `/transaction/submit` are logged at `info` on acceptance and `warn` on
-rejection, both carrying the extrinsic hash so a submission can be followed through the
-node. A submission that takes longer than five seconds is logged at `warn` instead of
-`info`, since a stalled connection otherwise looks the same as normal operation until the
-caller times out. The extrinsic payload itself is never logged, only its hash and length.
+Submissions to `POST /transaction` log twice at `info`, once on the way out and once with
+the outcome, both carrying the extrinsic hash so a submission can be followed through to
+the node. A rejection logs at `warn` with the reason, and an acceptance that took longer
+than five seconds logs at `warn` rather than `info`.
+
+Both lines are at the default level on purpose. If the RPC connection stalls, the outcome
+line is never reached, so a `Submitting extrinsic` with no matching outcome for the same
+hash is the signature of a stuck transaction. That only helps if it is visible without
+raising the level first.
+
+The extrinsic payload itself is never logged, only its hash and length.
 
 ## Metrics and Monitoring
 
