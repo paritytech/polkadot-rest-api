@@ -35,12 +35,25 @@ handlers:
 # transaction submissions: hash, byte length, elapsed time, and the reason for a rejection
 export SAS_LOG_LEVEL=info
 
-# add the RPC client, which is where a stalled or reconnecting connection shows up
-export SAS_LOG_LEVEL="info,subxt_rpcs=debug"
+# add connection drops and reconnects, which is where a stalled connection shows up
+export SAS_LOG_LEVEL="info,subxt-reconnecting-rpc-client=debug"
 
 # everything the RPC layer does, including individual requests and responses. Noisy.
 export SAS_LOG_LEVEL="info,subxt=debug,subxt_rpcs=trace,jsonrpsee=trace"
 ```
+
+The reconnecting RPC client logs under the target `subxt-reconnecting-rpc-client`, not under
+its crate path, so `subxt_rpcs=debug` does not reach it. Those three lines are the only ones
+that crate emits, and all of them are at `debug`:
+
+```
+Connection to {url} was closed: ...; starting to reconnect
+Connection to {url} was successfully re-established
+Failed to reconnect: ...; terminating the connection
+```
+
+At plain `info` a dropped or reconnecting connection leaves no trace at all, so pair that
+directive with the submission logs below when chasing a transaction that went missing.
 
 Submissions to `POST /transaction` log twice at `info`, once on the way out and once with
 the outcome, both carrying the extrinsic hash so a submission can be followed through to
