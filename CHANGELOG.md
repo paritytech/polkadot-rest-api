@@ -6,6 +6,37 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.2] (2026-10-07)
+
+### Fixes
+
+- **Stop under-reporting staking payouts after a re-nomination**: `/accounts/{id}/staking-payouts`
+  discovered which validators to query from the account's *current* nominations, which are not
+  necessarily the ones it was exposed to in the era being asked about. A bulk scan existed for that
+  case but only ran when the targeted lookup returned nothing, so a partial result was treated as
+  complete and every validator the account had since dropped was missing, silently and always
+  downwards. `Nominations.submitted_in` now decides: strictly before the era means the current
+  targets were already in place and the fast path is correct, anything else falls through to the
+  scan. Eras at or after the last nomination are unaffected. (#423)
+
+### Other
+
+- **Log transaction submissions**: `POST /transaction` emitted nothing at any level, so a
+  transaction that went in and disappeared left no record it had arrived. It now logs the extrinsic
+  hash and length on the way out and the outcome with elapsed time, both at `info`, so a send with
+  no matching outcome for the same hash identifies a stuck submission. The full payload is logged at
+  `trace` only. `README.md` records that `SAS_LOG_LEVEL` accepts full `EnvFilter` directives, which
+  is how the RPC layer is turned up. (#425)
+- CI: bump `dtolnay/rust-toolchain`. (#424)
+
+### Known limitations
+
+- **Block and extrinsic hashes are hardcoded to BlakeTwo256** rather than taken from the chain's own
+  `System::Hashing`, so they would be wrong on a chain that hashes differently; tracked in #426.
+- **The `v0.3.0` tag is unsigned**; tracked in #418.
+- **A v5 General extrinsic is still reported as unsigned.** Its signature lives in the
+  `VerifyMultiSignature` transaction extension rather than a signature field.
+
 ## [0.3.1] (2026-10-06)
 
 ### Fixes
