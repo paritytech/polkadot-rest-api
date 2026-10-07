@@ -2,10 +2,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::state::{AppState, RelayChainError};
+use crate::utils::hex_with_prefix;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
+use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
+use std::time::{Duration, Instant};
 use subxt_rpcs::rpc_params;
 use thiserror::Error;
+
+/// A submit taking longer than this is logged at warn rather than info.
+///
+/// A stalled RPC connection otherwise looks exactly like normal operation until the
+/// caller times out, with nothing in our logs to distinguish the two.
+const SLOW_SUBMIT: Duration = Duration::from_secs(5);
 
 /// Request body for transaction submission.
 #[derive(Debug, Deserialize)]
@@ -199,6 +208,20 @@ pub async fn submit_rc(
     submit_internal(&rpc_client, body).await
 }
 
+/// Byte length and BlakeTwo256 hash of a hex encoded extrinsic.
+///
+/// Invalid hex yields a length of 0 and an empty hash: this is only used for logging, and
+/// the node is the authority on whether the payload is well formed.
+fn describe_transaction(tx: &str) -> (usize, String) {
+    match hex::decode(tx.strip_prefix("0x").unwrap_or(tx)) {
+        Ok(bytes) => (
+            bytes.len(),
+            hex_with_prefix(BlakeTwo256::hash(&bytes).as_ref()),
+        ),
+        Err(_) => (0, String::new()),
+    }
+}
+
 async fn submit_internal(
     rpc_client: &std::sync::Arc<subxt_rpcs::RpcClient>,
     body: SubmitRequest,
@@ -208,13 +231,37 @@ async fn submit_internal(
         return Err(SubmitError::MissingTx);
     }
 
-    let hash: String = rpc_client
-        .request("author_submitExtrinsic", rpc_params![tx])
-        .await
-        .map_err(|e| {
-            let (cause, stack) = extract_cause_and_stack(&e);
+    // Identify the transaction before it leaves us, so a submit that never comes back is
+    // still attributable. The payload itself is never logged.
+    let (tx_len, expected_hash) = describe_transaction(tx);
+    tracing::debug!(
+        tx_hash = %expected_hash,
+        tx_len,
+        "Submitting extrinsic"
+    );
 
-            if is_parse_error(&e) {
+    let started = Instant::now();
+    let result: Result<String, _> = rpc_client
+        .request("author_submitExtrinsic", rpc_params![tx])
+        .await;
+    let elapsed_ms = started.elapsed().as_millis();
+
+    let hash = match result {
+        Ok(hash) => hash,
+        Err(e) => {
+            let (cause, stack) = extract_cause_and_stack(&e);
+            let parse_error = is_parse_error(&e);
+
+            tracing::warn!(
+                tx_hash = %expected_hash,
+                tx_len,
+                elapsed_ms,
+                kind = if parse_error { "parse" } else { "submit" },
+                cause = %cause,
+                "Extrinsic rejected"
+            );
+
+            return Err(if parse_error {
                 SubmitError::ParseFailed {
                     transaction: tx.clone(),
                     cause,
@@ -226,10 +273,72 @@ async fn submit_internal(
                     cause,
                     stack,
                 }
-            }
-        })?;
+            });
+        }
+    };
+
+    // The node echoes back the hash it computed. A mismatch means we and it disagree on
+    // what was submitted, which is worth seeing rather than silently returning the node's.
+    if hash != expected_hash {
+        tracing::warn!(
+            tx_hash = %expected_hash,
+            node_hash = %hash,
+            "Node returned a different extrinsic hash than we computed"
+        );
+    }
+
+    if started.elapsed() >= SLOW_SUBMIT {
+        tracing::warn!(
+            tx_hash = %hash,
+            tx_len,
+            elapsed_ms,
+            "Extrinsic accepted, but the submit was slow"
+        );
+    } else {
+        tracing::info!(
+            tx_hash = %hash,
+            tx_len,
+            elapsed_ms,
+            "Extrinsic accepted"
+        );
+    }
 
     Ok(Json(SubmitResponse { hash }))
+}
+
+#[cfg(test)]
+mod describe_tests {
+    use super::*;
+
+    /// The hash we log must be the one the node computes, which is blake2 over the whole
+    /// length prefixed extrinsic. Real Asset Hub extrinsic, hash confirmed on chain.
+    #[test]
+    fn describes_a_real_extrinsic() {
+        let tx = "0x55028400dc0c5e6f6c8265265f0bb9bbfa5c46a2471c05152066ed925e450361ad229913003132c42127d205558668f484efeafe4edcc8b49197e1f3f408774c411abc541d167c4f365bc62462bc2a46ca5db6284bf55bb48713171f15903e55cf7c415d01580529130000000a03001d46ccb04c50f93bde3457fd8e1dcee7da4ae2b8719f6d1df89f25afd75557c90f00506d96f51401";
+        let (len, hash) = describe_transaction(tx);
+        assert_eq!(len, 151);
+        assert_eq!(
+            hash,
+            "0x5c6a339dc73bca212310398c854689cfe024fced9a3b7a1c959c6daa27fff331"
+        );
+    }
+
+    /// Works without the 0x prefix too, since callers are not required to send one.
+    #[test]
+    fn accepts_an_unprefixed_payload() {
+        let (a, ha) = describe_transaction("0x0400");
+        let (b, hb) = describe_transaction("0400");
+        assert_eq!((a, &ha), (b, &hb));
+    }
+
+    /// Logging must never be the thing that fails a request, so bad hex degrades rather
+    /// than panicking. The node is the authority on whether a payload is valid.
+    #[test]
+    fn invalid_hex_degrades_instead_of_panicking() {
+        let (len, hash) = describe_transaction("0xnothex");
+        assert_eq!(len, 0);
+        assert!(hash.is_empty());
+    }
 }
 
 #[cfg(test)]

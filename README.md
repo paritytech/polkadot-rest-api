@@ -27,6 +27,27 @@ These public instances are subject to rate limiting and are not intended for pro
 
 Logging levels supported are ```trace, debug, info, http, warn, error```. **http** level allows for the emission of http information logging (method, route, elapsed time, success code). However currently tracing does not support *http*.  To mitigate this, **http** level falls back to *debug* for successful logs, *warn* for 4** request logs, and *error* for 5**
 
+`SAS_LOG_LEVEL` is passed straight to `tracing_subscriber`'s `EnvFilter`, so it accepts full
+directive strings and not only a bare level. That is how you reach the layers underneath the
+handlers:
+
+```bash
+# transaction submissions: hash, byte length, elapsed time, and the reason for a rejection
+export SAS_LOG_LEVEL=info
+
+# add the RPC client, which is where a stalled or reconnecting connection shows up
+export SAS_LOG_LEVEL="info,subxt_rpcs=debug"
+
+# everything the RPC layer does, including individual requests and responses. Noisy.
+export SAS_LOG_LEVEL="info,subxt=debug,subxt_rpcs=trace,jsonrpsee=trace"
+```
+
+Submissions to `/transaction/submit` are logged at `info` on acceptance and `warn` on
+rejection, both carrying the extrinsic hash so a submission can be followed through the
+node. A submission that takes longer than five seconds is logged at `warn` instead of
+`info`, since a stalled connection otherwise looks the same as normal operation until the
+caller times out. The extrinsic payload itself is never logged, only its hash and length.
+
 ## Metrics and Monitoring
 
 The API exposes Prometheus metrics at `/metrics`. To enable metrics collection, set:
