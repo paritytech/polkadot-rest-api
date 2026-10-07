@@ -33,7 +33,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Block and extrinsic hashes are hardcoded to BlakeTwo256** rather than taken from the chain's own
   `System::Hashing`, so they would be wrong on a chain that hashes differently; tracked in #426.
-- **The `v0.3.0` tag is unsigned**; tracked in #418.
 - **A v5 General extrinsic is still reported as unsigned.** Its signature lives in the
   `VerifyMultiSignature` transaction extension rather than a signature field.
 
