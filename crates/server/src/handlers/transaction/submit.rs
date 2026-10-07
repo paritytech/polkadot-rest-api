@@ -212,6 +212,10 @@ pub async fn submit_rc(
 ///
 /// Invalid hex yields a length of 0 and an empty hash: this is only used for logging, and
 /// the node is the authority on whether the payload is well formed.
+///
+/// BlakeTwo256 is assumed, which holds for the relay chain and the system parachains this
+/// serves. A chain configured with a different `Hashing` would compute a different
+/// extrinsic hash, and the mismatch warning below is what would surface that.
 fn describe_transaction(tx: &str) -> (usize, String) {
     match hex::decode(tx.strip_prefix("0x").unwrap_or(tx)) {
         Ok(bytes) => (
@@ -244,12 +248,18 @@ async fn submit_internal(
         tx_len,
         "Submitting extrinsic"
     );
+    tracing::trace!(
+        tx_hash = %expected_hash,
+        tx = %tx,
+        "Submitting extrinsic payload"
+    );
 
     let started = Instant::now();
     let result: Result<String, _> = rpc_client
         .request("author_submitExtrinsic", rpc_params![tx])
         .await;
-    let elapsed_ms = started.elapsed().as_millis();
+    let elapsed = started.elapsed();
+    let elapsed_ms = elapsed.as_millis();
 
     let hash = match result {
         Ok(hash) => hash,
@@ -292,7 +302,7 @@ async fn submit_internal(
         );
     }
 
-    if started.elapsed() >= SLOW_SUBMIT {
+    if elapsed >= SLOW_SUBMIT {
         tracing::warn!(
             tx_hash = %hash,
             tx_len,

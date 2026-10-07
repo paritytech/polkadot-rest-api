@@ -52,7 +52,8 @@ line is never reached, so a `Submitting extrinsic` with no matching outcome for 
 hash is the signature of a stuck transaction. That only helps if it is visible without
 raising the level first.
 
-The extrinsic payload itself is never logged, only its hash and length.
+The extrinsic payload itself is only logged at `trace`. At every other level the lines
+carry its hash and length and nothing more.
 
 ## Metrics and Monitoring
 
