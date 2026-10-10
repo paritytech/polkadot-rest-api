@@ -92,7 +92,7 @@ async fn handle_use_rc_block(
         utils::BlockId::Hash(h) => relay_client.at_block(*h).await?,
     };
 
-    let ah_blocks = find_ah_blocks_in_rc_block_at(&rc_client_at_block).await?;
+    let ah_blocks = find_ah_blocks_in_rc_block_at(&rc_client_at_block, &state.hasher).await?;
 
     if ah_blocks.is_empty() {
         return Ok(Json(json!([])).into_response());

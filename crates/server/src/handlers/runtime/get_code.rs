@@ -172,6 +172,8 @@ mod tests {
             .expect("Failed to create test OnlineClient");
 
         AppState {
+            hasher: crate::test_fixtures::test_chain_hasher(),
+            relay_hasher: std::sync::Arc::new(tokio::sync::OnceCell::new()),
             config,
             client: Arc::new(client),
             legacy_rpc,

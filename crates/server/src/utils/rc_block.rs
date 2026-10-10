@@ -3,7 +3,7 @@
 
 use crate::handlers::common::candidate_types::CandidateIncludedEvent;
 use crate::state::AppState;
-use crate::utils::ResolvedBlock;
+use crate::utils::{ChainHasher, ResolvedBlock, chain_hash_hex};
 use subxt::{OnlineClientAtBlock, SubstrateConfig};
 use thiserror::Error;
 
@@ -57,7 +57,7 @@ pub async fn find_ah_blocks_in_rc_block(
 
     let rc_client_at_block = rc_client.at_block(rc_block.number).await?;
 
-    find_ah_blocks_in_rc_block_at(&rc_client_at_block).await
+    find_ah_blocks_in_rc_block_at(&rc_client_at_block, &state.hasher).await
 }
 
 /// Find Asset Hub blocks included in a Relay Chain block.
@@ -65,12 +65,14 @@ pub async fn find_ah_blocks_in_rc_block(
 /// Uses Subxt ClientAtBlock directly - callers should use `at_block()` to get
 /// the client at the desired RC block, then pass it to this function.
 /// This avoids an extra RPC call when you already have the ClientAtBlock.
+///
+/// `hasher` must be Asset Hub's, not the relay chain's: the bytes being hashed are an Asset
+/// Hub header, so Asset Hub's `System::Hashing` is what decides its hash. These paths only
+/// run on an instance connected to Asset Hub, so that is [`AppState::hasher`].
 pub async fn find_ah_blocks_in_rc_block_at(
     rc_client_at_block: &RcClientAtBlock,
+    hasher: &ChainHasher,
 ) -> Result<Vec<AhBlockInfo>, RcBlockError> {
-    use sp_runtime::traits::BlakeTwo256;
-    use sp_runtime::traits::Hash as HashT;
-
     let events = rc_client_at_block
         .events()
         .fetch()
@@ -122,8 +124,7 @@ pub async fn find_ah_blocks_in_rc_block_at(
             }
         };
 
-        let block_hash = BlakeTwo256::hash(head_data_bytes);
-        let block_hash_hex = format!("0x{}", hex::encode(block_hash.as_ref()));
+        let block_hash_hex = chain_hash_hex(hasher, head_data_bytes);
 
         ah_blocks.push(AhBlockInfo {
             hash: block_hash_hex,

@@ -31,7 +31,10 @@ pub use fee::{
     parse_fee_details,
 };
 pub use format::{decode_address_to_ss58, hex_with_prefix, lowercase_first_char};
-pub use hash::{HashError, compute_block_hash_from_header_json, parse_block_number_from_json};
+pub use hash::{
+    ChainHasher, HashError, chain_hash_hex, compute_block_hash_from_header_json,
+    parse_block_number_from_json,
+};
 pub use rc_block::{
     AhBlockInfo, RcBlockError, RcClientAtBlock, extract_block_number_from_header,
     find_ah_blocks_in_rc_block, find_ah_blocks_in_rc_block_at,

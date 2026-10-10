@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::types::BlockHash;
+use crate::utils::format::hex_with_prefix;
 use parity_scale_codec::{Decode, Encode};
 use polkadot_rest_api_config::Hasher;
 use sp_core::H256;
 use sp_runtime::generic::{Digest, DigestItem};
+use subxt::SubstrateConfig;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -21,6 +23,26 @@ pub enum HashError {
 
     #[error("SCALE decoding error: {0}")]
     ScaleDecodeError(String),
+}
+
+/// The hash function the connected chain uses, taken from its own metadata.
+///
+/// `SubstrateConfig::Hasher` is subxt's `DynamicHasher256`, which reads `System::Hashing`
+/// out of V16 metadata and picks BlakeTwo256 or Keccak256 per chain, falling back to
+/// BlakeTwo256 when the metadata does not say. Reach for this rather than importing
+/// `BlakeTwo256` directly, so the chain decides instead of us.
+///
+/// Get one from a `ClientAtBlock` via `.hasher()`, or from [`crate::state::AppState::hasher`]
+/// where no block client is in scope.
+pub type ChainHasher = <SubstrateConfig as subxt::Config>::Hasher;
+
+/// Hash `bytes` with the chain's own hasher and render the result as a `0x` prefixed string.
+///
+/// Generic over the hasher rather than taking [`ChainHasher`] directly so that the property
+/// that matters, that whatever the chain says is what gets used, can be tested without a
+/// chain that hashes unusually to hand. Callers pass a [`ChainHasher`].
+pub fn chain_hash_hex<H: subxt::config::Hasher>(hasher: &H, bytes: &[u8]) -> String {
+    hex_with_prefix(hasher.hash(bytes).as_ref())
 }
 
 /// Extension trait for Hasher to provide hashing functionality
@@ -67,7 +89,12 @@ pub fn compute_block_hash_from_header_json_with_hasher(
     let extrinsics_root = extract_hash(header_json, "extrinsicsRoot")?;
     let digest = extract_digest(header_json)?;
 
-    // Construct Header and encode it
+    // Construct Header and encode it.
+    //
+    // The hasher type parameter here is not the chain's hasher and does not need to be:
+    // `Header` only uses it for its own `hash()` method, which we never call. The SCALE
+    // encoding below covers the five fields, and `Hashing::Output` is `H256` either way,
+    // so the bytes are identical whichever hasher is named. `hasher` decides the hash.
     let header = sp_runtime::generic::Header::<u32, sp_runtime::traits::BlakeTwo256> {
         parent_hash,
         number,
@@ -361,5 +388,103 @@ mod tests {
 
         // Different hashers should produce different hashes
         assert_ne!(hash_blake2.as_bytes(), hash_keccak.as_bytes());
+    }
+    // --- ChainHasher ---
+
+    /// The whole point of [`ChainHasher`] is that the chain names its hash function and we
+    /// read it. If `System::Hashing` ever stops resolving, `DynamicHasher256` silently
+    /// returns its BlakeTwo256 fallback and every test below still passes while production
+    /// has quietly gone back to hardcoding. This is the test that would fail instead.
+    #[test]
+    fn metadata_v16_names_the_hashing_type() {
+        let metadata = crate::test_fixtures::test_metadata_v16();
+
+        let system = metadata
+            .pallet_by_name("System")
+            .expect("V16 fixture should have a System pallet");
+        let hashing_id = system
+            .associated_type_id("Hashing")
+            .expect("V16 metadata should name the System::Hashing associated type");
+        let ty = metadata
+            .types()
+            .resolve(hashing_id)
+            .expect("the Hashing type should resolve");
+
+        assert_eq!(
+            ty.path.ident().as_deref(),
+            Some("BlakeTwo256"),
+            "Asset Hub hashes with BlakeTwo256; if this fixture changes chain, the expected \
+             hashes elsewhere in the suite need revisiting too"
+        );
+    }
+
+    /// Asset Hub resolves to BlakeTwo256, so the hasher read out of its metadata must agree
+    /// with blake2_256 over the same bytes. This is what keeps the switch away from a
+    /// hardcoded `BlakeTwo256` from changing any hash we already serve.
+    #[test]
+    fn chain_hasher_matches_blake2_on_a_blake2_chain() {
+        let hasher = crate::test_fixtures::test_chain_hasher();
+        let bytes = b"polkadot-rest-api";
+
+        assert_eq!(
+            chain_hash_hex(&hasher, bytes),
+            hex_with_prefix(&sp_core::blake2_256(bytes)),
+        );
+    }
+
+    /// A hasher that keccaks, standing in for a chain whose `System::Hashing` is Keccak256.
+    /// Hyperbridge is the live example; there is no public endpoint for one in this test
+    /// suite, so the chain is faked and only the plumbing is under test.
+    #[derive(Debug, Clone)]
+    struct KeccakHasher;
+
+    impl subxt::config::Hasher for KeccakHasher {
+        type Hash = H256;
+
+        fn new(_metadata: &subxt::Metadata) -> Self {
+            Self
+        }
+
+        fn hash(&self, s: &[u8]) -> Self::Hash {
+            H256::from(sp_core::keccak_256(s))
+        }
+    }
+
+    /// The bug this guards against was hashing with BlakeTwo256 regardless of what the chain
+    /// said. Hand the same bytes to a keccak chain and the output has to follow the chain,
+    /// not our old assumption.
+    #[test]
+    fn chain_hash_hex_follows_the_hasher_it_is_given() {
+        let bytes = b"polkadot-rest-api";
+
+        let blake = chain_hash_hex(&crate::test_fixtures::test_chain_hasher(), bytes);
+        let keccak = chain_hash_hex(&KeccakHasher, bytes);
+
+        assert_eq!(keccak, hex_with_prefix(&sp_core::keccak_256(bytes)));
+        assert_ne!(
+            blake, keccak,
+            "a keccak chain must not be served blake2 hashes"
+        );
+    }
+
+    /// A real Asset Hub extrinsic, hash confirmed on chain. Pins the output to a known good
+    /// value rather than to another computation that could drift the same way.
+    #[test]
+    fn chain_hasher_reproduces_a_known_extrinsic_hash() {
+        let tx = hex::decode(
+            "55028400dc0c5e6f6c8265265f0bb9bbfa5c46a2471c05152066ed925e450361ad22991300\
+             3132c42127d205558668f484efeafe4edcc8b49197e1f3f408774c411abc541d167c4f365b\
+             c62462bc2a46ca5db6284bf55bb48713171f15903e55cf7c415d01580529130000000a0300\
+             1d46ccb04c50f93bde3457fd8e1dcee7da4ae2b8719f6d1df89f25afd75557c90f00506d96\
+             f51401"
+                .replace(['\n', ' '], "")
+                .as_str(),
+        )
+        .expect("valid hex");
+
+        assert_eq!(
+            chain_hash_hex(&crate::test_fixtures::test_chain_hasher(), &tx),
+            "0x5c6a339dc73bca212310398c854689cfe024fced9a3b7a1c959c6daa27fff331"
+        );
     }
 }

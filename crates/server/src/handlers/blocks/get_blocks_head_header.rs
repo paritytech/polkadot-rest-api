@@ -248,7 +248,7 @@ async fn handle_use_rc_block(
         relay_client.at_block(best_hash).await?
     };
 
-    let ah_blocks = find_ah_blocks_in_rc_block_at(&rc_client_at_block)
+    let ah_blocks = find_ah_blocks_in_rc_block_at(&rc_client_at_block, &state.hasher)
         .await
         .map_err(|e| GetBlockHeadHeaderError::RcBlockError(Box::new(e)))?;
 

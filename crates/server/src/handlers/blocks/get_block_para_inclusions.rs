@@ -271,6 +271,17 @@ fn extract_inclusion_from_typed(event: &CandidateIncludedEvent) -> Option<ParaIn
     })
 }
 
+/// Block number and hash from a parachain's head data.
+///
+/// BlakeTwo256 is hardcoded here, unlike everywhere else that hashes, and deliberately so.
+/// These bytes are the header of an arbitrary parachain included in this relay chain block,
+/// so the hash is decided by *that* chain's `System::Hashing`, which we cannot read: we hold
+/// a client for the relay chain and for our own chain, not for every para that appears in a
+/// `CandidateIncluded` event. The relay chain's hasher would be no more correct than this.
+///
+/// BlakeTwo256 is right for every parachain that does not deliberately choose otherwise. A
+/// para that hashes differently gets a wrong hash here, and resolving that properly means
+/// connecting to it. Tracked in #426.
 fn extract_head_data(head_data_bytes: &[u8]) -> Option<(u64, String)> {
     let block_number = utils::extract_block_number_from_header(head_data_bytes)?;
 

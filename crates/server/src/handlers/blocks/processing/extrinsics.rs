@@ -11,13 +11,11 @@
 use crate::state::{AppState, SubstrateLegacyRpc};
 use crate::utils::{
     self, ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce, DecodedExtrinsic, EraInfo,
-    fetch_block_body,
+    chain_hash_hex, fetch_block_body,
 };
 use heck::ToLowerCamelCase;
 use serde_json::{Value, json};
 use sp_core::crypto::{AccountId32, Ss58Codec};
-use sp_runtime::traits::BlakeTwo256;
-use sp_runtime::traits::Hash as HashT;
 
 use super::super::common::BlockClient;
 use super::super::decode::{GetTypeName, JsonVisitor};
@@ -119,6 +117,7 @@ async fn extract_extrinsics_impl(
                     extrinsic_index,
                     &extrinsic_bytes,
                     e.to_string(),
+                    client_at_block.hasher(),
                 ));
                 continue;
             }
@@ -398,8 +397,7 @@ async fn extract_extrinsics_impl(
         };
 
         let extrinsic_bytes = extrinsic.bytes();
-        let hash_bytes = BlakeTwo256::hash(extrinsic_bytes);
-        let hash = format!("0x{}", hex::encode(hash_bytes.as_ref()));
+        let hash = chain_hash_hex(client_at_block.hasher(), extrinsic_bytes);
         let raw_hex = format!("0x{}", hex::encode(extrinsic_bytes));
 
         // Initialize pays_fee based on whether the extrinsic is signed:
