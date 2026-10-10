@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::routes::RouteRegistry;
-use crate::utils::QueryFeeDetailsCache;
+use crate::utils::{ChainHasher, QueryFeeDetailsCache};
 use polkadot_rest_api_config::{ChainType, SidecarConfig};
 use serde_json::Value;
 use std::sync::Arc;
@@ -39,6 +39,9 @@ pub enum StateError {
 
     #[error("spec_name not found in runtime version")]
     SpecNameNotFound,
+
+    #[error("Failed to resolve the chain's hash function from its metadata")]
+    HasherUnavailable(String),
 }
 
 /// Error type for relay chain connection operations
@@ -75,6 +78,12 @@ pub struct AppState {
     pub legacy_rpc: Arc<SubstrateLegacyRpc>,
     pub rpc_client: Arc<RpcClient>,
     pub chain_info: ChainInfo,
+    /// The hash function this chain uses, read from its metadata at startup.
+    ///
+    /// Use this wherever a block hash or extrinsic hash is computed and no `ClientAtBlock`
+    /// is in scope, rather than reaching for `BlakeTwo256`. It is resolved once because
+    /// `System::Hashing` is a property of the runtime, not of a block.
+    pub hasher: ChainHasher,
 
     /// Relay chain OnlineClient — pre-populated at startup if connection succeeds, lazy-init otherwise
     pub relay_client: Arc<OnceCell<Arc<OnlineClient<SubstrateConfig>>>>,
@@ -93,6 +102,8 @@ pub struct AppState {
     pub relay_rpc_client: Arc<OnceCell<Arc<RpcClient>>>,
     /// Relay chain legacy RPC methods — lazy-init from relay_rpc_client
     pub relay_chain_rpc: Arc<OnceCell<Arc<SubstrateLegacyRpc>>>,
+    /// Relay chain hash function — lazy-init from relay_client
+    pub relay_hasher: Arc<OnceCell<ChainHasher>>,
 }
 
 impl AppState {
@@ -132,6 +143,15 @@ impl AppState {
                 url: config.substrate.url.clone(),
                 source: subxt_rpcs::Error::Client(Box::new(std::io::Error::other(e.to_string()))),
             })?;
+
+        // Resolve the chain's hash function once. `System::Hashing` belongs to the runtime
+        // rather than to a block, so this does not need re-reading per request, and having it
+        // on hand keeps handlers that have no `ClientAtBlock` from falling back to BlakeTwo256.
+        let hasher = *client
+            .at_current_block()
+            .await
+            .map_err(|e| StateError::HasherUnavailable(e.to_string()))?
+            .hasher();
 
         // Check if this chain requires a relay chain connection
         let (relay_client, relay_rpc_client, relay_chain_info, relay_chain_config) = if let Some(
@@ -196,6 +216,7 @@ impl AppState {
             legacy_rpc: Arc::new(legacy_rpc),
             rpc_client: Arc::new(rpc_client),
             chain_info,
+            hasher,
             relay_client: relay_client_cell,
             relay_chain_info: relay_chain_info_cell,
             fee_details_cache: Arc::new(QueryFeeDetailsCache::new()),
@@ -204,6 +225,7 @@ impl AppState {
             route_registry: RouteRegistry::new(),
             relay_rpc_client: relay_rpc_client_cell,
             relay_chain_rpc: relay_chain_rpc_cell,
+            relay_hasher: Arc::new(OnceCell::new()),
         })
     }
 
@@ -235,6 +257,24 @@ impl AppState {
             })
             .await
             .cloned()
+    }
+
+    /// Get or lazily initialize the relay chain's hash function.
+    ///
+    /// The relay chain is a different runtime from ours, so it gets its own hasher rather
+    /// than borrowing [`Self::hasher`].
+    pub async fn get_relay_hasher(&self) -> Result<ChainHasher, RelayChainError> {
+        self.relay_hasher
+            .get_or_try_init(|| async {
+                let client = self.get_relay_chain_client().await?;
+                let at_block = client
+                    .at_current_block()
+                    .await
+                    .map_err(|e| RelayChainError::ConnectionFailed(e.to_string()))?;
+                Ok(*at_block.hasher())
+            })
+            .await
+            .copied()
     }
 
     /// Get or lazily initialize the relay chain info.

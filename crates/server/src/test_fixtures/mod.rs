@@ -7,9 +7,11 @@
 //! with `OnlineClient::from_rpc_client()` for testing handlers that
 //! use `client.at_block()` or `client.at_current_block()`.
 
-use parity_scale_codec::{Compact, Encode};
+use crate::utils::ChainHasher;
+use parity_scale_codec::{Compact, Decode, Encode};
 use serde_json::{json, value::RawValue};
 use std::sync::Arc;
+use subxt::config::Hasher as _;
 use subxt::{OnlineClient, SubstrateConfig};
 use subxt_rpcs::client::mock_rpc_client::{Json as MockJson, MockRpcClientBuilder};
 use subxt_rpcs::client::{MockRpcClient, RpcClient};
@@ -209,6 +211,27 @@ pub fn mock_rpc_client_builder_with_metadata(
                 }
             }
         })
+}
+
+/// A [`ChainHasher`] built from [`ASSET_HUB_METADATA_V16`], for tests that need to hash
+/// something the way the chain would without standing up a client first.
+///
+/// The V16 fixture is used on purpose: `DynamicHasher256` reads `System::Hashing` out of
+/// V16 metadata, and falls back to BlakeTwo256 when it cannot find it. Built from older
+/// metadata this would return the fallback and the test would pass without the lookup ever
+/// having run. Asset Hub hashes with BlakeTwo256 either way, so the two are
+/// indistinguishable by their output, which is what
+/// `metadata_v16_names_the_hashing_type` in `utils::hash` guards.
+pub fn test_chain_hasher() -> ChainHasher {
+    ChainHasher::new(&test_metadata_v16())
+}
+
+/// [`ASSET_HUB_METADATA_V16`] decoded into subxt's `Metadata`.
+pub fn test_metadata_v16() -> subxt::Metadata {
+    let prefixed =
+        frame_metadata::RuntimeMetadataPrefixed::decode(&mut &ASSET_HUB_METADATA_V16[..])
+            .expect("fixture should be valid RuntimeMetadataPrefixed");
+    subxt::Metadata::try_from(prefixed).expect("fixture should convert to subxt metadata")
 }
 
 /// Create a pre-configured MockRpcClient suitable for most tests.

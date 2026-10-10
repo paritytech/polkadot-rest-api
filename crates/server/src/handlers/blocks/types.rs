@@ -7,12 +7,11 @@
 //! request parameters, response structures, and internal types.
 
 use crate::state::RelayChainError;
-use crate::utils::{self, EraInfo, RcBlockError, hex_with_prefix};
+use crate::utils::{self, ChainHasher, EraInfo, RcBlockError, chain_hash_hex, hex_with_prefix};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use heck::ToLowerCamelCase;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use subxt::error::{OnlineClientAtBlockError, StorageError};
 use thiserror::Error;
 
@@ -665,14 +664,17 @@ pub fn has_decode_errors(extrinsics: &[ExtrinsicInfo]) -> bool {
 impl ExtrinsicInfo {
     /// Events and outcome stay empty here; they are filled in later from the
     /// block's events, which are keyed by this same index.
-    pub fn undecodable(index: usize, bytes: &[u8], reason: String) -> Self {
+    ///
+    /// `hasher` is the chain's own, so the hash we report for bytes we could not decode is
+    /// still the hash the chain would give them.
+    pub fn undecodable(index: usize, bytes: &[u8], reason: String, hasher: &ChainHasher) -> Self {
         Self {
             method: None,
             signature: None,
             nonce: None,
             args: serde_json::Map::new(),
             tip: None,
-            hash: hex_with_prefix(BlakeTwo256::hash(bytes).as_ref()),
+            hash: chain_hash_hex(hasher, bytes),
             info: serde_json::Map::new(),
             era: EraInfo {
                 immortal_era: None,
@@ -859,6 +861,7 @@ mod tests {
             2,
             &[0x10, 0x04, 0xc8],
             "unknown pallet".to_string(),
+            &crate::test_fixtures::test_chain_hasher(),
         ))
         .unwrap();
 
@@ -929,7 +932,12 @@ mod tests {
         assert!(!has_decode_errors(&[decoded(), decoded()]));
         assert!(has_decode_errors(&[
             decoded(),
-            ExtrinsicInfo::undecodable(1, &[0x04], "boom".to_string()),
+            ExtrinsicInfo::undecodable(
+                1,
+                &[0x04],
+                "boom".to_string(),
+                &crate::test_fixtures::test_chain_hasher(),
+            ),
         ]));
     }
 

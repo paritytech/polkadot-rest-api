@@ -9,7 +9,7 @@
 use crate::handlers::blocks::decode::args::CallArgsVisitor;
 use crate::state::{AppState, RelayChainError};
 use crate::utils::{
-    self, ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce, EraInfo,
+    self, ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce, EraInfo, chain_hash_hex,
     decode_address_to_ss58,
 };
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
@@ -18,8 +18,6 @@ use parity_scale_codec::Decode;
 use scale_decode::visitor::decode_with_visitor;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sp_runtime::traits::BlakeTwo256;
-use sp_runtime::traits::Hash as HashT;
 use subxt::{OnlineClient, SubstrateConfig};
 use subxt_metadata::Metadata;
 use thiserror::Error;
@@ -265,10 +263,6 @@ async fn parse_internal(
         }
     })?;
 
-    // Calculate hash
-    let hash_bytes = BlakeTwo256::hash(&tx_bytes);
-    let hash = format!("0x{}", hex::encode(hash_bytes.as_ref()));
-
     // Get metadata from current block
     let client_at_block =
         client
@@ -281,6 +275,10 @@ async fn parse_internal(
             })?;
 
     let metadata = client_at_block.metadata();
+
+    // Hash with the chain's own hasher rather than assuming BlakeTwo256, which is why this
+    // waits for the block client instead of running straight off `tx_bytes`.
+    let hash = chain_hash_hex(client_at_block.hasher(), &tx_bytes);
 
     // Decode via `utils::decode_extrinsic_info` rather than calling `frame_decode`
     // against the metadata directly: the metadata's own `ExtrinsicTypeInfo` decodes

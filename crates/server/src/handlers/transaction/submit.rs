@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::state::{AppState, RelayChainError};
-use crate::utils::hex_with_prefix;
+use crate::utils::{ChainHasher, chain_hash_hex};
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use std::time::{Duration, Instant};
 use subxt_rpcs::rpc_params;
 use thiserror::Error;
@@ -174,7 +173,7 @@ pub async fn submit(
     State(state): State<AppState>,
     Json(body): Json<SubmitRequest>,
 ) -> Result<Json<SubmitResponse>, SubmitError> {
-    submit_internal(&state.rpc_client, body).await
+    submit_internal(&state.rpc_client, &state.hasher, body).await
 }
 
 #[utoipa::path(
@@ -205,29 +204,37 @@ pub async fn submit_rc(
                 transaction: tx_str.to_string(),
             })?;
 
-    submit_internal(&rpc_client, body).await
+    // The relay chain is a different runtime, so it gets its own hasher. A relay chain we
+    // can submit to but cannot read a hasher from is not worth failing the submission over,
+    // so fall back to ours and let the node's hash settle any disagreement.
+    let hasher = match state.get_relay_hasher().await {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::debug!(
+                error = %e,
+                "Could not resolve the relay chain hash function; logging with this chain's"
+            );
+            state.hasher
+        }
+    };
+
+    submit_internal(&rpc_client, &hasher, body).await
 }
 
-/// Byte length and BlakeTwo256 hash of a hex encoded extrinsic.
+/// Byte length and hash of a hex encoded extrinsic, using the chain's own hash function.
 ///
 /// Invalid hex yields a length of 0 and an empty hash: this is only used for logging, and
 /// the node is the authority on whether the payload is well formed.
-///
-/// BlakeTwo256 is assumed, which holds for the relay chain and the system parachains this
-/// serves. A chain configured with a different `Hashing` would compute a different
-/// extrinsic hash, and the mismatch warning below is what would surface that.
-fn describe_transaction(tx: &str) -> (usize, String) {
+fn describe_transaction(tx: &str, hasher: &ChainHasher) -> (usize, String) {
     match hex::decode(tx.strip_prefix("0x").unwrap_or(tx)) {
-        Ok(bytes) => (
-            bytes.len(),
-            hex_with_prefix(BlakeTwo256::hash(&bytes).as_ref()),
-        ),
+        Ok(bytes) => (bytes.len(), chain_hash_hex(hasher, &bytes)),
         Err(_) => (0, String::new()),
     }
 }
 
 async fn submit_internal(
     rpc_client: &std::sync::Arc<subxt_rpcs::RpcClient>,
+    hasher: &ChainHasher,
     body: SubmitRequest,
 ) -> Result<Json<SubmitResponse>, SubmitError> {
     let tx = body.tx.as_ref().ok_or(SubmitError::MissingTx)?;
@@ -242,7 +249,7 @@ async fn submit_internal(
     // fires, because the outcome below is never reached. A sent line with no matching
     // outcome is exactly the signature of a stuck transaction, and it has to be visible
     // at the default level for that to be worth anything.
-    let (tx_len, expected_hash) = describe_transaction(tx);
+    let (tx_len, expected_hash) = describe_transaction(tx, hasher);
     tracing::info!(
         tx_hash = %expected_hash,
         tx_len,
@@ -325,12 +332,18 @@ async fn submit_internal(
 mod describe_tests {
     use super::*;
 
+    /// Asset Hub's hasher, read from metadata the same way production reads it. It resolves
+    /// to BlakeTwo256, which is what the expected hashes below were taken from on chain.
+    fn hasher() -> ChainHasher {
+        crate::test_fixtures::test_chain_hasher()
+    }
+
     /// The hash we log must be the one the node computes, which is blake2 over the whole
     /// length prefixed extrinsic. Real Asset Hub extrinsic, hash confirmed on chain.
     #[test]
     fn describes_a_real_extrinsic() {
         let tx = "0x55028400dc0c5e6f6c8265265f0bb9bbfa5c46a2471c05152066ed925e450361ad229913003132c42127d205558668f484efeafe4edcc8b49197e1f3f408774c411abc541d167c4f365bc62462bc2a46ca5db6284bf55bb48713171f15903e55cf7c415d01580529130000000a03001d46ccb04c50f93bde3457fd8e1dcee7da4ae2b8719f6d1df89f25afd75557c90f00506d96f51401";
-        let (len, hash) = describe_transaction(tx);
+        let (len, hash) = describe_transaction(tx, &hasher());
         assert_eq!(len, 151);
         assert_eq!(
             hash,
@@ -341,8 +354,8 @@ mod describe_tests {
     /// Works without the 0x prefix too, since callers are not required to send one.
     #[test]
     fn accepts_an_unprefixed_payload() {
-        let (a, ha) = describe_transaction("0x0400");
-        let (b, hb) = describe_transaction("0400");
+        let (a, ha) = describe_transaction("0x0400", &hasher());
+        let (b, hb) = describe_transaction("0400", &hasher());
         assert_eq!((a, &ha), (b, &hb));
     }
 
@@ -350,7 +363,7 @@ mod describe_tests {
     /// than panicking. The node is the authority on whether a payload is valid.
     #[test]
     fn invalid_hex_degrades_instead_of_panicking() {
-        let (len, hash) = describe_transaction("0xnothex");
+        let (len, hash) = describe_transaction("0xnothex", &hasher());
         assert_eq!(len, 0);
         assert!(hash.is_empty());
     }
