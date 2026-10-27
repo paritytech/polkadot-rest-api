@@ -6,6 +6,24 @@ See [standard-version](https://github.com/conventional-changelog/standard-versio
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.3] (2026-10-27)
+
+### Fixes
+
+- **Report the signature of a v5 General extrinsic**: a v5 `General` extrinsic has no signature
+  field, so `is_signed()` is false for it and ordinary signed transfers came back as unsigned
+  inherents, `signature` null and `paysFee` false, even though the block's own events show a fee was
+  paid. The signature is carried by the `VerifyMultiSignature` authorization extension instead.
+  `/blocks/{id}` and `/transaction/parse` now fall back to that extension when there is no signature
+  field. The extension, and the signature inside it, are decoded against the types the metadata
+  declares rather than a layout assumed in our code, so a chain whose signature scheme subxt does not
+  know still decodes. (#439, closes #438)
+
+  **Wire visible.** For v5 `General` extrinsics only: `signature` and `paysFee` are now populated on
+  `/blocks/{id}`, and `/transaction/parse` reports `isSigned: true` along with the nonce, tip and era
+  it was skipping. The era for these changes value rather than just appearing, from immortal to the
+  real mortal era. Nothing else changed shape.
+
 ## [0.3.2] (2026-10-07)
 
 ### Fixes
