@@ -375,7 +375,7 @@ fn decode_call_args(
 }
 
 /// Result type for signed extrinsic info extraction
-type SignedInfoResult = (
+type ExtrinsicInfoResult = (
     Option<SignatureInfo>,
     Option<String>,
     Option<String>,
@@ -392,7 +392,7 @@ fn extract_extrinsic_info(
     metadata: &Metadata,
     ss58_prefix: u16,
     tx: &str,
-) -> Result<SignedInfoResult, ParseErrorKind> {
+) -> Result<ExtrinsicInfoResult, ParseErrorKind> {
     let mut signature_info = if extrinsic.is_signed() {
         let sig_payload =
             extrinsic
@@ -480,13 +480,13 @@ fn extract_extrinsic_info(
                         && let Some(found) =
                             utils::decode_general_signature(ext_bytes, *ext.ty(), metadata.types())
                     {
-                        let signer_hex = format!("0x{}", hex::encode(found.account));
+                        let signer_hex = utils::hex_with_prefix(&found.account);
                         let signer_ss58 = decode_address_to_ss58(&signer_hex, ss58_prefix)
                             .unwrap_or_else(|| signer_hex.clone());
 
                         signature_info = Some(SignatureInfo {
                             signer: SignerId { id: signer_ss58 },
-                            signature: format!("0x{}", hex::encode(&found.signature)),
+                            signature: utils::hex_with_prefix(&found.signature),
                         });
                     }
                 }
@@ -495,17 +495,27 @@ fn extract_extrinsic_info(
         }
 
         // Use decoded era, or fall back to decoding it at the start of the
-        // extensions payload (era is the first explicit extension field), or
-        // default to immortal. The payload range comes from frame-decode, so
-        // it is correct even though `tx_bytes` carries the compact length
-        // prefix (decode_extrinsic requires it), and it already excludes the
-        // extension version byte for v5 General extrinsics.
+        // extensions payload, or default to immortal. The payload range comes
+        // from frame-decode, so it is correct even though `tx_bytes` carries
+        // the compact length prefix (decode_extrinsic requires it).
+        //
+        // The fallback only applies at extension version 0, where mortality is
+        // the first field carrying data. A v5 General extrinsic resolves at a
+        // later version, whose payload starts with the authorization extension
+        // instead, and reading an era off those bytes invents one rather than
+        // failing: an Ed25519 signature there begins `01 00`, which is a
+        // well formed mortal era and nothing like the real one. Mortality is
+        // read from the named extension above for those, as the block handler
+        // does, so the only cost of skipping this is falling back to immortal.
         //
         // Note: do NOT pass `tx_bytes` to `extract_era_from_extrinsic_bytes`
         // here — those bytes include the compact length prefix, which that
         // parser would misread as the version byte (see its docs).
         let era = era_value
             .or_else(|| {
+                if extensions.version() > 0 {
+                    return None;
+                }
                 let ext_payload = &tx_bytes[extensions.range()];
                 let mut offset = 0;
                 utils::decode_era_from_bytes(ext_payload, &mut offset)
@@ -626,7 +636,7 @@ mod tests {
     ///
     /// `tx_bytes` here carry the compact length prefix (as required by
     /// `decode_extrinsic`), so every byte range used by
-    /// `extract_signed_info` must be prefix-aware. With Asset Hub metadata
+    /// `extract_extrinsic_info` must be prefix-aware. With Asset Hub metadata
     /// the era resolves via the named `CheckMortality` extension (its range
     /// comes from frame-decode and is prefix-agnostic); the payload-range
     /// fallback for metadatas without a named mortality extension is covered

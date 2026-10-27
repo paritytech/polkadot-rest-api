@@ -220,12 +220,6 @@ impl<'a> TransactionExtension<'a> {
         self.bytes
     }
 
-    /// Decode this extension into the given type, driven by the type the metadata declares
-    /// for it rather than by a layout assumed here.
-    pub fn decode_as<T: scale_decode::DecodeAsType>(&self) -> Result<T, scale_decode::Error> {
-        T::decode_as_type(&mut &*self.bytes, self.type_id, self.types)
-    }
-
     /// Decode this extension as the authorization extension that carries a v5 signature.
     ///
     /// Only meaningful when [`Self::name`] is one of the authorization extension names, see
@@ -305,7 +299,7 @@ mod tests {
     use super::*;
     use crate::test_fixtures::ASSET_HUB_METADATA_V16;
     use frame_decode::extrinsics::{ExtrinsicType, ExtrinsicTypeInfo};
-    use parity_scale_codec::Decode;
+    use parity_scale_codec::{Compact, Decode, Encode};
 
     /// Polkadot Asset Hub block 20487777, extrinsic #2: a V4 signed
     /// `Balances.transfer_allow_death`, exactly as it appears in a
@@ -536,21 +530,99 @@ b6053c58faedd4e04b4fb85d59cba2139ad5426875785fdeb592349bd053aa83";
         );
     }
 
-    /// The runtime numbers `Signed` as variant 1, not 0. Decoding these bytes with a plain
-    /// `Decode` against a Rust enum that happens to declare `Signed` first would read them
-    /// as `Disabled` and hand back no signature, silently and with no error. Decoding
-    /// against the metadata's own type is what avoids that, so this pins the byte down.
+    /// The runtime numbers `Signed` as variant 1, not 0, while the Rust mirror of this type
+    /// lists it first. Anything decoding by declaration order rather than against the
+    /// metadata would read a real signature as `Disabled` and report none, silently.
+    ///
+    /// Asserted against the metadata rather than against a byte: the byte at that offset is
+    /// only `0x01` because the extension before it encodes to nothing, so a byte assertion
+    /// would survive a fixture whose variants were ordered the other way and quietly stop
+    /// guarding anything.
     #[test]
     fn signed_is_not_the_first_variant_on_chain() {
-        let raw = bytes(V5_GENERAL_FORCE_BATCH);
+        let metadata = metadata();
 
-        // 0..2 compact length, 2 version byte, 3 transaction extension version, then the
-        // first extension with a value: VerifyMultiSignature.
-        assert_eq!(raw[2], 0x45, "v5 General");
-        assert_eq!(raw[3], 0x01, "transaction extension version 1");
+        let ext_ty = metadata
+            .extrinsic_extension_info(Some(1))
+            .expect("version 1 available")
+            .extension_ids
+            .iter()
+            .find(|e| crate::utils::is_authorization_extension(&e.name))
+            .map(|e| e.id)
+            .expect("the fixture declares the authorization extension");
+
+        let ty = metadata.types().resolve(ext_ty).expect("type resolves");
+        let scale_info::TypeDef::Variant(variants) = &ty.type_def else {
+            panic!("the authorization extension should be an enum");
+        };
+
+        let by_index: Vec<(u8, &str)> = variants
+            .variants
+            .iter()
+            .map(|v| (v.index, v.name.as_str()))
+            .collect();
+
+        assert!(
+            by_index.contains(&(1, "Signed")),
+            "expected Signed at index 1, got {by_index:?}"
+        );
+    }
+
+    /// The signature is read opaquely rather than as a typed `MultiSignature`, so a scheme
+    /// subxt has no Rust variant for still decodes.
+    ///
+    /// `Eth` is the live case: Asset Hub's own `MultiSignature` declares it while
+    /// `subxt::utils::MultiSignature` stops at `Ecdsa`, so decoding into that type reports
+    /// an `Eth` signed transaction as an unsigned inherent.
+    #[test]
+    fn a_signature_scheme_subxt_does_not_know_still_decodes() {
+        // The fixture's own MultiSignature must still declare Eth, or this proves nothing.
+        let md = metadata();
+        let sig_ty = md
+            .types()
+            .types
+            .iter()
+            .find(|t| t.ty.path.segments == ["sp_runtime", "MultiSignature"])
+            .expect("the fixture declares sp_runtime::MultiSignature");
+        let scale_info::TypeDef::Variant(schemes) = &sig_ty.ty.type_def else {
+            panic!("MultiSignature should be an enum");
+        };
+        let eth = schemes
+            .variants
+            .iter()
+            .find(|v| v.name == "Eth")
+            .expect("fixture still declares Eth; if it stops, this test is a no-op");
+
+        // Rewrite the real extrinsic's Sr25519 signature as an Eth one. The layout is
+        // asserted rather than assumed: version, extension version, Signed, scheme.
+        let raw = bytes(V5_GENERAL_FORCE_BATCH);
+        assert_eq!((raw[2], raw[3], raw[4], raw[5]), (0x45, 0x01, 0x01, 0x01));
+
+        let body = &raw[2..];
+        let sr25519_sig = &body[4..4 + 64];
+        let tail = &body[4 + 64..];
+
+        let mut eth_body = vec![0x45, 0x01, 0x01, eth.index];
+        eth_body.extend_from_slice(sr25519_sig);
+        eth_body.push(0xAA); // an Eth signature is 65 bytes, one more than Sr25519
+        eth_body.extend_from_slice(tail);
+
+        let mut eth_raw = Compact(eth_body.len() as u32).encode();
+        eth_raw.extend_from_slice(&eth_body);
+
+        let extrinsic = DecodedExtrinsic::decode(2, eth_raw, std::sync::Arc::new(md))
+            .expect("an Eth signed v5 General extrinsic should decode");
+        let extensions = extrinsic.transaction_extensions().expect("has extensions");
+
+        let found = crate::utils::general_signature(&extensions)
+            .expect("an Eth signature must be reported, not swallowed");
+
+        let mut expected = sr25519_sig.to_vec();
+        expected.push(0xAA);
+        assert_eq!(found.signature, expected);
         assert_eq!(
-            raw[4], 0x01,
-            "VerifyMultiSignature::Signed is variant 1 here"
+            crate::utils::hex_with_prefix(&found.account),
+            V5_GENERAL_SIGNER
         );
     }
 
