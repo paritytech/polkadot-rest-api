@@ -11,7 +11,7 @@
 use crate::state::{AppState, SubstrateLegacyRpc};
 use crate::utils::{
     self, ChargeAssetTxPayment, ChargeTransactionPayment, CheckNonce, DecodedExtrinsic, EraInfo,
-    fetch_block_body,
+    fetch_block_body, hex_with_prefix,
 };
 use heck::ToLowerCamelCase;
 use serde_json::{Value, json};
@@ -267,7 +267,29 @@ async fn extract_extrinsics_impl(
                 era_info,
             )
         } else {
-            (None, None)
+            // A v5 `General` extrinsic has no signature field, so `is_signed()` is false for
+            // it, but it is not unsigned: the signature sits in an authorization extension.
+            // Without this it would be reported as an inherent, signature null and paysFee
+            // false, even though the block's own events show a fee was paid.
+            //
+            // Era, nonce and tip already come out of the extensions below, which is why only
+            // the signature needs recovering here.
+            let signature_info = extrinsic
+                .transaction_extensions()
+                .as_ref()
+                .and_then(utils::general_signature)
+                .map(|found| {
+                    let signer_hex = hex_with_prefix(&found.account);
+                    let signer_ss58 = utils::decode_address_to_ss58(&signer_hex, ss58_prefix)
+                        .unwrap_or_else(|| signer_hex.clone());
+
+                    SignatureInfo {
+                        signature: hex_with_prefix(&found.signature),
+                        signer: SignerId { id: signer_ss58 },
+                    }
+                });
+
+            (signature_info, None)
         };
 
         // Extract nonce, tip, and era from transaction extensions (if present)

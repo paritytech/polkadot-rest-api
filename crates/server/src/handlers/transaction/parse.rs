@@ -301,24 +301,17 @@ async fn parse_internal(
     // Extract call arguments using the shared CallArgsVisitor
     let args_map = decode_call_args(&tx_bytes, &extrinsic, &metadata, ss58_prefix, tx)?;
 
-    // Extract signature info and era
-    let (signature_info, nonce, tip, era_info) = if extrinsic.is_signed() {
-        extract_signed_info(&tx_bytes, &extrinsic, &metadata, ss58_prefix, tx)?
-    } else {
-        // Unsigned extrinsics are immortal
-        (
-            None,
-            None,
-            None,
-            EraInfo {
-                immortal_era: Some("0x00".to_string()),
-                mortal_era: None,
-            },
-        )
-    };
+    // Extract signature info and era. This runs for unsigned extrinsics too: a v5 `General`
+    // extrinsic reports `is_signed() == false` yet still carries a signature, a nonce, a tip
+    // and an era in its transaction extensions.
+    let (signature_info, nonce, tip, era_info) =
+        extract_extrinsic_info(&tx_bytes, &extrinsic, &metadata, ss58_prefix, tx)?;
 
     Ok(Json(ParseResponse {
-        is_signed: extrinsic.is_signed(),
+        // Not `extrinsic.is_signed()`: that is false for a v5 `General` extrinsic whose
+        // signature lives in an extension, and reporting such a transaction as unsigned is
+        // the bug this endpoint had.
+        is_signed: signature_info.is_some(),
         method: MethodInfo {
             pallet: pallet_name,
             method: method_name,
@@ -382,56 +375,63 @@ fn decode_call_args(
 }
 
 /// Result type for signed extrinsic info extraction
-type SignedInfoResult = (
+type ExtrinsicInfoResult = (
     Option<SignatureInfo>,
     Option<String>,
     Option<String>,
     EraInfo,
 );
 
-/// Extract signature info, nonce, tip, and era from signed extrinsic
-fn extract_signed_info(
+/// Extract signature info, nonce, tip, and era from an extrinsic.
+///
+/// Handles both places a signature can live: the signature payload of a v4 signed
+/// extrinsic, and the authorization extension of a v5 `General` one.
+fn extract_extrinsic_info(
     tx_bytes: &[u8],
     extrinsic: &frame_decode::extrinsics::Extrinsic<'_, u32>,
-    _metadata: &Metadata,
+    metadata: &Metadata,
     ss58_prefix: u16,
     tx: &str,
-) -> Result<SignedInfoResult, ParseErrorKind> {
-    // Get signature payload
-    let sig_payload = extrinsic
-        .signature_payload()
-        .ok_or_else(|| ParseErrorKind::ParseFailed {
-            transaction: tx.to_string(),
-            cause: "Missing signature payload in signed extrinsic".to_string(),
-            stack: "Error: Missing signature payload\n    at parse".to_string(),
-        })?;
+) -> Result<ExtrinsicInfoResult, ParseErrorKind> {
+    let mut signature_info = if extrinsic.is_signed() {
+        let sig_payload =
+            extrinsic
+                .signature_payload()
+                .ok_or_else(|| ParseErrorKind::ParseFailed {
+                    transaction: tx.to_string(),
+                    cause: "Missing signature payload in signed extrinsic".to_string(),
+                    stack: "Error: Missing signature payload\n    at parse".to_string(),
+                })?;
 
-    // Decode address using existing utility
-    let addr_bytes = &tx_bytes[sig_payload.address_range()];
-    let addr_hex = format!("0x{}", hex::encode(addr_bytes));
-    let signer_ss58 = decode_address_to_ss58(&addr_hex, ss58_prefix).unwrap_or_else(|| {
-        // Fallback: try direct interpretation for MultiAddress::Id variant
-        if addr_bytes.len() >= 33 && addr_bytes[0] == 0x00 {
-            let addr_inner_hex = format!("0x{}", hex::encode(&addr_bytes[1..33]));
-            decode_address_to_ss58(&addr_inner_hex, ss58_prefix).unwrap_or(addr_hex.clone())
+        // Decode address using existing utility
+        let addr_bytes = &tx_bytes[sig_payload.address_range()];
+        let addr_hex = format!("0x{}", hex::encode(addr_bytes));
+        let signer_ss58 = decode_address_to_ss58(&addr_hex, ss58_prefix).unwrap_or_else(|| {
+            // Fallback: try direct interpretation for MultiAddress::Id variant
+            if addr_bytes.len() >= 33 && addr_bytes[0] == 0x00 {
+                let addr_inner_hex = format!("0x{}", hex::encode(&addr_bytes[1..33]));
+                decode_address_to_ss58(&addr_inner_hex, ss58_prefix).unwrap_or(addr_hex.clone())
+            } else {
+                addr_hex
+            }
+        });
+
+        // Get signature bytes
+        let sig_bytes = &tx_bytes[sig_payload.signature_range()];
+        // Strip signature type prefix if present
+        let signature_hex = if sig_bytes.len() > 1 {
+            format!("0x{}", hex::encode(&sig_bytes[1..]))
         } else {
-            addr_hex
-        }
-    });
+            format!("0x{}", hex::encode(sig_bytes))
+        };
 
-    // Get signature bytes
-    let sig_bytes = &tx_bytes[sig_payload.signature_range()];
-    // Strip signature type prefix if present
-    let signature_hex = if sig_bytes.len() > 1 {
-        format!("0x{}", hex::encode(&sig_bytes[1..]))
+        Some(SignatureInfo {
+            signer: SignerId { id: signer_ss58 },
+            signature: signature_hex,
+        })
     } else {
-        format!("0x{}", hex::encode(sig_bytes))
+        None
     };
-
-    let signature_info = Some(SignatureInfo {
-        signer: SignerId { id: signer_ss58 },
-        signature: signature_hex,
-    });
 
     // Extract nonce, tip, and era from transaction extensions using shared types
     let (nonce, tip, era_info) = if let Some(extensions) = extrinsic.transaction_extension_payload()
@@ -473,22 +473,49 @@ fn extract_signed_info(
                         era_value = Some(decoded_era);
                     }
                 }
+                name if utils::is_authorization_extension(name) => {
+                    // Where a v5 `General` extrinsic keeps its signature. A v4 extrinsic
+                    // already has one from its signature payload, so this never overwrites.
+                    if signature_info.is_none()
+                        && let Some(found) =
+                            utils::decode_general_signature(ext_bytes, *ext.ty(), metadata.types())
+                    {
+                        let signer_hex = utils::hex_with_prefix(&found.account);
+                        let signer_ss58 = decode_address_to_ss58(&signer_hex, ss58_prefix)
+                            .unwrap_or_else(|| signer_hex.clone());
+
+                        signature_info = Some(SignatureInfo {
+                            signer: SignerId { id: signer_ss58 },
+                            signature: utils::hex_with_prefix(&found.signature),
+                        });
+                    }
+                }
                 _ => {}
             }
         }
 
         // Use decoded era, or fall back to decoding it at the start of the
-        // extensions payload (era is the first explicit extension field), or
-        // default to immortal. The payload range comes from frame-decode, so
-        // it is correct even though `tx_bytes` carries the compact length
-        // prefix (decode_extrinsic requires it), and it already excludes the
-        // extension version byte for v5 General extrinsics.
+        // extensions payload, or default to immortal. The payload range comes
+        // from frame-decode, so it is correct even though `tx_bytes` carries
+        // the compact length prefix (decode_extrinsic requires it).
+        //
+        // The fallback only applies at extension version 0, where mortality is
+        // the first field carrying data. A v5 General extrinsic resolves at a
+        // later version, whose payload starts with the authorization extension
+        // instead, and reading an era off those bytes invents one rather than
+        // failing: an Ed25519 signature there begins `01 00`, which is a
+        // well formed mortal era and nothing like the real one. Mortality is
+        // read from the named extension above for those, as the block handler
+        // does, so the only cost of skipping this is falling back to immortal.
         //
         // Note: do NOT pass `tx_bytes` to `extract_era_from_extrinsic_bytes`
         // here — those bytes include the compact length prefix, which that
         // parser would misread as the version byte (see its docs).
         let era = era_value
             .or_else(|| {
+                if extensions.version() > 0 {
+                    return None;
+                }
                 let ext_payload = &tx_bytes[extensions.range()];
                 let mut offset = 0;
                 utils::decode_era_from_bytes(ext_payload, &mut offset)
@@ -609,7 +636,7 @@ mod tests {
     ///
     /// `tx_bytes` here carry the compact length prefix (as required by
     /// `decode_extrinsic`), so every byte range used by
-    /// `extract_signed_info` must be prefix-aware. With Asset Hub metadata
+    /// `extract_extrinsic_info` must be prefix-aware. With Asset Hub metadata
     /// the era resolves via the named `CheckMortality` extension (its range
     /// comes from frame-decode and is prefix-agnostic); the payload-range
     /// fallback for metadatas without a named mortality extension is covered

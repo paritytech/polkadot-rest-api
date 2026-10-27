@@ -615,7 +615,10 @@ pub struct ExtrinsicInfo {
     /// Absent when the call could not be decoded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub method: Option<MethodInfo>,
-    /// Signature information - null for unsigned extrinsics (inherents)
+    /// Signature information, null when the extrinsic carries no signature.
+    ///
+    /// For a v5 `General` extrinsic this comes from its authorization transaction extension
+    /// rather than from a signature field.
     pub signature: Option<SignatureInfo>,
     /// Nonce - shown as null when extraction fails (matching sidecar behavior)
     pub nonce: Option<String>,
@@ -632,7 +635,12 @@ pub struct ExtrinsicInfo {
     pub events: Vec<Event>,
     /// Whether the extrinsic executed successfully (determined from System.ExtrinsicSuccess event)
     pub success: bool,
-    /// Whether the extrinsic pays a fee (false for unsigned, value from DispatchInfo for signed)
+    /// Whether the extrinsic pays a fee.
+    ///
+    /// `false` for an extrinsic that carries no signature, otherwise taken from the
+    /// `DispatchInfo` in the block's events. Note "carries no signature" is not the same as
+    /// `is_signed()`: a v5 `General` extrinsic keeps its signature in a transaction
+    /// extension and does pay a fee.
     /// Extracted from DispatchInfo in System.ExtrinsicSuccess/ExtrinsicFailed events
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pays_fee: Option<bool>,

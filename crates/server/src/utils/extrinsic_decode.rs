@@ -160,6 +160,7 @@ impl DecodedExtrinsic {
             .map(|payload| TransactionExtensions {
                 bytes: &self.bytes,
                 payload,
+                types: self.metadata.types(),
             })
     }
 
@@ -178,6 +179,7 @@ impl DecodedExtrinsic {
 pub struct TransactionExtensions<'a> {
     bytes: &'a [u8],
     payload: &'a ExtrinsicExtensions<'static, u32>,
+    types: &'a PortableRegistry,
 }
 
 impl<'a> TransactionExtensions<'a> {
@@ -189,9 +191,12 @@ impl<'a> TransactionExtensions<'a> {
     /// Iterate over each extension in the order the runtime declares them.
     pub fn iter(&self) -> impl ExactSizeIterator<Item = TransactionExtension<'a>> + 'a {
         let bytes = self.bytes;
+        let types = self.types;
         self.payload.iter().map(move |arg| TransactionExtension {
             bytes: &bytes[arg.range()],
             name: arg.name(),
+            type_id: *arg.ty(),
+            types,
         })
     }
 }
@@ -200,6 +205,8 @@ impl<'a> TransactionExtensions<'a> {
 pub struct TransactionExtension<'a> {
     bytes: &'a [u8],
     name: &'a str,
+    type_id: u32,
+    types: &'a PortableRegistry,
 }
 
 impl<'a> TransactionExtension<'a> {
@@ -211,6 +218,14 @@ impl<'a> TransactionExtension<'a> {
     /// The scale encoded `extra` bytes for this extension.
     pub fn bytes(&self) -> &'a [u8] {
         self.bytes
+    }
+
+    /// Decode this extension as the authorization extension that carries a v5 signature.
+    ///
+    /// Only meaningful when [`Self::name`] is one of the authorization extension names, see
+    /// [`crate::utils::is_authorization_extension`].
+    pub fn decode_general_signature(&self) -> Option<crate::utils::GeneralSignature> {
+        crate::utils::decode_general_signature(self.bytes, self.type_id, self.types)
     }
 }
 
@@ -284,7 +299,7 @@ mod tests {
     use super::*;
     use crate::test_fixtures::ASSET_HUB_METADATA_V16;
     use frame_decode::extrinsics::{ExtrinsicType, ExtrinsicTypeInfo};
-    use parity_scale_codec::Decode;
+    use parity_scale_codec::{Compact, Decode, Encode};
 
     /// Polkadot Asset Hub block 20487777, extrinsic #2: a V4 signed
     /// `Balances.transfer_allow_death`, exactly as it appears in a
@@ -298,6 +313,22 @@ mod tests {
     /// Polkadot Asset Hub block 20487777, extrinsic #1: a V5 `Bare`
     /// `Timestamp.set` inherent.
     const V5_BARE_TIMESTAMP_SET: &str = "0x280503000b80e44f8ba001";
+
+    /// Polkadot Asset Hub block 20494727, extrinsic #2: a v5 `General`
+    /// `Utility.forceBatch` whose signature lives in the `VerifyMultiSignature`
+    /// extension rather than in a signature field. Same spec version as the
+    /// metadata fixture, so it decodes against it.
+    const V5_GENERAL_FORCE_BATCH: &str = "0x5d0245010101e89a5ce385d8186d9649b75f8007ac4be2a27e01cd3451be557d00e653ccab55b6053c58faedd4e04b4fb85d59cba2139ad5426875785fdeb592349bd053aa834c2545283514c51c1b5aeac53e68694cbd5913c14044657db192a3e014d8df660000014607390500000028040459124a45b84757c48776f4c5d887e269e8e6c3f2fc55f75adf222662f129f9fa5b40f0080000";
+
+    /// The signer of [`V5_GENERAL_FORCE_BATCH`] (`12iqiE5Kb8fHd2io8wpBJ23tR27WVELkNMv5yQWLFe52zaUQ`),
+    /// confirmed on chain against that block's own `Balances.Withdraw` and
+    /// `TransactionFeePaid` events.
+    const V5_GENERAL_SIGNER: &str =
+        "0x4c2545283514c51c1b5aeac53e68694cbd5913c14044657db192a3e014d8df66";
+
+    /// The signature of [`V5_GENERAL_FORCE_BATCH`], without the `Sr25519` variant byte.
+    const V5_GENERAL_SIGNATURE: &str = "0xe89a5ce385d8186d9649b75f8007ac4be2a27e01cd3451be557d00e653ccab55\
+b6053c58faedd4e04b4fb85d59cba2139ad5426875785fdeb592349bd053aa83";
 
     fn metadata() -> Metadata {
         let prefixed =
@@ -458,5 +489,158 @@ mod tests {
             .map(|f| f.name())
             .collect();
         assert_eq!(fields, vec!["dest", "value"]);
+    }
+    /// The bug: a v5 `General` extrinsic reports itself unsigned, because its signature is
+    /// not in a signature field. Anything keying off `is_signed()` alone therefore reports
+    /// a perfectly ordinary signed transfer as an unsigned inherent.
+    #[test]
+    fn v5_general_extrinsic_reports_itself_unsigned() {
+        let metadata = std::sync::Arc::new(metadata());
+        let extrinsic =
+            DecodedExtrinsic::decode(2, bytes(V5_GENERAL_FORCE_BATCH), metadata).expect("decodes");
+
+        assert!(!extrinsic.is_signed());
+        assert!(extrinsic.signature_bytes().is_none());
+        assert!(extrinsic.address_bytes().is_none());
+    }
+
+    /// ...and the fix: the signature is in the authorization extension, and comes back
+    /// matching what the chain's own events say about who paid for this transaction.
+    #[test]
+    fn v5_general_signature_comes_from_the_authorization_extension() {
+        let metadata = std::sync::Arc::new(metadata());
+        let extrinsic =
+            DecodedExtrinsic::decode(2, bytes(V5_GENERAL_FORCE_BATCH), metadata).expect("decodes");
+
+        let extensions = extrinsic
+            .transaction_extensions()
+            .expect("a v5 General extrinsic has extensions");
+        assert_eq!(extensions.version(), 1);
+
+        let found = crate::utils::general_signature(&extensions)
+            .expect("the VerifyMultiSignature extension carries a signature");
+
+        assert_eq!(
+            crate::utils::hex_with_prefix(&found.account),
+            V5_GENERAL_SIGNER
+        );
+        assert_eq!(
+            crate::utils::hex_with_prefix(&found.signature),
+            V5_GENERAL_SIGNATURE
+        );
+    }
+
+    /// The runtime numbers `Signed` as variant 1, not 0, while the Rust mirror of this type
+    /// lists it first. Anything decoding by declaration order rather than against the
+    /// metadata would read a real signature as `Disabled` and report none, silently.
+    ///
+    /// Asserted against the metadata rather than against a byte: the byte at that offset is
+    /// only `0x01` because the extension before it encodes to nothing, so a byte assertion
+    /// would survive a fixture whose variants were ordered the other way and quietly stop
+    /// guarding anything.
+    #[test]
+    fn signed_is_not_the_first_variant_on_chain() {
+        let metadata = metadata();
+
+        let ext_ty = metadata
+            .extrinsic_extension_info(Some(1))
+            .expect("version 1 available")
+            .extension_ids
+            .iter()
+            .find(|e| crate::utils::is_authorization_extension(&e.name))
+            .map(|e| e.id)
+            .expect("the fixture declares the authorization extension");
+
+        let ty = metadata.types().resolve(ext_ty).expect("type resolves");
+        let scale_info::TypeDef::Variant(variants) = &ty.type_def else {
+            panic!("the authorization extension should be an enum");
+        };
+
+        let by_index: Vec<(u8, &str)> = variants
+            .variants
+            .iter()
+            .map(|v| (v.index, v.name.as_str()))
+            .collect();
+
+        assert!(
+            by_index.contains(&(1, "Signed")),
+            "expected Signed at index 1, got {by_index:?}"
+        );
+    }
+
+    /// The signature is read opaquely rather than as a typed `MultiSignature`, so a scheme
+    /// subxt has no Rust variant for still decodes.
+    ///
+    /// `Eth` is the live case: Asset Hub's own `MultiSignature` declares it while
+    /// `subxt::utils::MultiSignature` stops at `Ecdsa`, so decoding into that type reports
+    /// an `Eth` signed transaction as an unsigned inherent.
+    #[test]
+    fn a_signature_scheme_subxt_does_not_know_still_decodes() {
+        // The fixture's own MultiSignature must still declare Eth, or this proves nothing.
+        let md = metadata();
+        let sig_ty = md
+            .types()
+            .types
+            .iter()
+            .find(|t| t.ty.path.segments == ["sp_runtime", "MultiSignature"])
+            .expect("the fixture declares sp_runtime::MultiSignature");
+        let scale_info::TypeDef::Variant(schemes) = &sig_ty.ty.type_def else {
+            panic!("MultiSignature should be an enum");
+        };
+        let eth = schemes
+            .variants
+            .iter()
+            .find(|v| v.name == "Eth")
+            .expect("fixture still declares Eth; if it stops, this test is a no-op");
+
+        // Rewrite the real extrinsic's Sr25519 signature as an Eth one. The layout is
+        // asserted rather than assumed: version, extension version, Signed, scheme.
+        let raw = bytes(V5_GENERAL_FORCE_BATCH);
+        assert_eq!((raw[2], raw[3], raw[4], raw[5]), (0x45, 0x01, 0x01, 0x01));
+
+        let body = &raw[2..];
+        let sr25519_sig = &body[4..4 + 64];
+        let tail = &body[4 + 64..];
+
+        let mut eth_body = vec![0x45, 0x01, 0x01, eth.index];
+        eth_body.extend_from_slice(sr25519_sig);
+        eth_body.push(0xAA); // an Eth signature is 65 bytes, one more than Sr25519
+        eth_body.extend_from_slice(tail);
+
+        let mut eth_raw = Compact(eth_body.len() as u32).encode();
+        eth_raw.extend_from_slice(&eth_body);
+
+        let extrinsic = DecodedExtrinsic::decode(2, eth_raw, std::sync::Arc::new(md))
+            .expect("an Eth signed v5 General extrinsic should decode");
+        let extensions = extrinsic.transaction_extensions().expect("has extensions");
+
+        let found = crate::utils::general_signature(&extensions)
+            .expect("an Eth signature must be reported, not swallowed");
+
+        let mut expected = sr25519_sig.to_vec();
+        expected.push(0xAA);
+        assert_eq!(found.signature, expected);
+        assert_eq!(
+            crate::utils::hex_with_prefix(&found.account),
+            V5_GENERAL_SIGNER
+        );
+    }
+
+    /// A v4 signed extrinsic resolves its extensions at version 0, which has no
+    /// authorization extension at all, so the lookup must not invent one.
+    #[test]
+    fn v4_signed_extrinsic_has_no_authorization_extension() {
+        let metadata = std::sync::Arc::new(metadata());
+        let extrinsic = DecodedExtrinsic::decode(2, bytes(V4_TRANSFER_KEEP_ALIVE), metadata)
+            .expect("V4 signed extrinsic should decode");
+
+        let extensions = extrinsic.transaction_extensions().expect("has extensions");
+        assert_eq!(extensions.version(), 0);
+        assert!(
+            !extensions
+                .iter()
+                .any(|e| crate::utils::is_authorization_extension(e.name()))
+        );
+        assert!(crate::utils::general_signature(&extensions).is_none());
     }
 }
